@@ -4,7 +4,7 @@
  */
 
 import { useTheming } from '../../../utils/theming-helper';
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -57,11 +57,10 @@ import {
 } from '@mui/material';
 import {
   History,
-  Timeline,
-  ForkRight as Branch,
-  Commit,
-  Tag,
-  Compare as Diff,
+  ForkRight as BranchIcon,
+  Commit as CommitIcon,
+  Tag as TagIcon,
+  Compare as DiffIcon,
   Undo as Rollback,
   Add,
   Edit,
@@ -111,6 +110,13 @@ import {
   PieChart,
   ShowChart,
 } from '@mui/icons-material';
+import Timeline from '@mui/lab/Timeline';
+import TimelineItem from '@mui/lab/TimelineItem';
+import TimelineOppositeContent from '@mui/lab/TimelineOppositeContent';
+import TimelineSeparator from '@mui/lab/TimelineSeparator';
+import TimelineDot from '@mui/lab/TimelineDot';
+import TimelineConnector from '@mui/lab/TimelineConnector';
+import TimelineContent from '@mui/lab/TimelineContent';
 import { useVersionControl, UseVersionControlOptions } from '../../../hooks/useVersionControl';
 import { VersionControlConfig, Version, Change, Branch, Commit, Tag, Diff } from '../../../utils/versionControlManager';
 
@@ -366,7 +372,7 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
 }, [rollbackToVersion]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'default' | 'error' | 'warning' | 'success' => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -374,11 +380,15 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) {
+      const icon = theming.getThemedIcon('error');
+      return React.isValidElement(icon) ? icon : <Error />;
+    }
     if (!isInitialized) return <CircularProgress size={16} />;
     if (isEnabled) return <History />;
-    return theming.getThemedIcon('warning');
+    const icon = theming.getThemedIcon('warning');
+    return React.isValidElement(icon) ? icon : <Warning />;
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status text
@@ -713,7 +723,7 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
                   <ListItem key={branch.id}>
                     <ListItemAvatar>
                       <Avatar>
-                        <Branch />
+                        <BranchIcon />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -743,7 +753,7 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
                   <ListItem key={commit.id}>
                     <ListItemAvatar>
                       <Avatar>
-                        <Commit />
+                        <CommitIcon />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -773,7 +783,7 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
                   <ListItem key={tag.id}>
                     <ListItemAvatar>
                       <Avatar>
-                        <Tag />
+                        <TagIcon />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -803,7 +813,7 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
                   <ListItem key={diff.id}>
                     <ListItemAvatar>
                       <Avatar>
-                        <Diff />
+                        <DiffIcon />
                       </Avatar>
                     </ListItemAvatar>
                     <ListItemText
@@ -1067,8 +1077,5 @@ const VersionControlDashboard: React.FC<VersionControlDashboardProps> = memo(({
 VersionControlDashboard.displayName ='VersionControlDashboard';
 
 export default VersionControlDashboard;
-
-
-
 
 

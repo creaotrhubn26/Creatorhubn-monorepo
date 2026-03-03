@@ -91,12 +91,32 @@ export interface PatternExposureAnalysis {
 
 // Modifier equivalents for matching
 const MODIFIER_EQUIVALENTS: Record<string, string[]> = {
-  'softbox': ['softbox','octabox','stripbox','rectangular-softbox']'umbrella': ['umbrella','shoot-through','reflective-umbrella','white-umbrella','silver-umbrella']'beauty-dish': ['beauty-dish','beautydish','beauty dish']'grid': ['grid','honeycomb','egg-crate','louver']'snoot': ['snoot','spot','tube']'reflector': ['reflector','standard','standard-reflector','dish']'scrim': ['scrim','silk','diffusion','frame']'ring': ['ring','ring-light','ringlight'],
+  softbox: ['softbox', 'octabox', 'stripbox', 'rectangular-softbox'],
+  umbrella: [
+    'umbrella',
+    'shoot-through',
+    'reflective-umbrella',
+    'white-umbrella',
+    'silver-umbrella',
+  ],
+  'beauty-dish': ['beauty-dish', 'beautydish', 'beauty dish'],
+  grid: ['grid', 'honeycomb', 'egg-crate', 'louver'],
+  snoot: ['snoot', 'spot', 'tube'],
+  reflector: ['reflector', 'standard', 'standard-reflector', 'dish'],
+  scrim: ['scrim', 'silk', 'diffusion', 'frame'],
+  ring: ['ring', 'ring-light', 'ringlight'],
 };
 
 // Power requirements by role (base watts at 2m for f/8)
 const BASE_POWER_BY_ROLE: Record<string, number> = {
-  'key': 500'fill': 250'rim': 300'background': 200'kicker': 200'hair': 150'eye': 100'bounce': 150,
+  key: 500,
+  fill: 250,
+  rim: 300,
+  background: 200,
+  kicker: 200,
+  hair: 150,
+  eye: 100,
+  bounce: 150,
 };
 
 // =============================================================================
@@ -215,17 +235,17 @@ function findBestEquipmentMatch(
   inventory: UserEquipmentItem[],
   alreadyUsed: Set<string>
 ): { equipment?: UserEquipmentItem; spec?: Partial<StudioLight>; score: number } {
-  let bestMatch: { equipment?: UserEquipmentItem; spec?: Partial<StudioLight>;, score: number } = {
-    score: 0
+  let bestMatch: { equipment?: UserEquipmentItem; spec?: Partial<StudioLight>; score: number } = {
+    score: 0,
   };
   
   // Filter to lights only
-  const lights = inventory.filter(item => {
-    const cat = (item.category || ',').toLowerCase();
-    const name = (item.name || ', ').toLowerCase();
+  const lights = inventory.filter((item) => {
+    const cat = (item.category || '').toLowerCase();
+    const name = (item.name || '').toLowerCase();
     return (
-      cat.includes('light,') || 
-      cat.includes('flash') || 
+      cat.includes('light') ||
+      cat.includes('flash') ||
       cat.includes('strobe') ||
       name.includes('light') ||
       name.includes('flash') ||
@@ -262,7 +282,7 @@ class PatternExposureIntegrationService {
     targetFStop: number = 8,
     targetISO: number = 100,
     subjectDistance: number = 2
-  ): Omit<PatternExposureAnalysis, 'equipmentMatches' | 'missingEquipment' | , 'feasibilityScore'> {
+  ): Omit<PatternExposureAnalysis, 'equipmentMatches' | 'missingEquipment' | 'feasibilityScore'> {
     const requirements: PatternLightRequirement[] = [];
     const warnings: string[] = [];
     const tips: string[] = [];
@@ -657,4 +677,3 @@ class PatternExposureIntegrationService {
 // Export singleton
 export const patternExposureIntegration = new PatternExposureIntegrationService();
 export default patternExposureIntegration;
-

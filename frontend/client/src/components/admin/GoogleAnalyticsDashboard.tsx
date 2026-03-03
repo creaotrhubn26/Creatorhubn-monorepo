@@ -500,7 +500,13 @@ export default function GoogleAnalyticsDashboard({ hideHeader = false }: GoogleA
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography variant="body2" sx={{ color: source.revenue > 0 ? '#4caf50' : 'text.secondary', fontWeight: ource.revenue > 0 ? 600 : 400 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: source.revenue > 0 ? '#4caf50' : 'text.secondary',
+                              fontWeight: source.revenue > 0 ? 600 : 400,
+                            }}
+                          >
                             {source.revenue?.toLocaleString()} kr
                           </Typography>
                         </TableCell>
@@ -580,7 +586,13 @@ export default function GoogleAnalyticsDashboard({ hideHeader = false }: GoogleA
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <Typography variant="body2" sx={{ color: event.revenue > 0 ? '#4caf50' : 'text.secondary', fontWeight: vent.revenue > 0 ? 600 : 400 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: event.revenue > 0 ? '#4caf50' : 'text.secondary',
+                              fontWeight: event.revenue > 0 ? 600 : 400,
+                            }}
+                          >
                             {event.revenue > 0 ? `${event.revenue.toLocaleString()} kr` : '-'}
                           </Typography>
                         </TableCell>
@@ -662,4 +674,3 @@ export default function GoogleAnalyticsDashboard({ hideHeader = false }: GoogleA
     </Box>
   );
 }
-

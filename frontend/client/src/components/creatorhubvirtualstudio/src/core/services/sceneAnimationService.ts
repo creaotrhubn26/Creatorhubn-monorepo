@@ -174,8 +174,12 @@ export const ANIMATION_PRESETS = {
     targetId: ', ',
     property: 'rotation',
     keyframes: [
-      { time: 0, value: [0, 0, 0'XYZ'] },
-      { time: duration, value: axis === 'x' ? [Math.PI * 2, 0, 0'XYZ'] : axis === 'y' ? [0, Math.PI * 2, 0'XYZ'] : [0, 0, Math.PI * 2'XYZ'], easing: 'linear' },
+      { time: 0, value: [0, 0, 0] },
+      {
+        time: duration,
+        value: axis === 'x' ? [Math.PI * 2, 0, 0] : axis === 'y' ? [0, Math.PI * 2, 0] : [0, 0, Math.PI * 2],
+        easing: 'linear',
+      },
     ],
   }),
 
@@ -697,7 +701,7 @@ class SceneAnimationService {
             values[i * 4 + 3]
           );
           const euler = new THREE.Euler().setFromQuaternion(q);
-          return { time, value: [euler.x, euler.y, euler.z'XYZ'] };
+          return { time, value: [euler.x, euler.y, euler.z] };
         });
       } else if (track.name.includes('scale')) {
         property = 'scale';
@@ -772,4 +776,3 @@ class SceneAnimationService {
 export const sceneAnimationService = new SceneAnimationService();
 
 export default sceneAnimationService;
-

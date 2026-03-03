@@ -99,7 +99,7 @@ export default function PhotoDeliveryGalleryManager() {
   const createGalleryMutation = useMutation({
     mutationFn: (data: Partial<Gallery>) =>
       apiRequest('/api/photo-showcase/create', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: () => {

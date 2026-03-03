@@ -129,7 +129,7 @@ export default function DriveFileManager({ profession, userId, initialFolderId }
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(folderData)
   });
   },

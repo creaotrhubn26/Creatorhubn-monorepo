@@ -212,7 +212,7 @@ export default function UniversalOnboardingWithTrials({
           setPendingData(v);
           // Clear server copy
           fetch('/api/user/kv,', {
-            method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
             body: JSON.stringify({ key: 'pendingOnboardingData', value: null })
           }).catch(() => {});
         } else {
@@ -296,7 +296,14 @@ export default function UniversalOnboardingWithTrials({
   const [trialLoading, setTrialLoading] = useState(false);
 
   const steps = [
-    'Profesjonsvalg','Profildetaljer','Kamera- og Utstyrssystem''Trial Funksjoner', 'Cloud Integrering', 'Sosiale Medier', 'Branding Setup', 'Arbeidsflyt Konfigurasjon',
+    'Profesjonsvalg',
+    'Profildetaljer',
+    'Kamera- og Utstyrssystem',
+    'Trial Funksjoner',
+    'Cloud Integrering',
+    'Sosiale Medier',
+    'Branding Setup',
+    'Arbeidsflyt Konfigurasjon',
   ];
 
   const selectedProfession = professionConfigs?.[onboardingData.profession];
@@ -306,8 +313,8 @@ export default function UniversalOnboardingWithTrials({
   const completeOnboardingMutation = useMutation({
     mutationFn: async (profileData: OnboardingDataWithTrials) => {
       const response = await fetch('/api/universal-onboarding/complete', {
-        method: 'POS',
-        headers: { , 'Content-Type': 'application/json'},
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify(profileData),
     });
       if (!response.ok) throw new Error('Failed to complete onboarding');
@@ -332,10 +339,10 @@ export default function UniversalOnboardingWithTrials({
       for (const featureId of onboardingData.selectedTrialFeatures) {
         // Start trial for each selected feature
         await fetch('/api/trial-features/start', {
-          method: 'POS',
-          headers: { , 'Content-Type': 'application/json'},
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json'},
           body: JSON.stringify({
-            featured,
+            featureId,
             userId: 'current-user', // This should come from auth context
             componentId: 'onboarding',
         }),
@@ -897,7 +904,7 @@ export default function UniversalOnboardingWithTrials({
           disabled={!canProceed() || completeOnboardingMutation.isPending}
           endIcon={
             completeOnboardingMutation.isPending ? (
-              <CircularProgress size={20}, sx={theming.getThemedButtonSx()}>
+              <CircularProgress size={20} />
             ) : activeStep === steps.length - 1 ? (
               <CheckIcon />
             ) : (
@@ -905,10 +912,12 @@ export default function UniversalOnboardingWithTrials({
             )
         }
           sx={{
-            minWidth: 10,
-            bgcolor: selectedProfession?.color || 'primary.main','&:hover': {
+            minWidth: 120,
+            bgcolor: selectedProfession?.color || 'primary.main',
+            '&:hover': {
               bgcolor: selectedProfession?.color || 'primary.dark',
-          }}}
+            },
+          }}
         >
           {activeStep === steps.length - 1 ? 'Fullfør' : 'Neste'}
         </Button>
@@ -921,12 +930,13 @@ export default function UniversalOnboardingWithTrials({
           feature={{
             id: selectedTrialFeature,
             name: pricingService.getFeaturePricing(selectedTrialFeature)?.name || selectedTrialFeature,
-            description: pricingService.getFeaturePricing(selectedTrialFeature)?.description ||', ',
+            description: pricingService.getFeaturePricing(selectedTrialFeature)?.description || '',
             benefits: pricingService.getFeaturePricing(selectedTrialFeature)?.benefits || [],
             trialDuration:  14,
             category: 'premium',
             color: selectedProfession?.color || '#ff6f00',
-            icon:', ⭐'}}
+            icon: '⭐',
+          }}
           onAccept={() => {
             handleTrialFeatureToggle(selectedTrialFeature);
             setShowTrialDialog(false);

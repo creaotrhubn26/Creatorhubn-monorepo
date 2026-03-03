@@ -56,7 +56,7 @@ export interface UseKeyboardShortcutsReturn {
  */
 export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}): UseKeyboardShortcutsReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onShortcutCreated,
     onShortcutExecuted,
     onShortcutExecutionFailed,
@@ -94,8 +94,8 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
   // Initialize keyboard shortcuts manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      keyboardShortcutsManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      keyboardShortcutsManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -161,7 +161,7 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onShortcutCreated, onShortcutExecuted, onShortcutExecutionFailed, onContextChanged, onError, onInitialized]);
+}, [optionConfig, onShortcutCreated, onShortcutExecuted, onShortcutExecutionFailed, onContextChanged, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -193,7 +193,7 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return keyboardShortcutsManager.getConfig();
 }, []);
 
@@ -212,7 +212,7 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
     createShortcut,
     executeShortcut,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -239,7 +239,7 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
     createShortcut,
     executeShortcut,
     state,
-    config,
+    currentConfig,
     updateConfig,
     getShortcuts,
     getContexts
@@ -249,7 +249,6 @@ export const useKeyboardShortcuts = (options: UseKeyboardShortcutsOptions = {}):
 };
 
 export default useKeyboardShortcuts;
-
 
 
 

@@ -248,7 +248,7 @@ export function QuickMeetingNotesModal({
               >
                 <CardContent sx={{ p: 2, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:  1 }}>
-                    <Box sx={{ p: 1, borderRadius: '50, %', bgcolor: '#2196F0', color: 'white' }}>
+                    <Box sx={{ p: 1, borderRadius: '50%', bgcolor: '#2196F0', color: 'white' }}>
                       <FileTextIcon sx={{ fontSize: 16}} />
                     </Box>
                     <Box>
@@ -275,7 +275,7 @@ export function QuickMeetingNotesModal({
               >
                 <CardContent sx={{ p: 2, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:  1 }}>
-                    <Box sx={{ p: 1, borderRadius: '50, %', bgcolor: '#FF9800', color: 'white' }}>
+                    <Box sx={{ p: 1, borderRadius: '50%', bgcolor: '#FF9800', color: 'white' }}>
                       <ProfessionIcon sx={{ fontSize: 16}} />
                     </Box>
                     <Box>

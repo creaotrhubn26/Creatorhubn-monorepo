@@ -1,5 +1,19 @@
 const API_BASE = '/api/role-room';
 
+export class CastingApiError extends Error {
+  status: number;
+  endpoint: string;
+  details?: unknown;
+
+  constructor(message: string, status: number, endpoint: string, details?: unknown) {
+    super(message);
+    this.name = 'CastingApiError';
+    this.status = status;
+    this.endpoint = endpoint;
+    this.details = details;
+  }
+}
+
 function getAuthHeaders(): Record<string, string> {
   try {
     const token = localStorage.getItem('creatorhub_auth_token');
@@ -22,8 +36,24 @@ async function apiRequest<T>(
   });
   
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-    throw new Error(error.detail || 'Request failed');
+    const rawBody = await response.text().catch(() => '');
+    let parsedBody: any = null;
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = null;
+      }
+    }
+
+    const detail =
+      parsedBody?.detail ||
+      parsedBody?.message ||
+      parsedBody?.error ||
+      rawBody ||
+      `Request failed (${response.status})`;
+
+    throw new CastingApiError(String(detail), response.status, endpoint, parsedBody ?? rawBody);
   }
   
   return response.json();
@@ -218,8 +248,9 @@ export const rolesApi = {
 
 export const crewApi = {
   getAll: async (projectId: string): Promise<CastingCrew[]> => {
-    const result = await apiRequest<{ crew: CastingCrew[] }>(`/projects/${projectId}/crew`);
-    return result.crew;
+    const result = await apiRequest<{ crew?: CastingCrew[] } | CastingCrew[]>(`/projects/${projectId}/crew`);
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result.crew) ? result.crew : [];
   },
   
   save: async (crew: Partial<CastingCrew>): Promise<CastingCrew> => {
@@ -238,8 +269,9 @@ export const crewApi = {
 
 export const locationsApi = {
   getAll: async (projectId: string): Promise<CastingLocation[]> => {
-    const result = await apiRequest<{ locations: CastingLocation[] }>(`/projects/${projectId}/locations`);
-    return result.locations;
+    const result = await apiRequest<{ locations?: CastingLocation[] } | CastingLocation[]>(`/projects/${projectId}/locations`);
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result.locations) ? result.locations : [];
   },
   
   save: async (location: Partial<CastingLocation>): Promise<CastingLocation> => {
@@ -655,6 +687,58 @@ export interface EquipmentConflict {
   status?: string;
 }
 
+export type MemoryCardBackupStatus = 'not_backed_up' | 'backing_up' | 'verified';
+export type MemoryCardLifecycleStage =
+  | 'in_use'
+  | 'sealed'
+  | 'backup_started'
+  | 'backup_completed'
+  | 'verified'
+  | 'archived';
+
+export interface MemoryCardBackupTargets {
+  backup1: boolean;
+  backup2: boolean;
+  offsite: boolean;
+}
+
+export interface MemoryCardLogEvent {
+  ts: string;
+  event: string;
+  by?: string;
+}
+
+export interface MemoryCardControlEntry {
+  id: string;
+  cardLabel: string;
+  cameraId: string;
+  cameraLabel: string;
+  assignedCrewId?: string;
+  assignedCrewName?: string;
+  assignedCrewRole?: string;
+  cardTypeId?: string;
+  cardTypeName?: string;
+  capacity?: string;
+  shotListId?: string;
+  sceneLabel?: string;
+  productionTag?: string;
+  note?: string;
+  imageDataUrl?: string;
+  backups: MemoryCardBackupTargets;
+  checksumVerified: boolean;
+  status: MemoryCardBackupStatus;
+  lifecycleStage: MemoryCardLifecycleStage;
+  createdAt: string;
+  updatedAt: string;
+  history: MemoryCardLogEvent[];
+}
+
+export interface MemoryCardControlState {
+  shootDayLabel: string;
+  entries: MemoryCardControlEntry[];
+  updatedAt: string;
+}
+
 // ── Check-in / Check-out ─────────────────────────────────
 export interface EquipmentCheckout {
   id: string;
@@ -829,6 +913,48 @@ export const equipmentConflictsApi = {
       `/equipment/${equipmentId}/conflicts?start_date=${startDate}&end_date=${endDate}`
     );
     return { conflicts: result.conflicts, hasConflicts: result.has_conflicts };
+  },
+};
+
+const createDefaultMemoryCardControlState = (): MemoryCardControlState => ({
+  shootDayLabel: '',
+  entries: [],
+  updatedAt: new Date().toISOString(),
+});
+
+const normalizeMemoryCardControlState = (input: unknown): MemoryCardControlState => {
+  if (!input || typeof input !== 'object') return createDefaultMemoryCardControlState();
+  const value = input as Partial<MemoryCardControlState>;
+  return {
+    shootDayLabel: typeof value.shootDayLabel === 'string' ? value.shootDayLabel : '',
+    entries: Array.isArray(value.entries) ? value.entries : [],
+    updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : new Date().toISOString(),
+  };
+};
+
+export const memoryCardControlApi = {
+  get: async (projectId: string): Promise<MemoryCardControlState> => {
+    const result = await apiRequest<{ state?: MemoryCardControlState } | MemoryCardControlState>(
+      `/projects/${projectId}/memory-card-control`
+    );
+    if (result && typeof result === 'object' && 'state' in result) {
+      return normalizeMemoryCardControlState(result.state);
+    }
+    return normalizeMemoryCardControlState(result);
+  },
+
+  save: async (projectId: string, state: MemoryCardControlState): Promise<MemoryCardControlState> => {
+    const result = await apiRequest<{ state?: MemoryCardControlState } | MemoryCardControlState>(
+      `/projects/${projectId}/memory-card-control`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ state }),
+      }
+    );
+    if (result && typeof result === 'object' && 'state' in result) {
+      return normalizeMemoryCardControlState(result.state);
+    }
+    return normalizeMemoryCardControlState(result);
   },
 };
 

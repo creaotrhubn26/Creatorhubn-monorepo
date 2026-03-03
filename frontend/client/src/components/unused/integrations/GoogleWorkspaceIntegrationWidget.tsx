@@ -35,7 +35,7 @@ const queryClient = useQueryClient();
         headers: {
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

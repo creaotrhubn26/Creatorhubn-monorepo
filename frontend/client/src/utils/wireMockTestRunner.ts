@@ -105,7 +105,7 @@ export class WireMockTestRunner {
       // Determine success based on status code
       const isSuccess = response.status >= 200 && response.status < 300;
 
-      const result = {
+      const result: Omit<WireMockTestResult, 'id' | 'timestamp'> = {
         apiName: config.apiName,
         endpoint: config.endpoint,
         method,
@@ -202,4 +202,3 @@ export class WireMockTestRunner {
     return results;
   }
 }
-

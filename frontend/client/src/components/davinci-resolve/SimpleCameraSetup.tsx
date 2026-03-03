@@ -335,7 +335,7 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
       <Box sx={{ flex: 1, p: 2, overflow: 'auto'}}>
         <Card sx={theming.getThemedCardSx()}>
           <CardContent sx={theming.getThemedCardSx()}>
-            {/* Step 1: Camera Setup , *, /}
+            {/* Step 1: Camera Setup */}
             {activeStep === 0 && (
               <Box>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -399,7 +399,7 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
                             <InputLabel>Resolution</InputLabel>
                             <Select
                               value={camera.resolution}
-                              onChange={(e) => handleCameraChange(index'resolution', e.target.value)}
+                              onChange={(e) => handleCameraChange(index, 'resolution', e.target.value)}
                               label="Resolution"
                             >
                               <MenuItem value="1920x1080">1920x1080 (HD)</MenuItem>
@@ -426,7 +426,7 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
               </Box>
             )}
 
-            {/* Step 2: Project Info , *, /}
+            {/* Step 2: Project Info */}
             {activeStep === 1 && (
               <Box>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -489,7 +489,7 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
               </Box>
             )}
 
-            {/* Step 3: Create Project , *, /}
+            {/* Step 3: Create Project */}
             {activeStep === 2 && (
               <Box>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -573,7 +573,17 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
                       
                       {projectInfo.event_type === 'corporate' && (
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
-                          {['Interviews','B-Roll','Graphics & Branding''Logo & Assets','Audio & Music''Corporate Voice','Testimonials','Product Shots','Office & Environment'].map((category, index) => (
+                          {[
+                            'Interviews',
+                            'B-Roll',
+                            'Graphics & Branding',
+                            'Logo & Assets',
+                            'Audio & Music',
+                            'Corporate Voice',
+                            'Testimonials',
+                            'Product Shots',
+                            'Office & Environment',
+                          ].map((category, index) => (
                             <Chip
                               key={index}
                               label={category}
@@ -638,9 +648,10 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
               <Button variant="contained"
                 onClick={handleNext}
                 disabled={
-                  (activeStep === 0 && cameras.some(c = sx={theming.getThemedButtonSx()}> !c.name)) ||
+                  (activeStep === 0 && cameras.some((c) => !c.name)) ||
                   (activeStep === 1 && (!projectInfo.event_name || !projectInfo.client_name))
               }
+                sx={theming.getThemedButtonSx()}
               >
                 Next
               </Button>
@@ -650,10 +661,13 @@ export default function SimpleCameraSetup({ onProjectCreated }: SimpleCameraSetu
                 onClick={handleCreateProject}
                 disabled={createProject.isPending}
                 sx={{
-                  background: 'linear-gradient(45deg, #10b981, #059669)', '&:hover': {
+                  ...theming.getThemedButtonSx(),
+                  background: 'linear-gradient(45deg, #10b981, #059669)',
+                  '&:hover': {
                     background: 'linear-gradient(45deg, #059669, #047857)',
-                }}}
-               sx={theming.getThemedButtonSx()}>
+                  },
+                }}
+              >
                 {createProject.isPending ? 'Creating Project...' : 'Create DaVinci Resolve Project'}
               </Button>
             )}

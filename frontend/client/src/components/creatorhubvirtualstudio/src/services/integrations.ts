@@ -456,8 +456,10 @@ export class VirtualStudioIntegrationService {
       log.info(`Virtual Studio integrations ready in ${elapsed.toFixed(0)}ms`, {
         services: [
           'LUT Library: 627 professional LUTs',
-          `GPU Acceleration: ${this.lut.isGPUAvailable() ? 'Available' : 'Not available'}`'SVG Renderer: Resvg WASM (40x faster)', 'AI Vision: ONNX Runtime (scene analysis)',
-        ]
+          `GPU Acceleration: ${this.lut.isGPUAvailable() ? 'Available' : 'Not available'}`,
+          'SVG Renderer: Resvg WASM (40x faster)',
+          'AI Vision: ONNX Runtime (scene analysis)',
+        ],
       });
     } catch (error) {
       log.error('Failed to initialize integrations:', error);

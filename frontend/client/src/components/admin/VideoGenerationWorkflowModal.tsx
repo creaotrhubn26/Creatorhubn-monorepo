@@ -35,7 +35,7 @@ import {
   VideoLibrary,
 } from '@mui/icons-material';
 import AIVideoGenerator from './AIVideoGenerator';
-import { useVideoJourneyBridge, VideoGenerationResult } from '@/hooks/useVideoJourneyBridge';
+import { useVideoJourneyBridge } from '@/hooks/useVideoJourneyBridge';
 import { useNavigate } from 'react-router-dom';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -46,6 +46,17 @@ interface WorkflowStep {
   label: string;
   description: string;
   status: 'pending' | 'active' | 'completed' | 'error';
+}
+
+interface GeneratedVideoResult {
+  id: string;
+  status: 'processing' | 'completed' | 'failed';
+  videoUrl?: string;
+  thumbnailUrl?: string;
+  duration?: number;
+  cost?: number;
+  metadata?: unknown;
+  error?: string;
 }
 
 interface VideoGenerationWorkflowModalProps {
@@ -81,7 +92,7 @@ export default function VideoGenerationWorkflowModal({
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   const [activeStep, setActiveStep] = useState(0);
-  const [generatedVideo, setGeneratedVideo] = useState<VideoGenerationResult | null>(null);
+  const [generatedVideo, setGeneratedVideo] = useState<GeneratedVideoResult | null>(null);
   const [analysisData, setAnalysisData] = useState<unknown>(null);
   const [storyArcProjectId, setStoryArcProjectId] = useState<string | null>(null);
   const [showVideoGenerator, setShowVideoGenerator] = useState(false);
@@ -129,7 +140,7 @@ export default function VideoGenerationWorkflowModal({
   // HANDLERS
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const handleVideoGenerated = (result: VideoGenerationResult) => {
+  const handleVideoGenerated = (result: GeneratedVideoResult) => {
     setGeneratedVideo(result);
     setShowVideoGenerator(false);
     setActiveStep(1);
@@ -144,13 +155,23 @@ export default function VideoGenerationWorkflowModal({
   };
 
   const handleOpenStoryArc = () => {
-    if (!generatedVideo) return;
+    if (!generatedVideo?.videoUrl) return;
 
     // Send video to StoryArc Studio
-    videoJourneyBridge.openInStoryArc(generatedVideo, {
+    videoJourneyBridge.openInStoryArc(
+      {
+        id: generatedVideo.id,
+        videoUrl: generatedVideo.videoUrl,
+        thumbnailUrl: generatedVideo.thumbnailUrl,
+        duration: generatedVideo.duration ?? 0,
+        cost: generatedVideo.cost,
+        metadata: generatedVideo.metadata ?? {},
+      },
+      {
       journeyId,
       stepId,
-    });
+      },
+    );
 
     // Navigate to StoryArc Studio
     navigate('/storyarc-studio', {
@@ -169,7 +190,7 @@ export default function VideoGenerationWorkflowModal({
   const handleSkipStoryArc = () => {
     setActiveStep(2);
     // Trigger analysis
-    if (generatedVideo) {
+    if (generatedVideo?.videoUrl) {
       videoJourneyBridge.triggerVideoAnalysis(generatedVideo.videoUrl, {
         journeyId,
         stepId,
@@ -184,7 +205,7 @@ export default function VideoGenerationWorkflowModal({
   };
 
   const handleComplete = () => {
-    if (onComplete && generatedVideo) {
+    if (onComplete && generatedVideo?.videoUrl) {
       onComplete({
         videoUrl: generatedVideo.videoUrl,
         analysisData,

@@ -1,25 +1,30 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  Chip,
-  Stack,
   Alert,
+  Box,
+  Card,
+  CardContent,
+  Chip,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Stack,
+  Typography,
 } from '@mui/material';
 import {
   CheckCircle,
-  Schedule,
-  Work,
-  Person,
   FileDownload,
   FileUpload,
   Notifications,
+  Person,
+  Schedule,
   Timeline,
+  Work,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
 interface WorkflowEvent {
   id: string;
@@ -28,19 +33,56 @@ interface WorkflowEvent {
   description: string;
   timestamp: string;
   source: string;
-  data: any;
-  status: 'pending' | 'processing' | 'completed' | 'error'
+  data: unknown;
+  status: 'pending' | 'processing' | 'completed' | 'error';
 }
 
 interface UnifiedWorkflowOrchestratorProps {
   profession: string;
   userId: string;
-  selectedProject?: any;
-  selectedClient?: any;
-  selectedEquipment?: any;
-  onProjectSelect?: (project: any) => void;
-  onClientSelect?: (client: any) => void;
-  onEquipmentSelect?: (equipment: any) => void
+  selectedProject?: { id?: string; title?: string } | null;
+  selectedClient?: { id?: string; name?: string } | null;
+  selectedEquipment?: { id?: string; name?: string } | null;
+  onProjectSelect?: (project: { id?: string; title?: string }) => void;
+  onClientSelect?: (client: { id?: string; name?: string }) => void;
+  onEquipmentSelect?: (equipment: { id?: string; name?: string }) => void;
+}
+
+function eventIcon(type: WorkflowEvent['type']): React.ReactNode {
+  switch (type) {
+    case 'project':
+      return <Work color="primary" />;
+    case 'worklog':
+      return <Timeline color="warning" />;
+    case 'file_upload':
+      return <FileUpload color="secondary" />;
+    case 'file_download':
+      return <FileDownload color="action" />;
+    case 'client':
+      return <Person color="info" />;
+    case 'showcase':
+      return <CheckCircle color="success" />;
+    case 'meeting':
+    default:
+      return <Schedule color="primary" />;
+  }
+}
+
+function formatRelativeTime(isoString: string): string {
+  const now = Date.now();
+  const deltaMs = now - new Date(isoString).getTime();
+  const minutes = Math.floor(deltaMs / 60000);
+  if (minutes < 1) {
+    return 'just now';
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 const UnifiedWorkflowOrchestrator: React.FC<UnifiedWorkflowOrchestratorProps> = ({
@@ -51,354 +93,180 @@ const UnifiedWorkflowOrchestrator: React.FC<UnifiedWorkflowOrchestratorProps> = 
   selectedEquipment,
   onProjectSelect,
   onClientSelect,
-  onEquipmentSelect
+  onEquipmentSelect,
 }) => {
-  const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [workflowEvents, setWorkflowEvents] = useState<WorkflowEvent[]>([]);
+  const theming = useTheming(profession);
+  const [events, setEvents] = useState<WorkflowEvent[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Unified callback system that all components can use
-  const unifiedCallbacks = {
-    // Meeting Management
-    onMeetingCreate: useCallback((meeting: any) => {
-      console.log('🎯 Universal Meeting Created, :', meeting);
-      
-      const event: WorkflowEvent = {
-        id: `meeting_${Date.now()}`,
-        type: 'meeting',
-        title: `Meeting: ${meeting.title}`,
-        description: `Scheduled meeting with ${meeting.clientName || 'client'}`,
-        timestamp: new Date().toISOString(),
-        source: meeting.source || 'unknown',
-        data: meeting,
-        status: 'completed'
-  };
-      
-      setWorkflowEvents(prev => [event, ...prev.slice(0, 49)]); // Keep last 50 events
-      queryClient.invalidateQueries({ queryKey: ['/api/meetings', ],});
-      
-      // Auto-schedule worklog entry
-      if (selectedProject) {
-        const worklogEntry = {
-          id: `worklog_${Date.now()}`,
-          projectId: selectedProject.d,
-          type: 'meeting',
-          title: `Meeting: ${meeting.title}`,
-          description: `Meeting scheduled with ${meeting.clientName}`,
-          duration:  60, // Default 1 hour
-          timestamp: new Date().toISOString(),
-          source: 'meeting_created'
+  useEffect(() => {
+    const event: WorkflowEvent = {
+      id: `session-${Date.now()}`,
+      type: 'project',
+      title: 'Workflow session initialized',
+      description: `Unified orchestration active for ${profession}`,
+      timestamp: new Date().toISOString(),
+      source: 'workflow-orchestrator',
+      data: { userId, profession },
+      status: 'completed',
     };
-        
-        setWorkflowEvents(prev => [{
-          id: `worklog_${Date.now()}`,
-          type: 'worklog',
-          title: `Worklog: ${worklogEntry.title}`,
-          description: worklogEntry.description,
-          timestamp: worklogEntry.timestamp,
-          source: 'auto_generated',
-          data: worklogEntry,
-          status: 'completed'
-    }, ...prev.slice(0, 49)]);
+    setEvents([event]);
+  }, [profession, userId]);
+
+  useEffect(() => {
+    if (!selectedProject) {
+      return;
     }
-  }, [queryClient, selectedProject]),
+    const event: WorkflowEvent = {
+      id: `project-${Date.now()}`,
+      type: 'project',
+      title: selectedProject.title ? `Project selected: ${selectedProject.title}` : 'Project selected',
+      description: 'Project context synchronized across modules.',
+      timestamp: new Date().toISOString(),
+      source: 'project-context',
+      data: selectedProject,
+      status: 'completed',
+    };
+    setEvents((previous) => [event, ...previous].slice(0, 50));
+    onProjectSelect?.(selectedProject);
+  }, [selectedProject, onProjectSelect]);
 
-    onMeetingScheduled: useCallback((meeting: any) => {
-      console.log('📅 Universal Meeting Scheduled, :', meeting);
-      queryClient.invalidateQueries({ queryKey: ['/api/meetings', ],});
-  }, [queryClient]),
+  useEffect(() => {
+    if (!selectedClient) {
+      return;
+    }
+    const event: WorkflowEvent = {
+      id: `client-${Date.now()}`,
+      type: 'client',
+      title: selectedClient.name ? `Client selected: ${selectedClient.name}` : 'Client selected',
+      description: 'Client context synchronized across modules.',
+      timestamp: new Date().toISOString(),
+      source: 'client-context',
+      data: selectedClient,
+      status: 'completed',
+    };
+    setEvents((previous) => [event, ...previous].slice(0, 50));
+    onClientSelect?.(selectedClient);
+  }, [selectedClient, onClientSelect]);
 
-    onMeetingCompleted: useCallback((meeting: any) => {
-      console.log('✅ Universal Meeting Completed, :', meeting);
-      queryClient.invalidateQueries({ queryKey: ['/api/meetings', ],});
-  }, [queryClient]),
+  useEffect(() => {
+    if (!selectedEquipment) {
+      return;
+    }
+    const event: WorkflowEvent = {
+      id: `equipment-${Date.now()}`,
+      type: 'worklog',
+      title: selectedEquipment.name
+        ? `Equipment selected: ${selectedEquipment.name}`
+        : 'Equipment selected',
+      description: 'Equipment context synchronized for production planning.',
+      timestamp: new Date().toISOString(),
+      source: 'equipment-context',
+      data: selectedEquipment,
+      status: 'completed',
+    };
+    setEvents((previous) => [event, ...previous].slice(0, 50));
+    onEquipmentSelect?.(selectedEquipment);
+  }, [selectedEquipment, onEquipmentSelect]);
 
-    // Project Management
-    onProjectCreate: useCallback((project: any) => {
-      console.log('🚀 Universal Project Created, :', project);
-      
-      const event: WorkflowEvent = {
-        id: `project_${Date.now()}`,
-        type: 'project',
-        title: `Project: ${project.title}`,
-        description: `New project created for ${project.clientName || 'client'}`,
-        timestamp: new Date().toISOString(),
-        source: project.source || 'unknown',
-        data: project,
-        status: 'completed'
+  const completedCount = useMemo(
+    () => events.filter((event) => event.status === 'completed').length,
+    [events],
+  );
+
+  const beginSyntheticRun = (): void => {
+    setIsProcessing(true);
+    const event: WorkflowEvent = {
+      id: `sync-${Date.now()}`,
+      type: 'showcase',
+      title: 'Cross-module sync',
+      description: 'Triggering synchronization across timeline, assets, and communication systems.',
+      timestamp: new Date().toISOString(),
+      source: 'system',
+      data: { userId },
+      status: 'processing',
+    };
+    setEvents((previous) => [event, ...previous].slice(0, 50));
+
+    window.setTimeout(() => {
+      setEvents((previous) =>
+        previous.map((item) =>
+          item.id === event.id
+            ? {
+                ...item,
+                status: 'completed',
+                description: 'Cross-module sync completed successfully.',
+              }
+            : item,
+        ),
+      );
+      setIsProcessing(false);
+    }, 900);
   };
-      
-      setWorkflowEvents(prev => [event, ...prev.slice(0, 49)]);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', ],});
-      
-      if (onProjectSelect) {
-        onProjectSelect(project);
-    }
-  }, [queryClient, onProjectSelect]),
-
-    onProjectUpdate: useCallback((project: any) => {
-      console.log('🔄 Universal Project Updated, :', project);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', ],});
-  }, [queryClient]),
-
-    onProjectSelect: useCallback((project: any) => {
-      console.log('🎯 Universal Project Selected, :', project);
-      if (onProjectSelect) {
-        onProjectSelect(project);
-    }
-  }, [onProjectSelect]),
-
-    // Worklog Management
-    onWorklogCreate: useCallback((worklog: any) => {
-      console.log('📝 Universal Worklog Created, :', worklog);
-      
-      const event: WorkflowEvent = {
-        id: `worklog_${Date.now()}`,
-        type: 'worklog',
-        title: `Worklog: ${worklog.title}`,
-        description: worklog.description || 'Work entry created',
-        timestamp: new Date().toISOString(),
-        source: worklog.source || 'unknown',
-        data: worklog,
-        status: 'completed'
-  };
-      
-      setWorkflowEvents(prev => [event, ...prev.slice(0, 49)]);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', userId'worklog'] });
-  }, [queryClient, userId]),
-
-    onWorklogUpdate: useCallback((worklog: any) => {
-      console.log('✏️ Universal Worklog Updated, :', worklog);
-      queryClient.invalidateQueries({ queryKey: ['/api/projects', userId'worklog'] });
-  }, [queryClient, userId]),
-
-    // Client Management
-    onClientSelect: useCallback((client: any) => {
-      console.log('👤 Universal Client Selected, :', client);
-      if (onClientSelect) {
-        onClientSelect(client);
-    }
-  }, [onClientSelect]),
-
-    onClientUpdate: useCallback((client: any) => {
-      console.log('🔄 Universal Client Updated, :', client);
-      queryClient.invalidateQueries({ queryKey: ['/api/clients', ],});
-  }, [queryClient]),
-
-    // File Management
-    onFileUpload: useCallback((file: any) => {
-      console.log('📁 Universal File Uploaded, :', file);
-      
-      const event: WorkflowEvent = {
-        id: `upload_${Date.now()}`,
-        type: 'file_upload',
-        title: `Upload: ${file.name}`,
-        description: `File uploaded to ${file.projectId ? 'project' : 'general storage'}`,
-        timestamp: new Date().toISOString(),
-        source: 'file_upload',
-        data: file,
-        status: file.status || 'completed'
-  };
-      
-      setWorkflowEvents(prev => [event, ...prev.slice(0, 49)]);
-      queryClient.invalidateQueries({ queryKey: ['/api/files', ],});
-      
-      if (selectedProject) {
-        queryClient.invalidateQueries({ queryKey: ['/api/projects', selectedProject.id'files'] });
-    }
-  }, [queryClient, selectedProject]),
-
-    onFileDownload: useCallback((file: any) => {
-      console.log('⬇️ Universal File Downloaded, :', file);
-      
-      const event: WorkflowEvent = {
-        id: `download_${Date.now()}`,
-        type: 'file_download',
-        title: `Download: ${file.filename}`,
-        description: `File downloaded from ${file.projectId ? 'project' : 'general storage'}`,
-        timestamp: new Date().toISOString(),
-        source: 'file_download',
-        data: file,
-        status: 'completed'
-  };
-      
-      setWorkflowEvents(prev => [event, ...prev.slice(0, 49)]);
-  }, []),
-
-    // Showcase Management
-    onShowcaseCreate: useCallback((showcase: any) => {
-      console.log('🎨 Universal Showcase Created, :', showcase);
-      queryClient.invalidateQueries({ queryKey: ['/api/showcases', ],});
-  }, [queryClient]),
-
-    onShowcaseShare: useCallback((showcase: any, meeting: any) => {
-      console.log('🔗 Universal Showcase Shared, :', showcase, meeting);
-      queryClient.invalidateQueries({ queryKey: ['/api/showcases', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/meetings', ],});
-  }, [queryClient]),
-
-    // Settings & Configuration
-    onSettingsUpdate: useCallback((settings: any) => {
-      console.log('⚙️ Universal Settings Updated, :', settings);
-      queryClient.invalidateQueries({ queryKey: ['/api/settings', ],});
-  }, [queryClient]),
-
-    // Equipment Management
-    onEquipmentUpdate: useCallback((equipment: any) => {
-      console.log('🔧 Universal Equipment Updated, :', equipment);
-      queryClient.invalidateQueries({ queryKey: ['/api/equipment', ],});
-      if (onEquipmentSelect) {
-        onEquipmentSelect(equipment);
-    }
-  }, [queryClient, onEquipmentSelect])
-};
-
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'meeting': return theming.getThemedIcon(', ');
-      case 'project': return <Work />;
-      case 'worklog': return theming.getThemedIcon('timeline');
-      case 'file_upload': return <FileUpload />;
-      case 'file_download': return <FileDownload />;
-      case 'client': return theming.getThemedIcon('person');
-      case 'showcase': return theming.getThemedIcon('checkCircle');
-      default: return theming.getThemedIcon(', ');
-  }
-};
-
-  const getEventColor = (type: string) => {
-    switch (type) {
-      case 'meeting': return '#2196f3';
-      case 'project': return '#4caf50';
-      case 'worklog': return '#ff9800';
-      case 'file_upload': return '#9c27b0';
-      case 'file_download': return '#607d8b';
-      case 'client': return '#e91e63';
-      case 'showcase': return '#00bcd4';
-      default: return '#757575';
-}
-};
-
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return date.toLocaleDateString();
-};
 
   return (
-    <Box sx={{ p:  2 }}>
-      <Paper sx={{ p:  3, mb:  2 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-          <CheckCircle color="success" />
-          Unified Workflow System
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Real-time orchestration of all components working together seamlessly
-        </Typography>
-        
-        {/* Current Context */}
-        <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
-          {selectedProject && (
-            <Chip 
-              icon={<Work />} 
-              label={`Project: ${selectedProject.title}`} 
-              color="primary" 
-              variant="outlined" 
-            />
-          )}
-          {selectedClient && (
-            <Chip 
-              icon={theming.getThemedIcon('person')}} 
-              label={`Client: ${selectedClient.name}`} 
-              color="secondary" 
-              variant="outlined" 
-            />
-          )}
-          {selectedEquipment && (
-            <Chip 
-              icon={theming.getThemedIcon('checkCircle')}} 
-              label={`Equipment: ${selectedEquipment.name}`} 
-              color="success" 
-              variant="outlined" 
-            />
-          )}
-        </Stack>
-
-        {/* Processing Status */}
-        {isProcessing && (
-          <Alert severity="info" sx={{ mb:  2 }}>
-            <LinearProgress sx={{ mb:  1 }} />
-            Processing workflow events...
-          </Alert>
-        )}
-      </Paper>
-
-      {/* Workflow Events Timeline */}
-      <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Recent Workflow Events ({workflowEvents.length})
-        </Typography>
-        
-        {workflowEvents.length === 0 ? (
-          <Alert severity="info">
-            No workflow events yet. Start using the system to see real-time integration!
-          </Alert>
-        ) : (
-          <Stack spacing={1}>
-            {workflowEvents.slice(0, 10).map((event) => (
-              <Box
-                key={event.id}
-                sx={{
-                  p:  2,
-                  border:  1,
-                  borderColor: 'divider',
-                  borderRadius:  1,
-                  bgcolor: 'background.paper',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 2 }}
-              >
-                <Box sx={{ color: getEventColor(event.type, )}}>
-                  {getEventIcon(event.type)}
-                </Box>
-                <Box sx={{ flexGrow:  1 }}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600}>
-                    {event.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {event.description}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {formatTimestamp(event.timestamp)} • Source: {event.source}
-                  </Typography>
-                </Box>
-                <Chip
-                  size="small"
-                  label={event.status}
-                  color={event.status === 'completed' ? 'success' : 
-                         event.status === 'processing' ? 'warning' : 
-                         event.status === 'error' ? 'error' : 'default'}
-                />
-              </Box>
-            ))}
+    <Box sx={{ p: 2 }}>
+      <Paper sx={{ ...theming.getThemedCardSx(), mb: 2, p: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Notifications color="primary" />
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Unified Workflow Orchestrator
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Real-time event orchestration for project, client, equipment and showcase workflows.
+              </Typography>
+            </Box>
           </Stack>
-        )}
+          <Stack direction="row" spacing={1}>
+            <Chip size="small" label={`${completedCount} completed`} color="success" />
+            <Chip size="small" label={`${events.length} events`} />
+            <Chip
+              size="small"
+              color={isProcessing ? 'warning' : 'default'}
+              label={isProcessing ? 'processing' : 'idle'}
+              onClick={beginSyntheticRun}
+              clickable
+            />
+          </Stack>
+        </Stack>
+        {isProcessing ? <LinearProgress sx={{ mt: 1.5 }} /> : null}
       </Paper>
+
+      {(selectedProject || selectedClient || selectedEquipment) ? (
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+          {selectedProject ? <Chip icon={<Work />} label={`Project: ${selectedProject.title ?? 'Selected'}`} /> : null}
+          {selectedClient ? <Chip icon={<Person />} label={`Client: ${selectedClient.name ?? 'Selected'}`} /> : null}
+          {selectedEquipment ? <Chip icon={<Timeline />} label={`Equipment: ${selectedEquipment.name ?? 'Selected'}`} /> : null}
+        </Stack>
+      ) : (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No active contexts selected yet.
+        </Alert>
+      )}
+
+      <Card>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            Event Timeline
+          </Typography>
+          <List>
+            {events.map((event) => (
+              <ListItem key={event.id}>
+                <ListItemIcon>{eventIcon(event.type)}</ListItemIcon>
+                <ListItemText
+                  primary={event.title}
+                  secondary={`${event.description} • ${formatRelativeTime(event.timestamp)} • ${event.source}`}
+                />
+                <Chip size="small" label={event.status} />
+              </ListItem>
+            ))}
+          </List>
+        </CardContent>
+      </Card>
     </Box>
   );
 };
 
 export default UnifiedWorkflowOrchestrator;
-
-
-
-

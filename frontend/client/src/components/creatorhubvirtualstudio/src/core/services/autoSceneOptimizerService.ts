@@ -47,7 +47,9 @@ export class AutoSceneOptimizerService {
     // Detect subjects
     const segmentation = await sam2Service.segmentImageFromUrl(
       imageUrl,
-      undefined'auto','small'
+      undefined,
+      'auto',
+      'small',
     );
 
     // Generate optimization suggestions
@@ -127,7 +129,6 @@ export class AutoSceneOptimizerService {
 }
 
 export const autoSceneOptimizerService = new AutoSceneOptimizerService();
-
 
 
 

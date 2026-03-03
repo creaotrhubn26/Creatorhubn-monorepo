@@ -87,7 +87,9 @@ export function SceneCompositionAnalyzer({
         // Use SAM 2 to detect all objects in the scene
         const segmentation = await sam2Service.segmentImageFromUrl(
           imageUrl,
-          undefined'auto', 'small'
+          undefined,
+          'auto',
+          'small'
         );
 
         const objects = segmentation.masks.map(mask => ({
@@ -584,7 +586,6 @@ export function SceneCompositionAnalyzer({
     </Paper>
   );
 }
-
 
 
 

@@ -42,7 +42,7 @@ class ErrorHandler {
     console.error = function (...args: unknown[]) {
       self.originalConsoleError.apply(console, args);
       if (self.enabled) {
-        self.dispatchToast(self.formatMessage(args)'error');
+        self.dispatchToast(self.formatMessage(args), 'error');
       }
     };
 
@@ -145,7 +145,7 @@ class ErrorHandler {
     this.originalConsoleWarn(context + message);
     
     if (config.showToast) {
-      this.dispatchToast(context + message'warning');
+      this.dispatchToast(context + message, 'warning');
     }
   }
 
@@ -175,4 +175,3 @@ export const handleWarning = (message: string, config?: ErrorConfig) =>
   errorHandler.handleWarning(message, config);
 
 export default errorHandler;
-

@@ -1,13 +1,13 @@
 import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import Grid from '@mui/material/Grid2';
+import { apiRequest } from '@/lib/queryClient';
 import {
+  Alert,
   Box,
   Typography,
-  Grid,
   Card as MuiCard,
   CardContent,
   Button,
@@ -89,6 +89,39 @@ interface ReportsPanelProps {
   onNotificationCreate?: (notification: any) => void
 }
 
+interface OverviewData {
+  totalRevenue: number;
+  totalProjects: number;
+  totalUsers: number;
+  averageProjectValue: number;
+  growthRate: number;
+  topProfession: string;
+}
+
+interface ProfessionStat {
+  profession: string;
+  users: number;
+  projects: number;
+  revenue: number;
+  growthRate: number;
+}
+
+interface MonthlyStat {
+  month: string;
+  revenue: number;
+  projects: number;
+  users: number;
+}
+
+interface ReportsResponse {
+  overview?: OverviewData;
+  monthlyData?: MonthlyStat[];
+}
+
+interface BiResponse {
+  professionStats?: ProfessionStat[];
+}
+
 export default function ReportsPanel({
   onMeetingCreate,
   onProjectUpdate,
@@ -104,25 +137,27 @@ export default function ReportsPanel({
   onSettingsUpdate,
   onNotificationCreate
 }: ReportsPanelProps) {
-  const [tabValue, setTabValue] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
   
   // Theming system
   const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
-  const [timeRange, setTimeRange] = useState('30d,');
+  const [timeRange, setTimeRange] = useState('30d');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
   // Fetch real reports data
-  const { data: reportsData, isLoading } = useQuery({
+  const { data: reportsData, isLoading } = useQuery<ReportsResponse>({
     queryKey: ['/api/admin/reports', timeRange],
+    queryFn: () => apiRequest(`/api/admin/reports?range=${timeRange}`) as Promise<ReportsResponse>,
     retry:  1,
 });
 
   // Fetch business intelligence data
-  const { data: biData } = useQuery({
+  const { data: biData } = useQuery<BiResponse>({
     queryKey: ['/api/admin/business-intelligence', timeRange],
+    queryFn: () => apiRequest(`/api/admin/business-intelligence?range=${timeRange}`) as Promise<BiResponse>,
     retry:  1,
 });
 
@@ -156,7 +191,7 @@ export default function ReportsPanel({
     topProfession: 'admin'
 };
 
-  const professionStats = biData?.professionStats || [
+  const professionStats: ProfessionStat[] = biData?.professionStats || [
     { profession: 'photographer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
     { profession: 'videographer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
     { profession: 'musicproducer', users: 0, projects: 0, revenue: 0, growthRate: 0 },
@@ -164,7 +199,7 @@ export default function ReportsPanel({
     { profession: 'admin', users: 1, projects: 0, revenue: 0, growthRate: 0 }
   ];
 
-  const monthlyData = reportsData?.monthlyData || [
+  const monthlyData: MonthlyStat[] = reportsData?.monthlyData || [
     { month: 'Jan 2025', revenue: 0, projects: 0, users:  1 },
     { month: 'Des 2024', revenue: 0, projects: 0, users:  0 },
     { month: 'Nov 2024', revenue: 0, projects: 0, users:  0 }
@@ -173,10 +208,10 @@ export default function ReportsPanel({
   const getProfessionIcon = (profession: string) => {
     switch (profession) {
       case 'photographer': return <CameraAlt />;
-      case 'videographer': return theming.getThemedIcon(', ');
+      case 'videographer': return <Videocam />;
       case 'musicproducer': return <MusicNote />;
-      case 'vendor': return theming.getThemedIcon('store');
-      default: return theming.getThemedIcon(', ');
+      case 'vendor': return <Store />;
+      default: return <Business />;
   }
 };
 
@@ -220,7 +255,7 @@ export default function ReportsPanel({
 
       {/* Key Metrics */}
       <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -248,7 +283,7 @@ export default function ReportsPanel({
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -266,7 +301,7 @@ export default function ReportsPanel({
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -284,7 +319,7 @@ export default function ReportsPanel({
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={12}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
@@ -323,7 +358,7 @@ export default function ReportsPanel({
             }}
           >
             <Tab icon={<PieChart />} label="Profesjoner" />
-            <Tab icon={theming.getThemedIcon('timeline')} label="Trender" />
+            <Tab icon={<Timeline />} label="Trender" />
             <Tab icon={<BarChart />} label="Ytelse" />
           </Tabs>
         </Box>
@@ -346,7 +381,7 @@ export default function ReportsPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {professionStats.map((stat: any, index: number) => (
+                  {professionStats.map((stat, index) => (
                     <TableRow key={index}>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -404,7 +439,7 @@ export default function ReportsPanel({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {monthlyData.map((data: any, index: number) => (
+                  {monthlyData.map((data, index) => (
                     <TableRow key={index}>
                       <TableCell>{data.month}</TableCell>
                       <TableCell>{data.revenue.toLocaleString('no-NO')} kr</TableCell>

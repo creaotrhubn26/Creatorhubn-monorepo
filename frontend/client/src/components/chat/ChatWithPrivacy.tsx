@@ -1,205 +1,224 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useRef } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useMemo, useRef, useState, type FC } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Avatar,
-  Chip,
   Alert,
+  Avatar,
+  Box,
+  Button,
+  Chip,
   IconButton,
-  Snackbar,
   LinearProgress,
+  Paper,
+  Snackbar,
+  Stack,
+  TextField,
   Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Send as SendIcon,
-  Save as SaveIcon,
-  Cloud as CloudIcon,
   CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
+  Cloud as CloudIcon,
   Folder as FolderIcon,
+  Save as SaveIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 import { ChatPrivacyConsent } from './ChatPrivacyConsent';
 
 interface ChatMessage {
   id: string;
-  sender: string;
+  senderId: string;
   senderName: string;
   content: string;
   timestamp: Date;
-  isOperator: boolean
+  isOperator: boolean;
 }
 
-interface ChatWithPrivacyProps {
+interface ChatBackupResult {
+  success: boolean;
+  googleDocsUrl?: string;
+}
+
+export interface ChatWithPrivacyProps {
   customerId: string;
   customerName: string;
   projectId?: string;
   projectName?: string;
   operatorName: string;
-  onChatBackup?: (chatData: any) => void
+  onChatBackup?: (chatData: ChatBackupResult) => void;
 }
 
-export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
-  customerd,
+function createMessage(senderId: string, senderName: string, content: string, isOperator: boolean): ChatMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    senderId,
+    senderName,
+    content,
+    timestamp: new Date(),
+    isOperator,
+  };
+}
+
+function statusText(status: 'idle' | 'saving' | 'saved' | 'error', lastSavedAt: Date | null): string {
+  if (status === 'saving') {
+    return 'Saving chat backup…';
+  }
+
+  if (status === 'saved') {
+    return `Saved ${lastSavedAt ? lastSavedAt.toLocaleTimeString('nb-NO') : 'just now'}`;
+  }
+
+  if (status === 'error') {
+    return 'Backup failed';
+  }
+
+  return 'Chat is auto-documented';
+}
+
+function statusColor(status: 'idle' | 'saving' | 'saved' | 'error'): 'default' | 'info' | 'success' | 'error' {
+  if (status === 'saving') {
+    return 'info';
+  }
+
+  if (status === 'saved') {
+    return 'success';
+  }
+
+  if (status === 'error') {
+    return 'error';
+  }
+
+  return 'default';
+}
+
+export const ChatWithPrivacy: FC<ChatWithPrivacyProps> = ({
+  customerId,
   customerName,
   projectId,
   projectName,
   operatorName,
-  onChatBackup
+  onChatBackup,
 }) => {
   const [consentGiven, setConsentGiven] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [showConsentDialog, setShowConsentDialog] = useState(true);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatStartTime] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [driveUrl, setDriveUrl] = useState<string>('');
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout>();
+  const [driveUrl, setDriveUrl] = useState('');
+  const [showErrorToast, setShowErrorToast] = useState(false);
 
-  // Auto-scroll til bunnen ved nye meldinger
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth',});
-}, [messages]);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-lagre chat hvert 2. minutt
   useEffect(() => {
-    if (consentGiven && messages.length > 0) {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    if (!consentGiven || messages.length === 0) {
+      return;
     }
-      
-      autoSaveTimeoutRef.current = setTimeout(() => {
-        handleAutoSave();
-    }, 120000); // 2 minutter
-  }
+
+    if (autoSaveRef.current) {
+      clearTimeout(autoSaveRef.current);
+    }
+
+    autoSaveRef.current = setTimeout(() => {
+      void handleSaveChat();
+    }, 120000);
 
     return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current);
-    }
-  };
-}, [messages, consentGiven]);
+      if (autoSaveRef.current) {
+        clearTimeout(autoSaveRef.current);
+      }
+    };
+  }, [messages, consentGiven]);
+
+  const saveStatusLabel = useMemo(() => statusText(saveStatus, lastSavedAt), [saveStatus, lastSavedAt]);
 
   const handleConsentAccept = () => {
     setConsentGiven(true);
     setShowConsentDialog(false);
-    
-    // Vis bekreftelsemelding
     setSaveStatus('saved');
-    setTimeout(() => setSaveStatus('idle'), 3000);
-};
+
+    setTimeout(() => {
+      setSaveStatus('idle');
+    }, 2500);
+  };
 
   const handleConsentDecline = () => {
-    // Redirect eller vis alternativ
-    alert('Chat-funksjonen er ikke tilgjengelig uten samtykke til datalagring.');
-};
+    setConsentGiven(false);
+    setShowConsentDialog(true);
+    setMessages([]);
+    setNewMessage('');
+  };
 
   const handleSendMessage = () => {
-    if (!newMessage.trim() || !consentGiven) return;
+    const trimmed = newMessage.trim();
+    if (!consentGiven || trimmed.length === 0) {
+      return;
+    }
 
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      sender: operatorName,
-      senderName: operatorName,
-      content: newMessage.trim(),
-      timestamp: new Date(),
-      isOperator: true
-};
+    const operatorMessage = createMessage(operatorName, operatorName, trimmed, true);
+    setMessages((current) => [...current, operatorMessage]);
+    setNewMessage('');
+  };
 
-    setMessages(prev => [...prev, message]);
-    setNewMessage(', ');
-
-    // Trigger auto-save etter ny melding
-    handleAutoSave();
-};
-
-  const handleAutoSave = async () => {
-    if (!consentGiven || messages.length === 0) return;
+  const handleSaveChat = async () => {
+    if (!consentGiven || messages.length === 0) {
+      return;
+    }
 
     setIsSaving(true);
     setSaveStatus('saving');
 
     try {
-      const chatData = {
+      const payload = {
         customerId,
         customerName,
         projectId,
         projectName,
         operatorName,
-        startTime: chatStartTime,
-        endTime: new Date(),
-        messages: messages.map(msg => ({
-          sender: msg.senderName,
-          content: msg.content,
-          timestamp: msg.timestamp,
-          isOperator: msg.isOperator
-    })),
-        summary: `Chat-samtale med ${customerName} - ${messages.length} meldinger`,
-        actionItems: [] // Kan utvides med oppgaver fra chat
-  };
+        startTime: chatStartTime.toISOString(),
+        endTime: new Date().toISOString(),
+        messages: messages.map((message) => ({
+          senderId: message.senderId,
+          senderName: message.senderName,
+          content: message.content,
+          timestamp: message.timestamp.toISOString(),
+          isOperator: message.isOperator,
+        })),
+      };
 
-      const response = await fetch('/api/backup/chat', {
-        headers: {
-          ...auth, 'Content-Type' : 'application/json',
-      },
-        method: 'POS',
-        body: JSON.stringify({
-          userId: 'current-user', // Erstatt med faktisk bruker-ID
-          chatData
-      }),
-    });
+      const response = (await apiRequest('/api/backup/chat', {
+        method: 'POST',
+        body: payload,
+      })) as ChatBackupResult;
 
-      const result = await response.json();
-
-      if (result.success) {
-        setLastSaved(new Date());
+      if (response.success) {
         setSaveStatus('saved');
-        setDriveUrl(result.googleDocsUrl);
-        
+        setLastSavedAt(new Date());
+
+        if (response.googleDocsUrl) {
+          setDriveUrl(response.googleDocsUrl);
+        }
+
         if (onChatBackup) {
-          onChatBackup(result);
-      }
-    } else {
+          onChatBackup(response);
+        }
+      } else {
         setSaveStatus('error');
-    }
-  } catch (error) {
-      console.error('Feil ved lagring av chat: ', error);
+        setShowErrorToast(true);
+      }
+    } catch {
       setSaveStatus('error');
-  } finally {
+      setShowErrorToast(true);
+    } finally {
       setIsSaving(false);
-  }
-};
-
-  const getStatusColor = () => {
-    switch (saveStatus) {
-      case 'saving': return 'info';
-      case 'saved': return 'success';
-      case 'error': return 'error';
-      default: return 'default';
-}
-};
-
-  const getStatusText = () => {
-    switch (saveStatus) {
-      case 'saving': return 'Lagrer til Google Drive...';
-      case 'saved': return `Lagret ${lastSaved?.toLocaleTimeString('no-NO')}`;
-      case 'error': return 'Lagringsfeil';
-      default: return 'Chat dokumenteres automatisk';
-}
-};
+    }
+  };
 
   if (!consentGiven) {
     return (
@@ -211,90 +230,64 @@ export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
         onDecline={handleConsentDecline}
       />
     );
-}
+  }
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column'}}>
-      {/* Chat Header med lagringsstatus */}
-      <Paper sx={{ p: 2, borderRadius: '12px 12px 0 0', bgcolor: 'primary.main', color: 'white',  ...theming.getThemedCardSx() }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <Avatar sx={{ bgcolor: 'secondary.main'}}>
-              {customerName.charAt(0).toUpperCase()}
-            </Avatar>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Paper sx={{ p: 2, borderRadius: '12px 12px 0 0' }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Avatar>{customerName.charAt(0).toUpperCase()}</Avatar>
             <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>{customerName}</Typography>
-              {projectName && (
-                <Typography variant="body2" sx={{ opacity: 0.9}}>
+              <Typography variant="h6" fontWeight={700}>
+                {customerName}
+              </Typography>
+              {projectName ? (
+                <Typography variant="body2" color="text.secondary">
                   {projectName}
                 </Typography>
-              )}
+              ) : null}
             </Box>
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-            <Tooltip title={driveUrl ? "Åpne i Google Drive" : "Drive URL ikke tilgjengelig"}>
-              <IconButton
-                size="small"
-                sx={{ color: 'white'}}
-                onClick={() => driveUrl && window.open(driveUrl, ','_blank')}
-                disabled={!driveUrl}
-              >
-                <FolderIcon />
-              </IconButton>
+          </Stack>
+
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Tooltip title={driveUrl.length > 0 ? 'Open backup document' : 'Backup link not available yet'}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    if (driveUrl.length > 0) {
+                      window.open(driveUrl, '_blank', 'noopener,noreferrer');
+                    }
+                  }}
+                  disabled={driveUrl.length === 0}
+                >
+                  <FolderIcon />
+                </IconButton>
+              </span>
             </Tooltip>
             <Chip
               icon={saveStatus === 'saving' ? <CloudIcon /> : <CheckCircleIcon />}
-              label={getStatusText()}
+              label={saveStatusLabel}
+              color={statusColor(saveStatus)}
               size="small"
-              color={getStatusColor()}
               variant="outlined"
-              sx={{ 
-                color: 'white', 
-                borderColor: 'white', '& .MuiChip-icon': { color: 'white',}
-            }}
             />
-          </Box>
-        </Box>
+          </Stack>
+        </Stack>
       </Paper>
 
-      {/* GDPR Info Alert */}
-      <Alert 
-        severity="info" 
-        sx={{ borderRadius:  0 }}
-        action={
-          driveUrl && (
-            <Button 
-              color="inherit" 
-              size="small"
-              onClick={() => window.open(driveUrl, ', '_blank')}
-            >
-              Se i Drive
-            </Button>
-          )
-      }
-      >
-        <Typography variant="body2">
-          🔒 Chat lagres automatisk i Google Drive for dokumentasjon (GDPR-compliant)
-        </Typography>
+      <Alert severity="info" sx={{ borderRadius: 0 }}>
+        Chat is auto-backed up to Google Drive with GDPR consent and timestamped history.
       </Alert>
 
-      {/* Lagringsprogress */}
-      {isSaving && <LinearProgress />}
+      {isSaving ? <LinearProgress /> : null}
 
-      {/* Chat-meldinger */}
-      <Box sx={{ 
-        flex: 1
-       , overflow: 'auto', 
-        p: 2, bgcolor: 'grey.5',
-        maxHeight: '400px'
-  }}>
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 2, bgcolor: 'grey.100', minHeight: 280 }}>
         {messages.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py:  4, color: 'text.secondary'}}>
-            <Typography variant="body2">
-              Ingen meldinger ennå. Start samtalen!
-            </Typography>
-          </Box>
+          <Typography color="text.secondary" textAlign="center" sx={{ py: 4 }}>
+            No messages yet. Start the conversation.
+          </Typography>
         ) : (
           messages.map((message) => (
             <Box
@@ -302,34 +295,27 @@ export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
               sx={{
                 display: 'flex',
                 justifyContent: message.isOperator ? 'flex-end' : 'flex-start',
-                mb: 1 }}
+                mb: 1,
+              }}
             >
               <Paper
                 sx={{
                   p: 1.5,
-                  maxWidth: '70, %',
+                  maxWidth: '70%',
                   bgcolor: message.isOperator ? 'primary.main' : 'white',
-                  color: message.isOperator ? 'white' : 'text.primary',
-                  borderRadius: message.isOperator ? '12px 12px 4px 12px' : '12px 12px 12px 4px'
-            }}
-               sx={theming.getThemedCardSx()}>
-                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5}}>
+                  color: message.isOperator ? 'primary.contrastText' : 'text.primary',
+                  borderRadius: message.isOperator ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                }}
+              >
+                <Typography variant="body2" fontWeight={700}>
                   {message.senderName}
                 </Typography>
                 <Typography variant="body1">{message.content}</Typography>
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    display: 'block', 
-                    mt: 0, .
-                    opacity: 0.7,
-                    textAlign: 'right'
-              }}
-                >
-                  {message.timestamp.toLocaleTimeString('no-NO', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-              })}
+                <Typography variant="caption" sx={{ opacity: 0.75, display: 'block', textAlign: 'right' }}>
+                  {message.timestamp.toLocaleTimeString('nb-NO', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                 </Typography>
               </Paper>
             </Box>
@@ -338,70 +324,69 @@ export const ChatWithPrivacy: React.FC<ChatWithPrivacyProps> = ({
         <div ref={messagesEndRef} />
       </Box>
 
-      {/* Input-felt */}
-      <Paper sx={{ p: 2, borderRadius: '0 0 12px 12px',  ...theming.getThemedCardSx() }}>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end'}}>
+      <Paper sx={{ p: 2, borderRadius: '0 0 12px 12px' }}>
+        <Stack direction="row" spacing={1} alignItems="flex-end">
           <TextField
             fullWidth
             multiline
-            maxRows={3}
+            maxRows={4}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Skriv en melding..."
-            variant="outlined"
-            size="small"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
+            onChange={(event) => setNewMessage(event.target.value)}
+            placeholder="Write a message…"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 handleSendMessage();
-            }
-          }}
-            sx={{
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '20px'
-          }
-          }}
+              }
+            }}
           />
-          <Tooltip title="Send melding">
-            <Button onClick={handleSendMessage}
-              disabled={!newMessage.trim()}
-              variant="contained"
-              sx={{
-                minWidth: '48px',
-                height: '48px',
-                borderRadius: '50, %',
-                p: 0 }}
-             sx={theming.getThemedButtonSx()}>
-              <SendIcon />
-            </Button>
+
+          <Tooltip title="Send message">
+            <span>
+              <Button
+                variant="contained"
+                onClick={handleSendMessage}
+                disabled={newMessage.trim().length === 0}
+                sx={{ minWidth: 48, height: 48, borderRadius: '50%', p: 0 }}
+              >
+                <SendIcon />
+              </Button>
+            </span>
           </Tooltip>
-          <Tooltip title="Lagre chat manuelt">
-            <Button
-              onClick={handleAutoSave}
-              disabled={messages.length === 0 || isSaving}
-              variant="outlined"
-              sx={{
-                minWidth: '48px',
-                height: '48px',
-                borderRadius: '50, %',
-                p: 0 }}
-            >
-              <SaveIcon />
-            </Button>
+
+          <Tooltip title="Save chat now">
+            <span>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  void handleSaveChat();
+                }}
+                disabled={messages.length === 0 || isSaving}
+                sx={{ minWidth: 48, height: 48, borderRadius: '50%', p: 0 }}
+              >
+                <SaveIcon />
+              </Button>
+            </span>
           </Tooltip>
-        </Box>
+        </Stack>
       </Paper>
 
-      {/* Status Snackbar */}
       <Snackbar
-        open={saveStatus ==='error'}
-        autoHideDuration={6000}
-        onClose={() => setSaveStatus('idle')}
+        open={showErrorToast}
+        autoHideDuration={5000}
+        onClose={() => {
+          setShowErrorToast(false);
+          if (saveStatus === 'error') {
+            setSaveStatus('idle');
+          }
+        }}
       >
-        <Alert severity="error" onClose={() => setSaveStatus('idle')}>
-          Kunne ikke lagre chat. Prøv igjen senere.
+        <Alert severity="error" onClose={() => setShowErrorToast(false)}>
+          Could not save chat backup. Please try again.
         </Alert>
       </Snackbar>
     </Box>
   );
 };
+
+export default ChatWithPrivacy;

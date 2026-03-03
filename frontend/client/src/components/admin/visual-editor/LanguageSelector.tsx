@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogActions,
   List,
-  ListItem,
+  ListItemButton,
   ListItemText,
   ListItemSecondaryAction,
   ListItemIcon,
@@ -198,7 +198,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
 }, []);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'default' | 'error' | 'info' | 'success' => {
     if (hasError) return 'error';
     if (isLoading) return 'info';
     if (isReady) return 'success';
@@ -206,12 +206,26 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
 }, [hasError, isLoading, isReady]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) return <Error fontSize="small" />;
     if (isLoading) return <CircularProgress size={16} />;
-    if (isReady) return theming.getThemedIcon('checkCircle');
-    return theming.getThemedIcon('warning');
+    if (isReady) return <CheckCircle fontSize="small" />;
+    return <Warning fontSize="small" />;
 }, [hasError, isLoading, isReady]);
+
+  const getStatusIconColor = useCallback((): 'error' | 'info' | 'success' | 'action' => {
+    if (hasError) return 'error';
+    if (isLoading) return 'info';
+    if (isReady) return 'success';
+    return 'action';
+  }, [hasError, isLoading, isReady]);
+
+  const getStatusTextColor = useCallback((): 'error.main' | 'info.main' | 'success.main' | 'text.secondary' => {
+    if (hasError) return 'error.main';
+    if (isLoading) return 'info.main';
+    if (isReady) return 'success.main';
+    return 'text.secondary';
+  }, [hasError, isLoading, isReady]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -264,8 +278,8 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
     <Paper elevation={2} sx={{ p: 1, minWidth: 200,  ...theming.getThemedCardSx() }}>
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
-          <Language color={getStatusColor() + '.main'} />
-          <Typography variant="body2" color={getStatusColor() + '.main'}>
+          <Language color={getStatusIconColor()} />
+          <Typography variant="body2" color={getStatusTextColor()}>
             {getLanguageDisplayName(currentLanguage)}
           </Typography>
         </Box>
@@ -454,9 +468,8 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
                 lang.toLowerCase().includes(searchQuery.toLowerCase())
               )
               .map((language) => (
-                <ListItem
+                <ListItemButton
                   key={language}
-                  button
                   onClick={() => handleLanguageChange(language)}
                   selected={language === currentLanguage}
                   disabled={isChanging}
@@ -485,7 +498,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
                       />
                     )}
                   </ListItemSecondaryAction>
-                </ListItem>
+                </ListItemButton>
               ))}
           </List>
         </DialogContent>
@@ -653,7 +666,6 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = memo(({
 LanguageSelector.displayName ='LanguageSelector';
 
 export default LanguageSelector;
-
 
 
 

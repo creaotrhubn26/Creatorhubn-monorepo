@@ -366,8 +366,8 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
         triggers:  [],
         conditions:  [],
         actions:  [],
-        variables:  , {},
-        config:  , {}
+        variables: {},
+        config: {}
     };
       await createWorkflow(workflowData);
   } catch (error) {
@@ -457,6 +457,11 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
     return theming.getThemedIcon('warning');
 }, [hasError, isInitialized, isEnabled]);
 
+  const statusChipIcon = useMemo(() => {
+    const icon = getStatusIcon();
+    return React.isValidElement(icon) ? icon : <PlayArrow />;
+  }, [getStatusIcon]);
+
   // Get status text
   const getStatusText = useCallback(() => {
     if (hasError) return 'Error';
@@ -492,7 +497,7 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
   const renderMinimal = () => (
     <Tooltip title={`Workflows: ${getStatusText()}`}>
       <Chip
-        icon={getStatusIcon()}
+        icon={statusChipIcon}
         label={totalWorkflows}
         color={getStatusColor()}
         size="small"
@@ -1096,7 +1101,7 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
                     checked={config.enableMetrics}
                     onChange={(e) => updateConfig({ enableMetrics: e.target.checked })}
                   />
-              }
+                }
                 label="Enable Metrics"
               />
             </Grid>
@@ -1116,8 +1121,6 @@ const WorkflowAutomationDashboard: React.FC<WorkflowAutomationDashboardProps> = 
 WorkflowAutomationDashboard.displayName ='WorkflowAutomationDashboard';
 
 export default WorkflowAutomationDashboard;
-
-
 
 
 

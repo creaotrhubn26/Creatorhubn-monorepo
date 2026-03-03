@@ -347,7 +347,7 @@ export function MotionPathEditor3D({
   const curvePoints = useMemo(() => {
     if (keyframePositions.length < 2) return keyframePositions;
 
-    const curve = new THREE.CatmullRomCurve3(keyframePositions, false'centripetal', 0.5);
+    const curve = new THREE.CatmullRomCurve3(keyframePositions, false, 'centripetal', 0.5);
     return curve.getPoints(100);
   }, [keyframePositions]);
 
@@ -525,4 +525,3 @@ export function MotionPathEditor3D({
 }
 
 export default MotionPathEditor3D;
-

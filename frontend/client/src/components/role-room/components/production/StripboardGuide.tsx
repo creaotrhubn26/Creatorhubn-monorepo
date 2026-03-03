@@ -50,6 +50,7 @@ import {
   Lightbulb as TipIcon,
   Videocam as VideoIcon,
 } from '@mui/icons-material';
+import { GuideAnnotatedScreenshot } from '../shared/guide/GuideAnnotationOverlay';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -784,7 +785,7 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
   initialStepId,
 }) => {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { getGuideConfig, getStepOverride, getActiveStepIds } = useVisualEditor();
   const guideConfig  = getGuideConfig('stripboard');
@@ -840,11 +841,20 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
     <Dialog
       open={open}
       onClose={onClose}
-      fullScreen
+      fullScreen={isMobile}
+      maxWidth="lg"
+      fullWidth
       PaperProps={{
         sx: {
           bgcolor: '#12121e',
           color: 'text.primary',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: isMobile ? 0 : 2,
+          height: isMobile ? '100dvh' : '88vh',
+          maxHeight: '88vh',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         },
       }}
     >
@@ -1035,9 +1045,13 @@ export const StripboardGuide: React.FC<StripboardGuideProps> = ({
                   <video src={stepOverride.videoUrl} controls style={{ width: '100%', display: 'block' }} />
                 </Box>
               ) : stepOverride.screenshotUrl ? (
-                <Box sx={{ width: '100%', my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <img src={stepOverride.screenshotUrl} alt={section.screenshotLabel} style={{ width: '100%', display: 'block' }} />
-                </Box>
+                <GuideAnnotatedScreenshot
+                  src={stepOverride.screenshotUrl}
+                  alt={section.screenshotLabel}
+                  annotations={stepOverride.annotations}
+                  containerSx={{ my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}
+                  imageSx={{ objectFit: 'cover' }}
+                />
               ) : (
                 <>
                   <ScreenshotPlaceholder label={section.screenshotLabel} />

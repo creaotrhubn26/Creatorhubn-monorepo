@@ -18,6 +18,7 @@ import {
   IconButton,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   ListItemIcon,
   Checkbox,
@@ -26,6 +27,7 @@ import {
   Collapse,
   Tooltip,
   Badge,
+  CircularProgress,
 } from '@mui/material';
 import {
   Folder,
@@ -62,6 +64,22 @@ export interface ProjectContext {
   importGraph: Map<string, string[]>;
 }
 
+interface FileTreeFileNode {
+  type: 'file';
+  path: string;
+  name: string;
+  language: string;
+}
+
+interface FileTreeFolderNode {
+  type: 'folder';
+  path: string;
+  name: string;
+  children: FileTreeNode[];
+}
+
+type FileTreeNode = FileTreeFileNode | FileTreeFolderNode;
+
 interface AIMultiFileContextProps {
   open: boolean;
   onClose: () => void;
@@ -78,7 +96,7 @@ export default function AIMultiFileContext({
   currentFile,
 }: AIMultiFileContextProps) {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [fileTree, setFileTree] = useState<Record<string, unknown>[]>([]);
+  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set([projectRoot]));
@@ -94,29 +112,6 @@ export default function AIMultiFileContext({
       scanProject();
     }
   }, [open, projectRoot]);
-
-  const scanProject = useCallback(async () => {
-    setIsScanning(true);
-
-    try {
-      // Scan project files
-      const files = await discoverProjectFiles(projectRoot);
-      setFileTree(buildFileTree(files));
-
-      // Auto-select current file and its dependencies
-      if (currentFile) {
-        const related = findRelatedFiles(currentFile, files);
-        setSelectedFiles(new Set([currentFile, ...related]));
-      }
-
-      // Build project context
-      await updateProjectContext(Array.from(selectedFiles));
-    } catch (error) {
-      console.error('Project scan failed: ', error);
-    } finally {
-      setIsScanning(false);
-    }
-  }, [projectRoot, currentFile, selectedFiles]);
 
   const updateProjectContext = useCallback(
     async (filePaths: string[]) => {
@@ -162,6 +157,35 @@ export default function AIMultiFileContext({
     [projectRoot, onContextUpdated],
   );
 
+  const scanProject = useCallback(async () => {
+    setIsScanning(true);
+
+    try {
+      // Scan project files
+      const files = await discoverProjectFiles(projectRoot);
+      const tree = buildFileTree(files);
+      setFileTree(tree);
+
+      const initialSelection = new Set(files.map((file) => file.path));
+
+      // Auto-select current file and its dependencies
+      if (currentFile) {
+        const related = findRelatedFiles(currentFile, files);
+        initialSelection.add(currentFile);
+        related.forEach((path) => initialSelection.add(path));
+      }
+
+      setSelectedFiles(initialSelection);
+
+      // Build project context
+      await updateProjectContext(Array.from(initialSelection));
+    } catch (error) {
+      console.error('Project scan failed: ', error);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [projectRoot, currentFile, updateProjectContext]);
+
   const handleFileToggle = useCallback(
     (filePath: string) => {
       setSelectedFiles((prev) => {
@@ -173,7 +197,7 @@ export default function AIMultiFileContext({
 
           // Auto-include related files if enabled
           if (autoInclude.imports || autoInclude.dependencies) {
-            const related = findRelatedFiles(filePath, fileTree);
+            const related = findRelatedFiles(filePath, getAllFiles(fileTree));
             related.forEach((r) => next.add(r));
           }
         }
@@ -320,20 +344,22 @@ export default function AIMultiFileContext({
     </Paper>
   );
 
-  function renderFileTree(nodes: unknown[], depth: number): React.ReactNode {
+  function renderFileTree(nodes: FileTreeNode[], depth: number): React.ReactNode {
     return nodes.map((node) => {
       if (node.type === 'folder') {
         const isExpanded = expandedFolders.has(node.path);
         return (
           <React.Fragment key={node.path}>
-            <ListItem button onClick={() => handleFolderToggle(node.path)} sx={{ pl: depth * 2 }}>
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                {isExpanded ? <ExpandLess /> : <ExpandMore />}
-              </ListItemIcon>
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                <Folder fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary={node.name} primaryTypographyProps={{ variant: 'body2' }} />
+            <ListItem disablePadding>
+              <ListItemButton onClick={() => handleFolderToggle(node.path)} sx={{ pl: depth * 2 }}>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  {isExpanded ? <ExpandLess /> : <ExpandMore />}
+                </ListItemIcon>
+                <ListItemIcon sx={{ minWidth: 36 }}>
+                  <Folder fontSize="small" />
+                </ListItemIcon>
+                <ListItemText primary={node.name} primaryTypographyProps={{ variant: 'body2' }} />
+              </ListItemButton>
             </ListItem>
             <Collapse in={isExpanded} timeout="auto" unmountOnExit>
               {renderFileTree(node.children, depth + 1)}
@@ -344,25 +370,27 @@ export default function AIMultiFileContext({
         const isSelected = selectedFiles.has(node.path);
         const isCurrent = node.path === currentFile;
         return (
-          <ListItem
-            key={node.path}
-            button
-            onClick={() => handleFileToggle(node.path)}
-            sx={{
-              pl: depth * 2,
-              bgcolor: isCurrent ? 'action.selected' : undefined}}>
-            <ListItemIcon sx={{ minWidth: 36 }}>
-              <Checkbox edge="start" checked={isSelected} size="small" />
-            </ListItemIcon>
-            <ListItemIcon sx={{ minWidth: 36 }}>
-              <Code fontSize="small" color={isSelected ? 'primary' : 'action'} />
-            </ListItemIcon>
-            <ListItemText
-              primary={node.name}
-              secondary={isCurrent ? 'Current file': undefined}
-              primaryTypographyProps={{ variant: 'body2' }}
-              secondaryTypographyProps={{ variant: 'caption' }} />
-            <Chip label={node.language} size="small" variant="outlined" />
+          <ListItem key={node.path} disablePadding>
+            <ListItemButton
+              onClick={() => handleFileToggle(node.path)}
+              sx={{
+                pl: depth * 2,
+                bgcolor: isCurrent ? 'action.selected' : undefined}}
+            >
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Checkbox edge="start" checked={isSelected} size="small" />
+              </ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Code fontSize="small" color={isSelected ? 'primary' : 'action'} />
+              </ListItemIcon>
+              <ListItemText
+                primary={node.name}
+                secondary={isCurrent ? 'Current file' : undefined}
+                primaryTypographyProps={{ variant: 'body2' }}
+                secondaryTypographyProps={{ variant: 'caption' }}
+              />
+              <Chip label={node.language} size="small" variant="outlined" />
+            </ListItemButton>
           </ListItem>
         );
       }
@@ -371,9 +399,10 @@ export default function AIMultiFileContext({
 }
 
 // Helper functions
-async function discoverProjectFiles(root: string): Promise<Record<string, unknown>[]> {
+async function discoverProjectFiles(root: string): Promise<FileTreeFileNode[]> {
   // In production, this would use File System API or backend endpoint
   // Mock implementation
+  void root;
   return [
     { path: '/src/App.tsx', name: 'App.tsx', type: 'file', language: 'tsx' },
     { path: '/src/components/Button.tsx', name: 'Button.tsx', type: 'file', language: 'tsx' },
@@ -381,14 +410,14 @@ async function discoverProjectFiles(root: string): Promise<Record<string, unknow
   ];
 }
 
-function buildFileTree(files: unknown[]): unknown[] {
-  const tree: unknown[] = [];
-  const folderMap = new Map();
+function buildFileTree(files: FileTreeFileNode[]): FileTreeNode[] {
+  const tree: FileTreeNode[] = [];
+  const folderMap = new Map<string, FileTreeFolderNode>();
 
   files.forEach((file) => {
     const parts = file.path.split('/').filter(Boolean);
     let currentLevel = tree;
-    let currentPath = ', ';
+    let currentPath = '';
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
@@ -447,7 +476,7 @@ function analyzeFile(
 }
 
 function getLanguage(path: string): string {
-  const ext = path.split('.').pop() || ', ';
+  const ext = path.split('.').pop() || '';
   const langMap: Record<string, string> = {
     ts: 'typescript',
     tsx: 'typescript',
@@ -460,34 +489,41 @@ function getLanguage(path: string): string {
   return langMap[ext] || 'text';
 }
 
-function findRelatedFiles(filePath: string, files: unknown[]): string[] {
+function findRelatedFiles(filePath: string, files: FileTreeFileNode[]): string[] {
   // Find files that import or are imported by this file
   // Mock implementation
+  void filePath;
+  void files;
   return [];
 }
 
-function getAllFiles(tree: unknown[]): unknown[] {
-  const files: unknown[] = [];
+function getAllFiles(tree: FileTreeNode[]): FileTreeFileNode[] {
+  const files: FileTreeFileNode[] = [];
   tree.forEach((node) => {
     if (node.type === 'file') {
       files.push(node);
-    } else if (node.children) {
+    } else {
       files.push(...getAllFiles(node.children));
     }
   });
   return files;
 }
 
-function filterFileTree(tree: unknown[], query: string): unknown[] {
+function filterFileTree(tree: FileTreeNode[], query: string): FileTreeNode[] {
   const lowerQuery = query.toLowerCase();
-  return tree.filter((node) => {
+  return tree
+    .map((node) => {
     if (node.type === 'file') {
-      return node.name.toLowerCase().includes(lowerQuery);
+      return node.name.toLowerCase().includes(lowerQuery) ? node : null;
     } else {
       const filtered = filterFileTree(node.children, query);
-      return filtered.length > 0 || node.name.toLowerCase().includes(lowerQuery);
+      if (filtered.length > 0 || node.name.toLowerCase().includes(lowerQuery)) {
+        return { ...node, children: filtered };
+      }
+      return null;
     }
-  });
+    })
+    .filter((node): node is FileTreeNode => node !== null);
 }
 
 function formatBytes(bytes: number): string {

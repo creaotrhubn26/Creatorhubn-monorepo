@@ -43,20 +43,32 @@ interface OrganizationSettings {
   disabledFeatures: string[];
 }
 
+interface EnterpriseMembershipResponse {
+  membership?: EnterpriseTeamMember | null;
+}
+
+interface OrganizationSettingsResponse {
+  settings?: OrganizationSettings | null;
+}
+
 /**
  * Check if user has access to a feature based on enterprise permissions
  */
 export function useEnterpriseFeatureAccess(featureId: string): EnterpriseFeatureAccessResult {
-  const { user } = useAuth() as { user: any };
+  const { user } = useAuth();
+  const userId =
+    user && typeof user === 'object' && 'id' in user
+      ? ((user as { id?: string }).id ?? '')
+      : '';
   
   // Fetch user's enterprise membership info
   const { data: membership, isLoading: membershipLoading } = useQuery<EnterpriseTeamMember | null>({
     queryKey: ['/api/enterprise/my-membership'],
-    enabled: !!user?.id,
+    enabled: userId.length > 0,
     staleTime: 5 * 60 * 1000, // 5 minutes
     queryFn: async () => {
       try {
-        const response = await apiRequest('GET', '/api/enterprise/my-membership');
+        const response = (await apiRequest('/api/enterprise/my-membership')) as EnterpriseMembershipResponse;
         return response.membership || null;
       } catch {
         return null;
@@ -72,7 +84,9 @@ export function useEnterpriseFeatureAccess(featureId: string): EnterpriseFeature
     queryFn: async () => {
       if (!membership?.organizationId) return null;
       try {
-        const response = await apiRequest('GET', `/api/enterprise/organization-settings?organizationId=${membership.organizationId}`);
+        const response = (await apiRequest(
+          `/api/enterprise/organization-settings?organizationId=${membership.organizationId}`
+        )) as OrganizationSettingsResponse;
         return response.settings || null;
       } catch {
         return null;
@@ -171,15 +185,19 @@ export function useEnterpriseFeatureAccess(featureId: string): EnterpriseFeature
  * Get user's enterprise membership info
  */
 export function useEnterpriseMembership() {
-  const { user } = useAuth() as { user: any };
+  const { user } = useAuth();
+  const userId =
+    user && typeof user === 'object' && 'id' in user
+      ? ((user as { id?: string }).id ?? '')
+      : '';
 
   const { data: membership, isLoading } = useQuery<EnterpriseTeamMember | null>({
     queryKey: ['/api/enterprise/my-membership'],
-    enabled: !!user?.id,
+    enabled: userId.length > 0,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       try {
-        const response = await apiRequest('GET', '/api/enterprise/my-membership');
+        const response = (await apiRequest('/api/enterprise/my-membership')) as EnterpriseMembershipResponse;
         return response.membership || null;
       } catch {
         return null;
@@ -214,4 +232,3 @@ export function canRoleAccess(role: EnterpriseRole | null, permissionLevel: Perm
 
   return true;
 }
-

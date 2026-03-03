@@ -26,6 +26,21 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const toStringValue = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return fallback;
+};
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.map((item) => toStringValue(item)).filter((item) => item.length > 0)
+    : [];
+
 // IfElse Node
 export const IfElseNode = memo(function IfElseNode({
   config,
@@ -93,22 +108,23 @@ export const SwitchNode = memo(function SwitchNode({
   onDataChange?: (key: string, value: unknown) => void;
   [key: string]: unknown;
 }) {
-  const cases = config.data.cases || ['case1', 'case2'];
+  const cases = toStringArray(config.data.cases);
+  const normalizedCases = cases.length > 0 ? cases : ['case1', 'case2'];
 
   const addCase = () => {
-    const newCases = [...cases, `case${cases.length + 1}`];
+    const newCases = [...normalizedCases, `case${normalizedCases.length + 1}`];
     onDataChange?.('cases', newCases);
   };
 
   const removeCase = (index: number) => {
-    if (cases.length > 1) {
-      const newCases = cases.filter((_: string, i: number) => i !== index);
+    if (normalizedCases.length > 1) {
+      const newCases = normalizedCases.filter((_, i) => i !== index);
       onDataChange?.('cases', newCases);
     }
   };
 
   const updateCase = (index: number, value: string) => {
-    const newCases = [...cases];
+    const newCases = [...normalizedCases];
     newCases[index] = value;
     onDataChange?.('cases', newCases);
   };
@@ -129,7 +145,7 @@ export const SwitchNode = memo(function SwitchNode({
           </Typography>
           
           <Stack spacing={1}>
-            {cases.map((caseValue: string, index: number) => (
+            {normalizedCases.map((caseValue, index) => (
               <Box key={index} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <TextField
                   size="small"
@@ -141,7 +157,7 @@ export const SwitchNode = memo(function SwitchNode({
                 <IconButton
                   size="small"
                   onClick={() => removeCase(index)}
-                  disabled={cases.length <= 1}
+                  disabled={normalizedCases.length <= 1}
                   sx={{ color: 'rgba(255,255,255,0.5)' }}
                 >
                   <Remove fontSize="small" />
@@ -197,7 +213,7 @@ export const CompareNode = memo(function CompareNode({
           <FormControl fullWidth size="small" sx={{ mb: 1 }}>
             <InputLabel>Operator</InputLabel>
             <Select
-              value={data.operator || '=='}
+              value={toStringValue(data.operator, '==')}
               onChange={(e) => onChange('operator', e.target.value)}
               label="Operator"
             >
@@ -221,14 +237,14 @@ export const CompareNode = memo(function CompareNode({
               fullWidth
               size="small"
               label="Regex Pattern"
-              value={data.pattern || ''}
+              value={toStringValue(data.pattern)}
               onChange={(e) => onChange('pattern', e.target.value)}
               placeholder="/pattern/flags"
             />
           )}
           
           <Typography variant="caption" color="rgba(255,255,255,0.5)" sx={{ mt: 1, display: 'block' }}>
-            Compares input A {data.operator || '=='} input B → boolean
+            Compares input A {toStringValue(data.operator, '==')} input B → boolean
           </Typography>
         </Box>
       )}
@@ -509,4 +525,3 @@ export const LOGIC_NODE_DEFINITIONS = [
 ];
 
 export default LOGIC_NODE_DEFINITIONS;
-

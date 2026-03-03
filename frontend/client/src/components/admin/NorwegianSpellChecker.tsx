@@ -1,58 +1,45 @@
-/**
- * Norwegian Spell Checker
- *
- * Features: * - Real-time spell checking for Norwegian text
- * - Spelling suggestions (Bokmål & Nynorsk)
- * - Grammar checking
- * - Word frequency analysis
- * - Custom dictionary support
- * - Ignore/Add to dictionary
- * - Integration with Visual Editor
- */
-
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Chip,
-  List,
-  ListItem,
-  IconButton,
   Alert,
-  AlertTitle,
-  Divider,
+  Box,
+  Button,
   Card,
   CardContent,
-  Badge,
-  Tooltip,
-  ToggleButtonGroup,
+  Chip,
+  Divider,
+  IconButton,
+  List,
+  ListItem,
+  ListItemText,
+  Paper,
+  Stack,
+  TextField,
   ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Spellcheck as SpellcheckIcon,
-  CheckCircle as CheckCircleIcon,
+  CheckCircle,
+  ContentCopy,
   Error as ErrorIcon,
-  Add as AddIcon,
-  Remove as RemoveIcon,
-  Refresh as RefreshIcon,
-  ContentCopy as ContentCopyIcon,
-  Close,
-  Lightbulb as LightbulbIcon,
-  SwapHoriz as SwapHorizIcon,
+  Lightbulb,
+  Refresh,
+  Spellcheck,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+
+type SpellErrorType = 'spelling' | 'grammar' | 'style';
+
+type NorwegianLanguage = 'nb' | 'nn';
 
 interface SpellError {
   word: string;
   position: number;
   length: number;
   suggestions: string[];
-  type: 'spelling' | 'grammar' | 'style';
+  type: SpellErrorType;
   message: string;
   context: string;
 }
@@ -61,583 +48,528 @@ interface SpellCheckResult {
   text: string;
   errors: SpellError[];
   errorCount: number;
-  language: 'nb' | 'nn'; // Bokmål or Nynorsk
+  language: NorwegianLanguage;
   confidence: number;
 }
 
-interface Props {
+interface NorwegianSpellCheckerProps {
   initialText?: string;
-  onTextChange?: (_text: string) => void;
+  onTextChange?: (text: string) => void;
   autoCheck?: boolean;
   showStats?: boolean;
 }
 
-export const NorwegianSpellChecker: React.FC<Props> = ({
-  initialText = ', ',
+const FALLBACK_DICTIONARY_NB = new Set([
+  'og',
+  'i',
+  'på',
+  'for',
+  'med',
+  'av',
+  'til',
+  'som',
+  'det',
+  'en',
+  'et',
+  'ikke',
+  'kan',
+  'skal',
+  'video',
+  'prosjekt',
+  'kunde',
+  'story',
+  'studio',
+  'redigering',
+]);
+
+const FALLBACK_DICTIONARY_NN = new Set([
+  'og',
+  'i',
+  'på',
+  'for',
+  'med',
+  'av',
+  'til',
+  'som',
+  'det',
+  'ein',
+  'eit',
+  'ikkje',
+  'kan',
+  'skal',
+  'video',
+  'prosjekt',
+  'kunde',
+  'historie',
+  'studio',
+  'redigering',
+]);
+
+function getDictionary(language: NorwegianLanguage): Set<string> {
+  return language === 'nn' ? FALLBACK_DICTIONARY_NN : FALLBACK_DICTIONARY_NB;
+}
+
+function tokenize(text: string): Array<{ word: string; start: number }> {
+  const matches = Array.from(text.matchAll(/[A-Za-zÆØÅæøå]+/g));
+  return matches.map((match) => ({
+    word: match[0],
+    start: match.index ?? 0,
+  }));
+}
+
+function levenshteinDistance(left: string, right: string): number {
+  const matrix: number[][] = [];
+
+  for (let row = 0; row <= left.length; row += 1) {
+    matrix[row] = [row];
+  }
+
+  for (let col = 0; col <= right.length; col += 1) {
+    matrix[0][col] = col;
+  }
+
+  for (let row = 1; row <= left.length; row += 1) {
+    for (let col = 1; col <= right.length; col += 1) {
+      const substitutionCost = left[row - 1] === right[col - 1] ? 0 : 1;
+      matrix[row][col] = Math.min(
+        matrix[row - 1][col] + 1,
+        matrix[row][col - 1] + 1,
+        matrix[row - 1][col - 1] + substitutionCost,
+      );
+    }
+  }
+
+  return matrix[left.length][right.length];
+}
+
+function suggestionCandidates(word: string, dictionary: Set<string>): string[] {
+  const normalizedWord = word.toLowerCase();
+  return Array.from(dictionary)
+    .map((candidate) => ({
+      candidate,
+      distance: levenshteinDistance(normalizedWord, candidate),
+    }))
+    .filter((entry) => entry.distance <= 2)
+    .sort((left, right) => left.distance - right.distance)
+    .slice(0, 3)
+    .map((entry) => entry.candidate);
+}
+
+function localSpellCheck(
+  text: string,
+  language: NorwegianLanguage,
+  ignoredWords: Set<string>,
+  customDictionary: Set<string>,
+): SpellCheckResult {
+  const dictionary = new Set([...getDictionary(language), ...customDictionary]);
+  const tokens = tokenize(text);
+
+  const errors: SpellError[] = tokens
+    .filter(({ word }) => {
+      const normalized = word.toLowerCase();
+      return !dictionary.has(normalized) && !ignoredWords.has(normalized);
+    })
+    .map(({ word, start }) => {
+      const contextStart = Math.max(0, start - 24);
+      const contextEnd = Math.min(text.length, start + word.length + 24);
+      const context = text.slice(contextStart, contextEnd);
+
+      return {
+        word,
+        position: start,
+        length: word.length,
+        suggestions: suggestionCandidates(word, dictionary),
+        type: 'spelling',
+        message: `Ordet "${word}" finnes ikke i ordlisten`,
+        context,
+      } satisfies SpellError;
+    });
+
+  return {
+    text,
+    errors,
+    errorCount: errors.length,
+    language,
+    confidence: errors.length === 0 ? 0.99 : Math.max(0.5, 1 - errors.length * 0.02),
+  };
+}
+
+function normalizeSpellResult(raw: unknown, fallback: SpellCheckResult): SpellCheckResult {
+  if (typeof raw !== 'object' || raw === null) {
+    return fallback;
+  }
+
+  const root = raw as Record<string, unknown>;
+  const resultRaw =
+    typeof root.result === 'object' && root.result !== null
+      ? (root.result as Record<string, unknown>)
+      : root;
+
+  const rawErrors = Array.isArray(resultRaw.errors) ? resultRaw.errors : [];
+  const errors: SpellError[] = rawErrors
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null;
+      }
+
+      const item = entry as Record<string, unknown>;
+      const word = typeof item.word === 'string' ? item.word : '';
+      if (!word) {
+        return null;
+      }
+
+      const suggestions = Array.isArray(item.suggestions)
+        ? item.suggestions.filter((candidate): candidate is string => typeof candidate === 'string')
+        : [];
+
+      const typeCandidate = item.type;
+      const type: SpellErrorType =
+        typeCandidate === 'grammar' || typeCandidate === 'style' ? typeCandidate : 'spelling';
+
+      return {
+        word,
+        position: typeof item.position === 'number' ? item.position : 0,
+        length: typeof item.length === 'number' ? item.length : word.length,
+        suggestions,
+        type,
+        message: typeof item.message === 'string' ? item.message : fallback.errors[0]?.message ?? 'Mulig feil',
+        context: typeof item.context === 'string' ? item.context : fallback.text,
+      } satisfies SpellError;
+    })
+    .filter((error): error is SpellError => error !== null);
+
+  const languageRaw = resultRaw.language;
+  const language: NorwegianLanguage = languageRaw === 'nn' ? 'nn' : 'nb';
+
+  return {
+    text: typeof resultRaw.text === 'string' ? resultRaw.text : fallback.text,
+    errors,
+    errorCount: typeof resultRaw.errorCount === 'number' ? resultRaw.errorCount : errors.length,
+    language,
+    confidence: typeof resultRaw.confidence === 'number' ? resultRaw.confidence : fallback.confidence,
+  };
+}
+
+export const NorwegianSpellChecker: React.FC<NorwegianSpellCheckerProps> = ({
+  initialText = '',
   onTextChange,
   autoCheck = true,
+  showStats = true,
 }) => {
-  const { componentRegistry, analytics, communication, auth } = useEnhancedMasterIntegration();
+  const { auth, analytics, componentRegistry } = useEnhancedMasterIntegration();
 
   const [text, setText] = useState(initialText);
-  const [language, setLanguage] = useState<'nb' | 'nn'>('nb'); // Default to Bokmål
+  const [language, setLanguage] = useState<NorwegianLanguage>('nb');
   const [isChecking, setIsChecking] = useState(false);
   const [result, setResult] = useState<SpellCheckResult | null>(null);
   const [ignoredWords, setIgnoredWords] = useState<Set<string>>(new Set());
   const [customDictionary, setCustomDictionary] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<'contextual' | 'list'>('contextual');
-  const [expandedError, setExpandedError] = useState<number | null>(null);
 
-  // Register component
   useEffect(() => {
     componentRegistry.registerComponent({
-      id: 'norwegian-spell-checker,',
+      id: 'norwegian-spell-checker',
+      name: 'Norwegian Spell Checker',
       type: 'admin',
-      version: '1.0.0',
-      capabilities: {
-        data: ['spell-check','norwegian'],
-        events: ['spell-check-completed'],
-        actions: ['check','correct'],
-        ui: ['panel'],
-        system: ['language-service'],
-      },
-      dependencies: ['language-tool-api'],
-      lastActive: Date.now(),
-      performance: { renderCount: 0, avgRenderTime: 0, memoryUsage: 0 },
+      category: 'settings',
+      version: '2.0.0',
+      capabilities: ['spell-check', 'norwegian', 'dictionary'],
+      dependencies: ['language-api'],
+      props: ['initialText', 'autoCheck', 'showStats'],
+      events: ['spell-check-completed'],
+      dataKeys: ['spell-check-results'],
+      lastSeen: Date.now(),
+      status: 'active',
     });
 
-    return () => componentRegistry.unregisterComponent('norwegian-spell-checker,');
+    return () => {
+      componentRegistry.unregisterComponent('norwegian-spell-checker');
+    };
   }, [componentRegistry]);
 
-  // Listen for Visual Editor requests
-  useEffect(() => {
-    const unsubscribe = communication.onMessage(
-      (message: { type: string; data: { text: string } }) => {
-        if (message.type === 'visual-editor:check-norwegian-spelling') {
-          setText(message.data.text);
-          handleCheckSpelling(message.data.text);
-        }
-      },
-    );
+  const runSpellCheck = useCallback(
+    async (textToCheck?: string) => {
+      const content = (textToCheck ?? text).trim();
+      if (!content) {
+        setResult(null);
+        return;
+      }
 
-    return unsubscribe;
-  }, [communication]);
-
-  // Spell check API call
-  const handleCheckSpelling = async (textToCheck?: string) => {
-    const content = textToCheck || text;
-    if (!content.trim()) return;
-
-    setIsChecking(true);
-    analytics.trackEvent('spell_check_started', {
-      language,
-      textLength: content.length,
-    });
-
-    try {
-      const headers = await auth.getAuthHeader();
-      const response = await apiRequest('/api/admin/norwegian/spell-check', {
-        method: 'POST',
-        headers: {
-          ...headers, , 'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          text: content,
-          language,
-          customDictionary: Array.from(customDictionary),
-          ignoredWords: Array.from(ignoredWords),
-        }),
+      setIsChecking(true);
+      analytics.trackEvent('norwegian_spell_check_started', {
+        language,
+        length: content.length,
       });
 
-      if (response.success) {
-        setResult(response.result);
+      const fallback = localSpellCheck(content, language, ignoredWords, customDictionary);
 
-        // Broadcast to other components
-        communication.sendBroadcast('spell-check:complete', {
-          errorCount: response.result.errorCount,
-          language,
+      try {
+        const headers = await auth.getAuthHeader();
+        const apiResponse = await apiRequest('/api/admin/norwegian/spell-check', {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+          },
+          body: {
+            text: content,
+            language,
+            ignoredWords: Array.from(ignoredWords),
+            customDictionary: Array.from(customDictionary),
+          },
         });
 
-        analytics.trackEvent('spell_check_completed', {
+        const normalized = normalizeSpellResult(apiResponse, fallback);
+        setResult(normalized);
+
+        analytics.trackEvent('norwegian_spell_check_completed', {
           language,
-          errorCount: response.result.errorCount,
+          errors: normalized.errorCount,
+          source: 'api',
         });
+      } catch {
+        setResult(fallback);
+        analytics.trackEvent('norwegian_spell_check_completed', {
+          language,
+          errors: fallback.errorCount,
+          source: 'fallback',
+        });
+      } finally {
+        setIsChecking(false);
       }
-    } catch (error) {
-      console.error('Spell check failed: ', error);
-    } finally {
-      setIsChecking(false);
+    },
+    [analytics, auth, customDictionary, ignoredWords, language, text],
+  );
+
+  useEffect(() => {
+    if (!autoCheck || !text.trim()) {
+      return;
     }
-  };
 
-  // Apply suggestion
-  const handleApplySuggestion = useCallback(
+    const timeoutId = window.setTimeout(() => {
+      void runSpellCheck(text);
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [autoCheck, runSpellCheck, text]);
+
+  const applySuggestion = useCallback(
     (error: SpellError, suggestion: string) => {
-      const before = text.substring(0, error.position);
-      const after = text.substring(error.position + error.length);
-      const newText = before + suggestion + after;
+      const before = text.slice(0, error.position);
+      const after = text.slice(error.position + error.length);
+      const nextText = `${before}${suggestion}${after}`;
+      setText(nextText);
+      onTextChange?.(nextText);
 
-      setText(newText);
-      onTextChange?.(newText);
-
-      analytics.trackEvent('spell_suggestion_applied', {
+      analytics.trackEvent('norwegian_spell_suggestion_applied', {
         original: error.word,
         suggestion,
       });
 
-      // Re-check
       if (autoCheck) {
-        handleCheckSpelling(newText);
+        void runSpellCheck(nextText);
       }
     },
-    [text, autoCheck, onTextChange, analytics],
+    [analytics, autoCheck, onTextChange, runSpellCheck, text],
   );
 
-  // Ignore word
-  const handleIgnoreWord = useCallback(
+  const ignoreWord = useCallback(
     (word: string) => {
-      setIgnoredWords((prev) => new Set([...prev, word]);
-      analytics.trackEvent('spell_word_ignored', { word });
+      const normalized = word.toLowerCase();
+      setIgnoredWords((previous) => new Set([...previous, normalized]));
+      analytics.trackEvent('norwegian_spell_word_ignored', { word: normalized });
+      if (autoCheck) {
+        void runSpellCheck(text);
+      }
     },
-    [analytics],
+    [analytics, autoCheck, runSpellCheck, text],
   );
 
-  // Add to dictionary
-  const handleAddToDictionary = useCallback(
+  const addToDictionary = useCallback(
     async (word: string) => {
-      setCustomDictionary((prev) => new Set([...prev, word]));
+      const normalized = word.toLowerCase();
+      setCustomDictionary((previous) => new Set([...previous, normalized]));
 
       try {
         const headers = await auth.getAuthHeader();
         await apiRequest('/api/admin/norwegian/dictionary/add', {
           method: 'POST',
           headers: {
-            ...headers, , 'Content-Type': 'application/json'
+            ...headers,
+            'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ word, language }),
+          body: {
+            word: normalized,
+            language,
+          },
         });
+      } catch {
+        // Local dictionary update already applied.
+      }
 
-        analytics.trackEvent('word_added_to_dictionary', { word, language });
-      } catch (error) {
-        console.error('Failed to add word to dictionary:', error);
+      analytics.trackEvent('norwegian_spell_dictionary_add', {
+        word: normalized,
+        language,
+      });
+
+      if (autoCheck) {
+        void runSpellCheck(text);
       }
     },
-    [language, analytics, auth],
+    [analytics, auth, autoCheck, language, runSpellCheck, text],
   );
 
-  // Copy corrected text
-  const handleCopyCorrectedText = useCallback(() => {
-    navigator.clipboard.writeText(text);
-    analytics.trackEvent('corrected_text_copied', { length: text.length });
-  }, [text, analytics]);
+  const copyCorrectedText = useCallback(async () => {
+    await navigator.clipboard.writeText(text);
+    analytics.trackEvent('norwegian_spell_copy_text', {
+      length: text.length,
+    });
+  }, [analytics, text]);
 
-  const errorsByType =
-    result?.errors.reduce(
-      (acc, error) => {
-        acc[error.type] = (acc[error.type] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
-    ) || {};
+  const errorTypeCounts = useMemo(() => {
+    const counts: Record<SpellErrorType, number> = {
+      spelling: 0,
+      grammar: 0,
+      style: 0,
+    };
+
+    result?.errors.forEach((error) => {
+      counts[error.type] += 1;
+    });
+
+    return counts;
+  }, [result]);
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography
-          variant="h4"
-          gutterBottom
-          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SpellcheckIcon sx={{ fontSize: 40, color: '#4caf50' }} />
-          Norsk Stavekontroll
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h5" fontWeight={700} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Spellcheck color="primary" />
+          Norsk stavekontroll
         </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Sanntidsstavekontroll for norsk bokmål og nynorsk
-        </Typography>
-      </Box>
 
-      {/* Controls */}}
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 } flexWrap="wrap">
-        <Typography variant="body2" sx={{ fontWeight: 600}}>
-          Språk: </Typography>
-        <ToggleButtonGroup
-          value={language}
-          exclusive
-          onChange={(_, val) => val && setLanguage(val)}
-          size="small"
-        >
-          <ToggleButton value="nb">🇳🇴 Bokmål</ToggleButton>
-          <ToggleButton value="nn">🇳🇴 Nynorsk</ToggleButton>
-        </ToggleButtonGroup>
-
-        <Divider orientation="vertical" flexItem />
-
-        <Typography variant="body2" sx={{ fontWeight: 600}}>
-          Visning: </Typography>
-        <ToggleButtonGroup
-          value={viewMode}
-          exclusive
-          onChange={(_, val) => val && setViewMode(val)}
-          size="small"
-        >
-          <ToggleButton value="contextual">💡 Forslag</ToggleButton>
-          <ToggleButton value="list">📋 Liste</ToggleButton>
-        </ToggleButtonGroup>
-
-        <Button
-          variant="contained"
-          startIcon={<SpellcheckIcon />}
-          onClick={() => handleCheckSpelling()}
-          disabled={isChecking || !text.trim()}
-          sx={{ ml: 'auto' }}>
-          {isChecking ? 'Sjekker...' : 'Sjekk Stavemåte'}
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Kopier korrigert tekst">
+            <IconButton onClick={() => void copyCorrectedText()}>
+              <ContentCopy />
+            </IconButton>
+          </Tooltip>
+          <Button
+            variant="contained"
+            startIcon={<Refresh />}
+            disabled={isChecking || text.trim().length === 0}
+            onClick={() => void runSpellCheck()}
+          >
+            {isChecking ? 'Sjekker...' : 'Sjekk nå'}
+          </Button>
+        </Stack>
       </Stack>
 
-      {/* Text Input */}
-      <TextField
-        fullWidth
-        multiline
-        rows={10}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          onTextChange?.(e.target.value);
-        }}
-        placeholder="Skriv eller lim inn norsk tekst her for stavekontroll..."
-        variant="outlined"
-        sx={{ mb: 3 }} />
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+        <ToggleButtonGroup
+          exclusive
+          value={language}
+          onChange={(_, value: NorwegianLanguage | null) => {
+            if (value) {
+              setLanguage(value);
+            }
+          }}
+          size="small"
+        >
+          <ToggleButton value="nb">Bokmål</ToggleButton>
+          <ToggleButton value="nn">Nynorsk</ToggleButton>
+        </ToggleButtonGroup>
 
-      {/* Stats */}
-      {showStats && result && (
-        <Card sx={{ mb: 3, bgcolor: result.errorCount === 0 ? 'success.light' : 'error.light' }}>
+        {showStats && (
+          <Stack direction="row" spacing={1} flexWrap="wrap">
+            <Chip icon={<ErrorIcon />} label={`Feil: ${result?.errorCount ?? 0}`} color="error" size="small" />
+            <Chip label={`Staving: ${errorTypeCounts.spelling}`} size="small" />
+            <Chip label={`Grammatikk: ${errorTypeCounts.grammar}`} size="small" />
+            <Chip label={`Stil: ${errorTypeCounts.style}`} size="small" />
+            <Chip
+              icon={<CheckCircle />}
+              label={`Confidence: ${Math.round((result?.confidence ?? 0) * 100)}%`}
+              size="small"
+              color="success"
+            />
+          </Stack>
+        )}
+      </Stack>
+
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <TextField
+          fullWidth
+          multiline
+          minRows={8}
+          maxRows={16}
+          label="Tekst"
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            onTextChange?.(event.target.value);
+          }}
+        />
+      </Paper>
+
+      {result && result.errorCount === 0 && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Ingen stavefeil funnet.
+        </Alert>
+      )}
+
+      {result && result.errorCount > 0 && (
+        <Card>
           <CardContent>
-            <Stack direction="row" spacing={3} alignItems="center">
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h3" sx={{ fontWeight: 'bold', color: 'white' }}>
-                  {result.errorCount}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'white' }}>
-                  Feil funnet
-                </Typography>
-              </Box>
-
-              <Divider orientation="vertical" flexItem sx={{ bgcolor: 'white' }} />
-
-              <Stack spacing={1}>
-                {Object.entries(errorsByType).map(([type, count]) => (
-                  <Chip
-                    key={type}
-                    label={`${type}: ${count}`}
-                    size="small"
-                    sx={{ bgcolor: 'white' }} />
-                ))}
-              </Stack>
-
-              {result.errorCount === 0 && (
-                <Box sx={{ ml: 'auto' }}>
-                  <CheckCircleIcon sx={{ fontSize: 48, color: 'white' }} />
-                </Box>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Contextual Suggestions View */}
-      {result && result.errors.length > 0 && viewMode === 'contextual' && (
-        <Paper sx={{ p: 2 }}>
-          <Stack direction="row" alignItems="center" spacing={1}, sx={{ mb: 2 }}>
-            <Badge
-              badgeContent={result.errors.filter((e) => !ignoredWords.has(e.word).length}
-              color="error"
-            >
-              <LightbulbIcon color="warning" sx={{ fontSize: 32 }} />
-            </Badge>
-            <Typography variant="h6">Forbedringsforslag</Typography>
-          </Stack>
-
-          <Divider sx={{ mb: 2 }} />
-
-          <Stack spacing={1.5}>
-            {result.errors
-              .filter((error) => !ignoredWords.has(error.word)
-              .map((error, idx) => (
-                <Card
-                  key={idx}
-                  variant="outlined"
-                  sx={{
-                    border: expandedError === idx ? '2px solid' : '1px solid',
-                    borderColor: expandedError === idx ? 'error.main' : 'divider',
-                    bgcolor: error.type === 'spelling'
-                        ? 'error.light'
-                        : error.type === 'grammar'
-                          ? 'warning.light'
-                          : 'info.light',
-                    opacity: 0.95 }}>
-                  <CardContent sx={{ p: 1.5 '&:last-child': { pb: 1.5 } }>
-                    <Stack spacing={1}>
-                      {/* Header */}
-                      <Stack direction="row" alignItems="center" justifyContent="space-between">
-                        <Stack direction="row" alignItems="center" spacing={1} flex={1}>
-                          <Typography variant="body1" fontWeight="bold" color="error.dark">
-                            {error.word}
-                          </Typography>
-                          {error.suggestions.length > 0 && (
-                            <>
-                              <SwapHorizIcon fontSize="small" color="action" />
-                              <Typography variant="body1" fontWeight="bold" color="success.dark">
-                                {error.suggestions[0]}
-                              </Typography>
-                            </>
-                          )}
-                          <Chip
-                            label={
-                              error.type === 'spelling'
-                                ? '✏️ Stavefeil'
-                                : error.type === 'grammar'
-                                  ? '📝 Grammatikk'
-                                  : '💬 Stil'
-                            }
-                            size="small"
-                            color={error.type === 'spelling' ? 'error' : 'warning'}
-                          />
-                        </Stack>
-
-                        <Stack direction="row" spacing={0.5}>
-                          {error.suggestions.length > 0 && (
-                            <Tooltip title="Bruk første forslag">
-                              <IconButton
-                                size="small"
-                                color="success"
-                                onClick={() => handleApplySuggestion(error, error.suggestions[0])}
-                              >
-                                <CheckCircleIcon />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                          <Tooltip title="Ignorer">
-                            <IconButton size="small" onClick={() => handleIgnoreWord(error.word)}>
-                              <Close fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
+            <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Lightbulb color="warning" />
+              Forslag ({result.errorCount})
+            </Typography>
+            <Divider sx={{ mb: 1 }} />
+            <List dense>
+              {result.errors.map((error, index) => (
+                <ListItem key={`${error.word}-${error.position}-${index}`} alignItems="flex-start" divider>
+                  <ListItemText
+                    primary={
+                      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                        <Chip size="small" color="error" label={error.word} />
+                        <Typography variant="body2">{error.message}</Typography>
                       </Stack>
-
-                      {/* Reason */}
-                      <Typography variant="body2" color="text.primary" sx={{ fontStyle: 'italic' }}>
-                        💡 {error.message}
-                      </Typography>
-
-                      {/* Context */}
-                      <Box
-                        sx={{
-                          bgcolor: 'background.paper',
-                          p: 1,
-                          borderRadius: 1,
-                          border: '1px solid',
-                          borderColor: 'divider'}}>
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ fontFamily: 'monospace' }}>
-                          "...{error.context}..."
+                    }
+                    secondary={
+                      <Stack spacing={1} sx={{ mt: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Kontekst: {error.context}
                         </Typography>
-                      </Box>
-
-                      {/* All Suggestions */}
-                      {error.suggestions.length > 1 && (
-                        <Collapse in={expandedError === idx} timeout="auto" unmountOnExit>
-                          <Divider sx={{ my: 1 }} />
-                          <Typography
-                            variant="caption"
-                            fontWeight="bold"
-                            sx={{ mb: 1, display: 'block' }}>
-                            Alle forslag: </Typography>
-                          <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ gap: 0.5 }}>
-                            {error.suggestions.map((suggestion, sIdx) => (
-                              <Button
-                                key={sIdx}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleApplySuggestion(error, suggestion)}
-                                sx={{ textTransform: 'none' }}>
-                                {suggestion}
-                              </Button>
-                            ))}
-                          </Stack>
-
-                          <Divider sx={{ my: 1 }} />
-                          <Stack direction="row" spacing={1}>
+                        <Stack direction="row" spacing={1} flexWrap="wrap">
+                          {error.suggestions.length === 0 && (
+                            <Chip size="small" label="Ingen forslag" variant="outlined" />
+                          )}
+                          {error.suggestions.map((suggestion) => (
                             <Button
-                              size="small"
-                              startIcon={<AddIcon />}
-                              onClick={() => handleAddToDictionary(error.word)}
-                              variant="text"
-                            >
-                              Legg til ordbok
-                            </Button>
-                          </Stack>
-                        </Collapse>
-                      )}
-
-                      {/* Expand Button */}
-                      {error.suggestions.length > 1 && (
-                        <Button
-                          size="small"
-                          onClick={() => setExpandedError(expandedError === idx ? null : idx)}
-                          endIcon={<LightbulbIcon />}
-                          sx={{ alignSelf: 'flex-start' }}>
-                          {expandedError === idx
-                            ? 'Skjul detaljer'
-                            : `Se alle ${error.suggestions.length} forslag`}
-                        </Button>
-                      )}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              ))}
-          </Stack>
-        </Paper>
-      )}
-
-      {/* List View */}
-      {result && result.errors.length > 0 && viewMode === 'list' && (
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="h6" gutterBottom>
-            Feil og forslag: </Typography>
-
-          <List>
-            {result.errors
-              .filter((error) => !ignoredWords.has(error.word)
-              .map((error, idx) => (
-                <React.Fragment key={idx}>
-                  <ListItem
-                    sx={{
-                      bgcolor: error.type === 'spelling'
-                          ? 'error.light'
-                          : error.type === 'grammar'
-                            ? 'warning.light'
-                            : 'info.light',
-                      borderRadius: 1,
-                      mb: 1}}>
-                    <Box sx={{ flex: 1 }}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                        <ErrorIcon fontSize="small" />
-                        <Typography variant="body1" sx={{ fontWeight: 600}}>
-                          "{error.word}"
-                        </Typography>
-                        <Chip
-                          label={error.type}
-                          size="small"
-                          color={error.type === 'spelling' ? 'error' : 'warning'}
-                        />
-                      </Stack>
-
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        {error.message}
-                      </Typography>
-
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ mb: 2, display:'block' }}>
-                        Kontekst: "...{error.context}..."
-                      </Typography>
-
-                      {error.suggestions.length > 0 && (
-                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-                          <Typography variant="caption" sx={{ fontWeight: 600}}>
-                            Forslag: </Typography>
-                          {error.suggestions.slice(0, 5).map((suggestion, sIdx) => (
-                            <Button
-                              key={sIdx}
+                              key={`${error.word}-${suggestion}`}
                               size="small"
                               variant="outlined"
-                              onClick={() => handleApplySuggestion(error, suggestion)}
+                              onClick={() => applySuggestion(error, suggestion)}
                             >
                               {suggestion}
                             </Button>
                           ))}
+                          <Button size="small" onClick={() => ignoreWord(error.word)}>
+                            Ignorer
+                          </Button>
+                          <Button size="small" onClick={() => void addToDictionary(error.word)}>
+                            Legg til i ordbok
+                          </Button>
                         </Stack>
-                      )}
-
-                      <Stack direction="row" spacing={1}, sx={{ mt: 2 }}>
-                        <Button
-                          size="small"
-                          startIcon={<RemoveIcon />}
-                          onClick={() => handleIgnoreWord(error.word)}
-                        >
-                          Ignorer
-                        </Button>
-                        <Button
-                          size="small"
-                          startIcon={<AddIcon />}
-                          onClick={() => handleAddToDictionary(error.word)}
-                        >
-                          Legg til ordbok
-                        </Button>
                       </Stack>
-                    </Box>
-                  </ListItem>
-                </React.Fragment>
+                    }
+                  />
+                </ListItem>
               ))}
-          </List>
-        </Paper>
-      )}
-
-      {/* Success Message */}
-      {result && result.errorCount === 0 && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          <AlertTitle>✅ Ingen stavefeil funnet!</AlertTitle>
-          Teksten din ser bra ut. Ingen stavefeil eller grammatikkfeil ble funnet.
-        </Alert>
-      )}
-
-      {/* Actions */}
-      {result && (
-        <Stack direction="row" spacing={2}, sx={{ mt: 3 }}>
-          <Button
-            variant="outlined"
-            startIcon={<ContentCopyIcon />}
-            onClick={handleCopyCorrectedText}
-          >
-            Kopier tekst
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<RefreshIcon />}
-            onClick={() => {
-              setText('');
-              setResult(null);
-            }}
-          >
-            Tilbakestill
-          </Button>
-        </Stack>
-      )}
-
-      {/* Custom Dictionary Info */}
-      {customDictionary.size > 0 && (
-        <Alert severity="info" sx={{ mt: 3 }}>
-          <AlertTitle>📖 Din ordbok ({customDictionary.size} ord)</AlertTitle>
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ gap: 1 }}>
-            {Array.from(customDictionary).map((word) => (
-              <Chip
-                key={word}
-                label={word}
-                size="small"
-                onDelete={() => {
-                  setCustomDictionary((prev) => {
-                    const newSet = new Set(prev);
-                    newSet.delete(word);
-                    return newSet;
-                  });
-                }
-              />
-            ))}
-          </Stack>
-        </Alert>
+            </List>
+          </CardContent>
+        </Card>
       )}
     </Box>
   );

@@ -147,7 +147,7 @@ export default function GoogleWalletMembershipManager({
 
   // Master integration system for "everything interacts with everything"
   const { integration, communication, dataFlow, componentRegistry, auth } = useEnhancedMasterIntegration();
-  const user = auth.user;
+  const user = auth.state.user;
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -922,5 +922,4 @@ export default function GoogleWalletMembershipManager({
     </Box>
   );
 }
-
 

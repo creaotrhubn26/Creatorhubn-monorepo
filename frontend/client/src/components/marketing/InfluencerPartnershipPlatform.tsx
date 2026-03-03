@@ -251,7 +251,7 @@ const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps
     setLoading(true);
     try {
       const response = await fetch('/api/influencer-platform/campaigns', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(campaignData),
     });
@@ -275,7 +275,7 @@ const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps
     setLoading(true);
     try {
       const response = await fetch('/api/influencer-platform/partnerships', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({
           influencerd,
@@ -609,10 +609,11 @@ const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps
                     <Typography variant="caption" color="text.secondary">
                       ROI
                     </Typography>
-                    <Typography variant="h6"
-                      color={campaign.metrics.roi  sx={{ color: theming.colors.primary }}> 0 ? 'success.main' : 'text.primary'}
+                    <Typography
+                      variant="h6"
+                      color={campaign.metrics.roi > 0 ? 'success.main' : 'text.primary'}
                     >
-                      {campaign.metrics.roi > 0 ? '+': ','}
+                      {campaign.metrics.roi > 0 ? '+' : ''}
                       {campaign.metrics.roi.toFixed(1)}%
                     </Typography>
                   </Box>
@@ -620,7 +621,7 @@ const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps
 
                 <Box mb={2}>
                   <Typography variant="caption" color="text.secondary">
-                    Periode: {new Date(campaign.startDate).toLocaleDateString('')} -{', '}
+                    Periode: {new Date(campaign.startDate).toLocaleDateString('no-NO')} -{' '}
                     {new Date(campaign.endDate).toLocaleDateString('no-NO')}
                   </Typography>
                 </Box>
@@ -944,7 +945,7 @@ const InfluencerPartnershipPlatform: React.FC<InfluencerPartnershipPlatformProps
       </Typography>
 
       <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)} sx={{ mb:  3 }}>
-        <Tab icon={theming.getThemedIcon('search')}} label="Discover" />
+        <Tab icon={theming.getThemedIcon('search')} label="Discover" />
         <Tab icon={<CampaignOutlined />} label="Kampanjer" />
         <Tab icon={<Handshake />} label="Partnerships" />
         <Tab icon={<BarChart />} label="Analyser" />

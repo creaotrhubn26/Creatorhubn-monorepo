@@ -149,7 +149,7 @@ export function UniversalUpcomingEventsWidget({
   const completeTaskMutation = useMutation({
     mutationFn: async ({ eventd, taskId }: { eventId: string; taskId: string }) => {
       const response = await fetch(`/api/dashboard/complete-preparation-task`, {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ eventd, taskId }),
     });

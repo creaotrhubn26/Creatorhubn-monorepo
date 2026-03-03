@@ -41,6 +41,20 @@ type ApiRequestOptions = Omit<RequestInit, 'body'> & {
   body?: BodyInit | Record<string, unknown>;
 };
 
+function isSerializableBody(
+  body: BodyInit | Record<string, unknown> | undefined,
+): body is Record<string, unknown> {
+  return (
+    !!body &&
+    typeof body === 'object' &&
+    !(body instanceof FormData) &&
+    !(body instanceof Blob) &&
+    !(body instanceof ArrayBuffer) &&
+    !(body instanceof URLSearchParams) &&
+    !ArrayBuffer.isView(body)
+  );
+}
+
 export async function apiRequest(url: string, options?: ApiRequestOptions) {
   // Get auth headers from EnhancedMasterIntegrationProvider
   const authHeaders = await getAuthHeader();
@@ -54,27 +68,21 @@ export async function apiRequest(url: string, options?: ApiRequestOptions) {
       ? normalizedUrl
       : `${API_BASE_URL}${normalizedUrl}`;
 
-  const isFormData = options?.body instanceof FormData;
+  const { body, ...restOptions } = options ?? {};
+  const isFormData = body instanceof FormData;
   const requestOptions: RequestInit = {
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...authHeaders,
       ...options?.headers
     },
-    ...options
+    ...restOptions
   };
 
-  const shouldSerializeBody =
-    options?.body &&
-    typeof options.body === 'object' &&
-    !(options.body instanceof FormData) &&
-    !(options.body instanceof Blob) &&
-    !(options.body instanceof ArrayBuffer) &&
-    !(options.body instanceof URLSearchParams) &&
-    !ArrayBuffer.isView(options.body);
-
-  if (shouldSerializeBody) {
-    requestOptions.body = JSON.stringify(options.body);
+  if (isSerializableBody(body)) {
+    requestOptions.body = JSON.stringify(body);
+  } else if (body !== undefined) {
+    requestOptions.body = body;
   }
 
   const response = await fetch(fullUrl, requestOptions);

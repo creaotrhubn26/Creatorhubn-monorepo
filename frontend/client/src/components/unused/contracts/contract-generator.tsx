@@ -188,7 +188,7 @@ export default function ContractGenerator({
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           ...data,
           profession,
@@ -216,7 +216,7 @@ export default function ContractGenerator({
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           signatureData: `${contractData.clientName} - ${contractData.projectType}`,
           signerName: contractData.clientName,
@@ -244,7 +244,7 @@ export default function ContractGenerator({
         headers: {
           ...auth'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           contractd,
           clientName: contractData.clientName,
@@ -573,7 +573,7 @@ export default function ContractGenerator({
         headers: {
     },
         
-                          method: 'POS',
+                          method: 'POST',
                           body: JSON.stringify({
                             contractId: generatedContract.d,
                             clientEmail: contractData.clientEmail,

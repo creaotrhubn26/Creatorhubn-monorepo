@@ -75,7 +75,7 @@ export default function PrototypeTesterDashboard() {
   // State
   const [showBugReportDialog, setShowBugReportDialog] = useState(false);
   const [showTestDataDialog, setShowTestDataDialog] = useState(false);
-  const [bugReport, setBugReport] = useState({ title: ',', description: ', ', severity: 'medium' });
+  const [bugReport, setBugReport] = useState({ title: '', description: '', severity: 'medium' });
   
   // Get assigned profession from user profile
   // Prototype testers are assigned ONE specific profession to test
@@ -83,7 +83,7 @@ export default function PrototypeTesterDashboard() {
   
   // Fetch assigned profession details
   const { data: professionConfig, isLoading: professionLoading } = useQuery({
-    queryKey: ['/api/professions/', assignedProfession'/dashboard-config'],
+    queryKey: ['/api/professions', assignedProfession, 'dashboard-config'],
     queryFn: () => apiRequest(`/api/professions/${assignedProfession}/dashboard-config`),
     staleTime: 5 * 60 * 1000,
   });
@@ -396,9 +396,10 @@ export default function PrototypeTesterDashboard() {
                     p: 2, 
                     cursor: 'pointer',
                     border: '2px solid',
-                    borderColor: 'transparent', '&:hover': {
+                    borderColor: 'transparent',
+                    '&:hover': {
                       borderColor: '#f44336',
-                      bgcolor: 'rgba(2, 4, 4, 67, 54, 0.05)'
+                      bgcolor: 'rgba(244, 67, 54, 0.05)'
                     }
                   }}
                   onClick={() => setShowBugReportDialog(true)}
@@ -543,9 +544,10 @@ export default function PrototypeTesterDashboard() {
                     p: 2, 
                     cursor: 'pointer',
                     border: '2px solid',
-                    borderColor: 'transparent', '&:hover': {
+                    borderColor: 'transparent',
+                    '&:hover': {
                       borderColor: '#9c27b0',
-                      bgcolor: 'rgba(1, 5, 6, 39, 176, 0.05)'
+                      bgcolor: 'rgba(156, 39, 176, 0.05)'
                     }
                   }}
                 >
@@ -567,8 +569,8 @@ export default function PrototypeTesterDashboard() {
               </Grid>
             )}
           </Grid>
+          </CardContent>
         </Card>
-      )}
       
       {/* Bug Report Dialog */}
       <Dialog 
@@ -708,4 +710,3 @@ export default function PrototypeTesterDashboard() {
     </Container>
   );
 }
-

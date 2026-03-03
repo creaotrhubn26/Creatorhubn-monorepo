@@ -53,7 +53,9 @@ class ShadowAnalysisService {
       // Segment image to detect shadow areas
       const segmentation = await sam2Service.segmentImageFromUrl(
         imageUrl,
-        undefined'auto','small'
+        undefined,
+        'auto',
+        'small',
       );
 
       // Analyze shadow quality for each detected region
@@ -280,4 +282,3 @@ class ShadowAnalysisService {
 }
 
 export const shadowAnalysisService = new ShadowAnalysisService();
-

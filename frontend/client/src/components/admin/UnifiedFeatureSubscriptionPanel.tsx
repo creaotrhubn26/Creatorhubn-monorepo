@@ -53,7 +53,9 @@ import {
 import { getAllProfessionTypes } from '@shared/profession-type-registry';
 import { getPlanDisplayName, type PlanTier } from '@shared/subscription-plans';
 
-interface FeatureWithMetadata extends ProfessionFeatureConfig {
+type FeatureBaseConfig = ProfessionFeatureConfig['availableFeatures'][string];
+
+interface FeatureWithMetadata extends FeatureBaseConfig {
   id: string;
   category?: string;
 }
@@ -90,8 +92,8 @@ export default function UnifiedFeatureSubscriptionPanel() {
   const professions = getAllProfessionTypes();
 
   // Fetch feature configurations
-  const { data: featureConfigs, isLoading } = useQuery({
-    queryKey: ['/api/admin/feature-configs,', selectedProfession],
+  const { data: featureConfigs, isLoading } = useQuery<FeatureWithMetadata[]>({
+    queryKey: ['/api/admin/feature-configs', selectedProfession],
     queryFn: async () => {
       const matrix = PROFESSION_FEATURE_MATRIX[selectedProfession];
       if (!matrix) return [];
@@ -100,7 +102,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
         id,
         ...config,
         category: getCategoryFromFeatureId(id),
-      });
+      }));
     },
   });
 
@@ -130,7 +132,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
           updates,
         }),
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
       });
     },
@@ -149,7 +151,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
   //     return apiRequest('/api/admin/trial-restrictions', {
   //       method: 'POST',
   //       body: JSON.stringify(data),
-  //       headers: { , 'Content-Type': 'application/json' },
+  //       headers: { 'Content-Type': 'application/json' },
   //     });
   //   },
   //   onSuccess: () => {
@@ -160,15 +162,15 @@ export default function UnifiedFeatureSubscriptionPanel() {
 
   // Helper: Extract category from feature ID
   function getCategoryFromFeatureId(featureId: string): string {
-    if (featureId.includes('chat') return 'Communication';
-    if (featureId.includes('calendar') || featureId.includes('countdown') return 'Calendar';
-    if (featureId.includes('analytics') || featureId.includes('dashboard') return 'Analytics';
-    if (featureId.includes('contract') || featureId.includes('crm') return 'CRM';
-    if (featureId.includes('wedding') return 'Wedding';
-    if (featureId.includes('video') return 'Video';
-    if (featureId.includes('lightroom') || featureId.includes('photo') return 'Photography';
-    if (featureId.includes('email') return 'Marketing';
-    if (featureId.includes('academy') || featureId.includes('learning') return 'Education';
+    if (featureId.includes('chat')) return 'Communication';
+    if (featureId.includes('calendar') || featureId.includes('countdown')) return 'Calendar';
+    if (featureId.includes('analytics') || featureId.includes('dashboard')) return 'Analytics';
+    if (featureId.includes('contract') || featureId.includes('crm')) return 'CRM';
+    if (featureId.includes('wedding')) return 'Wedding';
+    if (featureId.includes('video')) return 'Video';
+    if (featureId.includes('lightroom') || featureId.includes('photo')) return 'Photography';
+    if (featureId.includes('email')) return 'Marketing';
+    if (featureId.includes('academy') || featureId.includes('learning')) return 'Education';
     return 'Other';
   }
 
@@ -203,13 +205,13 @@ export default function UnifiedFeatureSubscriptionPanel() {
   };
 
   // Filter features
-  const filteredFeatures = useMemo(() => {
+  const filteredFeatures = useMemo<FeatureWithMetadata[]>(() => {
     if (!featureConfigs) return [];
 
     return featureConfigs.filter((feature) => {
       const matchesSearch =
-        feature.id.toLowerCase().includes(searchQuery.toLowerCase() ||
-        feature.description?.toLowerCase().includes(searchQuery.toLowerCase();
+        feature.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        feature.description?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = filterCategory === 'all' || feature.category === filterCategory;
       const matchesPlan = getMergedFeature(feature).plan === selectedPlan;
 
@@ -220,7 +222,10 @@ export default function UnifiedFeatureSubscriptionPanel() {
   // Get unique categories
   const categories = useMemo(() => {
     if (!featureConfigs) return [];
-    return ['all', ...new Set(featureConfigs.map((f) => f.category).filter(Boolean)];
+    const categoryValues = featureConfigs
+      .map((feature) => feature.category)
+      .filter((category): category is string => typeof category === 'string' && category.length > 0);
+    return ['all', ...new Set(categoryValues)];
   }, [featureConfigs]);
 
   // Statistics
@@ -313,7 +318,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
       )}
 
       {/* Statistics Cards */}
-      <Grid container spacing={2}, sx={{ mb: 3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={2.4}>
           <Card>
             <CardContent>
@@ -486,7 +491,7 @@ export default function UnifiedFeatureSubscriptionPanel() {
                   <TableCell>
                     <Box>
                       <Typography variant="body2" fontWeight={500}>
-                        {feature.id.replace(/-/g, ', ').replace(/\b\w/g, (l) => l.toUpperCase()}
+                        {feature.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                         {isChanged && (
                           <Chip label="Modified" size="small" color="warning" sx={{ ml: 1 }} />
                         )}
@@ -577,7 +582,8 @@ export default function UnifiedFeatureSubscriptionPanel() {
                             : (merged.completionPercentage || 0) >= 80
                               ? 'info'
                               : (merged.completionPercentage || 0) >= 60
-                                ? 'warning': 'default'
+                                ? 'warning'
+                                : 'default'
                         }
                       />
                     )}
@@ -631,4 +637,4 @@ export default function UnifiedFeatureSubscriptionPanel() {
       </Dialog>
     </Box>
   );
-}}
+}

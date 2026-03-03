@@ -15,7 +15,7 @@ export interface MLMetrics {
 export interface MLModel {
   id: string;
   name: string;
-  type: 'performance, ' | 'user-behavior' | 'resource-optimization';
+  type: 'performance' | 'user-behavior' | 'resource-optimization';
   accuracy: number;
   lastTrained: Date;
   status: 'active' | 'training' | 'error'
@@ -327,7 +327,7 @@ export class MLOptimizer {
   applyOptimization(id: string): MLOptimization {
     const optimization = this.optimizations.find(opt => opt.id === id);
     if (!optimization) {
-      throw new Error(`Optimization ${d} not found`);
+      throw new Error(`Optimization ${id} not found`);
   }
 
     optimization.status = 'applied';
@@ -337,7 +337,7 @@ export class MLOptimizer {
   rejectOptimization(id: string): MLOptimization {
     const optimization = this.optimizations.find(opt => opt.id === id);
     if (!optimization) {
-      throw new Error(`Optimization ${d} not found`);
+      throw new Error(`Optimization ${id} not found`);
   }
 
     optimization.status = 'rejected';
@@ -377,7 +377,6 @@ export class MLOptimizer {
 
 // Export singleton instance
 export const mlOptimizer = new MLOptimizer();
-
 
 
 

@@ -367,8 +367,10 @@ export default function PaymentIntegrationPanel({
       
       // Create a test payment intent
       const result = await paymentProcessingService.createPaymentIntent(
-        'test-feature','monthly',
-        paymentMethod.type'test-user'
+        'test-feature',
+        'monthly',
+        paymentMethod.type,
+        'test-user'
       );
 
       if (result.success) {
@@ -505,7 +507,7 @@ export default function PaymentIntegrationPanel({
       </Typography>
 
       {/* Stats Overview */}
-      <Grid container spacing={3}, sx={{ mb: 4 }}>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>

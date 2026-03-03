@@ -331,8 +331,12 @@ export interface ShotNote {
 export interface ShotComment {
   id: string;
   text: string;
+  message?: string;
   authorId?: string;
   authorName?: string;
+  authorEmail?: string;
+  authorAvatar?: string;
+  authorRole?: UserRoleType | string;
   createdAt: string;
   updatedAt?: string;
   resolved?: boolean;
@@ -372,6 +376,10 @@ export interface CastingShot {
   assigneeName?: string;
   assignments?: ShotAssignment[];
   reservedBy?: string;
+  reservedByName?: string;
+  reservedAt?: string;
+  colorTag?: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray' | string;
+  imageUrl?: string;
   comments?: ShotComment[];
   completedAt?: string;
   createdAt?: string;

@@ -27,7 +27,7 @@ export interface CloudSyncConfig {
 export interface CloudProvider {
   id: string;
   name: string;
-  type: 'aws, ' | 'gcp' | 'azure' | 'dropbox' | 'onedrive' | 'googledrive' | 'custom';
+  type: 'aws' | 'gcp' | 'azure' | 'dropbox' | 'onedrive' | 'googledrive' | 'custom';
   description: string;
   icon: string;
   capabilities: CloudCapabilities;

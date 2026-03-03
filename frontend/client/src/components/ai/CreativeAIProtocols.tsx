@@ -1,73 +1,54 @@
 /**
  * CreatorHub Norge - Creative AI Protocols
- * ONNX, Neural Networks og AI-protokoller for foto, video og lyd
- * ⚠️ AI PROTOKOLLER: Følger replit.md protokoller for kreative AI-funksjoner
+ * ONNX, neural networks and creative AI workflows for photo/video/audio
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Switch,
+  Chip,
+  CircularProgress,
+  Divider,
+  FormControl,
   FormControlLabel,
-  Tabs,
-  Tab,
-  TextField,
+  Grid,
+  InputLabel,
+  LinearProgress,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
-  Avatar,
-  Chip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Alert,
-  CircularProgress,
-  Tooltip,
-  Paper,
-  Divider,
-  Grid,
-  LinearProgress,
-  Select,
+  ListItemText,
   MenuItem,
-  FormControl,
-  InputLabel,
+  Paper,
+  Select,
   Slider,
   Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
+import type { ChipProps } from '@mui/material';
 import {
+  Audiotrack as AudioIcon,
+  CameraAlt as CameraIcon,
+  Computer as GpuIcon,
+  Memory as CpuIcon,
+  PhoneAndroid as EdgeIcon,
   Psychology as OnnxIcon,
   SmartToy as AIIcon,
-  Image as PhotoIcon,
   VideoLibrary as VideoIcon,
-  Audiotrack as AudioIcon,
-  AutoFixHigh as EnhanceIcon,
-  CloudUpload,
-  Speed as Speed,
-  Memory,
-  Analytics,
-  TrendingUp,
-  CheckCircle,
-  Error,
-  Warning,
-  Info,
-  Refresh,
-  Settings,
-  Computer,
-  PhoneAndroid,
-  Tune,
-  ModelTraining,
-  CameraAlt as CameraAltAlt,
-  MusicNote as MusicNoteNote,
+  Image as PhotoIcon,
+  PlayArrow as ProcessIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTheming } from '../../utils/theming-helper';
 import { apiRequest } from '@/lib/queryClient';
 
 interface AIModel {
@@ -77,11 +58,11 @@ interface AIModel {
   protocol: 'onnx' | 'pytorch' | 'tensorflow' | 'custom';
   status: 'ready' | 'loading' | 'training' | 'error';
   version: string;
-  size: number; // MB
-  accuracy: number; // %
+  size: number;
+  accuracy: number;
   inputFormats: string[];
   outputFormats: string[];
-  device: 'cpu' | 'gpu' | 'edge'
+  device: 'cpu' | 'gpu' | 'edge';
 }
 
 interface ProcessingTask {
@@ -91,111 +72,215 @@ interface ProcessingTask {
   outputFile?: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress: number;
-  estimatedTime?: number;
-  metrics?: {
-    processTime: number;
-    qualityScore: number;
-    enhancementLevel: number;
+}
+
+interface OnnxConfig {
+  runtime: string;
+  executionProvider: 'webgl' | 'wasm' | 'cpu';
+  memoryLimit: number;
+  parallelism: number;
+  optimization: 'all' | 'basic' | 'none';
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
+const toAIModel = (value: unknown): AIModel | null => {
+  if (!isRecord(value)) return null;
+
+  const type = value.type;
+  const protocol = value.protocol;
+  const status = value.status;
+  const device = value.device;
+
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    !['photo', 'video', 'audio', 'general'].includes(String(type)) ||
+    !['onnx', 'pytorch', 'tensorflow', 'custom'].includes(String(protocol)) ||
+    !['ready', 'loading', 'training', 'error'].includes(String(status)) ||
+    typeof value.version !== 'string' ||
+    typeof value.size !== 'number' ||
+    typeof value.accuracy !== 'number' ||
+    !['cpu', 'gpu', 'edge'].includes(String(device))
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    type: type as AIModel['type'],
+    protocol: protocol as AIModel['protocol'],
+    status: status as AIModel['status'],
+    version: value.version,
+    size: value.size,
+    accuracy: value.accuracy,
+    inputFormats: toStringArray(value.inputFormats),
+    outputFormats: toStringArray(value.outputFormats),
+    device: device as AIModel['device'],
+  };
 };
-}
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
-}
+const toProcessingTask = (value: unknown): ProcessingTask | null => {
+  if (!isRecord(value)) return null;
+  const status = value.status;
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.modelId !== 'string' ||
+    typeof value.inputFile !== 'string' ||
+    !['queued', 'processing', 'completed', 'failed'].includes(String(status)) ||
+    typeof value.progress !== 'number'
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    modelId: value.modelId,
+    inputFile: value.inputFile,
+    outputFile: typeof value.outputFile === 'string' ? value.outputFile : undefined,
+    status: status as ProcessingTask['status'],
+    progress: value.progress,
+  };
+};
+
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
   return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`ai-protocol-tabpanel-${index}`}
-      aria-labelledby={`ai-protocol-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
+    <div role="tabpanel" hidden={value !== index} id={`ai-protocol-tabpanel-${index}`}>
+      {value === index && <Box sx={{ p: 2 }}>{children}</Box>}
     </div>
   );
 }
 
+const fallbackModels: AIModel[] = [
+  {
+    id: 'photo-enhance-onnx',
+    name: 'Photo Enhance Pro',
+    type: 'photo',
+    protocol: 'onnx',
+    status: 'ready',
+    version: '1.3.0',
+    size: 420,
+    accuracy: 92,
+    inputFormats: ['jpg', 'png', 'webp'],
+    outputFormats: ['jpg', 'png'],
+    device: 'gpu',
+  },
+  {
+    id: 'video-color-ai',
+    name: 'Video Color Match',
+    type: 'video',
+    protocol: 'onnx',
+    status: 'ready',
+    version: '2.0.1',
+    size: 680,
+    accuracy: 89,
+    inputFormats: ['mp4', 'mov'],
+    outputFormats: ['mp4', 'mov'],
+    device: 'gpu',
+  },
+  {
+    id: 'audio-clarity-net',
+    name: 'Audio Clarity Net',
+    type: 'audio',
+    protocol: 'onnx',
+    status: 'ready',
+    version: '1.1.4',
+    size: 210,
+    accuracy: 90,
+    inputFormats: ['wav', 'mp3'],
+    outputFormats: ['wav'],
+    device: 'cpu',
+  },
+];
+
 export default function CreativeAIProtocols() {
-  const [currentTab, setCurrentTab] = useState(0);
-  const [selectedModel, setSelectedModel] = useState<AIModel | null>(null);
-  const [processingQueue, setProcessingQueue] = useState<ProcessingTask[]>([]);
-  const [aiEnabled, setAiEnabled] = useState(true);
-  const queryClient = useQueryClient();
-  
-  // Theming system
   const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
 
-  // ⚠️ ONNX Model Configuration
-  const [onnxConfig, setOnnxConfig] = useState({
+  const [currentTab, setCurrentTab] = useState(0);
+  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  const [sourcePath, setSourcePath] = useState('');
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [onnxConfig, setOnnxConfig] = useState<OnnxConfig>({
     runtime: 'onnxruntime-web',
-    executionProvider: 'webgl', // webgl, wasm, cpu
-    memoryLimit: 104, // MB
-    parallelism:  4,
-    optimization: 'all' });
+    executionProvider: 'webgl',
+    memoryLimit: 1024,
+    parallelism: 4,
+    optimization: 'all',
+  });
 
-  // ⚠️ Neural Network Configuration
-  const [neuralConfig, setNeuralConfig] = useState({
-    framework: 'tensorflow.js',
-    batchSize:  1,
-    precision: 'float3', // float32, float16, int8
-    quantization: false,
-    modelCompression: true,
-});
+  const { data: aiModels = [], isLoading: modelsLoading } = useQuery<AIModel[]>({
+    queryKey: ['/api/ai/models'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/ai/models');
+      if (!Array.isArray(response)) return fallbackModels;
+      const models = response.map(toAIModel).filter((model): model is AIModel => model !== null);
+      return models.length > 0 ? models : fallbackModels;
+    },
+    refetchInterval: 5_000,
+  });
 
-  // Fetch available AI models
-  const { data: aiModels = [], isLoading: modelsLoading } = useQuery({
-    queryKey: ['/api/ai/models', ],
-    queryFn: () => apiRequest('/api/ai/models', ),
-    refetchInterval: 1000,
-});
+  const { data: queue = [], isLoading: queueLoading } = useQuery<ProcessingTask[]>({
+    queryKey: ['/api/ai/queue'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/ai/queue');
+      if (!Array.isArray(response)) return [];
+      return response
+        .map(toProcessingTask)
+        .filter((task): task is ProcessingTask => task !== null);
+    },
+    refetchInterval: 2_000,
+  });
 
-  // Fetch processing queue
-  const { data: queue = [], isLoading: queueLoading } = useQuery({
-    queryKey: ['/api/ai/queue', ],
-    queryFn: () => apiRequest('/api/ai/queue', ),
-    refetchInterval: 200,
-});
-
-  // Load AI model mutation
   const loadModel = useMutation({
-    mutationFn: async ({ modeld, config }: { modelId: string; config: any }) => {
-      return apiRequest('/api/ai/model/load', {
-        method: 'POS',
-        body: JSON.stringify({ modeld, config }),
-    });
-  },
+    mutationFn: async ({ modelId, config }: { modelId: string; config: OnnxConfig }) =>
+      apiRequest('/api/ai/model/load', {
+        method: 'POST',
+        body: { modelId, config },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/ai/models', ],});
-  },
-});
+      void queryClient.invalidateQueries({ queryKey: ['/api/ai/models'] });
+    },
+  });
 
-  // Process content mutation
   const processContent = useMutation({
     mutationFn: async ({
-      modeld,
+      modelId,
       inputFile,
-      options,
-  }: {
+    }: {
       modelId: string;
       inputFile: string;
-      options: any;
-}) => {
-      return apiRequest('/api/ai/process', {
-        method: 'POS',
-        body: JSON.stringify({ modeld, inputFile, options }),
-    });
-  },
+    }) =>
+      apiRequest('/api/ai/process', {
+        method: 'POST',
+        body: {
+          modelId,
+          inputFile,
+          options: {
+            quality: 'high',
+            optimization: onnxConfig.optimization,
+            executionProvider: onnxConfig.executionProvider,
+          },
+        },
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/ai/queue', ],});
-  },
-});
+      void queryClient.invalidateQueries({ queryKey: ['/api/ai/queue'] });
+    },
+  });
 
-  const getModelIcon = (type: string) => {
+  const selectedModel = useMemo(
+    () => aiModels.find((model) => model.id === selectedModelId) ?? null,
+    [aiModels, selectedModelId],
+  );
+
+  const getModelIcon = (type: AIModel['type']) => {
     switch (type) {
       case 'photo':
         return <PhotoIcon />;
@@ -205,10 +290,21 @@ export default function CreativeAIProtocols() {
         return <AudioIcon />;
       default:
         return <AIIcon />;
-}
-};
+    }
+  };
 
-  const getStatusColor = (status: string) => {
+  const getDeviceIcon = (device: AIModel['device']) => {
+    switch (device) {
+      case 'gpu':
+        return <GpuIcon />;
+      case 'edge':
+        return <EdgeIcon />;
+      default:
+        return <CpuIcon />;
+    }
+  };
+
+  const getStatusColor = (status: AIModel['status']): ChipProps['color'] => {
     switch (status) {
       case 'ready':
         return 'success';
@@ -220,87 +316,119 @@ export default function CreativeAIProtocols() {
         return 'error';
       default:
         return 'default';
-}
-};
+    }
+  };
 
-  const getDeviceIcon = (device: string) => {
-    switch (device) {
-      case 'gpu':
-        return <Computer />;
-      case 'edge':
-        return <PhoneAndroid />;
-      default:
-        return <Memory />;
-}
-};
+  const renderModelCards = (type: AIModel['type']) => {
+    const models = aiModels.filter((model) => model.type === type);
+
+    return (
+      <Grid container spacing={2}>
+        {models.map((model) => (
+          <Grid item xs={12} md={6} lg={4} key={model.id}>
+            <Card variant="outlined" sx={{ height: '100%', ...theming.getThemedCardSx() }}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Avatar sx={{ bgcolor: '#ff8c00', mr: 2 }}>{getModelIcon(model.type)}</Avatar>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="h6" noWrap>
+                      {model.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {model.protocol.toUpperCase()} • v{model.version}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Stack spacing={1} sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">Nøyaktighet</Typography>
+                    <Typography variant="body2">{model.accuracy}%</Typography>
+                  </Box>
+                  <LinearProgress variant="determinate" value={model.accuracy} />
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2">Størrelse</Typography>
+                    <Typography variant="body2">{model.size} MB</Typography>
+                  </Box>
+                </Stack>
+
+                <Typography variant="body2" sx={{ mb: 2 }}>
+                  <strong>Inn:</strong> {model.inputFormats.join(', ')}
+                  <br />
+                  <strong>Ut:</strong> {model.outputFormats.join(', ')}
+                </Typography>
+
+                <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                  <Chip
+                    icon={getDeviceIcon(model.device)}
+                    label={model.device.toUpperCase()}
+                    size="small"
+                  />
+                  <Chip
+                    label={model.status.toUpperCase()}
+                    color={getStatusColor(model.status)}
+                    size="small"
+                  />
+                </Stack>
+
+                <Button
+                  fullWidth
+                  variant={selectedModelId === model.id ? 'contained' : 'outlined'}
+                  disabled={model.status !== 'ready' || !aiEnabled}
+                  onClick={() => setSelectedModelId(model.id)}
+                >
+                  {selectedModelId === model.id ? 'Valgt' : 'Velg modell'}
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    );
+  };
 
   return (
-    <Card sx={{ maxWidth: 120, mx: 'auto', mt:  2 ,  ...theming.getThemedCardSx() }}>
+    <Card sx={{ maxWidth: 1400, mx: 'auto', mt: 2, ...theming.getThemedCardSx() }}>
       <CardContent sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
-          <Psychology sx={{ mr: 2, color: '#ff8c00' }} />
-          <Typography variant="h5" component="h2" sx={{ color: theming.colors.primary }}>
-            Kreative AI-Protokoller
-          </Typography>
-          <Chip label="ADVANCED" size="small" color="secondary" sx={{ ml:  2 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <OnnxIcon sx={{ color: '#ff8c00' }} />
+          <Typography variant="h5">Kreative AI-protokoller</Typography>
+          <Chip label="ADVANCED" size="small" color="secondary" />
           <FormControlLabel
-            control={
-              <Switch checked={aiEnabled} onChange={(e) => setAiEnabled(e.target.checked)} />
-          }
-            label="AI Aktivert"
             sx={{ ml: 'auto' }}
+            control={<Switch checked={aiEnabled} onChange={(e) => setAiEnabled(e.target.checked)} />}
+            label="AI aktivert"
           />
         </Box>
 
-        <Alert severity="info" sx={{ mb:  3 }}>
-          <strong>AI-Protokoller for Kreativt Arbeid: </strong> ONNX og Neural Network støtte for
-          intelligent bildeforbedring, videonedskalering, lydbehandling og automatisk
-          innholdsanalyse. Alle AI-modeller kjører lokalt for optimal personvern og hastighet.
+        <Alert severity="info" sx={{ mb: 2 }}>
+          ONNX/AI-kjeder for foto, video og lyd. Modellene kan lastes dynamisk og prosessering
+          legges i kø med statusoppdatering i sanntid.
         </Alert>
 
-        {/* AI Processing Queue Status */}
+        {(modelsLoading || queueLoading) && <LinearProgress sx={{ mb: 2 }} />}
+
         {queue.length > 0 && (
-          <Paper
-            sx={{
-              p:  2,
-              mb:  3,
-              bgcolor: 'rgba(3, 150, 243, 0.1)',
-              border: '1px solid #2196f0' }}
-           sx={theming.getThemedCardSx()}>
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                mb:  2}}
-            >
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Aktive AI-Oppgaver</Typography>
-              <Chip label={`${queue.length} i kø`} color="primary" />
+          <Paper sx={{ p: 2, mb: 2, border: '1px solid #2196f0', ...theming.getThemedCardSx() }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="h6">Aktive AI-oppgaver</Typography>
+              <Chip label={`${queue.length} i kø`} color="primary" size="small" />
             </Box>
-            <Grid container spacing={2}>
-              {queue.slice(0, 3).map((task) => (
-                <Grid item xs={12} md={4} key={task.id}>
-                  <Paper sx={{ p: 2, bgcolor: 'white' ,  ...theming.getThemedCardSx() }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                      <Typography variant="subtitle2" sx={{ flexGrow:  1 }}>
-                        {task.inputFile.split('/').pop()}
-                      </Typography>
-                      <Chip
-                        label={task.status.toUpperCase()}
-                        size="small"
-                        color={
-                          task.status === 'completed'
-                            ? 'success'
-                            : task.status === 'failed'
-                              ? 'error'
-                              : 'primary'
-                      }
-                      />
-                    </Box>
-                    <LinearProgress variant="determinate" value={task.progress} sx={{ mb:  1 }} />
-                    <Typography variant="body2" color="text.secondary">
-                      {task.progress}% fullført
+            <Grid container spacing={1.5}>
+              {queue.slice(0, 4).map((task) => (
+                <Grid item xs={12} md={6} key={task.id}>
+                  <Paper sx={{ p: 1.5, ...theming.getThemedCardSx() }}>
+                    <Typography variant="body2" noWrap>
+                      {task.inputFile.split('/').pop()}
                     </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                      <Chip label={task.status.toUpperCase()} size="small" />
+                      <Box sx={{ flex: 1 }}>
+                        <LinearProgress variant="determinate" value={task.progress} />
+                      </Box>
+                      <Typography variant="caption">{task.progress}%</Typography>
+                    </Stack>
                   </Paper>
                 </Grid>
               ))}
@@ -308,127 +436,99 @@ export default function CreativeAIProtocols() {
           </Paper>
         )}
 
-        <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)} sx={{ mb:  3 }}>
-          <Tab
-            icon={<OnnxIcon />}
-            label="ONNX Runtime"
-            id="ai-protocol-tab-0"
-            aria-controls="ai-protocol-tabpanel-0"
-          />
-          <Tab
-            icon={<PhotoIcon />}
-            label="Foto AI"
-            id="ai-protocol-tab-1"
-            aria-controls="ai-protocol-tabpanel-1"
-          />
-          <Tab
-            icon={<VideoIcon />}
-            label="Video AI"
-            id="ai-protocol-tab-2"
-            aria-controls="ai-protocol-tabpanel-2"
-          />
-          <Tab
-            icon={<AudioIcon />}
-            label="Lyd AI"
-            id="ai-protocol-tab-3"
-            aria-controls="ai-protocol-tabpanel-3"
-          />
+        <Tabs value={currentTab} onChange={(_, nextTab: number) => setCurrentTab(nextTab)} sx={{ mb: 2 }}>
+          <Tab icon={<OnnxIcon />} label="ONNX Runtime" />
+          <Tab icon={<PhotoIcon />} label="Foto AI" />
+          <Tab icon={<VideoIcon />} label="Video AI" />
+          <Tab icon={<AudioIcon />} label="Lyd AI" />
         </Tabs>
 
-        {/* ONNX Runtime Panel */}
         <TabPanel value={currentTab} index={0}>
-          <Typography variant="h6" sx={{  mb:  2  }}>
-            ONNX Runtime Konfigurasjon
-          </Typography>
-
-          <Grid container spacing={3}>
+          <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                <Typography variant="subtitle1" sx={{ mb:  2 }}>
-                  Runtime Innstillinger
+              <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                  Runtime-innstillinger
                 </Typography>
 
-                <FormControl fullWidth sx={{ mb:  2 }}>
-                  <InputLabel>Execution Provider</InputLabel>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel id="execution-provider-label">Execution Provider</InputLabel>
                   <Select
+                    labelId="execution-provider-label"
                     value={onnxConfig.executionProvider}
-                    onChange={(e) =>
+                    label="Execution Provider"
+                    onChange={(event) =>
                       setOnnxConfig((prev) => ({
                         ...prev,
-                        executionProvider: e.target.value,
-                    }))
-                  }
+                        executionProvider: event.target.value as OnnxConfig['executionProvider'],
+                      }))
+                    }
                   >
                     <MenuItem value="webgl">WebGL (GPU)</MenuItem>
                     <MenuItem value="wasm">WebAssembly (CPU)</MenuItem>
-                    <MenuItem value="cpu">CPU Only</MenuItem>
+                    <MenuItem value="cpu">CPU only</MenuItem>
                   </Select>
                 </FormControl>
 
                 <Typography gutterBottom>Memory Limit: {onnxConfig.memoryLimit} MB</Typography>
                 <Slider
                   value={onnxConfig.memoryLimit}
-                  onChange={(e, value) =>
+                  onChange={(_, value) =>
                     setOnnxConfig((prev) => ({
                       ...prev,
-                      memoryLimit: value as number,
-                  }))
-                }
+                      memoryLimit: typeof value === 'number' ? value : prev.memoryLimit,
+                    }))
+                  }
                   min={512}
                   max={4096}
                   step={256}
                   marks={[
-                    { value: 52, label: '512MB' },
-                    { value: 104, label: '1GB' },
-                    { value: 208, label: '2GB' },
-                    { value: 406, label: '4GB' },
+                    { value: 512, label: '512MB' },
+                    { value: 1024, label: '1GB' },
+                    { value: 2048, label: '2GB' },
+                    { value: 4096, label: '4GB' },
                   ]}
-                  sx={{ mb:  2 }}
+                  sx={{ mb: 2 }}
                 />
 
                 <Typography gutterBottom>Parallelism: {onnxConfig.parallelism} threads</Typography>
                 <Slider
                   value={onnxConfig.parallelism}
-                  onChange={(e, value) =>
+                  onChange={(_, value) =>
                     setOnnxConfig((prev) => ({
                       ...prev,
-                      parallelism: value as number,
-                  }))
-                }
+                      parallelism: typeof value === 'number' ? value : prev.parallelism,
+                    }))
+                  }
                   min={1}
                   max={16}
                   step={1}
                   marks={[
                     { value: 1, label: '1' },
-                    { value:  4, label: '4' },
-                    { value:  8, label: '8' },
-                    { value:  16, label: '16' },
+                    { value: 4, label: '4' },
+                    { value: 8, label: '8' },
+                    { value: 16, label: '16' },
                   ]}
-                  sx={{ mb:  2 }}
+                  sx={{ mb: 2 }}
                 />
 
-                <Button fullWidth
+                <Button
+                  fullWidth
                   variant="contained"
-                  onClick={() => sx={theming.getThemedButtonSx()}>
-                    loadModel.mutate({
-                      modelId: 'onnx-runtime',
-                      config: onnxConfig,
-                  })
-                }
-                  disabled={loadModel.isPending}
+                  disabled={!aiEnabled || loadModel.isPending}
+                  onClick={() => loadModel.mutate({ modelId: 'onnx-runtime', config: onnxConfig })}
                   sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' } }}
                 >
-                  Konfigurer ONNX Runtime
+                  {loadModel.isPending ? 'Konfigurerer...' : 'Konfigurer ONNX Runtime'}
                 </Button>
               </Paper>
             </Grid>
 
             <Grid item xs={12} md={6}>
-              <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                <Typography variant="subtitle1" sx={{ mb:  2 }}>
-                  ONNX Model Oversikt
+              <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
+                <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                  ONNX modelloversikt
                 </Typography>
-
                 <List>
                   {aiModels
                     .filter((model) => model.protocol === 'onnx')
@@ -447,321 +547,77 @@ export default function CreativeAIProtocols() {
                           />
                           <Chip
                             label={model.status.toUpperCase()}
-                            color={getStatusColor(model.status) as any}
+                            color={getStatusColor(model.status)}
                             size="small"
                           />
                         </Stack>
                       </ListItem>
                     ))}
                 </List>
-
-                <Divider sx={{ my:  2 }} />
-
+                <Divider sx={{ my: 1.5 }} />
                 <Typography variant="body2" color="text.secondary">
-                  <strong>ONNX Fordeler: </strong>
-                  <br />• Kryssplattform kompatibilitet
-                  <br />• Optimalisert inferens ytelse
-                  <br />• Standardisert model format
-                  <br />• Hardware akselerasjon støtte
+                  ONNX gir høy ytelse, standardisert format og lokal inferens for kreativ pipeline.
                 </Typography>
               </Paper>
             </Grid>
           </Grid>
         </TabPanel>
 
-        {/* Photo AI Panel , *, /}
         <TabPanel value={currentTab} index={1}>
-          <Typography variant="h6" sx={{  mb:  2  }}>
-            Foto AI-Modeller
-          </Typography>
-
-          <Grid container spacing={2}>
-            {aiModels
-              .filter((model) => model.type === 'photo')
-              .map((model) => (
-                <Grid item xs={12} md={6} lg={4} key={model.id}>
-                  <Card variant="outlined" sx={{ height: '100%' ,  ...theming.getThemedCardSx() }}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                        <Avatar sx={{ bgcolor: '#ff8c00', mr:  2 }}>
-                          <PhotoIcon />
-                        </Avatar>
-                        <Box>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>{model.name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {model.protocol.toUpperCase()} • v{model.version}
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Stack spacing={1} sx={{ mb:  2 }}>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between' }}
-                        >
-                          <Typography variant="body2">Nøyaktighet: </Typography>
-                          <Typography variant="body2">{model.accuracy}%</Typography>
-                        </Box>
-                        <LinearProgress variant="determinate" value={model.accuracy} />
-
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between' }}
-                        >
-                          <Typography variant="body2">Størrelse: </Typography>
-                          <Typography variant="body2">{model.size}MB</Typography>
-                        </Box>
-                      </Stack>
-
-                      <Typography variant="body2" sx={{ mb:  2 }}>
-                        <strong>Støttede formater: </strong>
-                        <br />
-                        Inn: {model.inputFormats.join('')}
-                        <br />
-                        Ut: {model.outputFormats.join(', ')}
-                      </Typography>
-
-                      <Button
-                        fullWidth
-                        variant={selectedModel?.id === model.id ? 'contained' : 'outlined'}
-                        onClick={() => setSelectedModel(model)}
-                        disabled={model.status !== 'ready'}
-                        startIcon={
-                          model.status === 'loading' ? (
-                            <CircularProgress size={16} />
-                          ) : (
-                            <CameraAlt />
-                          )
-                      }
-                      >
-                        {model.status === 'ready' ? 'Velg Model' : model.status.toUpperCase()}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-          </Grid>
-
-          {selectedModel && selectedModel.type === 'photo' && (
-            <Paper sx={{ p: 2, mt: 3, bgcolor: 'rgba(25, 1400.1)' ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" sx={{  mb:  2  }}>
-                Bildeforbedring med {selectedModel.name}
-              </Typography>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={8}>
-                  <TextField
-                    fullWidth
-                    label="Velg bildefil"
-                    placeholder="Dra og slipp eller klikk for å velge..."
-                    InputProps={{
-                      endAdornment: theming.getThemedIcon(', ')}}
-                  />
-                </Grid>
-                <Grid item xs={12} md={4}>
-                  <Button fullWidth
-                    variant="contained"
-                    onClick={() => sx={theming.getThemedButtonSx()}>
-                      processContent.mutate({
-                        modelId: selectedModel.d,
-                        inputFile: 'example.jpg',
-                        options: { enhancement: 'auto' },
-                    })
-                  }
-                    disabled={processContent.isPending}
-                    sx={{
-                      bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' }}}
-                  >
-                    Forbedre Bilde
-                  </Button>
-                </Grid>
-              </Grid>
-            </Paper>
-          )}
+          {renderModelCards('photo')}
         </TabPanel>
 
-        {/* Video AI Panel */}
         <TabPanel value={currentTab} index={2}>
-          <Typography variant="h6" sx={{  mb:  2  }}>
-            Video AI-Modeller
-          </Typography>
-
-          <Grid container spacing={2}>
-            {aiModels
-              .filter((model) => model.type === 'video')
-              .map((model) => (
-                <Grid item xs={12} md={6} key={model.id}>
-                  <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                        <Avatar sx={{ bgcolor: '#1976d0', mr:  2 }}>
-                          <VideoIcon />
-                        </Avatar>
-                        <Box>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>{model.name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Video Processing • {model.device.toUpperCase()}
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Typography variant="body2" sx={{ mb:  2 }}>
-                        Avansert videobehandling med neural nettverk for kvalitetsforbedring,
-                        stabilisering og automatisk innholdsanalyse.
-                      </Typography>
-
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip label="4K Support" size="small" color="primary" />
-                        <Chip label="Real-time" size="small" color="success" />
-                        <Chip label="GPU Accelerated" size="small" color="secondary" />
-                      </Stack>
-
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        disabled={model.status !== 'ready'}
-                        startIcon={theming.getThemedIcon('videoLibrary')}
-                      >
-                        {model.status === 'ready' ? 'Process Video' : 'Loading...'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-          </Grid>
+          {renderModelCards('video')}
         </TabPanel>
 
-        {/* Audio AI Panel */}
         <TabPanel value={currentTab} index={3}>
-          <Typography variant="h6" sx={{  mb:  2  }}>
-            Lyd AI-Modeller
-          </Typography>
-
-          <Grid container spacing={2}>
-            {aiModels
-              .filter((model) => model.type === 'audio')
-              .map((model) => (
-                <Grid item xs={12} md={6} key={model.id}>
-                  <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                        <Avatar sx={{ bgcolor: '#9c27b0', mr:  2 }}>
-                          <AudioIcon />
-                        </Avatar>
-                        <Box>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>{model.name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Audio Enhancement • {model.accuracy}% accuracy
-                          </Typography>
-                        </Box>
-                      </Box>
-
-                      <Typography variant="body2" sx={{ mb:  2 }}>
-                        Intelligent lydbehandling med støyreduksjon, kvalitetsforbedring og
-                        automatisk mastering for profesjonell lydkvalitet.
-                      </Typography>
-
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip label="Noise Reduction" size="small" color="primary" />
-                        <Chip label="Auto Mastering" size="small" color="success" />
-                        <Chip label="48kHz Support" size="small" color="secondary" />
-                      </Stack>
-
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        disabled={model.status !== 'ready'}
-                        startIcon={<MusicNote />}
-                      >
-                        {model.status === 'ready' ? 'Process Audio' : 'Loading...'}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-          </Grid>
+          {renderModelCards('audio')}
         </TabPanel>
 
-        {/* AI Protocol Comparison */}
-        <Divider sx={{ my:  3 }} />
-        <Typography variant="h6" sx={{  mb:  2  }}>
-          AI Protocol Sammenligning
-        </Typography>
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap:  2}}
-        >
-          <Paper sx={{ p: 2, border: '2px solid #ff8c00' ,  ...theming.getThemedCardSx() }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-              <OnnxIcon sx={{ mr: 1, color: '#ff8c00' }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>ONNX</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🔄 Kryssplattform kompatibilitet
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              ⚡ Optimalisert inferens
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🏭 Industristandard format
-            </Typography>
-            <Typography variant="body2">🔧 Hardware akselerasjon</Typography>
-          </Paper>
-
-          <Paper sx={{ p: 2, border: '2px solid #1976d2' ,  ...theming.getThemedCardSx() }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-              <PhotoIcon sx={{ mr: 1, color: '#1976d2' }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Foto AI</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              📸 Intelligent bildeforbedring
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🎨 Stiloverføring og effekter
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🔍 Objektdeteksjon og -fjerning
-            </Typography>
-            <Typography variant="body2">📊 Kvalitetsanalyse</Typography>
-          </Paper>
-
-          <Paper sx={{ p: 2, border: '2px solid #9c27b0' ,  ...theming.getThemedCardSx() }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-              <VideoIcon sx={{ mr: 1, color: '#9c27b0' }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Video AI</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🎬 Videooppskalering og stabilisering
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              ✂️ Automatisk scenedeling
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🎯 Objekttracking
-            </Typography>
-            <Typography variant="body2">🎨 Stiloverføring for video</Typography>
-          </Paper>
-
-          <Paper sx={{ p: 2, border: '2px solid #4caf50' ,  ...theming.getThemedCardSx() }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-              <AudioIcon sx={{ mr: 1, color: '#4caf50' }} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Lyd AI</Typography>
-            </Box>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🔇 Intelligent støyreduksjon
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🎧 Automatisk mastering
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  1 }}>
-              🗣️ Stemme isolering
-            </Typography>
-            <Typography variant="body2">🎵 Musikk separasjon</Typography>
-          </Paper>
-        </Box>
+        <Paper sx={{ p: 2, mt: 2, ...theming.getThemedCardSx() }}>
+          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+            Start prosessering
+          </Typography>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={5}>
+              <TextField
+                fullWidth
+                label="Kilde-fil"
+                placeholder="/path/to/input.mov"
+                value={sourcePath}
+                onChange={(event) => setSourcePath(event.target.value)}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                disabled
+                label="Valgt modell"
+                value={selectedModel ? `${selectedModel.name} (${selectedModel.protocol})` : 'Ingen valgt'}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Button
+                fullWidth
+                variant="contained"
+                startIcon={processContent.isPending ? <CircularProgress size={16} /> : <ProcessIcon />}
+                disabled={!aiEnabled || !selectedModel || sourcePath.trim().length === 0 || processContent.isPending}
+                onClick={() => {
+                  if (!selectedModel) return;
+                  processContent.mutate({ modelId: selectedModel.id, inputFile: sourcePath.trim() });
+                }}
+              >
+                {processContent.isPending ? 'Kjører...' : 'Kjør AI-prosess'}
+              </Button>
+            </Grid>
+          </Grid>
+          {!aiEnabled && (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              AI er deaktivert. Slå på AI-bryteren for å starte prosessering.
+            </Alert>
+          )}
+        </Paper>
       </CardContent>
     </Card>
   );

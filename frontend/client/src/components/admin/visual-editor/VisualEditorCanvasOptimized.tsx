@@ -4,25 +4,19 @@
  */
 
 import { useTheming } from '../../../utils/theming-helper';
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
-import {
-  Box,
-  Paper,
-  Button,
-  ButtonGroup,
-  Tooltip,
-  Typography,
-  Grid,
-} from '@mui/material';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Box, Paper, Button, ButtonGroup, Tooltip, Typography, Grid, IconButton } from '@mui/material';
 import {
   CropFree as SelectIcon,
   Edit as EditIcon,
   Add as AddIcon,
-  Remove as RemoveIcon,
-  Fullscreen as FullscreenIcon,
+  Delete as DeleteIcon,
   ZoomIn as ZoomInIcon,
   ZoomOut as ZoomOutIcon,
   Refresh as RefreshIcon,
+  Straighten as ResizeIcon,
+  GridOn as GridOnIcon,
+  GridOff as GridOffIcon,
 } from '@mui/icons-material';
 
 interface EditorElement {
@@ -52,7 +46,8 @@ interface EditorElement {
     fontStyle?: string;
     background?: string;
     textStroke?: string;
-};
+    textAlign?: 'left' | 'center' | 'right' | 'justify';
+  };
   props: Record<string, unknown>;
   children?: string[];
   parent?: string;
@@ -66,8 +61,8 @@ interface VisualEditorCanvasProps {
       width: number;
       height: number;
       backgroundColor: string;
-};
-};
+    };
+  };
   selectedElements: string[];
   onElementSelect: (elementId: string) => void;
   onElementUpdate: (elementId: string, updates: Partial<EditorElement>) => void;
@@ -90,309 +85,200 @@ interface VisualEditorCanvasProps {
   onDrop: (position: { x: number; y: number }) => void;
 }
 
-// Memoized element renderer for better performance
-const ElementRenderer = memo(({
-  element,
-  isSelected,
-  onElementClick,
-  onElementDoubleClick
-}: {
+interface ElementRendererProps {
   element: EditorElement;
   isSelected: boolean;
   onElementClick: (elementId: string) => void;
-  onElementDoubleClick: (elementId: string) => void
-}) => {
-  const handleClick = useCallback(
-  
-  // Theming system
-  const theming = useTheming( , 'prototype_tester,');() => {
-    onElementClick(element.id);
-}, [element.id, onElementClick]);
+  onElementDoubleClick: (elementId: string) => void;
+  onElementMouseDown: (event: React.MouseEvent, elementId: string) => void;
+}
 
-  const handleDoubleClick = useCallback(() => {
-    onElementDoubleClick(element.id);
-}, [element.id, onElementDoubleClick]);
+const getStringProp = (props: Record<string, unknown>, key: string, fallback: string): string => {
+  const value = props[key];
+  return typeof value === 'string' ? value : fallback;
+};
 
-  const elementStyle = useMemo(() => ({
-    position: 'absolute' as const,
-    left: element.x,
-    top: element.y,
-    width: element.width,
-    height: element.height,
-    cursor: 'pointer',
-    border: isSelected ? '2px solid #1976d2' : '1px solid transparent',
-    borderRadius: '4px','&:hover': {
-      border: '2px solid #42a5f0',
+const ElementRenderer = memo(
+  ({
+    element,
+    isSelected,
+    onElementClick,
+    onElementDoubleClick,
+    onElementMouseDown,
+  }: ElementRendererProps) => {
+    const handleClick = useCallback(
+      (event: React.MouseEvent) => {
+        event.stopPropagation();
+        onElementClick(element.id);
+      },
+      [element.id, onElementClick],
+    );
+
+    const handleDoubleClick = useCallback(
+      (event: React.MouseEvent) => {
+        event.stopPropagation();
+        onElementDoubleClick(element.id);
+      },
+      [element.id, onElementDoubleClick],
+    );
+
+    const elementStyle = useMemo(
+      () => ({
+        position: 'absolute' as const,
+        left: element.x,
+        top: element.y,
+        width: element.width,
+        height: element.height,
+        cursor: 'move',
+        border: isSelected ? '2px solid #1976d2' : '1px solid transparent',
+        borderRadius: '4px',
+        '&:hover': { border: '2px solid #42a5f5' },
+        ...element.styles,
+      }),
+      [element, isSelected],
+    );
+
+    return (
+      <Box
+        sx={elementStyle}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onMouseDown={(event) => onElementMouseDown(event, element.id)}
+      >
+        {element.type === 'text' && (
+          <Typography
+            sx={{
+              width: '100%',
+              height: '100%',
+              fontSize: element.styles.fontSize ?? '14px',
+              fontWeight: element.styles.fontWeight ?? 'normal',
+              color: element.styles.color ?? '#222',
+              textAlign: element.styles.textAlign ?? 'left',
+              ...element.styles,
+            }}
+          >
+            {getStringProp(element.props, 'text', 'Text Element')}
+          </Typography>
+        )}
+
+        {element.type === 'button' && (
+          <Button variant="contained" sx={{ width: '100%', height: '100%', ...element.styles }}>
+            {getStringProp(element.props, 'text', 'Button')}
+          </Button>
+        )}
+
+        {element.type === 'image' && (
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              backgroundImage: `url(${getStringProp(element.props, 'src', 'https://via.placeholder.com/320x180')})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              ...element.styles,
+            }}
+          />
+        )}
+
+        {element.type === 'card' && (
+          <Paper sx={{ width: '100%', height: '100%', p: 1, ...element.styles }}>
+            <Typography variant="subtitle2" fontWeight={600}>
+              {getStringProp(element.props, 'title', 'Card Title')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {getStringProp(element.props, 'content', 'Card content...')}
+            </Typography>
+          </Paper>
+        )}
+
+        {element.type === 'grid' && (
+          <Grid container spacing={1} sx={{ width: '100%', height: '100%', ...element.styles }}>
+            <Grid item xs={6}>
+              <Box sx={{ p: 1, bgcolor: '#f5f5f5', height: '100%' }}>
+                <Typography variant="caption">Grid Item 1</Typography>
+              </Box>
+            </Grid>
+            <Grid item xs={6}>
+              <Box sx={{ p: 1, bgcolor: '#ececec', height: '100%' }}>
+                <Typography variant="caption">Grid Item 2</Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        )}
+
+        {(element.type === 'container' || element.type === 'audio' || element.type === 'video') && (
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              border: '1px dashed #888',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              ...element.styles,
+            }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              {element.type.toUpperCase()}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    );
   },
-    ...element.styles
-}), [element, isSelected]);
+);
 
-  return (
-    <Box
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      sx={elementStyle}
-    >
-      {element.type === 'text' && (
-        <Typography
-          sx={{
-            fontSize: element.styles.fontSize || '14px',
-            fontFamily: element.styles.fontFamily || 'inherit',
-            fontWeight: lement.styles.fontWeight || 'normal',
-            color: element.styles.color || 'inherit',
-            textAlign: element.styles.textAlign || 'left',
-            lineHeight: element.styles.lineHeight || 'normal',
-            ...element.styles
-        }}
-        >
-          {element.props.text || 'Text Element'}
-        </Typography>
-      )}
-      
-      {element.type === 'button' && (
-        <Button variant="contained"
-          sx={{
-            width: '100%',
-            height: '100%',
-            ...element.styles
-        }}
-         sx={theming.getThemedButtonSx()}>
-          {element.props.text || 'Button'}
-        </Button>
-      )}
-      
-      {element.type === 'image' && (
-        <Box
-          sx={{
-            width: '100%',
-            height: '100%',
-            backgroundImage: `url(${element.props.src || 'https://via.placeholder.com/15'})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            ...element.styles
-        }}
-        />
-      )}
-      
-      {element.type === 'card' && (
-        <Paper
-          elevation={2}
-          sx={{
-            width: '100%',
-            height: '100%',
-            p:  2,
-            display: 'flex',
-            flexDirection: 'column',
-            ...element.styles
-        }}
-         sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            {element.props.title || 'Card Title'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {element.props.content || 'Card content goes here...'}
-          </Typography>
-        </Paper>
-      )}
-      
-      {element.type === 'container' && (
-        <Box
-          sx={{
-            width: '100%',
-            height: '100%',
-            border: '1px dashed #ccc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            ...element.styles
-        }}
-        >
-          <Typography variant="body2" color="text.secondary">
-            Container
-          </Typography>
-        </Box>
-      )}
-      
-      {element.type === 'grid' && (
-        <Grid container spacing={1} sx={{ width: '100%', height: '100%', ...element.styles }}>
-          <Grid size={{ xs:  6 }}>
-            <Box sx={{ p: 1, backgroundColor: '#f5f5f0', height: '100%'}}>
-              <Typography variant="caption">Grid Item 1</Typography>
-            </Box>
-          </Grid>
-          <Grid size={{ xs:  6 }}>
-            <Box sx={{ p: 1, backgroundColor: '#e0e0e0', height: '100%'}}>
-              <Typography variant="caption">Grid Item 2</Typography>
-            </Box>
-          </Grid>
-        </Grid>
-      )}
-    </Box>
-  );
-});
+ElementRenderer.displayName = 'ElementRenderer';
 
-// Memoized canvas toolbar
-const CanvasToolbar = memo(({
-  onZoomIn,
-  onZoomOut,
-  onResetZoom,
-  canvasZoom
-}: {
-  onZoomIn: () => void;
-  onZoomOut: () => void;
-  onResetZoom: () => void;
-  canvasZoom: number
-}) => (
-  <Box sx={{ 
-    position: 'absolute',
-    top:  10,
-    right:  10,
-    zIndex: 10,
-    display: 'flex',
-    gap: 1 }}>
-    <ButtonGroup size="small" variant="outlined">
-      <Button
-        onClick={onZoomOut}
-        disabled={canvasZoom <= 0.1}
-      >
-        <ZoomOutIcon />
-      </Button>
-      <Button
-        onClick={onResetZoom}
-      >
-        {Math.round(canvasZoom * 100)}%
-      </Button>
-      <Button
-        onClick={onZoomIn}
-        disabled={canvasZoom >= 3}
-      >
-        <ZoomInIcon />
-      </Button>
-    </ButtonGroup>
-  </Box>
-));
-
-// Memoized rulers
-const Rulers = memo(({
-  showRulers,
-  gridSize,
-  canvasZoom,
-  canvasPan,
-  pageWidth,
-  pageHeight
-}: {
+interface RulersProps {
   showRulers: boolean;
   gridSize: number;
   canvasZoom: number;
   canvasPan: { x: number; y: number };
-  pageWidth: number;
-  pageHeight: number
-}) => {
-  if (!showRulers) return null;
+}
+
+const Rulers = memo(({ showRulers, gridSize, canvasZoom, canvasPan }: RulersProps) => {
+  if (!showRulers) {
+    return null;
+  }
 
   return (
     <>
-      {/* Horizontal Ruler */}
-      <Box sx={{ 
-        height:  20, 
-        backgroundColor: '#e0e0e0', 
-        borderBottom: '1px solid #ccc',
-        position: 'relative',
-        overflow: 'hidden'
-  }}>
-        <Box sx={{ 
-          width:  20, 
-          height: '100%', 
-          backgroundColor: '#d0d0d0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize:  10,
-          fontWeight: 'bold'
-    }}>
-          px
-        </Box>
-        <Box sx={{ 
-          position: 'absolute', 
-          left:  20, 
-          right: 0
-         , top: 0, height: '100%',
-          backgroundImage: `linear-gradient(to right, #999',1px, transparent 1px)`,
+      <Box
+        sx={{
+          position: 'absolute',
+          left: 20,
+          top: 0,
+          right: 0,
+          height: 20,
+          borderBottom: '1px solid #ccc',
+          bgcolor: '#f0f0f0',
+          backgroundImage: 'linear-gradient(to right, #999 1px, transparent 1px)',
           backgroundSize: `${gridSize * canvasZoom}px 20px`,
-          transform: `translateX(${canvasPan.x}px)`
-      }} />
-      </Box>
-      
-      {/* Vertical Ruler */}
-      <Box sx={{ 
-        width:  20, 
-        backgroundColor: '#e0e0e0', 
-        borderRight: '1px solid #ccc',
-        position: 'absolute',
-        left:  0,
-        top:  20,
-        height: 'calc(100% - 20px, )',
-        overflow: 'hidden'
-  }}>
-        <Box sx={{ 
-          width: '100%', 
-          height:  20, 
-          backgroundColor: '#d0d0d0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize:  10,
-          fontWeight: 'bold'
-    }}>
-          px
-        </Box>
-        <Box sx={{ 
-          position: 'absolute', 
-          top:  20, 
-          left: 0
-          bottom: 0
-         , width: '100%',
-          backgroundImage: `linear-gradient(to bottom, #999',1px, transparent 1px)`,
+          transform: `translateX(${canvasPan.x}px)`,
+          zIndex: 2,
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          left: 0,
+          top: 20,
+          bottom: 0,
+          width: 20,
+          borderRight: '1px solid #ccc',
+          bgcolor: '#f0f0f0',
+          backgroundImage: 'linear-gradient(to bottom, #999 1px, transparent 1px)',
           backgroundSize: `20px ${gridSize * canvasZoom}px`,
-          transform: `translateY(${canvasPan.y}px)`
-      }} />
-      </Box>
+          transform: `translateY(${canvasPan.y}px)`,
+          zIndex: 2,
+        }}
+      />
     </>
   );
 });
 
-// Memoized drop zone indicator
-const DropZoneIndicator = memo(({
-  isDragging,
-  draggedComponent
-}: {
-  isDragging: boolean;
-  draggedComponent: string | null
-}) => {
-  if (!isDragging) return null;
-
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        top:  0,
-        left:  0,
-        right:  0,
-        bottom:  0,
-        border: '2px dashed #1976d0',
-        backgroundColor: 'rgba(5, 118, 210, 0.1)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        pointerEvents: 'none'
-  }}
-    >
-      <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
-        Drop {draggedComponent} here
-      </Typography>
-    </Box>
-  );
-});
+Rulers.displayName = 'Rulers';
 
 const VisualEditorCanvasOptimized: React.FC<VisualEditorCanvasProps> = ({
   project,
@@ -415,130 +301,248 @@ const VisualEditorCanvasOptimized: React.FC<VisualEditorCanvasProps> = ({
   draggedComponent,
   onDragStart,
   onDragEnd,
-  onDrop
+  onDrop,
 }) => {
+  const theming = useTheming('prototype_tester');
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [activeDrag, setActiveDrag] = useState<{ id: string; offsetX: number; offsetY: number } | null>(
+    null,
+  );
 
-  // Memoized callbacks to prevent unnecessary re-renders
-  const handleElementClick = useCallback((elementId: string) => {
-    onElementSelect(elementId);
-}, [onElementSelect]);
+  const elements = useMemo(() => Object.values(project.elements), [project.elements]);
 
-  const handleElementDoubleClick = useCallback((elementId: string) => {
-    // Open element editor or properties panel
-    onElementSelect(elementId);
-}, [onElementSelect]);
+  useEffect(() => {
+    const handleDelete = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete') {
+        return;
+      }
+      selectedElements.forEach((elementId) => onElementDelete(elementId));
+    };
 
-  const handleCanvasClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onElementSelect('');
-}
-}, [onElementSelect]);
+    window.addEventListener('keydown', handleDelete);
+    return () => window.removeEventListener('keydown', handleDelete);
+  }, [selectedElements, onElementDelete]);
 
-  const handleCanvasDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    onDrop({,  y });
-    onDragEnd();
-}, [onDrop, onDragEnd]);
+  useEffect(() => {
+    if (!activeDrag) {
+      return;
+    }
 
-  const handleCanvasDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-}, []);
+    const onMouseMoveWindow = (event: MouseEvent) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+
+      const rawX = (event.clientX - rect.left - activeDrag.offsetX - canvasPan.x) / canvasZoom;
+      const rawY = (event.clientY - rect.top - activeDrag.offsetY - canvasPan.y) / canvasZoom;
+
+      const x = snapToGrid ? Math.round(rawX / gridSize) * gridSize : rawX;
+      const y = snapToGrid ? Math.round(rawY / gridSize) * gridSize : rawY;
+
+      onElementDrag(activeDrag.id, { x, y });
+    };
+
+    const onMouseUpWindow = () => {
+      setActiveDrag(null);
+      onDragEnd();
+    };
+
+    window.addEventListener('mousemove', onMouseMoveWindow);
+    window.addEventListener('mouseup', onMouseUpWindow);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMoveWindow);
+      window.removeEventListener('mouseup', onMouseUpWindow);
+    };
+  }, [activeDrag, canvasPan, canvasZoom, gridSize, onDragEnd, onElementDrag, snapToGrid]);
+
+  const handleElementClick = useCallback(
+    (elementId: string) => {
+      onElementSelect(elementId);
+    },
+    [onElementSelect],
+  );
+
+  const handleElementDoubleClick = useCallback(
+    (elementId: string) => {
+      const current = project.elements[elementId];
+      if (!current) {
+        return;
+      }
+
+      const currentBorder = current.styles.border;
+      onElementUpdate(elementId, {
+        styles: {
+          ...current.styles,
+          border: currentBorder ? undefined : '2px solid #ff9800',
+        },
+      });
+    },
+    [onElementUpdate, project.elements],
+  );
+
+  const handleElementMouseDown = useCallback(
+    (event: React.MouseEvent, elementId: string) => {
+      event.stopPropagation();
+      if (event.button !== 0) {
+        return;
+      }
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      const element = project.elements[elementId];
+      if (!rect || !element) {
+        return;
+      }
+
+      setActiveDrag({
+        id: elementId,
+        offsetX: event.clientX - rect.left - (element.x * canvasZoom + canvasPan.x),
+        offsetY: event.clientY - rect.top - (element.y * canvasZoom + canvasPan.y),
+      });
+      onElementSelect(elementId);
+      onDragStart(element.type);
+    },
+    [canvasPan, canvasZoom, onDragStart, onElementSelect, project.elements],
+  );
+
+  const handleCanvasClick = useCallback(
+    (event: React.MouseEvent) => {
+      if (event.target === event.currentTarget) {
+        onElementSelect('');
+      }
+    },
+    [onElementSelect],
+  );
+
+  const handleCanvasDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = (event.clientX - rect.left - canvasPan.x) / canvasZoom;
+      const y = (event.clientY - rect.top - canvasPan.y) / canvasZoom;
+      onDrop({ x, y });
+      onDragEnd();
+    },
+    [canvasPan, canvasZoom, onDrop, onDragEnd],
+  );
+
+  const handleCanvasDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+  }, []);
 
   const handleZoomIn = useCallback(() => {
     onCanvasZoomChange(Math.min(canvasZoom * 1.2, 5));
-}, [canvasZoom, onCanvasZoomChange]);
+  }, [canvasZoom, onCanvasZoomChange]);
 
   const handleZoomOut = useCallback(() => {
     onCanvasZoomChange(Math.max(canvasZoom / 1.2, 0.1));
-}, [canvasZoom, onCanvasZoomChange]);
+  }, [canvasZoom, onCanvasZoomChange]);
 
   const handleResetZoom = useCallback(() => {
     onCanvasZoomChange(1);
-    onCanvasPanChange({ x: 0y:  0 });
-}, [onCanvasZoomChange, onCanvasPanChange]);
+    onCanvasPanChange({ x: 0, y: 0 });
+  }, [onCanvasPanChange, onCanvasZoomChange]);
 
-  // Memoized values to prevent unnecessary recalculations
-  const elements = useMemo(() => Object.values(project.elements), [project.elements]);
-  
-  const canvasStyle = useMemo(() => ({
-    position: 'relative' as const,
-    width: project.pageSettings.width * canvasZoom,
-    height: project.pageSettings.height * canvasZoom,
-    backgroundColor: project.pageSettings.backgroundColor,
-    margin: showRulers ? '0 0 0 20px' : ',',
-    marginTop: showRulers ? '20px' : ', ',
-    border: '1px solid #ccc',
-    backgroundImage: showGrid ? `radial-gradient(circle, #ccc',1px, transparent 1px)` : 'none',
-    backgroundSize: `${gridSize * canvasZoom}px ${gridSize * canvasZoom}px`,
-    transform: `translate(${canvasPan.x}px, ${canvasPan.y}px)`,
-    cursor: isDragging ? 'grabbing' : 'grab'
-}), [
-    project.pageSettings,
-    canvasZoom,
-    showRulers,
-    showGrid,
-    gridSize,
-    canvasPan,
-    isDragging
-  ]);
+  const resizeSelected = useCallback(
+    (factor: number) => {
+      selectedElements.forEach((elementId) => {
+        const element = project.elements[elementId];
+        if (!element) {
+          return;
+        }
 
-  const containerStyle = useMemo(() => ({
-    flex:  1,
-    position: 'relative' as const,
-    overflow: 'auto' as const
-}), []);
+        onElementResize(elementId, {
+          width: Math.max(20, Math.round(element.width * factor)),
+          height: Math.max(20, Math.round(element.height * factor)),
+        });
+      });
+    },
+    [onElementResize, project.elements, selectedElements],
+  );
+
+  const canvasStyle = useMemo(
+    () => ({
+      position: 'relative' as const,
+      width: project.pageSettings.width * canvasZoom,
+      height: project.pageSettings.height * canvasZoom,
+      backgroundColor: project.pageSettings.backgroundColor,
+      marginLeft: showRulers ? 20 : 0,
+      marginTop: showRulers ? 20 : 0,
+      border: '1px solid #ccc',
+      backgroundImage: showGrid
+        ? 'radial-gradient(circle, rgba(153,153,153,0.5) 1px, transparent 1px)'
+        : 'none',
+      backgroundSize: `${gridSize * canvasZoom}px ${gridSize * canvasZoom}px`,
+      transform: `translate(${canvasPan.x}px, ${canvasPan.y}px)`,
+      cursor: activeDrag ? 'grabbing' : 'default',
+    }),
+    [activeDrag, canvasPan, canvasZoom, gridSize, project.pageSettings, showGrid, showRulers],
+  );
 
   return (
-    <Box sx={containerStyle}>
-      {/* Canvas Toolbar */}
-      <CanvasToolbar
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onResetZoom={handleResetZoom}
-        canvasZoom={canvasZoom}
-      />
-
-      {/* Responsive Preview Controls */}
-      <Box sx={{ 
-        position: 'absolute',
-        top:  10,
-        left:  10,
-        zIndex: 10,
-        display: 'flex',
-        gap: 1 }}>
+    <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }}>
+      <Box sx={{ position: 'absolute', top: 10, right: 10, zIndex: 10, display: 'flex', gap: 1 }}>
         <ButtonGroup size="small" variant="outlined">
-          <Tooltip title="Select Tool">
-            <Button startIcon={<SelectIcon />}>Select</Button>
+          <Button onClick={handleZoomOut} disabled={canvasZoom <= 0.1}>
+            <ZoomOutIcon fontSize="small" />
+          </Button>
+          <Button onClick={handleResetZoom}>{Math.round(canvasZoom * 100)}%</Button>
+          <Button onClick={handleZoomIn} disabled={canvasZoom >= 5}>
+            <ZoomInIcon fontSize="small" />
+          </Button>
+        </ButtonGroup>
+
+        <ButtonGroup size="small" variant="outlined">
+          <Tooltip title="Toggle Rulers">
+            <Button onClick={() => onShowRulersChange(!showRulers)}>
+              {showRulers ? <GridOnIcon fontSize="small" /> : <GridOffIcon fontSize="small" />}
+            </Button>
           </Tooltip>
-          <Tooltip title="Text Tool">
-            <Button startIcon={<EditIcon />}>Text</Button>
+          <Tooltip title="Scale Up Selected">
+            <Button onClick={() => resizeSelected(1.1)} disabled={selectedElements.length === 0}>
+              <ResizeIcon fontSize="small" />
+            </Button>
           </Tooltip>
-          <Tooltip title="Button Tool">
-            <Button startIcon={<AddIcon />}>Button</Button>
-          </Tooltip>
-          <Tooltip title="Image Tool">
-            <Button startIcon={<AddIcon />}>Image</Button>
+          <Tooltip title="Delete Selected">
+            <Button
+              onClick={() => selectedElements.forEach((id) => onElementDelete(id))}
+              disabled={selectedElements.length === 0}
+            >
+              <DeleteIcon fontSize="small" />
+            </Button>
           </Tooltip>
         </ButtonGroup>
       </Box>
 
-      {/* Advanced Canvas with Rulers */}
-      <Box sx={{ position: 'relative'}}>
-        {/* Rulers */}
-        <Rulers
-          showRulers={showRulers}
-          gridSize={gridSize}
-          canvasZoom={canvasZoom}
-          canvasPan={canvasPan}
-          pageWidth={project.pageSettings.width}
-          pageHeight={project.pageSettings.height}
-        />
-        
-        {/* Main Canvas Area */}
+      <Box sx={{ position: 'absolute', top: 10, left: 10, zIndex: 10, display: 'flex', gap: 1 }}>
+        <ButtonGroup size="small" variant="outlined">
+          <Tooltip title="Select Tool">
+            <Button startIcon={<SelectIcon />} onMouseDown={() => onDragStart('container')}>
+              Select
+            </Button>
+          </Tooltip>
+          <Tooltip title="Text Tool">
+            <Button startIcon={<EditIcon />} onMouseDown={() => onDragStart('text')}>
+              Text
+            </Button>
+          </Tooltip>
+          <Tooltip title="Button Tool">
+            <Button startIcon={<AddIcon />} onMouseDown={() => onDragStart('button')}>
+              Button
+            </Button>
+          </Tooltip>
+          <Tooltip title="Reset Pan">
+            <IconButton size="small" onClick={() => onCanvasPanChange({ x: 0, y: 0 })}>
+              <RefreshIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </ButtonGroup>
+      </Box>
+
+      <Box sx={{ position: 'relative' }}>
+        <Rulers showRulers={showRulers} gridSize={gridSize} canvasZoom={canvasZoom} canvasPan={canvasPan} />
+
         <Box
           ref={canvasRef}
           sx={canvasStyle}
@@ -546,34 +550,39 @@ const VisualEditorCanvasOptimized: React.FC<VisualEditorCanvasProps> = ({
           onDrop={handleCanvasDrop}
           onDragOver={handleCanvasDragOver}
         >
-          {/* Render Elements */}
-          {elements.map(element => (
+          {elements.map((element) => (
             <ElementRenderer
               key={element.id}
               element={element}
               isSelected={selectedElements.includes(element.id)}
               onElementClick={handleElementClick}
               onElementDoubleClick={handleElementDoubleClick}
+              onElementMouseDown={handleElementMouseDown}
             />
           ))}
-          
-          {/* Drop Zone Indicator */}
-          <DropZoneIndicator
-            isDragging={isDragging}
-            draggedComponent={draggedComponent}
-          />
+
+          {isDragging && (
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                border: '2px dashed #1976d2',
+                bgcolor: 'rgba(25, 118, 210, 0.08)',
+                pointerEvents: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography variant="subtitle1" sx={{ color: theming.colors.primary }}>
+                Drop {draggedComponent ?? 'component'} here
+              </Typography>
+            </Box>
+          )}
         </Box>
       </Box>
     </Box>
   );
 };
 
-// Set display names for debugging
-ElementRenderer.displayName = 'ElementRenderer';
-CanvasToolbar.displayName = 'CanvasToolbar';
-Rulers.displayName = 'Rulers';
-DropZoneIndicator.displayName ='DropZoneIndicator';
-
 export default memo(VisualEditorCanvasOptimized);
-
-

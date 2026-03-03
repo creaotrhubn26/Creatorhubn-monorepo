@@ -40,7 +40,7 @@ export interface VirtualizationState {
   visibleItems: VirtualItem[];
   renderedItems: VirtualItem[];
   isScrolling: boolean;
-  scrollDirection: 'up, ' | 'down' | 'left' | 'right' | 'none';
+  scrollDirection: 'up' | 'down' | 'left' | 'right' | 'none';
   scrollVelocity: number;
   lastScrollTime: number;
 }

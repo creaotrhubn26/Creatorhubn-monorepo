@@ -21,7 +21,7 @@ const queryClient = useQueryClient();
   const updateSocialMediaOptimizerDialog = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/component/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {

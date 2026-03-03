@@ -1,31 +1,28 @@
-// client/src/components/common/TrialFeatureButton.tsx
-import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
 import {
+  Box,
   Button,
+  Chip,
   IconButton,
   Tooltip,
-  Chip,
-  Box,
   Typography,
-  LinearProgress,
 } from '@mui/material';
-import {
-  AutoAwesome,
-  PlayArrow as PlayArrowArrow,
-  Upgrade,
-  Timer,
-  CheckCircle,
-  Star,
-} from '@mui/icons-material';
+import type { ButtonProps, ChipProps } from '@mui/material';
+import type { SxProps, Theme } from '@mui/material/styles';
+import { AutoAwesome, CheckCircle, PlayArrow, Timer, Upgrade } from '@mui/icons-material';
 import { useTrialFeatureIntegration } from '@/contexts/TrialFeatureContext';
+
+type TrialButtonVariant = 'button' | 'icon' | 'chip' | 'minimal';
+
+type ButtonColor = NonNullable<ButtonProps['color']>;
+type ChipColor = NonNullable<ChipProps['color']>;
 
 interface TrialFeatureButtonProps {
   featureId: string;
   componentId: string;
-  variant?: 'button' | 'icon' | 'chip' | 'minimal';
+  variant?: TrialButtonVariant;
   size?: 'small' | 'medium' | 'large';
-  color?: 'primary' | 'secondary' | 'success' | 'warning' | 'error';
+  color?: ButtonColor;
   showLabel?: boolean;
   showTrialStatus?: boolean;
   onTrialStart?: () => void;
@@ -33,12 +30,38 @@ interface TrialFeatureButtonProps {
   onFeatureUsed?: (action: string) => void;
   children?: React.ReactNode;
   className?: string;
-  sx?: any
+  sx?: SxProps<Theme>;
 }
 
-export function TrialFeatureButton(
-  // Theming system
-  const theming = useTheming( 'photographer,');{
+interface RenderMeta {
+  icon: React.ReactNode;
+  label: React.ReactNode;
+  buttonColor: ButtonColor;
+  chipColor: ChipColor;
+}
+
+const toChipColor = (buttonColor: ButtonColor): ChipColor => {
+  switch (buttonColor) {
+    case 'primary':
+    case 'secondary':
+    case 'error':
+    case 'info':
+    case 'success':
+    case 'warning':
+      return buttonColor;
+    case 'inherit':
+    default:
+      return 'default';
+  }
+};
+
+const getDaysRemaining = (dateValue: Date): number => {
+  const remainingMs = dateValue.getTime() - Date.now();
+  const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+  return Math.max(0, remainingDays);
+};
+
+export function TrialFeatureButton({
   featureId,
   componentId,
   variant = 'button',
@@ -51,159 +74,174 @@ export function TrialFeatureButton(
   onFeatureUsed,
   children,
   className,
-  sx
+  sx,
 }: TrialFeatureButtonProps) {
-  const {
-    feature,
-    trialStatus,
-    hasAccess,
-    isActive,
-    startTrial,
-    trackUsage,
-    showTrialDialog
-} = useTrialFeatureIntegration(featureId, componentId);
+  const { feature, trialStatus, hasAccess, isActive, startTrial, trackUsage, showTrialDialog } =
+    useTrialFeatureIntegration(featureId, componentId);
 
   if (!feature) {
     return null;
-}
+  }
 
-  const handleClick = () => {
+  const daysLeft = trialStatus?.endDate ? getDaysRemaining(new Date(trialStatus.endDate)) : 0;
+
+  const renderMeta: RenderMeta = (() => {
     if (hasAccess) {
-      // User has full access, track usage
-      trackUsage('button_clicked');
-      onFeatureUsed?.('button_clicked');
-  } else if (isActive) {
-      // Trial is active, track usage
-      trackUsage('trial_button_clicked');
-      onFeatureUsed?.('trial_button_clicked');
-  } else {
-      // Show trial dialog
+      return {
+        icon: <CheckCircle fontSize="small" />,
+        label: children ?? feature.name,
+        buttonColor: 'success',
+        chipColor: 'success',
+      };
+    }
+
+    if (isActive) {
+      return {
+        icon: <Timer fontSize="small" />,
+        label: children ?? `${feature.name} (${daysLeft}d)`,
+        buttonColor: 'warning',
+        chipColor: 'warning',
+      };
+    }
+
+    return {
+      icon: <AutoAwesome fontSize="small" />,
+      label: children ?? `Prøv ${feature.name}`,
+      buttonColor: color,
+      chipColor: toChipColor(color),
+    };
+  })();
+
+  const handleClick = async () => {
+    if (hasAccess) {
+      trackUsage('feature_clicked');
+      onFeatureUsed?.('feature_clicked');
+      return;
+    }
+
+    if (isActive) {
+      trackUsage('trial_feature_clicked');
+      onFeatureUsed?.('trial_feature_clicked');
+      return;
+    }
+
+    if (onTrialStart) {
+      onTrialStart();
+    }
+
+    try {
+      await startTrial();
+      onFeatureUsed?.('trial_started');
+      return;
+    } catch {
+      // Fallback to dialog flow when direct start is unavailable.
       showTrialDialog();
-  }
-};
-
-  const getButtonContent = () => {
-    if (hasAccess) {
-      return {
-        icon: theming.getThemedIcon(', '),
-        label: children || feature.name,
-        color: 'success' as const
+      onUpgradeRequired?.();
+    }
   };
-  } else if (isActive) {
-      const daysLeft = Math.ceil((trialStatus!.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-      return {
-        icon: <Timer />,
-        label: children || `${feature.name} (${daysLeft}d)`,
-        color: 'warning' as const
-  };
-  } else {
-      return {
-        icon: theming.getThemedIcon(', '),
-        label: children || `Prøv ${feature.name}`,
-        color: color as any
-  };
-  }
-};
 
-  const buttonContent = getButtonContent();
-
-  const renderButton = () => {
+  const renderControl = () => {
     switch (variant) {
       case 'icon':
         return (
-          <Tooltip title={buttonContent.label}>
+          <Tooltip title={String(renderMeta.label)}>
             <IconButton
-              onClick={handleClick}
-              color={buttonContent.color}
+              onClick={() => {
+                void handleClick();
+              }}
+              color={renderMeta.buttonColor}
               size={size}
               className={className}
               sx={sx}
             >
-              {buttonContent.icon}
+              {renderMeta.icon}
             </IconButton>
           </Tooltip>
         );
-
       case 'chip':
         return (
           <Chip
-            icon={buttonContent.icon}
-            label={buttonContent.label}
-            onClick={handleClick}
-            color={buttonContent.color}
+            icon={renderMeta.icon}
+            label={renderMeta.label}
+            onClick={() => {
+              void handleClick();
+            }}
+            color={renderMeta.chipColor}
             size={size}
             className={className}
             sx={sx}
           />
         );
-
       case 'minimal':
         return (
           <Box
-            onClick={handleClick}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              cursor: 'pointer',
-              p: 0.5,
-              borderRadius: 1, '&:hover': { bgcolor: 'action.hover',},
-              ...sx
-          }}
             className={className}
+            role="button"
+            tabIndex={0}
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 0.75,
+              cursor: 'pointer',
+              p: 0.75,
+              borderRadius: 1,
+              '&:hover': { bgcolor: 'action.hover' },
+              ...sx,
+            }}
+            onClick={() => {
+              void handleClick();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                void handleClick();
+              }
+            }}
           >
-            {buttonContent.icon}
+            {renderMeta.icon}
             {showLabel && (
-              <Typography variant="body2" color={buttonContent.color}>
-                {buttonContent.label}
+              <Typography variant="body2" color={`${renderMeta.buttonColor}.main`}>
+                {renderMeta.label}
               </Typography>
             )}
           </Box>
         );
-
       case 'button':
-      default: return (
+      default:
+        return (
           <Button
-            onClick={handleClick}
-            startIcon={buttonContent.icon}
-            color={buttonContent.color}
+            onClick={() => {
+              void handleClick();
+            }}
+            startIcon={hasAccess ? <CheckCircle /> : isActive ? <Timer /> : <PlayArrow />}
+            endIcon={!hasAccess && !isActive ? <Upgrade /> : undefined}
+            color={renderMeta.buttonColor}
             size={size}
             variant={hasAccess ? 'contained' : 'outlined'}
             className={className}
             sx={sx}
           >
-            {buttonContent.label}
+            {showLabel ? renderMeta.label : null}
           </Button>
         );
-  }
-};
+    }
+  };
 
   return (
-    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap:  1 }}>
-      {renderButton()}
-      
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+      {renderControl()}
+
       {showTrialStatus && isActive && (
-        <Chip
-          label={`${Math.ceil((trialStatus!.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} dager igjen`}
-          size="small"
-          color="warning"
-          variant="outlined"
-        />
+        <Chip size="small" color="warning" variant="outlined" label={`${daysLeft} dager igjen`} />
       )}
-      
+
       {showTrialStatus && hasAccess && (
-        <Chip
-          label="Full tilgang"
-          size="small"
-          color="success"
-          variant="outlined"
-        />
+        <Chip size="small" color="success" variant="outlined" label="Full tilgang" />
       )}
     </Box>
   );
 }
 
-// Quick trial feature button for common use cases
 export function QuickTrialButton({
   featureId,
   componentId,
@@ -211,45 +249,24 @@ export function QuickTrialButton({
   ...props
 }: Omit<TrialFeatureButtonProps, 'variant'>) {
   return (
-    <TrialFeatureButton
-      featureId={featureId}
-      componentId={componentId}
-      variant="button"
-      {...props}
-    >
+    <TrialFeatureButton featureId={featureId} componentId={componentId} variant="button" {...props}>
       {children}
     </TrialFeatureButton>
   );
 }
 
-// Trial feature icon button
 export function TrialIconButton({
   featureId,
   componentId,
   ...props
 }: Omit<TrialFeatureButtonProps, 'variant'>) {
-  return (
-    <TrialFeatureButton
-      featureId={featureId}
-      componentId={componentId}
-      variant="icon"
-      {...props}
-    />
-  );
+  return <TrialFeatureButton featureId={featureId} componentId={componentId} variant="icon" {...props} />;
 }
 
-// Trial feature chip
 export function TrialChip({
   featureId,
   componentId,
   ...props
 }: Omit<TrialFeatureButtonProps, 'variant'>) {
-  return (
-    <TrialFeatureButton
-      featureId={featureId}
-      componentId={componentId}
-      variant="chip"
-      {...props}
-    />
-  );
+  return <TrialFeatureButton featureId={featureId} componentId={componentId} variant="chip" {...props} />;
 }

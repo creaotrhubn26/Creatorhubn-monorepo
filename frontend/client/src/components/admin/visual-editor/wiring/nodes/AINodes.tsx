@@ -35,6 +35,19 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getNumericValue = (value: unknown, fallback: number): number => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+};
+
+const getBooleanValue = (value: unknown, fallback: boolean): boolean => {
+  return typeof value === 'boolean' ? value : fallback;
+};
+
+const parseNumericInput = (value: string, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 // AI Suggest Node
 export const AISuggestNode = memo(function AISuggestNode({
   config,
@@ -99,11 +112,11 @@ export const AISuggestNode = memo(function AISuggestNode({
 
           <Box sx={{ mb: 1 }}>
             <Typography variant="caption" color="rgba(255,255,255,0.5)">
-              Max Suggestions: {data.maxSuggestions || 3}
+              Max Suggestions: {getNumericValue(data.maxSuggestions, 3)}
             </Typography>
             <Slider
-              value={data.maxSuggestions || 3}
-              onChange={(_, value) => onChange('maxSuggestions', value)}
+              value={getNumericValue(data.maxSuggestions, 3)}
+              onChange={(_, value) => onChange('maxSuggestions', Array.isArray(value) ? value[0] : value)}
               min={1}
               max={10}
               sx={{ color: '#e91e63' }}
@@ -195,11 +208,11 @@ export const AIGenerateNode = memo(function AIGenerateNode({
 
           <Box sx={{ mb: 1 }}>
             <Typography variant="caption" color="rgba(255,255,255,0.5)">
-              Temperature: {data.temperature || 0.7}
+              Temperature: {getNumericValue(data.temperature, 0.7)}
             </Typography>
             <Slider
-              value={data.temperature || 0.7}
-              onChange={(_, value) => onChange('temperature', value)}
+              value={getNumericValue(data.temperature, 0.7)}
+              onChange={(_, value) => onChange('temperature', Array.isArray(value) ? value[0] : value)}
               min={0}
               max={1}
               step={0.1}
@@ -216,8 +229,8 @@ export const AIGenerateNode = memo(function AIGenerateNode({
             size="small"
             type="number"
             label="Max Tokens"
-            value={data.maxTokens || 1000}
-            onChange={(e) => onChange('maxTokens', parseInt(e.target.value))}
+            value={getNumericValue(data.maxTokens, 1000)}
+            onChange={(e) => onChange('maxTokens', parseNumericInput(e.target.value, 1000))}
           />
         </Box>
       )}
@@ -449,7 +462,7 @@ export const AIImageAnalysisNode = memo(function AIImageAnalysisNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.detailed || false}
+                checked={getBooleanValue(data.detailed, false)}
                 onChange={(e) => onChange('detailed', e.target.checked)}
                 size="small"
               />
@@ -537,7 +550,7 @@ export const AITextEnhancementNode = memo(function AITextEnhancementNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.showDiff || false}
+                checked={getBooleanValue(data.showDiff, false)}
                 onChange={(e) => onChange('showDiff', e.target.checked)}
                 size="small"
               />
@@ -614,8 +627,8 @@ export const AIChatNode = memo(function AIChatNode({
             size="small"
             type="number"
             label="Max History Messages"
-            value={data.maxHistory || 10}
-            onChange={(e) => onChange('maxHistory', parseInt(e.target.value))}
+            value={getNumericValue(data.maxHistory, 10)}
+            onChange={(e) => onChange('maxHistory', parseNumericInput(e.target.value, 10))}
             sx={{ mt: 1 }}
           />
         </Box>
@@ -759,4 +772,3 @@ export const AI_NODE_DEFINITIONS = [
 ];
 
 export default AI_NODE_DEFINITIONS;
-

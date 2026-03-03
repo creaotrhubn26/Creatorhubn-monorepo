@@ -7,6 +7,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { initSentry } from './utils/sentry';
 import { normalizeRequestUrl } from './lib/normalizeRequestUrl';
+import './styles/academy-responsive.css';
 
 declare global {
   interface Window {
@@ -92,4 +93,3 @@ if (!rootElement) {
     </div>`;
   }
 }
-

@@ -81,7 +81,7 @@ function HistogramDisplay({ canvas }: { canvas: HTMLCanvasElement | null }) {
     if (!canvas || !histCanvas.current) return;
 
     const interval = setInterval(() => {
-      const ctx = canvas.getContext('2d, ');
+      const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -110,13 +110,13 @@ function HistogramDisplay({ canvas }: { canvas: HTMLCanvasElement | null }) {
         }
         histCtx.lineTo(width, height);
         histCtx.closePath();
-        histCtx.fillStyle = color.replace(')', `, ${alpha})`).replace('rgb,', 'rgba');
+        histCtx.fillStyle = color.replace(')', `, ${alpha})`).replace('rgb(', 'rgba(');
         histCtx.fill();
       };
 
-      drawChannel(histogram.r'rgb(255, 0, 0)');
-      drawChannel(histogram.g'rgb(0, 255, 0)');
-      drawChannel(histogram.b'rgb(0, 255, 255)');
+      drawChannel(histogram.r, 'rgb(255, 0, 0)');
+      drawChannel(histogram.g, 'rgb(0, 255, 0)');
+      drawChannel(histogram.b, 'rgb(0, 255, 255)');
 
       // Draw luminance (white outline)
       histCtx.beginPath();

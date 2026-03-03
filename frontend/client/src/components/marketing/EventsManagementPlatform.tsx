@@ -669,8 +669,8 @@ const EventsManagementPlatform: React.FC = () => {
         return new Date(`${dateStr}T${defaultTime}:00`).toISOString();
       };
 
-      const startISO = toISO(ev.startDate'09:00');
-      const endISO = toISO(ev.endDate || ev.startDate'10:00');
+      const startISO = toISO(ev.startDate, '09:00');
+      const endISO = toISO(ev.endDate || ev.startDate, '10:00');
 
       const locationParts = [ev.venue?.name, ev.venue?.address, ev.venue?.city].filter(Boolean);
       const body = {
@@ -679,7 +679,7 @@ const EventsManagementPlatform: React.FC = () => {
         description: ev.description,
         start: { dateTime: startISO, timeZone: 'Europe/Oslo' },
         end: { dateTime: endISO, timeZone: 'Europe/Oslo' },
-        location: locationParts.join(''),
+        location: locationParts.join(', '),
         attendees,
         calendarId: 'primary',
       };

@@ -1,413 +1,379 @@
 /**
- * Notification System Demo Component
- * Demonstrates all notification types and functionality
+ * Notification System Test Center
+ * Interactive harness for upload/project/system notification flows.
  */
 
-import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
+  Alert,
   Box,
   Button,
-  Card as MuiCard,
+  Card,
   CardContent,
-  Typography,
-  Grid,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Chip,
-  Alert,
+  CircularProgress,
+  Grid,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
   Folder as ProjectIcon,
-  Sync as SyncIcon,
   Notifications as NotificationIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
-import { 
-  triggerUploadNotification,
-  triggerUploadProgress,
-  triggerUploadComplete,
-  triggerUploadError,
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
+import {
   triggerProjectCreated,
   triggerProjectShared,
-  triggerSyncComplete
+  triggerSyncComplete,
+  triggerUploadComplete,
+  triggerUploadError,
+  triggerUploadNotification,
+  triggerUploadProgress,
 } from './NotificationSystem';
-import { AnimatedButton, AnimatedMuiCard } from '../animations/MicroAnimations';
+
+interface NotificationTestSettings {
+  fileName: string;
+  fileCount: number;
+  projectName: string;
+  projectId: string;
+  shareCode: string;
+}
+
+interface TestHistoryItem {
+  id: string;
+  type: string;
+  createdAt: string;
+  payload: unknown;
+}
+
+interface NotificationTestApiResponse {
+  history?: TestHistoryItem[];
+}
+
+function toHistory(payload: unknown): TestHistoryItem[] {
+  if (typeof payload !== 'object' || payload === null) {
+    return [];
+  }
+  const candidate = payload as NotificationTestApiResponse;
+  if (!Array.isArray(candidate.history)) {
+    return [];
+  }
+  return candidate.history.filter((entry): entry is TestHistoryItem => {
+    return (
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as TestHistoryItem).id === 'string' &&
+      typeof (entry as TestHistoryItem).type === 'string' &&
+      typeof (entry as TestHistoryItem).createdAt === 'string'
+    );
+  });
+}
+
+function randomCode(length: number): string {
+  return Math.random().toString(36).slice(2, 2 + length).toUpperCase();
+}
 
 export default function NotificationTestCenter() {
   const queryClient = useQueryClient();
-  
-  // Theming system
   const theming = useTheming('photographer');
-  
-  // Real notification test data from database
-  const { data: notificationTests = [], isLoading } = useQuery({
-    queryKey: ['/api/notifications/test-history', ],
-    queryFn: () => apiRequest('/api/notifications/test-history', ),
-    retry: false,
-});
 
-  // Real notification test logging
-  const logNotificationTest = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/notifications/log-test', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify(data)
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/notifications', ],});
-  }
-});
-
-
-  const [testSettings, setTestSettings] = useState({
+  const [settings, setSettings] = useState<NotificationTestSettings>({
     fileName: 'test_upload.zip',
-    fileCount:  1,
+    fileCount: 1,
     projectName: 'Test Project',
-    projectId: 'test-' + Date.now(),
-    shareCode: 'TEST' + Math.random().toString(36).substr, (4).toUpperCase()
-});
-
+    projectId: `test-${Date.now()}`,
+    shareCode: `TEST${randomCode(4)}`,
+  });
   const [isUploading, setIsUploading] = useState(false);
+
+  const { data: history = [], isLoading: loadingHistory } = useQuery({
+    queryKey: ['/api/notifications/test-history'],
+    queryFn: async () => {
+      const payload = await apiRequest('/api/notifications/test-history');
+      return toHistory(payload);
+    },
+    retry: false,
+  });
+
+  const logNotificationTest = useMutation({
+    mutationFn: async (payload: { type: string; payload: unknown }) => {
+      return apiRequest('/api/notifications/log-test', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notifications/test-history'] });
+    },
+  });
+
+  const updateSettings = <K extends keyof NotificationTestSettings>(
+    key: K,
+    value: NotificationTestSettings[K],
+  ) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+  };
 
   const simulateFileUpload = async () => {
     setIsUploading(true);
     const fileId = `upload_${Date.now()}`;
-    
-    // Start upload
+
     triggerUploadNotification({
       fileId,
-      fileName: demoSettings.fileName,
-      fileCount: demoSettings.fileCount
-});
+      fileName: settings.fileName,
+      fileCount: settings.fileCount,
+    });
+    await logNotificationTest.mutateAsync({
+      type: 'upload_started',
+      payload: { fileId, ...settings },
+    });
 
-    // Simulate progress
     for (let progress = 0; progress <= 100; progress += 10) {
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
       triggerUploadProgress({
         fileId,
-        fileName: demoSettings.fileName,
-        progress
-    });
-  }
+        fileName: settings.fileName,
+        progress,
+      });
+    }
 
-    // Complete upload
     triggerUploadComplete({
       fileId,
-      fileName: demoSettings.fileName,
-      fileCount: demoSettings.fileCount,
-      projectId: demoSettings.projectId,
-      folderUrl: `https://drive.google.com/drive/folders/${demoSettings.projectId}`
-  });
+      fileName: settings.fileName,
+      fileCount: settings.fileCount,
+      projectId: settings.projectId,
+      folderUrl: `https://drive.google.com/drive/folders/${settings.projectId}`,
+    });
+    await logNotificationTest.mutateAsync({
+      type: 'upload_completed',
+      payload: { fileId, ...settings },
+    });
 
     setIsUploading(false);
-};
+  };
 
-  const simulateUploadError = () => {
+  const simulateUploadError = async () => {
     const fileId = `upload_error_${Date.now()}`;
+    const error = 'Nettverksfeil - prov igjen senere';
     triggerUploadError({
       fileId,
-      fileName: demoSettings.fileName,
-      error: 'Nettverksfeil - prøv igjen senere'
-});
-};
-
-  const simulateProjectCreation = () => {
-    triggerProjectCreated({
-      projectName: demoSettings.projectName,
-      projectId: demoSettings.projectId,
-      folderUrl: `https://drive.google.com/drive/folders/${demoSettings.projectId}`
-  });
-};
-
-  const simulateProjectSharing = () => {
-    triggerProjectShared({
-      projectName: demoSettings.projectName,
-      shareCode: demoSettings.shareCode
-});
-};
-
-  const simulateSync = () => {
-    triggerSyncComplete({
-      projectCount:  5,
-      syncedCount: 4 });
-};
-
-  const sendTestNotification = async (type: string) => {
-    try {
-      await fetch('/api/notifications/test', {
-        headers: {
-          ...auth'Content-Type' : 'application/json'
-      },
-        method: 'POS',
-        body: JSON.stringify({
-          type,
-          title: getTestTitle(type),
-          message: getTestMessage(type),
-          userId: 'photographer-daniel'
-    })
+      fileName: settings.fileName,
+      error,
     });
-  } catch (error) {
-      console.error('Failed to send test notification: ', error);
-  }
-};
+    await logNotificationTest.mutateAsync({
+      type: 'upload_error',
+      payload: { fileId, fileName: settings.fileName, error },
+    });
+  };
 
-  const getTestTitle = (type: string) => {
-    switch (type) {
-      case 'success': return 'Operasjon fullført';
-      case 'error': return 'Det oppstod en feil';
-      case 'warning': return 'Advarsel';
-      case 'info': return 'Informasjon';
-      default: return 'Test notifikasjon';
-}
-};
+  const simulateProjectCreation = async () => {
+    triggerProjectCreated({
+      projectName: settings.projectName,
+      projectId: settings.projectId,
+      folderUrl: `https://drive.google.com/drive/folders/${settings.projectId}`,
+    });
+    await logNotificationTest.mutateAsync({
+      type: 'project_created',
+      payload: settings,
+    });
+  };
 
-  const getTestMessage = (type: string) => {
-    switch (type) {
-      case 'success': return 'Filen ble lastet opp successfully til Google Drive';
-      case 'error': return 'Kunne ikke koble til Google Drive - sjekk internettforbindelsen';
-      case 'warning': return 'Lagringsplass nesten full - vurder å rydde opp i gamle prosjekter';
-      case 'info': return 'Nytt programvareoppdatering tilgjengelig for CreatorHub Norge';
-      default: return 'Dette er en test notifikasjon fra systemet';
-}
-};
+  const simulateProjectSharing = async () => {
+    triggerProjectShared({
+      projectName: settings.projectName,
+      shareCode: settings.shareCode,
+    });
+    await logNotificationTest.mutateAsync({
+      type: 'project_shared',
+      payload: settings,
+    });
+  };
+
+  const simulateSync = async () => {
+    triggerSyncComplete({
+      projectCount: 5,
+      syncedCount: 4,
+    });
+    await logNotificationTest.mutateAsync({
+      type: 'sync_complete',
+      payload: { projectCount: 5, syncedCount: 4 },
+    });
+  };
+
+  const sendServerTestNotification = async (type: 'success' | 'error' | 'warning' | 'info') => {
+    await apiRequest('/api/notifications/test', {
+      method: 'POST',
+      body: {
+        type,
+        title: `${type.toUpperCase()} test`,
+        message: `Server-side ${type}-notifikasjon fra NotificationTestCenter`,
+      },
+    });
+    await logNotificationTest.mutateAsync({
+      type: `server_${type}`,
+      payload: { title: `${type.toUpperCase()} test` },
+    });
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
+    <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
         Notifikasjonssystem Demo
       </Typography>
-      
-      <Alert severity="info" sx={{ mb:  3 }}>
-        Denne demoen viser alle typer notifikasjoner i CreatorHub Norge systemet. 
-        Klikk på knappene nedenfor for å teste forskjellige notifikasjonstyper.
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Kjor komplette testflyter for opplasting, prosjekt og systemsynk.
       </Alert>
 
       <Grid container spacing={3}>
-        {/* Settings Panel */}
-        <Grid size={{ xs: 12 }} md={4}>
-          <AnimatedMuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Demo Innstillinger
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Demo innstillinger
               </Typography>
-              
-              <TextField
-                fullWidth
-                label="Filnavn"
-                value={demoSettings.fileName}
-                onChange={(e) => setDemoSettings(prev => ({ ...prev, fileName: e.target.value }))}
-                sx={{ mb:  2 }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Antall filer"
-                type="number"
-                value={demoSettings.fileCount}
-                onChange={(e) => setDemoSettings(prev => ({ ...prev, fileCount: parseInt(e.target.value, ),}))}
-                sx={{ mb:  2 }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Prosjektnavn"
-                value={demoSettings.projectName}
-                onChange={(e) => setDemoSettings(prev => ({ ...prev, projectName: e.target.value }))}
-                sx={{ mb:  2 }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Delingskode"
-                value={demoSettings.shareCode}
-                onChange={(e) => setDemoSettings(prev => ({ ...prev, shareCode: e.target.value }))}
-              />
+              <Stack spacing={1.5}>
+                <TextField
+                  label="Filnavn"
+                  value={settings.fileName}
+                  onChange={(event) => updateSettings('fileName', event.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Antall filer"
+                  type="number"
+                  value={settings.fileCount}
+                  onChange={(event) =>
+                    updateSettings('fileCount', Math.max(1, Number(event.target.value || 1)))
+                  }
+                  fullWidth
+                />
+                <TextField
+                  label="Prosjektnavn"
+                  value={settings.projectName}
+                  onChange={(event) => updateSettings('projectName', event.target.value)}
+                  fullWidth
+                />
+                <TextField
+                  label="Delingskode"
+                  value={settings.shareCode}
+                  onChange={(event) => updateSettings('shareCode', event.target.value)}
+                  fullWidth
+                />
+              </Stack>
             </CardContent>
-          </AnimatedMuiCard>
+          </Card>
         </Grid>
 
-        {/* Upload Notifications */}
-        <Grid size={{ xs: 12 }} md={4}>
-          <AnimatedMuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <UploadIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
-                Opplastingsnotifikasjoner
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <UploadIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Upload-flyt
               </Typography>
-              
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
-                <AnimatedButton
-                  onClick={simulateFileUpload}
-                  loading={isUploading}
-                  disabled={isUploading}
-                  fullWidth
-                >
-                  Simuler filopplasting
-                </AnimatedButton>
-                
+              <Stack spacing={1.5}>
                 <Button
-                  variant="outlined"
-                  color="error"
-                  onClick={simulateUploadError}
-                  fullWidth
+                  variant="contained"
+                  disabled={isUploading}
+                  onClick={() => void simulateFileUpload()}
+                  startIcon={isUploading ? <CircularProgress size={16} color="inherit" /> : <UploadIcon />}
                 >
+                  {isUploading ? 'Simulerer opplasting...' : 'Simuler opplasting'}
+                </Button>
+                <Button variant="outlined" color="error" onClick={() => void simulateUploadError()}>
                   Simuler opplastingsfeil
                 </Button>
-                
-                <Typography variant="body2" color="text.secondary">
-                  Test komplett opplastingsflyt med fremgang og fullføring
-                </Typography>
-              </Box>
+              </Stack>
             </CardContent>
-          </AnimatedMuiCard>
+          </Card>
         </Grid>
 
-        {/* Project Notifications */}
-        <Grid size={{ xs: 12 }} md={4}>
-          <AnimatedMuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <ProjectIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
-                Prosjektnotifikasjoner
+        <Grid item xs={12} md={4}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <ProjectIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Prosjekt-hendelser
               </Typography>
-              
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
-                <Button variant="contained"
-                  onClick={simulateProjectCreation}
-                  fullWidth
-                 sx={theming.getThemedButtonSx()}>
+              <Stack spacing={1.5}>
+                <Button variant="contained" onClick={() => void simulateProjectCreation()}>
                   Prosjekt opprettet
                 </Button>
-                
-                <Button
-                  variant="outlined"
-                  onClick={simulateProjectSharing}
-                  fullWidth
-                >
+                <Button variant="outlined" onClick={() => void simulateProjectSharing()}>
                   Prosjekt delt
                 </Button>
-                
-                <Typography variant="body2" color="text.secondary">
-                  Test prosjektrelaterte hendelser og handlinger
-                </Typography>
-              </Box>
-            </CardContent>
-          </AnimatedMuiCard>
-        </Grid>
-
-        {/* System Notifications */}
-        <Grid size={{ xs: 12 }} md={6}>
-          <AnimatedMuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <SyncIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
-                Systemnotifikasjoner
-              </Typography>
-              
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
-                <Button variant="contained"
-                  onClick={simulateSync}
-                  fullWidth
-                 sx={theming.getThemedButtonSx()}>
-                  Synkronisering fullført
+                <Button variant="outlined" onClick={() => void simulateSync()} startIcon={<SyncIcon />}>
+                  Synk fullfort
                 </Button>
-                
-                <Grid container spacing={1}>
-                  <Grid size={{ xs:  6 }}>
-                    <Button
-                      variant="outlined"
-                      color="success"
-                      onClick={() => sendTestNotification('success')}
-                      fullWidth
-                      size="small"
-                    >
-                      Success
-                    </Button>
-                  </Grid>
-                  <Grid size={{ xs:  6 }}>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      onClick={() => sendTestNotification('error')}
-                      fullWidth
-                      size="small"
-                    >
-                      Error
-                    </Button>
-                  </Grid>
-                  <Grid size={{ xs:  6 }}>
-                    <Button
-                      variant="outlined"
-                      color="warning"
-                      onClick={() => sendTestNotification('warning')}
-                      fullWidth
-                      size="small"
-                    >
-                      Warning
-                    </Button>
-                  </Grid>
-                  <Grid size={{ xs:  6 }}>
-                    <Button
-                      variant="outlined"
-                      color="info"
-                      onClick={() => sendTestNotification('info')}
-                      fullWidth
-                      size="small"
-                    >
-                      Info
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Box>
+              </Stack>
             </CardContent>
-          </AnimatedMuiCard>
+          </Card>
         </Grid>
 
-        {/* Notification Types Reference */}
-        <Grid size={{ xs: 12 }} md={6}>
-          <AnimatedMuiCard>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <NotificationIcon sx={{ mr: 1, verticalAlign: 'middle'}} />
-                Notifikasjonstyper
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <NotificationIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Server testnotifikasjoner
               </Typography>
-              
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                  <Chip size="small" label="Upload" color="primary" />
-                  <Typography variant="body2">Filopplasting med fremgang</Typography>
-                </Box>
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                  <Chip size="small" label="Project" color="secondary" />
-                  <Typography variant="body2">Prosjektoppdateringer og handlinger</Typography>
-                </Box>
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                  <Chip size="small" label="Sync" color="info" />
-                  <Typography variant="body2">Synkronisering med sky-tjenester</Typography>
-                </Box>
-                
-                <Box sx={{ display: 'flex', alignItems:'center', gap:  1 }}>
-                  <Chip size="small" label="System" color="default" />
-                  <Typography variant="body2">Generelle systemhendelser</Typography>
-                </Box>
-              </Box>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button size="small" variant="outlined" color="success" onClick={() => void sendServerTestNotification('success')}>
+                  Success
+                </Button>
+                <Button size="small" variant="outlined" color="error" onClick={() => void sendServerTestNotification('error')}>
+                  Error
+                </Button>
+                <Button size="small" variant="outlined" color="warning" onClick={() => void sendServerTestNotification('warning')}>
+                  Warning
+                </Button>
+                <Button size="small" variant="outlined" color="info" onClick={() => void sendServerTestNotification('info')}>
+                  Info
+                </Button>
+              </Stack>
             </CardContent>
-          </AnimatedMuiCard>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Testhistorikk
+              </Typography>
+              {loadingHistory ? (
+                <CircularProgress size={20} />
+              ) : (
+                <Stack spacing={1}>
+                  {history.slice(0, 8).map((entry) => (
+                    <Box
+                      key={entry.id}
+                      sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                    >
+                      <Chip size="small" label={entry.type} />
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(entry.createdAt).toLocaleString('nb-NO')}
+                      </Typography>
+                    </Box>
+                  ))}
+                  {history.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">
+                      Ingen testhistorikk registrert.
+                    </Typography>
+                  ) : null}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
     </Box>
   );
 }
+

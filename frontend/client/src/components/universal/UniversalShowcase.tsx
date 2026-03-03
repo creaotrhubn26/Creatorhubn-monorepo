@@ -30,7 +30,7 @@ import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
 import UniversalFileUpload from './UniversalFileUpload';
 const ClientAuthDialog = React.lazy(() => import('../proofing/ClientAuthDialog'));
 // Import Academy Dashboard
-import AcademyDashboard from '../academy/AcademyDashboard';
+import AcademyDashboard from '../academy/AcademyDashboardCinematic';
 // Import Universal Dashboard
 import UniversalDashboard from './UniversalDashboard';
 // Import CreatorHub Icons
@@ -1702,7 +1702,7 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
 
       // Call audio watermarking API
       const response = await fetch('/api/audio/watermark', {
-        method: 'POS',
+        method: 'POST',
         body: formData
 });
 

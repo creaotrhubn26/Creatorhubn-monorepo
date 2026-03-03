@@ -1,103 +1,44 @@
-// client/src/components/notes/TranscriptionPanel.tsx
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Paper,
+  Alert,
+  Badge,
   Box,
-  Typography,
-  IconButton,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
+  IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Divider,
-  Stack,
-  LinearProgress,
-  Alert,
-  AlertTitle,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Paper,
   Slider,
+  Stack,
   Switch,
-  FormControlLabel,
+  Tab,
+  Tabs,
   TextField,
   Tooltip,
-  Badge,
-  Card,
-  CardContent,
-  CardActions,
-  Tabs,
-  Tab,
-  CircularProgress,
+  Typography,
 } from '@mui/material';
 import {
-  Mic,
-  MicOff,
-  PlayArrow as PlayArrowArrow,
-  Pause,
-  Stop,
-  VolumeUp as VolumeUpUp,
-  VolumeOff,
-  Settings,
+  CheckCircle,
   Help,
   History,
-  AutoAwesome,
-  List as ListIcon,
-  Search,
-  Edit,
-  FormatBold as FormatFormatBold,
-  FormatItalic as FormatFormatItalic,
-  FormatUnderlined as FormatFormatUnderlinedd,
-  NavigateNext,
-  NavigateBefore,
-  Save,
-  Share,
-  Psychology,
-  Timeline,
-  Speed as Speed,
+  Mic,
+  MicOff,
+  Pause,
+  PlayArrow,
   RecordVoiceOver,
-  VoiceOverOff,
-  Translate,
-  Summarize,
-  Refresh,
-  Clear,
-  CheckCircle,
-  Cancel,
+  VolumeOff,
+  VolumeUp,
   Warning,
-  Info,
-  TrendingUp,
-  BarChart as BoxChart,
-  School,
-  Lightbulb,
-  Code,
-  Notes,
-  Person,
-  Folder,
-  Description,
-  Api,
-  Article,
 } from '@mui/icons-material';
-import type { 
-  SpeechConfig, 
-  SpeechRecognitionResult, 
-  VoiceCommand, 
-  VoiceCommandResult,
-  VoiceWritingSession,
-  VoiceWritingContext,
-  VoiceInfo 
-} from '@/services/SpeechService';
-import SpeechService from '@/services/SpeechService';
+import { useTheming } from '../../utils/theming-helper';
 import type { WritingSuggestion } from '@/services/AIWritingSuggestionsService';
 import type { TOCItem } from '@/services/TableOfContentsService';
 import type { MentionSuggestion } from '@/services/MentionService';
@@ -114,7 +55,149 @@ interface TranscriptionPanelProps {
   onMentionSelect: (mention: MentionSuggestion) => void;
   className?: string;
   maxHeight?: number;
-  variant?: 'sidebar' | 'floating' | 'embedded'
+  variant?: 'sidebar' | 'floating' | 'embedded';
+}
+
+interface SpeechConfig {
+  language: string;
+  continuous: boolean;
+  interimResults: boolean;
+  enableVoiceCommands: boolean;
+  autoPunctuation: boolean;
+  speechRate: number;
+  speechPitch: number;
+  speechVolume: number;
+}
+
+interface SpeechRecognitionResultItem {
+  transcript: string;
+  confidence: number;
+  isFinal: boolean;
+  timestamp: Date;
+  alternatives: string[];
+}
+
+type VoiceCommandCategory = 'edit' | 'navigation' | 'ai' | 'mention' | 'system';
+
+interface VoiceCommand {
+  id: string;
+  trigger: string;
+  description: string;
+  category: VoiceCommandCategory;
+}
+
+interface VoiceCommandRun {
+  id: string;
+  transcript: string;
+  command: VoiceCommand;
+  executed: boolean;
+  message: string;
+  timestamp: Date;
+}
+
+interface VoiceWritingSession {
+  startedAt: Date;
+  totalWords: number;
+  totalCommands: number;
+  averageConfidence: number;
+  commandHistory: VoiceCommandRun[];
+}
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionResultListLike {
+  length: number;
+  [index: number]: SpeechRecognitionResultLike;
+}
+
+interface SpeechRecognitionEventLike extends Event {
+  results: SpeechRecognitionResultListLike;
+  resultIndex: number;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onstart: ((event: Event) => void) | null;
+  onend: ((event: Event) => void) | null;
+  onerror: ((event: Event & { error?: string }) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const customWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+
+  return customWindow.SpeechRecognition ?? customWindow.webkitSpeechRecognition ?? null;
+}
+
+function getDefaultCommands(): VoiceCommand[] {
+  return [
+    { id: 'newline', trigger: 'new line', description: 'Insert line break', category: 'edit' },
+    { id: 'ny-linje', trigger: 'ny linje', description: 'Insert line break (NO)', category: 'edit' },
+    { id: 'period', trigger: 'period', description: 'Insert period', category: 'edit' },
+    { id: 'punktum', trigger: 'punktum', description: 'Insert period (NO)', category: 'edit' },
+    { id: 'go-top', trigger: 'go to top', description: 'Move cursor to top', category: 'navigation' },
+    { id: 'ga-toppen', trigger: 'gå til toppen', description: 'Move cursor to top (NO)', category: 'navigation' },
+    { id: 'go-bottom', trigger: 'go to bottom', description: 'Move cursor to end', category: 'navigation' },
+    { id: 'ga-slutten', trigger: 'gå til slutten', description: 'Move cursor to end (NO)', category: 'navigation' },
+    { id: 'ai-summarize', trigger: 'summarize', description: 'Create AI summary suggestion', category: 'ai' },
+    { id: 'ai-oppsummer', trigger: 'oppsummer', description: 'Create AI summary suggestion (NO)', category: 'ai' },
+    { id: 'mention', trigger: 'mention', description: 'Mention resource', category: 'mention' },
+  ];
+}
+
+function createTOCItem(title: string, position: number): TOCItem {
+  return {
+    id: `voice-toc-${Date.now()}`,
+    title,
+    level: 1,
+    anchor: `voice-anchor-${position}`,
+    children: [],
+    position,
+    wordCount: title.split(/\s+/).filter((token) => token.length > 0).length,
+    readingTime: 1,
+    isVisible: true,
+  };
+}
+
+function createMentionSuggestion(raw: string): MentionSuggestion {
+  return {
+    resource: {
+      id: `mention-${Date.now()}`,
+      type: 'note',
+      title: raw,
+      description: `Voice mention: ${raw}`,
+      isActive: true,
+    },
+    matchScore: 1,
+    highlightedTitle: raw,
+    context: 'voice-command',
+  };
+}
+
+function normalizeSelection(text: string | undefined): string {
+  return text?.trim() ?? '';
 }
 
 export default function TranscriptionPanel({
@@ -130,470 +213,348 @@ export default function TranscriptionPanel({
   className,
   maxHeight = 600,
   variant = 'sidebar',
-}: TranscriptionPanelProps) {
-  const [isListening, setIsListening] = useState(false);
-  
-  // Theming system
+}: TranscriptionPanelProps): JSX.Element {
   const theming = useTheming('photographer');
+
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const recognitionConstructorRef = useRef<SpeechRecognitionConstructor | null>(null);
+  const speakingUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const [config, setConfig] = useState<SpeechConfig>({
+    language: 'nb-NO',
+    continuous: true,
+    interimResults: true,
+    enableVoiceCommands: true,
+    autoPunctuation: true,
+    speechRate: 1,
+    speechPitch: 1,
+    speechVolume: 1,
+  });
+  const [activeTab, setActiveTab] = useState(0);
+  const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [recognitionResults, setRecognitionResults] = useState<SpeechRecognitionResult[]>([]);
-  const [voiceCommands, setVoiceCommands] = useState<VoiceCommand[]>([]);
-  const [commandResults, setCommandResults] = useState<VoiceCommandResult[]>([]);
-  const [currentSession, setCurrentSession] = useState<VoiceWritingSession | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
+  const [isSpeechPaused, setIsSpeechPaused] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [recognitionItems, setRecognitionItems] = useState<SpeechRecognitionResultItem[]>([]);
+  const [commandRuns, setCommandRuns] = useState<VoiceCommandRun[]>([]);
+  const [lastError, setLastError] = useState<string>('');
   const [showHelp, setShowHelp] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const [config, setConfig] = useState<SpeechConfig>(SpeechService.getInstance().getConfig());
-  const [availableVoices, setAvailableVoices] = useState<VoiceInfo[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const [voiceHistory, setVoiceHistory] = useState<string[]>([]);
-  
-  const speechService = SpeechService.getInstance();
-  const recognitionTimeoutRef = useRef<NodeJS.Timeout>();
-
-  // Initialize voice writing session
-  useEffect(() => {
-    const context: VoiceWritingContext = {
-      currentText: content,
-      cursorPosition,
-      selectedText,
-      documentType: 'note',
-      writingStyle: 'casual',
-      targetAudience: 'general',
-      language: 'no',
-      voiceHistory: voiceHistory,
-  };
-
-    const session = speechService.startVoiceWritingSession(context);
-    setCurrentSession(session);
-
-    return () => {
-      speechService.endVoiceWritingSession();
-  };
-}, []);
-
-  // Update context when content changes
-  useEffect(() => {
-    speechService.updateWritingContext({
-      currentText: content,
-      cursorPosition,
-      selectedText,
+  const [session, setSession] = useState<VoiceWritingSession>({
+    startedAt: new Date(),
+    totalWords: 0,
+    totalCommands: 0,
+    averageConfidence: 0,
+    commandHistory: [],
   });
-}, [content, cursorPosition, selectedText]);
 
-  // Load available voices
-  useEffect(() => {
-    const voices = speechService.getAvailableVoices();
-    setAvailableVoices(voices);
-}, []);
+  const voiceCommands = useMemo(() => getDefaultCommands(), []);
 
-  // Load voice commands
-  useEffect(() => {
-    const commands = speechService.getVoiceCommands();
-    setVoiceCommands(commands);
-}, []);
+  const supportsRecognition = useMemo(() => getSpeechRecognitionConstructor() !== null, []);
+  const supportsSpeechSynthesis = useMemo(() => typeof window !== 'undefined' && 'speechSynthesis' in window, []);
 
-  // Set up event listeners
-  useEffect(() => {
-    const handleListeningStarted = () => {
+  const runCommand = useCallback(
+    (transcript: string, confidence: number): VoiceCommandRun | null => {
+      const normalized = transcript.trim().toLowerCase();
+      const command = voiceCommands.find((item) =>
+        normalized === item.trigger || normalized.startsWith(`${item.trigger} `)
+      );
+
+      if (!command) {
+        return null;
+      }
+
+      let executed = true;
+      let message = '';
+
+      if (command.id === 'newline' || command.id === 'ny-linje') {
+        const updated = `${content.slice(0, cursorPosition)}\n${content.slice(cursorPosition)}`;
+        onTextChange(updated);
+        onCursorChange(cursorPosition + 1);
+        message = 'Inserted new line.';
+      } else if (command.id === 'period' || command.id === 'punktum') {
+        const updated = `${content.slice(0, cursorPosition)}.${content.slice(cursorPosition)}`;
+        onTextChange(updated);
+        onCursorChange(cursorPosition + 1);
+        message = 'Inserted period.';
+      } else if (command.id === 'go-top' || command.id === 'ga-toppen') {
+        onCursorChange(0);
+        onTOCNavigate(createTOCItem('Top of document', 0));
+        message = 'Moved cursor to top.';
+      } else if (command.id === 'go-bottom' || command.id === 'ga-slutten') {
+        onCursorChange(content.length);
+        onTOCNavigate(createTOCItem('Bottom of document', content.length));
+        message = 'Moved cursor to bottom.';
+      } else if (command.id === 'ai-summarize' || command.id === 'ai-oppsummer') {
+        const suggestion: WritingSuggestion = {
+          id: `voice-suggestion-${Date.now()}`,
+          type: 'improvement',
+          text: content.slice(0, 200),
+          originalText: content,
+          confidence,
+          reason: 'Voice command requested summary suggestion',
+          category: 'flow',
+          position: {
+            start: 0,
+            end: Math.min(content.length, 200),
+          },
+          alternatives: [
+            content.slice(0, 120),
+            `${normalizeSelection(selectedText) || 'Selected section'} (summary candidate)`,
+          ],
+          metadata: {
+            context: 'voice-command',
+          },
+        };
+        onAISuggestionAccept(suggestion);
+        message = 'AI suggestion generated.';
+      } else if (command.id === 'mention') {
+        const mentionTarget = normalized.replace('mention', '').trim();
+        if (mentionTarget.length === 0) {
+          executed = false;
+          message = 'Mention target missing.';
+        } else {
+          onMentionSelect(createMentionSuggestion(mentionTarget));
+          message = `Mentioned ${mentionTarget}.`;
+        }
+      } else {
+        executed = false;
+        message = 'Unsupported command.';
+      }
+
+      return {
+        id: `command-run-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+        transcript,
+        command,
+        executed,
+        message,
+        timestamp: new Date(),
+      };
+    },
+    [content, cursorPosition, onAISuggestionAccept, onCursorChange, onMentionSelect, onTOCNavigate, onTextChange, selectedText, voiceCommands]
+  );
+
+  const appendRecognitionItem = useCallback(
+    (item: SpeechRecognitionResultItem) => {
+      setRecognitionItems((previous) => [item, ...previous.slice(0, 49)]);
+
+      setSession((previous) => {
+        const words = item.transcript.split(/\s+/).filter((token) => token.length > 0).length;
+        const count = previous.totalWords + words;
+        const sampleSize = previous.commandHistory.length + 1;
+        const avg = ((previous.averageConfidence * (sampleSize - 1)) + item.confidence) / sampleSize;
+        return {
+          ...previous,
+          totalWords: count,
+          averageConfidence: avg,
+        };
+      });
+
+      if (!item.isFinal) {
+        return;
+      }
+
+      if (config.enableVoiceCommands) {
+        const commandRun = runCommand(item.transcript, item.confidence);
+        if (commandRun) {
+          setCommandRuns((previous) => [commandRun, ...previous.slice(0, 29)]);
+          setSession((previous) => ({
+            ...previous,
+            totalCommands: previous.totalCommands + 1,
+            commandHistory: [commandRun, ...previous.commandHistory].slice(0, 30),
+          }));
+          return;
+        }
+      }
+
+      const punctuation = config.autoPunctuation ? ' ' : '';
+      const insertion = `${item.transcript}${punctuation}`;
+      const nextText = `${content.slice(0, cursorPosition)}${insertion}${content.slice(cursorPosition)}`;
+      onTextChange(nextText);
+      onCursorChange(cursorPosition + insertion.length);
+      onSelectionChange(item.transcript);
+    },
+    [config.autoPunctuation, config.enableVoiceCommands, content, cursorPosition, onCursorChange, onSelectionChange, onTextChange, runCommand]
+  );
+
+  const initializeRecognition = useCallback(() => {
+    if (recognitionRef.current) {
+      return recognitionRef.current;
+    }
+
+    if (!recognitionConstructorRef.current) {
+      recognitionConstructorRef.current = getSpeechRecognitionConstructor();
+    }
+
+    if (!recognitionConstructorRef.current) {
+      return null;
+    }
+
+    const recognition = new recognitionConstructorRef.current();
+    recognition.continuous = config.continuous;
+    recognition.interimResults = config.interimResults;
+    recognition.lang = config.language;
+
+    recognition.onstart = () => {
       setIsListening(true);
-      setLastError(null);
-  };
+      setLastError('');
+    };
 
-    const handleListeningEnded = () => {
-      setIsListening(false);
-  };
-
-    const handleRecognitionResult = (results: SpeechRecognitionResult[]) => {
-      setRecognitionResults(prev => [...prev, ...results]);
-      setVoiceHistory(prev => [...prev, ...results.map(r => r.transcript)]);
-  };
-
-    const handleVoiceCommand = (result: VoiceCommandResult) => {
-      setCommandResults(prev => [result, ...prev.slice(0, 19)]); // Keep last 20
-      handleVoiceCommandResult(result);
-  };
-
-    const handleSpeakingStarted = () => {
-      setIsSpeaking(true);
-      setIsPaused(false);
-  };
-
-    const handleSpeakingEnded = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-  };
-
-    const handleSpeakingPaused = () => {
-      setIsPaused(true);
-  };
-
-    const handleSpeakingResumed = () => {
-      setIsPaused(false);
-  };
-
-    const handleError = (error: string) => {
-      setLastError(error);
+    recognition.onend = () => {
       setIsListening(false);
       setIsProcessing(false);
-};
+    };
 
-    speechService.addEventListener('listeningStarted', handleListeningStarted);
-    speechService.addEventListener('listeningEnded', handleListeningEnded);
-    speechService.addEventListener('recognitionResult', handleRecognitionResult);
-    speechService.addEventListener('voiceCommand', handleVoiceCommand);
-    speechService.addEventListener('speakingStarted', handleSpeakingStarted);
-    speechService.addEventListener('speakingEnded', handleSpeakingEnded);
-    speechService.addEventListener('speakingPaused', handleSpeakingPaused);
-    speechService.addEventListener('speakingResumed', handleSpeakingResumed);
-    speechService.addEventListener('recognitionError', handleError);
+    recognition.onerror = (event) => {
+      setLastError(event.error ?? 'Speech recognition failed.');
+      setIsListening(false);
+      setIsProcessing(false);
+    };
 
+    recognition.onresult = (event) => {
+      const mapped: SpeechRecognitionResultItem[] = [];
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const primary = result[0];
+        const alternatives: string[] = [];
+
+        for (let altIndex = 1; altIndex < result.length; altIndex += 1) {
+          const alt = result[altIndex];
+          alternatives.push(alt.transcript);
+        }
+
+        mapped.push({
+          transcript: primary.transcript,
+          confidence: primary.confidence,
+          isFinal: result.isFinal,
+          timestamp: new Date(),
+          alternatives,
+        });
+      }
+
+      mapped.forEach((item) => appendRecognitionItem(item));
+    };
+
+    recognitionRef.current = recognition;
+    return recognition;
+  }, [appendRecognitionItem, config.continuous, config.interimResults, config.language]);
+
+  const startListening = useCallback(() => {
+    const recognition = initializeRecognition();
+    if (!recognition) {
+      setLastError('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      recognition.start();
+    } catch {
+      setIsProcessing(false);
+      setLastError('Unable to start speech recognition.');
+    }
+  }, [initializeRecognition]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    setIsProcessing(false);
+  }, []);
+
+  const speakText = useCallback(
+    (overrideText?: string) => {
+      if (!supportsSpeechSynthesis) {
+        setLastError('Speech synthesis is not supported in this browser.');
+        return;
+      }
+
+      const text = (overrideText ?? normalizeSelection(selectedText) || content).trim();
+      if (text.length === 0) {
+        setLastError('Nothing to speak.');
+        return;
+      }
+
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = config.language;
+      utterance.rate = config.speechRate;
+      utterance.pitch = config.speechPitch;
+      utterance.volume = config.speechVolume;
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        setIsSpeechPaused(false);
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        setIsSpeechPaused(false);
+      };
+
+      utterance.onerror = () => {
+        setIsSpeaking(false);
+        setIsSpeechPaused(false);
+        setLastError('Speech playback failed.');
+      };
+
+      speakingUtteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    },
+    [config.language, config.speechPitch, config.speechRate, config.speechVolume, content, selectedText, supportsSpeechSynthesis]
+  );
+
+  const pauseSpeaking = useCallback(() => {
+    if (!supportsSpeechSynthesis) {
+      return;
+    }
+    window.speechSynthesis.pause();
+    setIsSpeechPaused(true);
+  }, [supportsSpeechSynthesis]);
+
+  const resumeSpeaking = useCallback(() => {
+    if (!supportsSpeechSynthesis) {
+      return;
+    }
+    window.speechSynthesis.resume();
+    setIsSpeechPaused(false);
+  }, [supportsSpeechSynthesis]);
+
+  const stopSpeaking = useCallback(() => {
+    if (!supportsSpeechSynthesis) {
+      return;
+    }
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsSpeechPaused(false);
+  }, [supportsSpeechSynthesis]);
+
+  useEffect(() => {
     return () => {
-      speechService.removeEventListener('listeningStarted', handleListeningStarted);
-      speechService.removeEventListener('listeningEnded', handleListeningEnded);
-      speechService.removeEventListener('recognitionResult', handleRecognitionResult);
-      speechService.removeEventListener('voiceCommand', handleVoiceCommand);
-      speechService.removeEventListener('speakingStarted', handleSpeakingStarted);
-      speechService.removeEventListener('speakingEnded', handleSpeakingEnded);
-      speechService.removeEventListener('speakingPaused', handleSpeakingPaused);
-      speechService.removeEventListener('speakingResumed', handleSpeakingResumed);
-      speechService.removeEventListener('recognitionError', handleError);
-  };
-}, []);
-
-  const handleVoiceCommandResult = useCallback((result: VoiceCommandResult) => {
-    if (!result.executed || !result.result) return;
-
-    const { action, type, suggestions, tocItems, mentions, section, message } = result.result;
-
-    switch (action) {
-      case 'ai':
-        if (suggestions && suggestions.length > 0) {
-          // Show AI suggestions
-          console.log('AI Suggestions: ', suggestions);
+      recognitionRef.current?.stop();
+      if (supportsSpeechSynthesis) {
+        window.speechSynthesis.cancel();
       }
-        break;
+    };
+  }, [supportsSpeechSynthesis]);
 
-      case 'toc':
-        if (type === 'navigate' && section) {
-          onTOCNavigate(section);
-      } else if (tocItems) {
-          console.log('TOC Items:', tocItems);
-      }
-        break;
+  const sessionDurationMinutes = useMemo(() => {
+    const elapsedMs = Date.now() - session.startedAt.getTime();
+    return Math.max(1, Math.round(elapsedMs / 60000));
+  }, [session.startedAt]);
 
-      case 'mention':
-        if (mentions && mentions.length > 0) {
-          console.log('Mentions:', mentions);
-      }
-        break;
+  const wordsPerMinute = useMemo(() => {
+    return Math.round(session.totalWords / sessionDurationMinutes);
+  }, [session.totalWords, sessionDurationMinutes]);
 
-      case 'navigate':
-        if (type === 'paragraph') {
-          // Handle sx={{ mb: 2 }} navigation
-          console.log('Navigate paragraph:', result.result);
-      }
-        break;
-
-      case 'edit':
-        if (type === 'newline') {
-          onTextChange(content + '\n');
-      } else if (type === 'delete') {
-          // Handle text deletion
-          console.log('Delete text:', result.result);
-      }
-        break;
-
-      case 'format':
-        // Handle text formatting
-        console.log('Format text:', result.result);
-        break;
-
-      case 'system':
-        if (type === 'save') {
-          // Trigger save
-          console.log('Save document');
-      }
-        break;
-  }
-
-    if (message) {
-      // Speak the message
-      speechService.speak(message);
-  }
-}, [content, onTextChange, onTOCNavigate, speechService]);
-
-  const startListening = async () => {
-    try {
-      setIsProcessing(true);
-      await speechService.startListening();
-  } catch (error) {
-      setLastError(error instanceof Error ? error.message : 'Unknown error');
-  } finally {
-      setIsProcessing(false);
-  }
-};
-
-  const stopListening = () => {
-    speechService.stopListening();
-};
-
-  const startSpeaking = async (text?: string) => {
-    const textToSpeak = text || selectedText || content;
-    if (!textToSpeak.trim()) return;
-
-    try {
-      setIsProcessing(true);
-      const processedText = speechService.processTextForSpeech(textToSpeak);
-      await speechService.speak(processedText);
-  } catch (error) {
-      setLastError(error instanceof Error ? error.message : 'Unknown error');
-  } finally {
-      setIsProcessing(false);
-  }
-};
-
-  const stopSpeaking = () => {
-    speechService.stopSpeaking();
-};
-
-  const pauseSpeaking = () => {
-    speechService.pauseSpeaking();
-};
-
-  const resumeSpeaking = () => {
-    speechService.resumeSpeaking();
-};
-
-  const updateConfig = (newConfig: Partial<SpeechConfig>) => {
-    const updatedConfig = { ...config, ...newConfig };
-    setConfig(updatedConfig);
-    speechService.updateConfig(updatedConfig);
-};
-
-  const getCommandIcon = (category: string) => {
-    switch (category) {
-      case 'ai': return <Psychology />;
-      case 'toc': return <ListIcon />;
-      case 'mention': return theming.getThemedIcon(', ');
-      case 'navigation': return <NavigateNext />;
-      case 'editing': return theming.getThemedIcon('edit');
-      case 'formatting': return <FormatBold />;
-      case 'system': return theming.getThemedIcon('settings');
-      default: return <Help />;
-}
-};
-
-  const getCommandColor = (category: string) => {
-    switch (category) {
-      case 'ai': return 'primary';
-      case 'toc': return 'info';
-      case 'mention': return 'success';
-      case 'navigation': return 'warning';
-      case 'editing': return 'secondary';
-      case 'formatting': return 'default';
-      case 'system': return 'error';
-      default: return 'default';
-}
-};
-
-  const renderRecognitionResults = () => (
-    <Box>
-      <Typography variant="subtitle2" gutterBottom>
-        Gjenkjenningsresultater
-      </Typography>
-      {recognitionResults.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          Ingen resultater ennå
-        </Typography>
-      ) : (
-        <List dense>
-          {recognitionResults.slice(-5).map((result, index) => (
-            <ListItem key={index}>
-              <ListItemIcon>
-                <Badge
-                  badgeContent={Math.round(result.confidence * 100)}
-                  color="primary"
-                  sx={{ '& .MuiBadge-badge': { fontSize: '0.65rem', height: 16,} }}
-                >
-                  {theming.getThemedIcon('mic')}
-                </Badge>
-              </ListItemIcon>
-              <ListItemText
-                primary={result.transcript}
-                secondary={
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      {result.isFinal ? 'Final' : 'Interim'} • {result.timestamp.toLocaleTimeString()}
-                    </Typography>
-                    {result.alternatives && result.alternatives.length > 1 && (
-                      <Box sx={{ mt: 0.5}}>
-                        {result.alternatives.slice(1, 3).map((alt, altIndex) => (
-                          <Chip
-                            key={altIndex}
-                            size="small"
-                            label={alt}
-                            variant="outlined"
-                            sx={{ mr: 0, .fontSize: '0.65rem', height: 20}}
-                          />
-                        ))}
-                      </Box>
-                    )}
-                  </Box>
-              }
-              />
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Box>
-  );
-
-  const renderCommandResults = () => (
-    <Box>
-      <Typography variant="subtitle2" gutterBottom>
-        Stemmekommandoer
-      </Typography>
-      {commandResults.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          Ingen kommandoer utført ennå
-        </Typography>
-      ) : (
-        <List dense>
-          {commandResults.slice(0, 10).map((result, index) => (
-            <ListItem key={index}>
-              <ListItemIcon>
-                {result.executed ? (
-                  <CheckCircle color="success" />
-                ) : (
-                  <Cancel color="error" />
-                )}
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  <Box>
-                    <Typography variant="body2">
-                      {result.transcript}
-                    </Typography>
-                    <Chip
-                      size="small"
-                      label={result.command.description}
-                      icon={getCommandIcon(result.command.category)}
-                      color={getCommandColor(result.command.category) as any}
-                      sx={{ fontSize: '0.65rem', height:  20, mt: 0.5}}
-                    />
-                  </Box>
-              }
-                secondary={
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Konfidens: {Math.round(result.confidence * 10)}%
-                    </Typography>
-                    {result.error && (
-                      <Typography variant="caption" color="error" display="block">
-                        Feil: {result.error}
-                      </Typography>
-                    )}
-                    {result.result?.message && (
-                      <Typography variant="caption" color="primary" display="block">
-                        {result.result.message}
-                      </Typography>
-                    )}
-                  </Box>
-              }
-              />
-            </ListItem>
-          ))}
-        </List>
-      )}
-    </Box>
-  );
-
-  const renderVoiceCommands = () => (
-    <Box>
-      <Typography variant="subtitle2" gutterBottom>
-        Tilgjengelige kommandoer
-      </Typography>
-      <List dense>
-        {voiceCommands.map((command) => (
-          <ListItem key={command.id}>
-            <ListItemIcon>
-              {getCommandIcon(command.category)}
-            </ListItemIcon>
-            <ListItemText
-              primary={command.description}
-              secondary={
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    {command.pattern}
-                  </Typography>
-                  <Chip
-                    size="small"
-                    label={command.category}
-                    color={getCommandColor(command.category) as any}
-                    sx={{ fontSize: '0.65rem', height:  20, ml:  1 }}
-                  />
-                </Box>
-            }
-            />
-          </ListItem>
-        ))}
-      </List>
-    </Box>
-  );
-
-  const renderSessionStats = () => {
-    if (!currentSession) return null;
-
-    return (
-      <Box>
-        <Typography variant="subtitle2" gutterBottom>
-          Skrivesesjon statistikk
-        </Typography>
-        <Stack spacing={1}>
-          <Box>
-            <Typography variant="body2">
-              Ord skrevet: {currentSession.totalWords}
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={Math.min(100, (currentSession.totalWords / 1000) * 100)}
-              sx={{ height:  4, borderRadius: 2mt: 0.5}}
-            />
-          </Box>
-          <Box>
-            <Typography variant="body2">
-              Kommandoer: {currentSession.totalCommands}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2">
-              Gjennomsnittlig konfidens: {Math.round(currentSession.averageConfidence * 10)}%
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={currentSession.averageConfidence * 100}
-              color="info"
-              sx={{ height:  4, borderRadius: 2mt: 0.5}}
-            />
-          </Box>
-          <Box>
-            <Typography variant="body2">
-              TOC navigasjoner: {currentSession.tocNavigations}
-            </Typography>
-          </Box>
-          <Box>
-            <Typography variant="body2">
-              Nevnt: {currentSession.mentionsUsed}
-            </Typography>
-          </Box>
-        </Stack>
-      </Box>
-    );
-};
+  const commandSuccessRate = useMemo(() => {
+    if (commandRuns.length === 0) {
+      return 0;
+    }
+    const success = commandRuns.filter((run) => run.executed).length;
+    return Math.round((success / commandRuns.length) * 100);
+  }, [commandRuns]);
 
   return (
     <>
@@ -602,245 +563,261 @@ export default function TranscriptionPanel({
         elevation={variant === 'floating' ? 8 : 2}
         sx={{
           maxHeight,
+          minHeight: 360,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          ...(variant === 'floating' && {
-            position: 'fixed',
-            top:  20,
-            left:  20,
-            zIndex: 10,
-            minWidth: 40,
-            maxWidth: 50,
-        })}}
-       sx={theming.getThemedCardSx()}>
-        {/* Header */}
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
+          ...(variant === 'floating'
+            ? {
+                position: 'fixed',
+                top: 20,
+                right: 20,
+                width: 420,
+                zIndex: 30,
+              }
+            : {}),
+          ...theming.getThemedCardSx(),
+        }}
+      >
+        <Box sx={{ p: 1.5, borderBottom: '1px solid', borderColor: 'divider' }}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
             <Stack direction="row" alignItems="center" spacing={1}>
               <RecordVoiceOver color="primary" />
-              <Typography variant="h6" component="h2" sx={{ color: theming.colors.primary }}>
-                Stemme & Transkripsjon
+              <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                Transcription
               </Typography>
-              {isProcessing && <CircularProgress size={20} />}
+              <Badge color={isListening ? 'success' : 'default'} variant="dot">
+                <Chip size="small" label={isListening ? 'Listening' : 'Idle'} />
+              </Badge>
             </Stack>
+
             <Stack direction="row" spacing={0.5}>
-              <Tooltip title="Innstillinger">
-                <IconButton size="small" onClick={() => setShowSettings(true)}>
-                  {theming.getThemedIcon('settings')}
+              <Tooltip title={isListening ? 'Stop listening' : 'Start listening'}>
+                <IconButton onClick={isListening ? stopListening : startListening} color={isListening ? 'error' : 'primary'}>
+                  {isListening ? <MicOff /> : <Mic />}
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Hjelp">
-                <IconButton size="small" onClick={() => setShowHelp(true)}>
+
+              <Tooltip title={isSpeaking ? 'Stop speaking' : 'Read text'}>
+                <IconButton onClick={isSpeaking ? stopSpeaking : () => speakText()}>
+                  {isSpeaking ? <VolumeOff /> : <VolumeUp />}
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title={isSpeechPaused ? 'Resume speaking' : 'Pause speaking'}>
+                <span>
+                  <IconButton onClick={isSpeechPaused ? resumeSpeaking : pauseSpeaking} disabled={!isSpeaking}>
+                    {isSpeechPaused ? <PlayArrow /> : <Pause />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+
+              <Tooltip title="Help">
+                <IconButton onClick={() => setShowHelp(true)}>
                   <Help />
                 </IconButton>
               </Tooltip>
+
+              <Tooltip title="History">
+                <IconButton onClick={() => setShowHistory(true)}>
+                  <History />
+                </IconButton>
+              </Tooltip>
             </Stack>
           </Stack>
 
-          {/* Error Alert */}
-          {lastError && (
-            <Alert severity="error" sx={{ mt:  1 }} onClose={() => setLastError(null)}>
-              <AlertTitle>Feil</AlertTitle>
+          {isProcessing ? <LinearProgress sx={{ mt: 1 }} /> : null}
+          {lastError ? (
+            <Alert severity="error" sx={{ mt: 1 }} icon={<Warning />} onClose={() => setLastError('')}>
               {lastError}
             </Alert>
-          )}
-
-          {/* Control Buttons */}
-          <Stack direction="row" spacing={1} sx={{ mt:  2 }}>
-            <Button
-              variant={isListening ? 'contained' : 'outlined'}
-              color={isListening ? 'error' : 'primary'}
-              startIcon={isListening ? theming.getThemedIcon('micOff') : theming.getThemedIcon('mic')}
-              onClick={isListening ? stopListening : startListening}
-              disabled={isProcessing}
-            >
-              {isListening ? 'Stopp' : 'Start'} Lytte
-            </Button>
-
-            <Button
-              variant={isSpeaking ? 'contained' : 'outlined'}
-              color={isSpeaking ? 'error' : 'secondary'}
-              startIcon={isSpeaking ? theming.getThemedIcon('stop') : theming.getThemedIcon('play')}
-              onClick={isSpeaking ? stopSpeaking : () => startSpeaking()}
-              disabled={isProcessing}
-            >
-              {isSpeaking ? 'Stopp' : 'Les'} Opp
-            </Button>
-
-            {isSpeaking && (
-              <IconButton
-                onClick={isPaused ? resumeSpeaking : pauseSpeaking}
-                color="primary"
-              >
-                {isPaused ? theming.getThemedIcon('play') : theming.getThemedIcon('pause')}
-              </IconButton>
-            )}
-          </Stack>
+          ) : null}
         </Box>
 
-        {/* Content */}
-        <Box sx={{ flex: 1, overflow: 'auto'}}>
-          <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)}>
-            <Tab label="Resultater" />
-            <Tab label="Kommandoer" />
-            <Tab label="Hjelp" />
-            <Tab label="Statistikk" />
-          </Tabs>
+        <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)} variant="fullWidth">
+          <Tab label="Live" />
+          <Tab label="Commands" />
+          <Tab label="Settings" />
+        </Tabs>
 
-          <Box sx={{ p:  2 }}>
-            {activeTab === 0 && renderRecognitionResults()}
-            {activeTab === 1 && renderCommandResults()}
-            {activeTab === 2 && renderVoiceCommands()}
-            {activeTab === 3 && renderSessionStats()}
-          </Box>
-        </Box>
+        <Box sx={{ p: 1.5, overflow: 'auto', flex: 1 }}>
+          {activeTab === 0 ? (
+            <Stack spacing={1.5}>
+              <Card>
+                <Box sx={{ p: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Session Stats
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                    <Chip size="small" label={`Words: ${session.totalWords}`} />
+                    <Chip size="small" label={`WPM: ${wordsPerMinute}`} />
+                    <Chip size="small" label={`Commands: ${session.totalCommands}`} />
+                    <Chip size="small" label={`Confidence: ${Math.round(session.averageConfidence * 100)}%`} />
+                  </Stack>
+                </Box>
+              </Card>
 
-        {/* Footer */}
-        <Box sx={{ p: 1, borderTop: 1, borderColor: 'divider'}}>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="caption" color="text.secondary">
-              {isListening ? 'Lytter...' : isSpeaking ? 'Leser...' : 'Klar'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {voiceHistory.length} uttrykk
-            </Typography>
-          </Stack>
+              <Typography variant="subtitle2">Recognition</Typography>
+              <List dense>
+                {recognitionItems.length === 0 ? (
+                  <ListItem>
+                    <ListItemText primary="No recognition yet." secondary="Start listening to populate transcript." />
+                  </ListItem>
+                ) : (
+                  recognitionItems.slice(0, 15).map((item) => (
+                    <ListItem key={`${item.timestamp.getTime()}-${item.transcript}`} divider>
+                      <ListItemText
+                        primary={item.transcript}
+                        secondary={`${item.isFinal ? 'Final' : 'Interim'} • ${Math.round(item.confidence * 100)}% • ${item.timestamp.toLocaleTimeString()}`}
+                      />
+                    </ListItem>
+                  ))
+                )}
+              </List>
+            </Stack>
+          ) : null}
+
+          {activeTab === 1 ? (
+            <Stack spacing={1.5}>
+              <Card>
+                <Box sx={{ p: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    Command Runs
+                  </Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Chip size="small" label={`Executed: ${commandRuns.length}`} />
+                    <Chip size="small" label={`Success: ${commandSuccessRate}%`} color={commandSuccessRate >= 70 ? 'success' : 'warning'} />
+                  </Stack>
+                </Box>
+              </Card>
+
+              <List dense>
+                {commandRuns.length === 0 ? (
+                  <ListItem>
+                    <ListItemText primary="No command runs yet." secondary="Say commands like: new line, summarize, go to top" />
+                  </ListItem>
+                ) : (
+                  commandRuns.map((run) => (
+                    <ListItem key={run.id} divider>
+                      <ListItemText
+                        primary={run.transcript}
+                        secondary={`${run.command.description} • ${run.executed ? 'executed' : 'failed'} • ${run.timestamp.toLocaleTimeString()}`}
+                      />
+                      {run.executed ? <CheckCircle color="success" fontSize="small" /> : <Warning color="warning" fontSize="small" />}
+                    </ListItem>
+                  ))
+                )}
+              </List>
+
+              <Alert severity="info">
+                Available commands: {voiceCommands.map((command) => command.trigger).join(', ')}
+              </Alert>
+            </Stack>
+          ) : null}
+
+          {activeTab === 2 ? (
+            <Stack spacing={2}>
+              <FormControlLabel
+                control={<Switch checked={config.enableVoiceCommands} onChange={(event) => setConfig((previous) => ({ ...previous, enableVoiceCommands: event.target.checked }))} />}
+                label="Enable voice commands"
+              />
+
+              <FormControlLabel
+                control={<Switch checked={config.autoPunctuation} onChange={(event) => setConfig((previous) => ({ ...previous, autoPunctuation: event.target.checked }))} />}
+                label="Auto punctuation"
+              />
+
+              <FormControlLabel
+                control={<Switch checked={config.continuous} onChange={(event) => setConfig((previous) => ({ ...previous, continuous: event.target.checked }))} />}
+                label="Continuous recognition"
+              />
+
+              <TextField
+                label="Language"
+                value={config.language}
+                onChange={(event) => setConfig((previous) => ({ ...previous, language: event.target.value }))}
+                helperText="Examples: nb-NO, en-US"
+              />
+
+              <Box>
+                <Typography variant="body2">Speech rate: {config.speechRate.toFixed(1)}</Typography>
+                <Slider value={config.speechRate} min={0.5} max={2} step={0.1} onChange={(_, value) => setConfig((previous) => ({ ...previous, speechRate: value as number }))} />
+              </Box>
+
+              <Box>
+                <Typography variant="body2">Speech pitch: {config.speechPitch.toFixed(1)}</Typography>
+                <Slider value={config.speechPitch} min={0.5} max={2} step={0.1} onChange={(_, value) => setConfig((previous) => ({ ...previous, speechPitch: value as number }))} />
+              </Box>
+
+              <Box>
+                <Typography variant="body2">Speech volume: {config.speechVolume.toFixed(1)}</Typography>
+                <Slider value={config.speechVolume} min={0} max={1} step={0.05} onChange={(_, value) => setConfig((previous) => ({ ...previous, speechVolume: value as number }))} />
+              </Box>
+
+              <Alert severity={supportsRecognition ? 'success' : 'warning'}>
+                Recognition support: {supportsRecognition ? 'available' : 'not available'}
+              </Alert>
+              <Alert severity={supportsSpeechSynthesis ? 'success' : 'warning'}>
+                Speech synthesis support: {supportsSpeechSynthesis ? 'available' : 'not available'}
+              </Alert>
+            </Stack>
+          ) : null}
         </Box>
       </Paper>
 
-      {/* Settings Dialog */}
-      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Stemmeinnstillinger</DialogTitle>
+      <Dialog open={showHelp} onClose={() => setShowHelp(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Voice Help</DialogTitle>
         <DialogContent>
-          <Stack spacing={3}>
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Stemme
-              </Typography>
-              <FormControl fullWidth>
-                <InputLabel>Stemme</InputLabel>
-                <Select
-                  value={config.voice}
-                  onChange={(e) => updateConfig({ voice: e.target.value })}
-                >
-                  {availableVoices.map((voice) => (
-                    <MenuItem key={voice.name} value={voice.name}>
-                      <Box>
-                        <Typography variant="body2">{voice.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {voice.language} • {voice.gender} • {voice.quality}
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Talehastighet: {config.rate}
-              </Typography>
-              <Slider
-                value={config.rate}
-                onChange={(_, value) => updateConfig({ rate: value as number })}
-                min={0.5}
-                max={2}
-                step={0.1}
-                marks={[
-                  { value: 0, .label: '0.5x',},
-                  { value: 1, label: '1x',},
-                  { value: 2, label: '2x',},
-                ]}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Tonehøyde: {config.pitch}
-              </Typography>
-              <Slider
-                value={config.pitch}
-                onChange={(_, value) => updateConfig({ pitch: value as number })}
-                min={0.5}
-                max={2}
-                step={0.1}
-                marks={[
-                  { value: 0, .label: 'Lav',},
-                  { value: 1, label: 'Normal',},
-                  { value: 2, label: 'Høy',},
-                ]}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Volum: {config.volume}
-              </Typography>
-              <Slider
-                value={config.volume}
-                onChange={(_, value) => updateConfig({ volume: value as number })}
-                min={0}
-                max={1}
-                step={0.1}
-                marks={[
-                  { value: 0, label: '0%',},
-                  { value: 0, .label: '50%',},
-                  { value: 1, label:'100%',},
-                ]}
-              />
-            </Box>
-
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Avanserte innstillinger
-              </Typography>
-              <Stack spacing={1}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={config.enableContinuousListening}
-                      onChange={(e) => updateConfig({ enableContinuousListening: e.target.checked })}
-                    />
-                }
-                  label="Kontinuerlig lytte"
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={config.enableVoiceCommands}
-                      onChange={(e) => updateConfig({ enableVoiceCommands: e.target.checked })}
-                    />
-                }
-                  label="Aktiver stemmekommandoer"
-                />
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={config.enableAutoPunctuation}
-                      onChange={(e) => updateConfig({ enableAutoPunctuation: e.target.checked })}
-                    />
-                }
-                  label="Automatisk tegnsetting"
-                />
-              </Stack>
-            </Box>
-          </Stack>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            Use commands in Norwegian or English while listening is enabled.
+          </Typography>
+          <List dense>
+            {voiceCommands.map((command) => (
+              <ListItem key={`help-${command.id}`}>
+                <ListItemText primary={command.trigger} secondary={command.description} />
+              </ListItem>
+            ))}
+          </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowSettings(false)}>Lukk</Button>
+          <Button onClick={() => setShowHelp(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Help Dialog */}
-      <Dialog open={showHelp} onClose={() => setShowHelp(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Stemmekommandoer Hjelp</DialogTitle>
+      <Dialog open={showHistory} onClose={() => setShowHistory(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Voice History</DialogTitle>
         <DialogContent>
-          {renderVoiceCommands()}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+            Session started: {session.startedAt.toLocaleString()}
+          </Typography>
+          <List dense>
+            {session.commandHistory.length === 0 ? (
+              <ListItem>
+                <ListItemText primary="No commands in this session." />
+              </ListItem>
+            ) : (
+              session.commandHistory.map((run) => (
+                <ListItem key={`history-${run.id}`}>
+                  <ListItemText
+                    primary={run.transcript}
+                    secondary={`${run.message} • ${run.timestamp.toLocaleTimeString()}`}
+                  />
+                </ListItem>
+              ))
+            )}
+          </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowHelp(false)}>Lukk</Button>
+          <Button
+            onClick={() => {
+              setCommandRuns([]);
+              setSession((previous) => ({ ...previous, commandHistory: [], totalCommands: 0 }));
+            }}
+            color="error"
+          >
+            Clear
+          </Button>
+          <Button onClick={() => setShowHistory(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </>

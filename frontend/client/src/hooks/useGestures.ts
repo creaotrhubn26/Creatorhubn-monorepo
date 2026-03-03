@@ -51,7 +51,7 @@ export interface UseGesturesReturn {
  */
 export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onGestureCreated,
     onGestureRecognized,
     onGestureExecuted,
@@ -87,8 +87,8 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
   // Initialize gesture manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      gestureManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      gestureManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -162,7 +162,7 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onGestureCreated, onGestureRecognized, onGestureExecuted, onGestureExecutionFailed, onGestureRecognitionFailed, onError, onInitialized]);
+}, [optionConfig, onGestureCreated, onGestureRecognized, onGestureExecuted, onGestureExecutionFailed, onGestureRecognitionFailed, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -194,7 +194,7 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return gestureManager.getConfig();
 }, []);
 
@@ -208,7 +208,7 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
     createGesture,
     recognizeGesture,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -231,7 +231,7 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
     createGesture,
     recognizeGesture,
     state,
-    config,
+    currentConfig,
     updateConfig,
     getGestures
   ]);
@@ -240,7 +240,6 @@ export const useGestures = (options: UseGesturesOptions = {}): UseGesturesReturn
 };
 
 export default useGestures;
-
 
 
 

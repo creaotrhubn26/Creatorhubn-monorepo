@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, Route } from 'wouter';
+import { Switch, Route, useLocation } from 'wouter';
 import { queryClient } from './lib/queryClient';
 import { useQuery, useMutation, useQueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from "@/hooks/useAuth";
@@ -136,6 +136,23 @@ import RevenueOptimizationDashboard from '@/components/admin/visual-editor/Reven
 import StoryArcStudioPage from '@/pages/StoryArcStudioPage';
 import GlobalChatProvider from '@/components/chat/GlobalChatProvider';
 import AcademyLandingPage from '@/components/academy/AcademyLandingPage';
+import AcademyDashboardCinematic from '@/components/academy/AcademyDashboardCinematic';
+import CourseCreator from '@/components/academy/CourseCreator';
+import ModuleManager from '@/components/academy/ModuleManager';
+import VideoAnnotationEditor from '@/components/academy/VideoAnnotationEditor';
+import QuizManager from '@/components/academy/QuizManager';
+import AcademyVideoPlayerStudio from '@/components/academy/AcademyVideoPlayerStudio';
+import AcademyMonetizationStudio from '@/components/academy/AcademyMonetizationStudio';
+import AcademyCTAOverlayStudio from '@/components/academy/AcademyCTAOverlayStudio';
+import AcademyLowerThirdsStudio from '@/components/academy/AcademyLowerThirdsStudio';
+import AcademyLessonStudio from '@/components/academy/AcademyLessonStudio';
+import AcademyCohortSettingsStudio from '@/components/academy/AcademyCohortSettingsStudio';
+import AcademyAssignmentsStudio from '@/components/academy/AcademyAssignmentsStudio';
+import AcademyEnrollmentStudio from '@/components/academy/AcademyEnrollmentStudio';
+import AcademyCurriculumStudio from '@/components/academy/AcademyCurriculumStudio';
+import AcademyStudentDashboardStudio from '@/components/academy/AcademyStudentDashboardStudio';
+import AcademyAnalyticsStudio from '@/components/academy/AcademyAnalyticsStudio';
+import AcademyMediaStudio from '@/components/academy/AcademyMediaStudio';
 import CommunityLandingPage from '@/components/community/CommunityLandingPage';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
 import ShowcaseAmazonDesign from '@/components/universal/misc/ShowcaseAmazonDesign';
@@ -261,6 +278,17 @@ function App() {
   // #region agent log
   console.log('[App] App component rendering at', new Date().toISOString());
   // #endregion
+  const [location] = useLocation();
+
+  React.useEffect(() => {
+    const isAcademyRoute = /^\/academy(?:$|[/-])/.test(location);
+    document.body.classList.toggle('academy-route', isAcademyRoute);
+
+    return () => {
+      document.body.classList.remove('academy-route');
+    };
+  }, [location]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <DemoModeProvider>
@@ -347,6 +375,37 @@ function App() {
                     component={() => <SmartDashboardRoute profession="photographer" />}
                   />
                   <Route path="/academy" component={AcademyLandingPage as React.ComponentType<any>} />
+                  <Route path="/academy-dashboard" component={AcademyDashboardCinematic as React.ComponentType<any>} />
+                  <Route path="/academy/course-creator" component={CourseCreator as React.ComponentType<any>} />
+                  <Route path="/academy/module-manager" component={ModuleManager as React.ComponentType<any>} />
+                  <Route path="/academy/annotation-editor" component={VideoAnnotationEditor as React.ComponentType<any>} />
+                  <Route path="/academy/quiz-manager" component={QuizManager as React.ComponentType<any>} />
+                  <Route path="/academy/assignments" component={AcademyAssignmentsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/assignment-manager" component={AcademyAssignmentsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/enrollment" component={AcademyEnrollmentStudio as React.ComponentType<any>} />
+                  <Route path="/academy/student-enrollment" component={AcademyEnrollmentStudio as React.ComponentType<any>} />
+                  <Route path="/academy/student-dashboard" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
+                  <Route path="/academy/dashboard/student" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
+                  <Route path="/academy/analytics" component={AcademyAnalyticsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/canalytics" component={AcademyAnalyticsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/curriculum" component={AcademyCurriculumStudio as React.ComponentType<any>} />
+                  <Route path="/academy/curriculum-manager" component={AcademyCurriculumStudio as React.ComponentType<any>} />
+                  <Route path="/academy/lesson-editor" component={AcademyLessonStudio as React.ComponentType<any>} />
+                  <Route path="/academy/lessons" component={AcademyLessonStudio as React.ComponentType<any>} />
+                  <Route path="/academy/courses" component={CourseCreator as React.ComponentType<any>} />
+                  <Route path="/academy/modules" component={ModuleManager as React.ComponentType<any>} />
+                  <Route path="/academy/cohort-settings" component={AcademyCohortSettingsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/cohorts" component={AcademyCohortSettingsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/media" component={AcademyMediaStudio} />
+                  <Route path="/academy/library" component={AcademyMediaStudio} />
+                  <Route path="/academy/asset-browser" component={AcademyMediaStudio} />
+                  <Route path="/academy/video-player" component={AcademyVideoPlayerStudio as React.ComponentType<any>} />
+                  <Route path="/academy/assessments" component={QuizManager as React.ComponentType<any>} />
+                  <Route path="/academy/monetization" component={AcademyMonetizationStudio as React.ComponentType<any>} />
+                  <Route path="/academy/cta-overlay" component={AcademyCTAOverlayStudio as React.ComponentType<any>} />
+                  <Route path="/academy/lower-thirds" component={AcademyLowerThirdsStudio as React.ComponentType<any>} />
+                  <Route path="/academy/messages" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
+                  <Route path="/academy/settings" component={CourseCreator as React.ComponentType<any>} />
                   <Route path="/community" component={CommunityLandingPageWrapper} />
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route

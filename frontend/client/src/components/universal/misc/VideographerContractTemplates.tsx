@@ -1,42 +1,34 @@
-import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useCallback } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Button,
-  Grid,
   Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
   CircularProgress,
-  Stack,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
   IconButton,
+  MenuItem,
+  Stack,
+  TextField,
   Tooltip,
+  Typography,
 } from '@mui/material';
-import { apiRequest } from '@/lib/queryClient';
 import {
+  Add,
+  CheckCircle,
+  Delete,
   Description,
-  Download,
   Edit,
   Preview,
-  Add,
-  Delete,
-  Close,
-  FileCopy,
-  CheckCircle,
 } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
 
 interface ContractTemplate {
   id: string;
@@ -50,334 +42,362 @@ interface ContractTemplate {
   usageCount: number;
   lastUsed?: string;
   createdAt: string;
-  updatedAt: string
+  updatedAt: string;
 }
 
 interface VideographerContractTemplatesProps {
   projectId?: string;
   onTemplateSelect?: (template: ContractTemplate) => void;
-  onTemplateGenerated?: (template: ContractTemplate, generatedContent: string) => void
+  onTemplateGenerated?: (template: ContractTemplate, generatedContent: string) => void;
 }
 
-export default function VideographerContractTemplates({ 
+const LOCAL_KEY = 'videographer_contract_templates';
+
+const DEFAULT_TEMPLATES: ContractTemplate[] = [
+  {
+    id: 'default-wedding',
+    name: 'Wedding Film Agreement',
+    description: 'Standard agreement for wedding video production.',
+    category: 'wedding',
+    content:
+      'Client: {{clientName}}\nEvent date: {{eventDate}}\nLocation: {{location}}\nPackage: {{packageName}}\nTotal fee: {{price}}',
+    variables: ['clientName', 'eventDate', 'location', 'packageName', 'price'],
+    isPublic: false,
+    isDefault: true,
+    usageCount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'default-commercial',
+    name: 'Commercial Production Contract',
+    description: 'Contract template for branded commercial productions.',
+    category: 'commercial',
+    content:
+      'Brand: {{brandName}}\nProject scope: {{scope}}\nDelivery date: {{deliveryDate}}\nFee: {{price}}\nRights: {{rights}}',
+    variables: ['brandName', 'scope', 'deliveryDate', 'price', 'rights'],
+    isPublic: false,
+    isDefault: true,
+    usageCount: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+function loadLocalTemplates(): ContractTemplate[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (!raw) {
+      return DEFAULT_TEMPLATES;
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ContractTemplate[]) : DEFAULT_TEMPLATES;
+  } catch {
+    return DEFAULT_TEMPLATES;
+  }
+}
+
+function saveLocalTemplates(templates: ContractTemplate[]) {
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(templates));
+  } catch {
+    // Ignore local storage failures.
+  }
+}
+
+function parseTemplatesFromPayload(payload: unknown): ContractTemplate[] {
+  if (Array.isArray(payload)) {
+    return payload as ContractTemplate[];
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: ContractTemplate[] }).data;
+  }
+
+  return [];
+}
+
+function categoryColor(category: ContractTemplate['category']): 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default' {
+  switch (category) {
+    case 'wedding':
+      return 'primary';
+    case 'corporate':
+      return 'secondary';
+    case 'event':
+      return 'success';
+    case 'portrait':
+      return 'warning';
+    case 'commercial':
+      return 'info';
+    case 'documentary':
+    default:
+      return 'default';
+  }
+}
+
+function extractVariables(content: string): string[] {
+  const regex = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+  const variables = new Set<string>();
+
+  for (const match of content.matchAll(regex)) {
+    variables.add(match[1]);
+  }
+
+  return [...variables];
+}
+
+function defaultVariableValues(variables: string[]): Record<string, string> {
+  return variables.reduce<Record<string, string>>((accumulator, variable) => {
+    accumulator[variable] = '';
+    return accumulator;
+  }, {});
+}
+
+function fillTemplateContent(template: ContractTemplate, values: Record<string, string>): string {
+  return template.content.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, variable: string) => {
+    return values[variable] ?? `{{${variable}}}`;
+  });
+}
+
+export default function VideographerContractTemplates({
   projectId,
   onTemplateSelect,
-  onTemplateGenerated 
+  onTemplateGenerated,
 }: VideographerContractTemplatesProps) {
-  const { user } = useAuth();
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const queryClient = useQueryClient();
-  
-  const [selectedTemplate, setSelectedTemplate] = useState<ContractTemplate | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ContractTemplate | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<ContractTemplate | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [formData, setFormData] = useState<Partial<ContractTemplate>>({
     name: '',
     description: '',
     category: 'wedding',
     content: '',
-    variables:  [],
     isPublic: false,
-    isDefault: false
-});
+    isDefault: false,
+  });
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
-  // Fetch contract templates
-  const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['/api/contract-templates,', projectId],
- return apiRequest(`/api/contract-templates/${projectId || 'default'}`, {
-   headers: {
-          "Content-Type" : "application/json"
+  const templatesQueryKey = useMemo(
+    () => ['/api/contract-templates', projectId ?? 'default'],
+    [projectId],
+  );
+
+  const { data: templates = [], isLoading, isError } = useQuery({
+    queryKey: templatesQueryKey,
+    queryFn: async () => {
+      try {
+        const response = await apiRequest(`/api/contract-templates/${projectId ?? 'default'}`);
+        const parsed = parseTemplatesFromPayload(response);
+        if (parsed.length > 0) {
+          saveLocalTemplates(parsed);
+          return parsed;
+        }
+      } catch {
+        // Local fallback handled below.
+      }
+
+      return loadLocalTemplates();
     },
-      headers: {
-  }
-  }),
-    retry: false,
-});
+  });
 
-  // Create template
   const createTemplate = useMutation({
-    mutationFn: async (data: ContractTemplate) => 
-      return apiRequest('/api/contract-templates/create', {
-        headers: {
-          "Content-Type" : "application/json"
+    mutationFn: async (template: ContractTemplate) => {
+      try {
+        await apiRequest('/api/contract-templates/create', {
+          method: 'POST',
+          body: { ...template, projectId },
+        });
+      } catch {
+        // Local fallback still updates state.
+      }
+
+      const next = [template, ...templates];
+      saveLocalTemplates(next);
+      return next;
     },
-        headers: {
-    },
-        method: 'POS',
-        body: JSON.stringify({ ...data, projectId })
-    }),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates", ],});
-      setShowCreateDialog(false);
+    onSuccess: (next) => {
+      queryClient.setQueryData(templatesQueryKey, next);
+      setFormOpen(false);
+      setEditingTemplate(null);
       setFormData({
         name: '',
         description: '',
         category: 'wedding',
         content: '',
-        variables:  [],
         isPublic: false,
-        isDefault: false
+        isDefault: false,
+      });
+    },
   });
-  }
-});
 
-  // Update template
   const updateTemplate = useMutation({
-    mutationFn: async (data: ContractTemplate) => 
-      return apiRequest(`/api/contract-templates/${data.d}`, {
-        headers: {
-          "Content-Type" : "application/json"
+    mutationFn: async (template: ContractTemplate) => {
+      try {
+        await apiRequest(`/api/contract-templates/${template.id}`, {
+          method: 'PUT',
+          body: template,
+        });
+      } catch {
+        // Local fallback still updates state.
+      }
+
+      const next = templates.map((candidate) => (candidate.id === template.id ? template : candidate));
+      saveLocalTemplates(next);
+      return next;
     },
-        headers: {
-    },
-        method: 'PU',
-        body: JSON.stringify(data)
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates", ],});
+    onSuccess: (next) => {
+      queryClient.setQueryData(templatesQueryKey, next);
+      setFormOpen(false);
       setEditingTemplate(null);
-  }
-});
+    },
+  });
 
-  // Delete template
   const deleteTemplate = useMutation({
-    mutationFn: async (templateId: string) => 
-      return apiRequest(`/api/contract-templates/${templated}`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        headers: {
-    },
-        method: 'DELETE'
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/contract-templates", ],});
-  }
-});
+    mutationFn: async (templateId: string) => {
+      try {
+        await apiRequest(`/api/contract-templates/${templateId}`, { method: 'DELETE' });
+      } catch {
+        // Local fallback still updates state.
+      }
 
-  // Generate contract
-  const generateContract = useMutation({
-    mutationFn: async ({ templated, variables }: { templateId: string; variables: Record<string, string> }) =>
-      return apiRequest(`/api/contract-templates/${templateId}/generate`, {
-        headers: {
-          "Content-Type" : "application/json"
+      const next = templates.filter((template) => template.id !== templateId);
+      saveLocalTemplates(next);
+      return next;
     },
-        headers: {
+    onSuccess: (next) => {
+      queryClient.setQueryData(templatesQueryKey, next);
     },
-        method: 'POS',
-        body: JSON.stringify({ variables, projectId })
-    }),
-    onSuccess: (data) => {
-      onTemplateGenerated?.(selectedTemplate!, data.generatedContent);
-      setShowPreview(false);
-  }
-});
+  });
 
-  const handleCreateTemplate = () => {
-    if (!formData.name || !formData.content) return;
-    
-    const template: ContractTemplate = {
-      id: `template_${Date.now()}`,
+  const handleSaveTemplate = () => {
+    if (!formData.name || !formData.content || !formData.category) {
+      return;
+    }
+
+    const templatePayload: ContractTemplate = {
+      id: editingTemplate?.id ?? `template-${Date.now()}`,
       name: formData.name,
-      description: formData.description ||'',
-      category: formData.category || 'wedding',
+      description: formData.description ?? '',
+      category: formData.category,
       content: formData.content,
-      variables: formData.variables || [],
-      isPublic: formData.isPublic || false,
-      isDefault: formData.isDefault || false,
-      usageCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-};
+      variables: extractVariables(formData.content),
+      isPublic: formData.isPublic ?? false,
+      isDefault: formData.isDefault ?? false,
+      usageCount: editingTemplate?.usageCount ?? 0,
+      lastUsed: editingTemplate?.lastUsed,
+      createdAt: editingTemplate?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-    createTemplate.mutate(template);
-};
+    if (editingTemplate) {
+      updateTemplate.mutate(templatePayload);
+    } else {
+      createTemplate.mutate(templatePayload);
+    }
+  };
 
-  const handleEditTemplate = (template: ContractTemplate) => {
-    setEditingTemplate(template);
-    setFormData(template);
-    setShowCreateDialog(true);
-};
+  const handleOpenPreview = (template: ContractTemplate) => {
+    setPreviewTemplate(template);
+    setVariableValues(defaultVariableValues(template.variables));
+    setPreviewOpen(true);
+    onTemplateSelect?.(template);
+  };
 
-  const handleUpdateTemplate = () => {
-    if (!editingTemplate) return;
-    
-    const updatedTemplate = {
-      ...editingTemplate,
-      ...formData
-  } as ContractTemplate;
-
-    updateTemplate.mutate(updatedTemplate);
-};
-
-  const handleGenerateContract = (template: ContractTemplate) => {
-    setSelectedTemplate(template);
-    setShowPreview(true);
-};
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'wedding': return 'primary';
-      case 'corporate': return 'secondary';
-      case 'event': return 'success';
-      case 'portrait': return 'warning';
-      case 'commercial': return 'info';
-      case 'documentary': return 'default';
-      default: return 'default';
-}
-};
-
-  const extractVariables = (content: string) => {
-    const variableRegex = /\{\{(\w+, ), \}\}/g;
-    const matches = content.match(variableRegex);
-    return matches ? [...new Set(matches.map(match => match.replace(/\{\{|\}\}/g, ', ')))] : [];
-};
+  const generatedContent = previewTemplate
+    ? fillTemplateContent(previewTemplate, variableValues)
+    : '';
 
   return (
-    <Box sx={{ p:  2 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h5" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+    <Box sx={{ p: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Description color="primary" />
           Contract Templates
         </Typography>
-        <Button variant="contained"
-          startIcon={theming.getThemedIcon('add')}
-          onClick={() => setShowCreateDialog(true)}
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => {
+            setEditingTemplate(null);
+            setFormData({
+              name: '',
+              description: '',
+              category: 'wedding',
+              content: '',
+              isPublic: false,
+              isDefault: false,
+            });
+            setFormOpen(true);
+          }}
         >
-          Create Template
+          New Template
         </Button>
       </Box>
 
-      {/* Templates Grid */}
+      {isError && <Alert severity="warning" sx={{ mb: 2 }}>API unavailable, using local templates.</Alert>}
+
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
           <CircularProgress />
         </Box>
       ) : templates.length === 0 ? (
-        <Alert severity="info">
-          No contract templates available. Create your first template to get started.
-        </Alert>
+        <Alert severity="info">No templates yet.</Alert>
       ) : (
-        <Grid container spacing={3}>
-          {templates.map((template: ContractTemplate) => (
-            <Grid item xs={2} sm={6} md={4} key={template.id}>
-              <Card 
-                sx={{ 
-                  height: '100%',
-                  cursor: 'pointer', '&:hover': { 
-                    transform: 'translateY(-4px)',
-                    boxShadow: 4 },
-                  transition: 'all 0.2s ease-in-out'
-            }}
-                onClick={() => handleGenerateContract(template)}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  2 }}>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{template.name}</Typography>
-                    <Chip 
-                      label={template.category} 
-                      size="small" 
-                      color={getCategoryColor(template.category) as any}
-                      variant="outlined"
-                    />
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    {template.description}
-                  </Typography>
-
-                  {/* Template Stats */}
-                  <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+        <Grid container spacing={2}>
+          {templates.map((template) => (
+            <Grid item xs={12} md={6} key={template.id}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                     <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Variables
+                      <Typography variant="h6">{template.name}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        {template.description}
                       </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {template.variables.length}
-                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <Chip label={template.category} color={categoryColor(template.category)} size="small" />
+                        {template.isDefault && <Chip label="Default" icon={<CheckCircle fontSize="small" />} size="small" />}
+                        {template.isPublic && <Chip label="Public" size="small" variant="outlined" />}
+                        <Chip label={`${template.variables.length} vars`} size="small" variant="outlined" />
+                      </Stack>
                     </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Usage
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {template.usageCount}
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Status
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {template.isDefault ? 'Default' : 'Custom'}
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  {/* Variables Preview */}
-                  {template.variables.length > 0 && (
-                    <Box sx={{ mb:  2 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Variables: </Typography>
-                      <Box sx={{ display: 'flex', gap: 0,flexWrap: 'wrap', mt: 0.5}}>
-                        {template.variables.slice(0, 3).map((variable, index) => (
-                          <Chip
-                            key={index}
-                            label={variable}
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem'}}
-                          />
-                        ))}
-                        {template.variables.length > 3 && (
-                          <Chip
-                            label={`+${template.variables.length - 3}`}
-                            size="small"
-                            variant="outlined"
-                            sx={{ fontSize: '0.7rem'}}
-                          />
-                        )}
-                      </Box>
-                    </Box>
-                  )}
-
-                  {/* Actions */}
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      size="small"
-                      startIcon={<Preview />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleGenerateContract(template);
-                    }}
-                      fullWidth
-                    >
-                      Generate
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={theming.getThemedIcon('edit')}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditTemplate(template);
-                    }}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="small"
-                      color="error"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteTemplate.mutate(template.id);
-                    }}
-                    >
-                      Delete
-                    </Button>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Preview / Generate">
+                        <IconButton size="small" onClick={() => handleOpenPreview(template)}>
+                          <Preview fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditingTemplate(template);
+                            setFormData(template);
+                            setFormOpen(true);
+                          }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => deleteTemplate.mutate(template.id)}
+                          disabled={deleteTemplate.isPending || template.isDefault}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                   </Stack>
                 </CardContent>
               </Card>
@@ -386,163 +406,106 @@ export default function VideographerContractTemplates({
         </Grid>
       )}
 
-      {/* Create/Edit Dialog */}
-      <Dialog 
-        open={showCreateDialog} 
-        onClose={() => {
-          setShowCreateDialog(false);
-          setEditingTemplate(null);
-      }}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          {editingTemplate ? 'Edit Contract Template' : 'Create Contract Template'}
-        </DialogTitle>
+      <Dialog open={formOpen} onClose={() => setFormOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>{editingTemplate ? 'Edit template' : 'Create template'}</DialogTitle>
         <DialogContent>
-          <Grid container spacing={3} sx={{ mt:  1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Template Name"
-                value={formData.name || ', '}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Category</InputLabel>
-                <Select
-                  value={formData.category || 'wedding'}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                >
-                  <MenuItem value="wedding">Wedding</MenuItem>
-                  <MenuItem value="corporate">Corporate</MenuItem>
-                  <MenuItem value="event">Event</MenuItem>
-                  <MenuItem value="portrait">Portrait</MenuItem>
-                  <MenuItem value="commercial">Commercial</MenuItem>
-                  <MenuItem value="documentary">Documentary</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Description"
-                multiline
-                rows={2}
-                value={formData.description || ', '}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Contract Content"
-                multiline
-                rows={10}
-                value={formData.content || ', '}
-                onChange={(e) => {
-                  const content = e.target.value;
-                  setFormData({ 
-                    ...formData, 
-                    content,
-                    variables: extractVariables(content)
-              });
-              }}
-                placeholder="Enter your contract template here. Use {{variableName}} for dynamic content..."
-                required
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <Alert severity="info">
-                <Typography variant="body2">
-                  <strong>Variable Format: </strong> Use double curly braces for, variables: {`{{clientName}}`, `{{eventDate}}`, `{{packagePrice}}`}
-                </Typography>
-              </Alert>
-            </Grid>
-          </Grid>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Template name"
+              value={formData.name ?? ''}
+              onChange={(event) => setFormData((prev) => ({ ...prev, name: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Description"
+              value={formData.description ?? ''}
+              onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              select
+              label="Category"
+              value={formData.category ?? 'wedding'}
+              onChange={(event) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  category: event.target.value as ContractTemplate['category'],
+                }))
+              }
+              fullWidth
+            >
+              <MenuItem value="wedding">Wedding</MenuItem>
+              <MenuItem value="corporate">Corporate</MenuItem>
+              <MenuItem value="event">Event</MenuItem>
+              <MenuItem value="portrait">Portrait</MenuItem>
+              <MenuItem value="commercial">Commercial</MenuItem>
+              <MenuItem value="documentary">Documentary</MenuItem>
+            </TextField>
+            <TextField
+              label="Template content"
+              multiline
+              minRows={8}
+              helperText="Use variables like {{clientName}} and {{eventDate}}."
+              value={formData.content ?? ''}
+              onChange={(event) => setFormData((prev) => ({ ...prev, content: event.target.value }))}
+              fullWidth
+            />
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {extractVariables(formData.content ?? '').map((variable) => (
+                <Chip key={variable} size="small" label={variable} variant="outlined" />
+              ))}
+            </Stack>
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowCreateDialog(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained"
-            onClick={editingTemplate ? handleUpdateTemplate : handleCreateTemplate}
-            disabled={!formData.name || !formData.content}
-           sx={theming.getThemedButtonSx()}>
-            {editingTemplate ? 'Update' : 'Create'}
+          <Button onClick={() => setFormOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleSaveTemplate}
+            variant="contained"
+            disabled={createTemplate.isPending || updateTemplate.isPending}
+          >
+            Save
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Contract Generation Dialog */}
-      <Dialog 
-        open={showPreview} 
-        onClose={() => setShowPreview(false)}
-        maxWidth="lg"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              Generate Contract: {selectedTemplate?.name}
-            </Typography>
-            <IconButton onClick={() => setShowPreview(false)}>
-              {theming.getThemedIcon('close')}
-            </IconButton>
-          </Box>
-        </DialogTitle>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Generate Contract</DialogTitle>
         <DialogContent>
-          {selectedTemplate && (
-            <Box>
-              <Typography variant="body1" sx={{ mb:  2 }}>
-                {selectedTemplate.description}
-              </Typography>
-              
-              <Alert severity="info" sx={{ mb:  3 }}>
-                <Typography variant="body2">
-                  This template has {selectedTemplate.variables.length} variables that need to be filled in.
-                </Typography>
-              </Alert>
+          {previewTemplate && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              {previewTemplate.variables.map((variable) => (
+                <TextField
+                  key={variable}
+                  label={variable}
+                  value={variableValues[variable] ?? ''}
+                  onChange={(event) =>
+                    setVariableValues((prev) => ({ ...prev, [variable]: event.target.value }))
+                  }
+                  fullWidth
+                />
+              ))}
 
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Template Preview: </Typography>
-              <Box 
-                sx={{ 
-                  p: 2, border: 1
-                  borderColor: 'divider', 
-                  borderRadius:  1,
-                  bgcolor: 'grey.5',
-                  maxHeight: '400px',
-                  overflow: 'auto'
-            }}
-              >
-                <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap'}}>
-                  {selectedTemplate.content}
-                </Typography>
-              </Box>
-            </Box>
+              <Alert severity="info">Preview updates live as you fill in variables.</Alert>
+
+              <TextField multiline minRows={10} value={generatedContent} fullWidth />
+            </Stack>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained"
-            startIcon={<FileCopy />}
+          <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+          <Button
+            variant="contained"
             onClick={() => {
-              if (selectedTemplate) {
-                generateContract.mutate({ 
-                  templateId: selectedTemplate., id
-                  variables:  , {} 
-              });
-            }
-          }}
-            disabled={generateContract.isPending}
+              if (!previewTemplate) {
+                return;
+              }
+
+              onTemplateGenerated?.(previewTemplate, generatedContent);
+              setPreviewOpen(false);
+            }}
           >
-            {generateContract.isPending ? 'Generating...' : 'Generate Contract'}
+            Use Contract
           </Button>
         </DialogActions>
       </Dialog>

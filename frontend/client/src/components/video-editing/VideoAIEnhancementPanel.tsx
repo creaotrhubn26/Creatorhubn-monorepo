@@ -219,7 +219,7 @@ export default function VideoAIEnhancementPanel({
   const analyzeStoryArcMutation = useMutation({
     mutationFn: async (data: { videoUrl: string }) => {
       return apiRequest('/api/video-ai/analyze-story-arc-url', {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type' : 'application/json',
           ...auth as Record<string, string>
@@ -393,7 +393,7 @@ export default function VideoAIEnhancementPanel({
               <Box sx={{ 
                 width:  8, 
                 height:  8, 
-                borderRadius: '50, %', 
+                borderRadius: '50%', 
                 bgcolor: 'success.main',
                 animation: 'pulse 2s infinite'
             }} />

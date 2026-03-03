@@ -439,12 +439,12 @@ export default function FeatureTogglePanel({
 
     return (
       <Accordion
-        key={category.d}
+        key={category.id}
         expanded={isExpanded}
         onChange={() => handleCategoryToggle(category.id)}
         sx={{ mb:  1 }}
       >
-        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
+        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
           <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%'}}>
             <Box sx={{ color: `${category.color}.main` }}>
               {category.icon}
@@ -490,8 +490,10 @@ export default function FeatureTogglePanel({
             zIndex: 10,
             minWidth: 40,
             maxWidth: 50,
-        })}}
-       sx={theming.getThemedCardSx()}>
+          }),
+          ...theming.getThemedCardSx(),
+        }}
+      >
         {/* Header */}
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>

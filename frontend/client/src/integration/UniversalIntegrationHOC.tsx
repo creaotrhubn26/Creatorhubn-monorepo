@@ -8,6 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { useEnhancedMasterIntegration } from './EnhancedMasterIntegrationProvider';
 import { useTheming } from '../utils/theming-helper';
 import { useComponentRegistry } from './UniversalComponentRegistry';
+import type { ComponentMetadata } from './UniversalComponentRegistry';
 
 // Enhanced props that any component can receive
 export interface UniversalIntegrationProps {
@@ -33,8 +34,33 @@ export interface UniversalIntegrationProps {
   
   // Actions
   onActionExecute?: (action: string, data: any) => void;
-  onActionRegister?: (action: string, handler: Function) => void
+  onActionRegister?: (action: string, handler: Function) => void;
+
+  // Optional feature IDs implemented by this component
+  featureIds?: string[];
 }
+
+const normalizeRegistryComponentType = (
+  value: string,
+): ComponentMetadata['type'] => {
+  const allowedTypes: ComponentMetadata['type'][] = [
+    'page',
+    'dashboard',
+    'widget',
+    'modal',
+    'form',
+    'chart',
+    'editor',
+    'showcase',
+    'admin',
+    'universal',
+    'other',
+  ];
+
+  return allowedTypes.includes(value as ComponentMetadata['type'])
+    ? (value as ComponentMetadata['type'])
+    : 'widget';
+};
 
 // HOC that adds universal integration to any component
 export const withUniversalIntegration = <P extends object>(
@@ -53,7 +79,10 @@ export const withUniversalIntegration = <P extends object>(
 	    featureIds?: string[];
 } = {}
 ) => {
-  const EnhancedComponent = React.forwardRef<any, P & UniversalIntegrationProps>((props, ref) => {
+  const EnhancedComponent = React.forwardRef<unknown, P & UniversalIntegrationProps>(function EnhancedComponentWithUniversalIntegration(props, ref) {
+    // Keep the ref parameter as an active value so bundlers don't collapse the
+    // render function arity and trigger React forwardRef warnings in dev.
+    void ref;
     const { integration, communication, dataFlow } = useEnhancedMasterIntegration();
   
   // Theming system
@@ -89,7 +118,7 @@ export const withUniversalIntegration = <P extends object>(
 	        registerComponent({
 	          id: componentId,
 	          name: componentName,
-	          type: componentType as any,
+	          type: normalizeRegistryComponentType(componentType),
 	          category: componentCategory,
 	          profession,
 	          capabilities: options.capabilities || ['data:read','event:listen'],
@@ -269,7 +298,8 @@ export const withUniversalIntegration = <P extends object>(
       isRegistered: isRegistered.current
     };
 
-    return <WrappedComponent {...enhancedProps} ref={ref} />;
+    const componentProps = enhancedProps as P;
+	    return <WrappedComponent {...componentProps} />;
   });
 
   EnhancedComponent.displayName = `withUniversalIntegration(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`;
@@ -376,7 +406,3 @@ export const createIntegrationConfig = (
 };
 
 export default withUniversalIntegration;
-
-
-
-

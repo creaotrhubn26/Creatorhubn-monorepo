@@ -93,6 +93,23 @@ interface AIUsageAnalyticsProps {
   aiMetricsDashboardEnabled?: boolean;
 }
 
+type TimeRange = '24h' | '7d' | '30d' | '90d';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const parseTimeRange = (value: string): TimeRange => {
+  switch (value) {
+    case '24h':
+    case '7d':
+    case '30d':
+    case '90d':
+      return value;
+    default:
+      return '7d';
+  }
+};
+
 const COLORS = ['#0088FE','#00C49F','#FFBB28','#FF8042','#8884D8'];
 
 export default function AIUsageAnalytics({
@@ -100,11 +117,11 @@ export default function AIUsageAnalytics({
   onClose,
   aiMetricsDashboardEnabled = true,
 }: AIUsageAnalyticsProps) {
-  const [timeRange, setTimeRange] = useState<'24h' | '7d' | '30d' | '90d'>('7d');
+  const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [stats, setStats] = useState<UsageStats | null>(null);
   const [recentRequests, setRecentRequests] = useState<UsageRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [aiMetricsData, setAiMetricsData] = useState<unknown>(null);
+  const [aiMetricsData, setAiMetricsData] = useState<Record<string, unknown> | null>(null);
 
   // Load usage data from localStorage and API
   const loadUsageData = useCallback(async () => {
@@ -148,8 +165,8 @@ export default function AIUsageAnalytics({
             `/api/ai/learning/metrics/code_completion?timeRange=${timeRange}`,
           );
           if (response.ok) {
-            const data = await response.json();
-            setAiMetricsData(data);
+            const data: unknown = await response.json();
+            setAiMetricsData(isRecord(data) ? data : null);
           }
         } catch (error) {
           console.warn('Could not load AI metrics data: ', error);
@@ -284,7 +301,7 @@ export default function AIUsageAnalytics({
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select
               value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value as string)}
+              onChange={(e) => setTimeRange(parseTimeRange(e.target.value))}
               sx={{
                 color: 'white', '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' }}}
             >
@@ -320,7 +337,7 @@ export default function AIUsageAnalytics({
         ) : stats ? (
           <Stack spacing={3}>
             {/* AI Metrics Dashboard Integration */}
-            {aiMetricsData && (
+            {Boolean(aiMetricsData) && (
               <Alert severity="info" icon={<Psychology />}>
                 <strong>Connected to AI Learning Hub:</strong> Data is being synced with the main AI
                 Metrics Dashboard for cross-platform learning insights.

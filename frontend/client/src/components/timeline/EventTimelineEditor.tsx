@@ -1,71 +1,63 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
   Chip,
-  IconButton,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  Tabs,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Select,
+  Stack,
   Tab,
-  Paper,
-  Tooltip,
-  Badge,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Add,
-  Edit,
-  Delete,
-  Schedule,
-  Lightbulb,
-  Send,
-  AccessTime,
-  LocationOn,
-  People,
-  Camera,
-  Mic,
-  Event,
-  Movie,
-  Business,
-  Portrait,
-  Celebration,
-  MusicNote,
-  AutoFixHigh,
+  AccessTime as AccessTimeIcon,
+  Add as AddIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Event as EventIcon,
+  LocationOn as LocationOnIcon,
+  Send as SendIcon,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useExternalData } from '@/services/ExternalDataService';
+
+type ProjectType =
+  | 'wedding'
+  | 'commercial'
+  | 'portrait'
+  | 'event'
+  | 'corporate'
+  | 'music_video'
+  | 'bryllup';
 
 interface EventTimelineEditorProps {
   projectId: string;
   timelineId?: string;
   userId: string;
-  projectType: | 'wedding'
-    | 'commercial'
-    | 'portrait'
-    | 'event'
-    | 'corporate'
-    | 'music_video'
-    | 'bryllup';
-  culturalType?: string; // Only for weddings
+  projectType: ProjectType;
+  culturalType?: string;
   viewMode?: 'full' | 'compact';
   enableSuggestions?: boolean;
   onEventAdded?: (event: unknown) => void;
@@ -82,7 +74,7 @@ interface TimelineEvent {
   eventType: string;
   priority: 'high' | 'medium' | 'low';
   status: 'planned' | 'confirmed' | 'completed';
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 interface TimelineSuggestion {
@@ -93,6 +85,25 @@ interface TimelineSuggestion {
   priority: 'high' | 'medium' | 'low';
   status: 'pending' | 'accepted' | 'rejected';
 }
+
+const EMPTY_EVENT: TimelineEvent = {
+  title: '',
+  time: '',
+  duration: 60,
+  description: '',
+  location: '',
+  eventType: 'general',
+  priority: 'medium',
+  status: 'planned',
+};
+
+const EMPTY_SUGGESTION: TimelineSuggestion = {
+  eventTitle: '',
+  suggestedTime: '',
+  reason: '',
+  priority: 'medium',
+  status: 'pending',
+};
 
 export default function EventTimelineEditor({
   projectId,
@@ -105,612 +116,844 @@ export default function EventTimelineEditor({
   onEventAdded,
   onSuggestionSent,
 }: EventTimelineEditorProps) {
-  const [activeTab, setActiveTab] = useState(0);
-  const [eventDialogOpen, setEventDialogOpen] = useState(false);
-  const [suggestionDialogOpen, setSuggestionDialogOpen] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<TimelineEvent | null>(null);
-  const [autoGenerateLoading, setAutoGenerateLoading] = useState(false);
-
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const { profession } = useProfessionAdapter();
   const theming = useTheming(profession || 'photographer');
-  const queryClient = useQueryClient();
+  const externalData = useExternalData();
 
-  // External data for planning intelligence (weather, location)
-  const externalData = useExternalData?.();
-  const [weatherAtEvent, setWeatherAtEvent] = useState<unknown>(null);
+  const [tab, setTab] = useState(0);
+  const [eventDialogOpen, setEventDialogOpen] = useState(false);
+  const [suggestionDialogOpen, setSuggestionDialogOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<TimelineEvent>(EMPTY_EVENT);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [suggestionDraft, setSuggestionDraft] = useState<TimelineSuggestion>(EMPTY_SUGGESTION);
+  const [weatherLocation, setWeatherLocation] = useState('');
 
-  // New event form state
-  const [newEvent, setNewEvent] = useState<TimelineEvent>({
-    title: '',
-    time: '',
-    duration: 60,
-    description: '',
-    location: '',
-    eventType: getDefaultEventType(projectType),
-    priority: 'medium',
-    status: 'planned' });
-
-  // New suggestion form state
-  const [newSuggestion, setNewSuggestion] = useState<TimelineSuggestion>({
-    eventTitle: '',
-    suggestedTime: '',
-    reason: '',
-    priority: 'medium',
-    status: 'pending' });
-
-  // Fetch timeline events
-  const { data: eventsData, isLoading: eventsLoading } = useQuery({
+  const {
+    data: eventsRaw,
+    isLoading: eventsLoading,
+  } = useQuery({
     queryKey: [`/api/event-timeline/${projectId}/events`],
     queryFn: () => apiRequest(`/api/event-timeline/${projectId}/events`),
-    enabled: !!projectId,
+    enabled: Boolean(projectId),
   });
 
-  // Fetch suggestions
-  const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery({
+  const {
+    data: suggestionsRaw,
+    isLoading: suggestionsLoading,
+  } = useQuery({
     queryKey: [`/api/event-timeline/${projectId}/suggestions`],
     queryFn: () => apiRequest(`/api/event-timeline/${projectId}/suggestions`),
-    enabled: !!projectId && enableSuggestions,
+    enabled: Boolean(projectId) && enableSuggestions,
   });
 
-  // Add event mutation
+  const {
+    data: weatherRaw,
+    isLoading: weatherLoading,
+  } = useQuery({
+    queryKey: ['timeline-weather', weatherLocation],
+    queryFn: () => externalData.getCurrentWeather(weatherLocation),
+    enabled: weatherLocation.trim().length > 0,
+    staleTime: 60_000,
+  });
+
+  const events = useMemo(() => normalizeEvents(eventsRaw), [eventsRaw]);
+  const suggestions = useMemo(() => normalizeSuggestions(suggestionsRaw), [suggestionsRaw]);
+  const selectedEvent = useMemo(
+    () => events.find((event) => event.id === selectedEventId) || null,
+    [events, selectedEventId],
+  );
+  const weather = useMemo(() => normalizeWeather(weatherRaw), [weatherRaw]);
+
   const addEventMutation = useMutation({
-    mutationFn: async (eventData: TimelineEvent) => {
-      return apiRequest(`/api/event-timeline/${projectId}/events`, {
+    mutationFn: (payload: TimelineEvent) =>
+      apiRequest(`/api/event-timeline/${projectId}/events`, {
         method: 'POST',
-        body: { ...eventData, projectType },
-      });
-    },
-    onSuccess: (data) => {
+        body: {
+          ...payload,
+          projectType,
+          userId,
+          timelineId,
+          culturalType,
+        },
+      }),
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
       setEventDialogOpen(false);
-      resetEventForm();
+      setEditingEvent({ ...EMPTY_EVENT, eventType: getDefaultEventType(projectType) });
+      toast({ title: 'Event lagt til', description: 'Tidslinjen er oppdatert', variant: 'success' });
+      onEventAdded?.(response);
+    },
+    onError: () => {
+      toast({ title: 'Kunne ikke lagre event', variant: 'destructive' });
+    },
+  });
+
+  const updateEventMutation = useMutation({
+    mutationFn: (payload: TimelineEvent) =>
+      apiRequest(`/api/event-timeline/events/${payload.id}`, {
+        method: 'PUT',
+        body: payload,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
+      setEventDialogOpen(false);
+      setEditingEvent({ ...EMPTY_EVENT, eventType: getDefaultEventType(projectType) });
+      toast({ title: 'Event oppdatert', variant: 'success' });
+    },
+    onError: () => {
+      toast({ title: 'Kunne ikke oppdatere event', variant: 'destructive' });
+    },
+  });
+
+  const deleteEventMutation = useMutation({
+    mutationFn: (eventId: string) =>
+      apiRequest(`/api/event-timeline/events/${eventId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
+      setSelectedEventId(null);
+      toast({ title: 'Event slettet', variant: 'success' });
+    },
+    onError: () => {
+      toast({ title: 'Kunne ikke slette event', variant: 'destructive' });
+    },
+  });
+
+  const addSuggestionMutation = useMutation({
+    mutationFn: (payload: TimelineSuggestion) =>
+      apiRequest(`/api/event-timeline/${projectId}/suggestions`, {
+        method: 'POST',
+        body: {
+          ...payload,
+          userId,
+          projectType,
+        },
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/suggestions`] });
+      setSuggestionDialogOpen(false);
+      setSuggestionDraft(EMPTY_SUGGESTION);
+      toast({ title: 'Forslag sendt', variant: 'success' });
+      onSuggestionSent?.(response);
+    },
+    onError: () => {
+      toast({ title: 'Kunne ikke sende forslag', variant: 'destructive' });
+    },
+  });
+
+  const updateSuggestionStatusMutation = useMutation({
+    mutationFn: (payload: { id: string; status: TimelineSuggestion['status'] }) =>
+      apiRequest(`/api/event-timeline/suggestions/${payload.id}`, {
+        method: 'PATCH',
+        body: payload,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/suggestions`] });
+    },
+  });
+
+  const autoGenerateMutation = useMutation({
+    mutationFn: async () => {
+      try {
+        return await apiRequest(`/api/event-timeline/${projectId}/auto-generate`, {
+          method: 'POST',
+          body: { projectType, culturalType, userId, timelineId },
+        });
+      } catch {
+        const templates = getDefaultEventTemplates(projectType, culturalType);
+        await Promise.all(
+          templates.map((template) =>
+            apiRequest(`/api/event-timeline/${projectId}/events`, {
+              method: 'POST',
+              body: {
+                ...template,
+                userId,
+                projectType,
+                timelineId,
+              },
+            }),
+          ),
+        );
+        return { count: templates.length };
+      }
+    },
+    onSuccess: (result: unknown) => {
+      const count = getGeneratedCount(result);
+      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
       toast({
-        title: 'Event lagt til, ',
-        description: 'Tidslinjen er oppdatert' });
-      onEventAdded?.(data);
+        title: 'Standardevents generert',
+        description: `${count} events lagt til`,
+        variant: 'success',
+      });
     },
     onError: () => {
       toast({
-        title: 'Feil',
-        description: 'Kunne ikke legge til event',
-        variant: 'destructive' });
+        title: 'Kunne ikke autogenerere',
+        description: 'Prøv igjen eller legg inn event manuelt',
+        variant: 'destructive',
+      });
     },
   });
 
-  // Update event mutation
-  const updateEventMutation = useMutation({
-    mutationFn: async ({ id, ...eventData }: TimelineEvent & { id: string }) => {
-      return apiRequest(`/api/event-timeline/events/${id}`, {
-        method: 'PUT',
-        body: eventData,
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
-      setEventDialogOpen(false);
-      setSelectedEvent(null);
-      toast({
-        title: 'Event oppdatert',
-        description: 'Endringene er lagret' });
-    },
-  });
+  const compactMode = viewMode === 'compact';
 
-  // Delete event mutation
-  const deleteEventMutation = useMutation({
-    mutationFn: async (eventId: string) => {
-      return apiRequest(`/api/event-timeline/events/${eventId}`, {
-        method: 'DELETE' });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
-      toast({
-        title: 'Event slettet',
-        description: 'Event er fjernet fra tidslinjen' });
-    },
-  });
-
-  // Add suggestion mutation
-  const addSuggestionMutation = useMutation({
-    mutationFn: async (suggestionData: TimelineSuggestion) => {
-      return apiRequest(`/api/event-timeline/${projectId}/suggestions`, {
-        method: 'POST',
-        body: suggestionData,
-      });
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/suggestions`] });
-      setSuggestionDialogOpen(false);
-      resetSuggestionForm();
-      toast({
-        title: 'Forslag sendt',
-        description: 'Klienten blir varslet om ditt forslag' });
-      onSuggestionSent?.(data);
-    },
-  });
-
-  // Auto-generate default events
-  const handleAutoGenerate = async () => {
-    setAutoGenerateLoading(true);
-    try {
-      const defaultEvents = await apiRequest(`/api/event-timeline/${projectId}/auto-generate`, {
-        method: 'POST',
-        body: { projectType, culturalType },
-      });
-
-      queryClient.invalidateQueries({ queryKey: [`/api/event-timeline/${projectId}/events`] });
-      toast({
-        title: 'Events generert',
-        description: `${defaultEvents.count} standardevents er lagt til`,
-      });
-    } catch (error) {
-      toast({
-        title: 'Feil',
-        description: 'Kunne ikke generere events',
-        variant: 'destructive' });
-    } finally {
-      setAutoGenerateLoading(false);
-    }
-  };
-
-  const resetEventForm = () => {
-    setNewEvent({
-      title: '',
-      time: '',
-      duration: 60,
-      description: '',
-      location: '',
-      eventType: getDefaultEventType(projectType),
-      priority: 'medium',
-      status: 'planned' });
-  };
-
-  const resetSuggestionForm = () => {
-    setNewSuggestion({
-      eventTitle: '',
-      suggestedTime: ', ',
-      reason: ', ',
-      priority: 'medium',
-      status: 'pending' });
-  };
-
-  const handleAddEvent = () => {
-    if (selectedEvent?.id) {
-      updateEventMutation.mutate({ ...newEvent, id: selectedEvent.id });
-    } else {
-      addEventMutation.mutate(newEvent);
-    }
-  };
-
-  const handleEditEvent = (event: unknown) => {
-    setSelectedEvent(event);
-    setNewEvent(event);
-    setEventDialogOpen(true);
-  };
-
-  const handleDeleteEvent = (eventId: string) => {
-    if (confirm('Er du sikker på at du vil slette dette eventet?')) {
-      deleteEventMutation.mutate(eventId);
-    }
-  };
-
-  const handleSendSuggestion = () => {
-    addSuggestionMutation.mutate(newSuggestion);
-  };
-
-  const getEventIcon = (type: string) => {
-    const iconMap: Record<string, JSX.Element> = {
-      ceremony: <Event color="error" />,
-      reception: <People color="primary" />,
-      preparation: <Camera color="info" />,
-      photo_session: <Camera color="success" />,
-      speech: <Mic color="warning" />,
-      meeting: <Business color="primary" />,
-      shoot: <Movie color="primary" />,
-      setup: <Camera color="info" />,
-      performance: <MusicNote color="error" />,
-      celebration: <Celebration color="primary" />,
-    };
-    return iconMap[type] || <Schedule color="action" />;
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'error';
-      case 'medium': return 'warning';
-      case 'low': return 'info';
-      default: return 'default';
-    }
-  };
-
-  const getProjectTypeIcon = () => {
-    const iconMap: Record<string, JSX.Element> = {
-      wedding: <Event />,
-      bryllup: <Event />,
-      commercial: <Business />,
-      portrait: <Portrait />,
-      event: <Celebration />,
-      music_video: <MusicNote />,
-      corporate: <Business />,
-    };
-    return iconMap[projectType] || <Schedule />;
-  };
-
-  const getProjectTypeLabel = () => {
-    const labelMap: Record<string, string> = {
-      wedding: 'Wedding',
-      bryllup: 'Bryllup',
-      commercial: 'Commercial',
-      portrait: 'Portrait',
-      event: 'Event',
-      music_video: 'Music Video',
-      corporate: 'Corporate' };
-    return labelMap[projectType] || 'Event';
-  };
-
-  const events = eventsData?.events || [];
-  const suggestions = suggestionsData?.suggestions || [];
-  const pendingSuggestions = suggestions.filter((s: unknown) => s.status === 'pending');
-
-  return ()
+  return (
     <Box>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography
-          variant="h5"
-          sx={{
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1,
-            color: theming.colors.primary}}>
-          {getProjectTypeIcon()}
-          {getProjectTypeLabel()} Timeline
-          <Chip label={`${events.length} events`} size="small" color="primary" />
-          {pendingSuggestions.length > 0 && ()
-            <Badge badgeContent={pendingSuggestions.length} color="warning">
-              <Chip label="Forslag" size="small" color="warning" />
-            </Badge>
-          )}
-        </Typography>
-
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          {events.length === 0 && ()
-            <Button
-              variant="outlined"
-              startIcon={<AutoFixHigh />}
-              onClick={handleAutoGenerate}
-              disabled={autoGenerateLoading}
-              sx={{ borderColor: theming.colors.primary, color: theming.colors.primary }}>
-              Auto-generer events
-            </Button>
-          )}
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => {
-              setSelectedEvent(null);
-              resetEventForm();
-              setEventDialogOpen(true);
-            }}
-            sx={{
-              bgcolor: theming.colors.primary'&:hover': { opacity: 0.9 }}}
-          >
-            Legg til Event
-          </Button>
-          {enableSuggestions && ()
-            <Button
-              variant="outlined"
-              startIcon={<Lightbulb />}
-              onClick={() => {
-                resetSuggestionForm();
-                setSuggestionDialogOpen(true);
-              }}
-              sx={{ borderColor: theming.colors.primary, color: theming.colors.primary }}>
-              Send Forslag
-            </Button>
-          )}
-        </Box>
-      </Box>
-
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
-          <Tab label={`Timeline (${events.length})`} />
-          {enableSuggestions && ()
-            <Tab
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  Forslag
-                  {pendingSuggestions.length > 0 && ()
-                    <Badge badgeContent={pendingSuggestions.length} color="warning" />
-                  )}
-                </Box>
-              }
-            />
-          )}
-        </Tabs>
-      </Box>
-
-      {/* Tab Content */}
-      {activeTab === 0 && ()
-        <Box>
-          {eventsLoading ? ()
-            <Typography>Laster events...</Typography>
-          ) : events.length === 0 ? ()
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Ingen events enda
+      <Card sx={{ mb: 2, ...theming.getThemedCardSx() }}>
+        <CardContent>
+          <Stack direction={compactMode ? 'column' : 'row'} spacing={2} justifyContent="space-between">
+            <Box>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <EventIcon />
+                Event Timeline Editor
               </Typography>
-              <Typography variant="body2" sx={{ mb: 2 }}>
-                Klikk "Auto-generer events" for standardmal eller "Legg til Event" for å lage egne.
+              <Typography variant="caption" color="text.secondary">
+                Prosjekt: {projectType} • {events.length} events • {suggestions.length} forslag
               </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                startIcon={<AutoFixHighIcon />}
+                onClick={() => autoGenerateMutation.mutate()}
+                disabled={autoGenerateMutation.isPending}
+              >
+                Autogenerer
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<SendIcon />}
+                disabled={!enableSuggestions}
+                onClick={() => setSuggestionDialogOpen(true)}
+              >
+                Nytt forslag
+              </Button>
               <Button
                 variant="contained"
-                startIcon={<Add />}
-                onClick={handleAutoGenerate}
-                disabled={autoGenerateLoading}
+                startIcon={<AddIcon />}
+                onClick={() => {
+                  setEditingEvent({ ...EMPTY_EVENT, eventType: getDefaultEventType(projectType) });
+                  setEventDialogOpen(true);
+                }}
               >
-                {autoGenerateLoading ? 'Genererer...' : 'Auto-generer events'}
+                Legg til event
               </Button>
-            </Alert>
-          ) : ()
-            <Timeline position="right">
-              {events
-                .sort((a: any, b: unknown) => a.time.localeCompare(b.time)
-                .map((event: any, index: number) => ()
-                  <TimelineItem key={event.id}>
-                    <TimelineOppositeContent color="text.secondary" sx={{ flex: 0.2 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 600}}>
-                        {event.time}
-                      </Typography>
-                      <Typography variant="caption">{event.duration} min</Typography>
-                    </TimelineOppositeContent>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
 
-                    <TimelineSeparator>
-                      <TimelineDot
-                        color={
-                          event.status === 'completed'
-                            ? 'success'
-                            : event.status === 'confirmed'
-                              ? 'primary'
-                              : 'grey'
-                        }
-                      >
-                        {getEventIcon(event.eventType)}
-                      </TimelineDot>
-                      {index < events.length - 1 && <TimelineConnector />}
-                    </TimelineSeparator>
-
-                    <TimelineContent>
-                      <Paper sx={{ p: 2, mb: 2, ...theming.getThemedCardSx() }}>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            mb: 1}}>
-                          <Box>
-                            <Typography
-                              variant="h6"
-                              sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                              {event.title}
-                            </Typography>
-                            <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                              <Chip
-                                label={event.eventType.replace('_', ', ')}
-                                size="small"
-                                color="primary"
-                                variant="outlined"
-                              />
-                              <Chip
-                                label={event.status}
-                                size="small"
-                                color={event.status === 'completed' ? 'success' : 'default'}
-                              />
-                              <Chip
-                                label={event.priority}
-                                size="small"
-                                color={getPriorityColor(event.priority) as any}
-                              />
-                            </Box>
-                          </Box>
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            <Tooltip title="Rediger">
-                              <IconButton size="small" onClick={() => handleEditEvent(event)}>
-                                <Edit fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Slett">
+      <Card>
+        <Tabs value={tab} onChange={(_, value: number) => setTab(value)}>
+          <Tab label={`Events (${events.length})`} />
+          <Tab label={`Forslag (${suggestions.length})`} disabled={!enableSuggestions} />
+        </Tabs>
+        <Divider />
+        <CardContent>
+          {tab === 0 && (
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={8}>
+                {eventsLoading ? (
+                  <Typography color="text.secondary">Laster events...</Typography>
+                ) : (
+                  <List>
+                    {events.map((event) => (
+                      <ListItem
+                        key={event.id ?? `${event.title}-${event.time}`}
+                        secondaryAction={
+                          <Stack direction="row" spacing={0.5}>
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setEditingEvent(event);
+                                setEventDialogOpen(true);
+                              }}
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            {event.id && (
                               <IconButton
                                 size="small"
                                 color="error"
-                                onClick={() => handleDeleteEvent(event.id)}
+                                onClick={() => deleteEventMutation.mutate(event.id ?? '')}
                               >
-                                <Delete fontSize="small" />
+                                <DeleteIcon fontSize="small" />
                               </IconButton>
-                            </Tooltip>
-                          </Box>
-                        </Box>
+                            )}
+                          </Stack>
+                        }
+                      >
+                        <ListItemText
+                          primary={
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              <Typography sx={{ fontWeight: 600 }}>{event.title}</Typography>
+                              <Chip size="small" label={event.status} />
+                              <Chip
+                                size="small"
+                                color={event.priority === 'high' ? 'error' : event.priority === 'medium' ? 'warning' : 'default'}
+                                label={event.priority}
+                              />
+                            </Stack>
+                          }
+                          secondary={
+                            <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 0.5 }}>
+                              <Stack direction="row" spacing={0.5} alignItems="center">
+                                <AccessTimeIcon fontSize="inherit" />
+                                <Typography variant="caption">
+                                  {event.time} ({event.duration} min)
+                                </Typography>
+                              </Stack>
+                              {event.location && (
+                                <Stack direction="row" spacing={0.5} alignItems="center">
+                                  <LocationOnIcon fontSize="inherit" />
+                                  <Typography variant="caption">{event.location}</Typography>
+                                </Stack>
+                              )}
+                            </Stack>
+                          }
+                          onClick={() => {
+                            if (event.id) {
+                              setSelectedEventId(event.id);
+                              if (event.location) {
+                                setWeatherLocation(event.location);
+                              }
+                            }
+                          }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Grid>
 
-                        {event.description && ()
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {event.description}
-                          </Typography>
-                        )}
-
-                        {event.location && ()
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            <LocationOn fontSize="small" color="action" />
-                            <Typography variant="caption">{event.location}</Typography>
-                          </Box>
-                        )}
-                      </Paper>
-                    </TimelineContent>
-                  </TimelineItem>
-                ))}
-            </Timeline>
+              <Grid item xs={12} md={4}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Eventdetaljer
+                    </Typography>
+                    {selectedEvent ? (
+                      <Stack spacing={1}>
+                        <Typography variant="body2">{selectedEvent.description || 'Ingen beskrivelse'}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Type: {selectedEvent.eventType}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Lokasjon: {selectedEvent.location || 'Ikke satt'}
+                        </Typography>
+                      </Stack>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        Velg et event for detaljer.
+                      </Typography>
+                    )}
+                    <Divider sx={{ my: 1.5 }} />
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Værprognose
+                    </Typography>
+                    {weatherLoading ? (
+                      <Typography variant="body2" color="text.secondary">
+                        Laster værdata...
+                      </Typography>
+                    ) : weather ? (
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption">{weather.location}</Typography>
+                        <Typography variant="caption">
+                          {weather.temperature.toFixed(1)}°C • Vind {weather.windSpeed.toFixed(1)} m/s
+                        </Typography>
+                        <Typography variant="caption">Skydekke {weather.cloudCover}%</Typography>
+                      </Stack>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">
+                        Velg event med lokasjon for værdata.
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
           )}
-        </Box>
-      )}
 
-      {activeTab === 1 && enableSuggestions && ()
-        <Box>{/* Suggestions content - same as WeddingTimelineEditor */}</Box>
-      )}
-
-      {/* Add/Edit Event Dialog */}
-      <Dialog
-        open={eventDialogOpen}
-        onClose={() => setEventDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ bgcolor: theming.colors.primary, color: 'white' }}>
-          {selectedEvent ? 'Rediger Event' : 'Legg til Event'}
-        </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                label="Event tittel *"
-                value={newEvent.title}
-                onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                type="time"
-                label="Tidspunkt *"
-                value={newEvent.time}
-                onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
-                InputLabelProps={{ shrink: true }} />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Event type</InputLabel>
-                <Select
-                  value={newEvent.eventType}
-                  onChange={(e) => setNewEvent({ ...newEvent, eventType: e.target.value })}}
-                  label="Event type"
-                >
-                  {getEventTypes(projectType).map((type) => ()
-                    <MenuItem key={type.value} value={type.value}>
-                      {type.label}
-                    </MenuItem>
+          {tab === 1 && (
+            <Box>
+              {suggestionsLoading ? (
+                <Typography color="text.secondary">Laster forslag...</Typography>
+              ) : (
+                <List>
+                  {suggestions.map((suggestion) => (
+                    <ListItem
+                      key={suggestion.id ?? `${suggestion.eventTitle}-${suggestion.suggestedTime}`}
+                      secondaryAction={
+                        suggestion.id ? (
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              onClick={() =>
+                                updateSuggestionStatusMutation.mutate({ id: suggestion.id ?? '', status: 'accepted' })
+                              }
+                            >
+                              Godta
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              onClick={() =>
+                                updateSuggestionStatusMutation.mutate({ id: suggestion.id ?? '', status: 'rejected' })
+                              }
+                            >
+                              Avslå
+                            </Button>
+                          </Stack>
+                        ) : null
+                      }
+                    >
+                      <ListItemText
+                        primary={
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography sx={{ fontWeight: 600 }}>{suggestion.eventTitle}</Typography>
+                            <Chip size="small" label={suggestion.status} />
+                          </Stack>
+                        }
+                        secondary={`${suggestion.suggestedTime} • ${suggestion.reason}`}
+                      />
+                    </ListItem>
                   ))}
-                </Select>
-              </FormControl>
+                  {suggestions.length === 0 && (
+                    <ListItem>
+                      <ListItemText primary="Ingen forslag registrert." />
+                    </ListItem>
+                  )}
+                </List>
+              )}
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={eventDialogOpen} onClose={() => setEventDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingEvent.id ? 'Rediger event' : 'Legg til event'}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Tittel"
+              value={editingEvent.title}
+              onChange={(event) => setEditingEvent((previous) => ({ ...previous, title: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Tidspunkt"
+              type="datetime-local"
+              value={editingEvent.time}
+              onChange={(event) => setEditingEvent((previous) => ({ ...previous, time: event.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Varighet (minutter)"
+              type="number"
+              value={editingEvent.duration}
+              onChange={(event) => setEditingEvent((previous) => ({ ...previous, duration: Number(event.target.value) }))}
+              fullWidth
+            />
+            <TextField
+              label="Lokasjon"
+              value={editingEvent.location ?? ''}
+              onChange={(event) => setEditingEvent((previous) => ({ ...previous, location: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Beskrivelse"
+              value={editingEvent.description ?? ''}
+              onChange={(event) => setEditingEvent((previous) => ({ ...previous, description: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel id="timeline-event-type">Eventtype</InputLabel>
+                  <Select
+                    labelId="timeline-event-type"
+                    label="Eventtype"
+                    value={editingEvent.eventType}
+                    onChange={(event) =>
+                      setEditingEvent((previous) => ({ ...previous, eventType: String(event.target.value) }))
+                    }
+                  >
+                    {getEventTypeOptions(projectType).map((eventType) => (
+                      <MenuItem key={eventType} value={eventType}>
+                        {eventType}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth>
+                  <InputLabel id="timeline-priority">Prioritet</InputLabel>
+                  <Select
+                    labelId="timeline-priority"
+                    label="Prioritet"
+                    value={editingEvent.priority}
+                    onChange={(event) =>
+                      setEditingEvent((previous) => ({
+                        ...previous,
+                        priority: event.target.value as TimelineEvent['priority'],
+                      }))
+                    }
+                  >
+                    <MenuItem value="high">high</MenuItem>
+                    <MenuItem value="medium">medium</MenuItem>
+                    <MenuItem value="low">low</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <FormControl fullWidth>
+                  <InputLabel id="timeline-status">Status</InputLabel>
+                  <Select
+                    labelId="timeline-status"
+                    label="Status"
+                    value={editingEvent.status}
+                    onChange={(event) =>
+                      setEditingEvent((previous) => ({
+                        ...previous,
+                        status: event.target.value as TimelineEvent['status'],
+                      }))
+                    }
+                  >
+                    <MenuItem value="planned">planned</MenuItem>
+                    <MenuItem value="confirmed">confirmed</MenuItem>
+                    <MenuItem value="completed">completed</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                type="number"
-                label="Varighet (min)"
-                value={newEvent.duration}
-                onChange={(e) => setNewEvent({ ...newEvent, duration: parseInt(e.target.value) })}}
-              />
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth>
-                <InputLabel>Prioritet</InputLabel>
-                <Select
-                  value={newEvent.priority}
-                  onChange={(e) => setNewEvent({ ...newEvent, priority: e.target.value as any })}}
-                  label="Prioritet"
-                >
-                  <MenuItem value="high">Høy</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="low">Lav</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Lokasjon"
-                value={newEvent.location}
-                onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Beskrivelse"
-                value={newEvent.description}
-                onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}}
-              />
-            </Grid>
-          </Grid>
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEventDialogOpen(false)}>Avbryt</Button>
           <Button
             variant="contained"
-            onClick={handleAddEvent}
-            disabled={!newEvent.title || !newEvent.time}
-            sx={{ bgcolor: theming.colors.primary }}>
-            {selectedEvent ? 'Oppdater' : 'Legg til'}
+            disabled={editingEvent.title.trim().length === 0 || editingEvent.time.trim().length === 0}
+            onClick={() => {
+              if (editingEvent.id) {
+                updateEventMutation.mutate(editingEvent);
+              } else {
+                addEventMutation.mutate(editingEvent);
+              }
+            }}
+          >
+            Lagre
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Send Suggestion Dialog - similar to WeddingTimelineEditor */}
+      <Dialog open={suggestionDialogOpen} onClose={() => setSuggestionDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nytt forslag</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Eventtittel"
+              value={suggestionDraft.eventTitle}
+              onChange={(event) => setSuggestionDraft((previous) => ({ ...previous, eventTitle: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Foreslått tidspunkt"
+              type="datetime-local"
+              value={suggestionDraft.suggestedTime}
+              onChange={(event) => setSuggestionDraft((previous) => ({ ...previous, suggestedTime: event.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Begrunnelse"
+              value={suggestionDraft.reason}
+              onChange={(event) => setSuggestionDraft((previous) => ({ ...previous, reason: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={2}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="timeline-suggestion-priority">Prioritet</InputLabel>
+              <Select
+                labelId="timeline-suggestion-priority"
+                label="Prioritet"
+                value={suggestionDraft.priority}
+                onChange={(event) =>
+                  setSuggestionDraft((previous) => ({
+                    ...previous,
+                    priority: event.target.value as TimelineSuggestion['priority'],
+                  }))
+                }
+              >
+                <MenuItem value="high">high</MenuItem>
+                <MenuItem value="medium">medium</MenuItem>
+                <MenuItem value="low">low</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSuggestionDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            disabled={
+              suggestionDraft.eventTitle.trim().length === 0 ||
+              suggestionDraft.suggestedTime.trim().length === 0 ||
+              suggestionDraft.reason.trim().length === 0
+            }
+            onClick={() => addSuggestionMutation.mutate(suggestionDraft)}
+          >
+            Send forslag
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {autoGenerateMutation.isPending && (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Genererer standardevents…
+        </Alert>
+      )}
     </Box>
   );
 }
 
-// Helper functions
-function getDefaultEventType(projectType: string): string {
-  const typeMap: Record<string, string> = {
-    wedding: 'ceremony',
-    bryllup: 'ceremony',
-    commercial: 'shoot',
-    portrait: 'photo_session',
-    event: 'celebration',
-    music_video: 'performance',
-    corporate: 'meeting' };
-  return typeMap[projectType] || 'other';
+function normalizeEvents(raw: unknown): TimelineEvent[] {
+  return extractArray(raw)
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const title = toString(record.title);
+      const time = toString(record.time);
+      if (!title || !time) {
+        return null;
+      }
+      return {
+        id: toOptionalString(record.id),
+        title,
+        time,
+        duration: toNumber(record.duration, 60),
+        description: toOptionalString(record.description),
+        location: toOptionalString(record.location),
+        eventType: toString(record.eventType) || 'general',
+        priority: toPriority(record.priority),
+        status: toStatus(record.status),
+        metadata: asRecord(record.metadata) || undefined,
+      } satisfies TimelineEvent;
+    })
+    .filter((event): event is TimelineEvent => event !== null);
 }
 
-function getEventTypes(projectType: string) {
-  const commonTypes = [
-    { value: 'preparation', label: 'Forberedelse' },
-    { value: 'setup', label: 'Oppsett' },
-    { value: 'meeting', label: 'Møte' },
-    { value: 'other', label: 'Annet' },
-  ];
+function normalizeSuggestions(raw: unknown): TimelineSuggestion[] {
+  return extractArray(raw)
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const eventTitle = toString(record.eventTitle);
+      const suggestedTime = toString(record.suggestedTime);
+      if (!eventTitle || !suggestedTime) {
+        return null;
+      }
+      return {
+        id: toOptionalString(record.id),
+        eventTitle,
+        suggestedTime,
+        reason: toString(record.reason),
+        priority: toPriority(record.priority),
+        status: toSuggestionStatus(record.status),
+      } satisfies TimelineSuggestion;
+    })
+    .filter((suggestion): suggestion is TimelineSuggestion => suggestion !== null);
+}
 
-  const typeMap: Record<string, any[]> = {
-    wedding: [
-      { value: 'ceremony', label: 'Seremoni' },
-      { value: 'reception', label: 'Mottakelse' },
-      { value: 'photo_session', label: 'Fotosesjon' },
-      { value: 'speech', label: 'Tale' },
-      ...commonTypes,
-    ],
-    commercial: [
-      { value: 'shoot', label: 'Filming' },
-      { value: 'photo_session', label: 'Fotosesjon' },
-      { value: 'product_shots', label: 'Produktbilder' },
-      ...commonTypes,
-    ],
-    portrait: [
-      { value: 'photo_session', label: 'Fotosesjon' },
-      { value: 'consultation', label: 'Konsultasjon' },
-      { value: 'review', label: 'Gjennomgang' },
-      ...commonTypes,
-    ],
-    music_video: [
-      { value: 'performance', label: 'Performance' },
-      { value: 'shoot', label: 'Scene' },
-      { value: 'b_roll', label: 'B-roll' },
-      ...commonTypes,
-    ],
+function normalizeWeather(raw: unknown): { location: string; temperature: number; windSpeed: number; cloudCover: number } | null {
+  const record = asRecord(raw);
+  if (!record) {
+    return null;
+  }
+  const location = toString(record.location);
+  if (!location) {
+    return null;
+  }
+  return {
+    location,
+    temperature: toNumber(record.temperature, 0),
+    windSpeed: toNumber(record.windSpeed, 0),
+    cloudCover: toNumber(record.cloudCover, 0),
+  };
+}
+
+function getGeneratedCount(result: unknown): number {
+  const record = asRecord(result);
+  if (!record) {
+    return 0;
+  }
+  if (typeof record.count === 'number' && Number.isFinite(record.count)) {
+    return record.count;
+  }
+  return 0;
+}
+
+function extractArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  const record = asRecord(raw);
+  if (!record) {
+    return [];
+  }
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+  if (Array.isArray(record.events)) {
+    return record.events;
+  }
+  if (Array.isArray(record.suggestions)) {
+    return record.suggestions;
+  }
+  return [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function toPriority(value: unknown): TimelineEvent['priority'] {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return 'medium';
+}
+
+function toStatus(value: unknown): TimelineEvent['status'] {
+  if (value === 'planned' || value === 'confirmed' || value === 'completed') {
+    return value;
+  }
+  return 'planned';
+}
+
+function toSuggestionStatus(value: unknown): TimelineSuggestion['status'] {
+  if (value === 'pending' || value === 'accepted' || value === 'rejected') {
+    return value;
+  }
+  return 'pending';
+}
+
+function getDefaultEventType(projectType: ProjectType): string {
+  switch (projectType) {
+    case 'wedding':
+    case 'bryllup':
+      return 'ceremony';
+    case 'commercial':
+      return 'campaign';
+    case 'portrait':
+      return 'portrait-session';
+    case 'music_video':
+      return 'performance';
+    case 'corporate':
+      return 'presentation';
+    case 'event':
+      return 'session';
+    default:
+      return 'general';
+  }
+}
+
+function getEventTypeOptions(projectType: ProjectType): string[] {
+  const common = ['setup', 'break', 'delivery', 'general'];
+  switch (projectType) {
+    case 'wedding':
+    case 'bryllup':
+      return ['preparation', 'ceremony', 'group-photos', 'dinner', 'party', ...common];
+    case 'commercial':
+      return ['campaign', 'studio', 'location-shoot', 'client-review', ...common];
+    case 'portrait':
+      return ['portrait-session', 'makeup', 'outdoor-set', ...common];
+    case 'music_video':
+      return ['performance', 'b-roll', 'narrative', ...common];
+    case 'corporate':
+      return ['presentation', 'interview', 'workshop', ...common];
+    case 'event':
+      return ['session', 'speaker', 'registration', 'networking', ...common];
+    default:
+      return common;
+  }
+}
+
+function getDefaultEventTemplates(projectType: ProjectType, culturalType?: string): TimelineEvent[] {
+  const baseDate = new Date();
+  baseDate.setHours(9, 0, 0, 0);
+
+  const template = (title: string, hoursFromStart: number, duration: number, eventType: string): TimelineEvent => {
+    const time = new Date(baseDate.getTime() + hoursFromStart * 60 * 60 * 1000).toISOString().slice(0, 16);
+    return {
+      ...EMPTY_EVENT,
+      title,
+      time,
+      duration,
+      eventType,
+    };
   };
 
-  return typeMap[projectType] || commonTypes;
+  if (projectType === 'wedding' || projectType === 'bryllup') {
+    const culturalLabel = culturalType ? ` (${culturalType})` : '';
+    return [
+      template(`Forberedelser${culturalLabel}`, 0, 90, 'preparation'),
+      template(`Vielse${culturalLabel}`, 2, 60, 'ceremony'),
+      template('Portretter', 3.5, 60, 'group-photos'),
+      template('Middag og taler', 5, 120, 'dinner'),
+      template('Fest', 7.5, 180, 'party'),
+    ];
+  }
+
+  if (projectType === 'event') {
+    return [
+      template('Rigging', 0, 60, 'setup'),
+      template('Registrering', 1, 45, 'registration'),
+      template('Hovedsession', 2, 120, 'session'),
+      template('Nettverking', 4.5, 90, 'networking'),
+    ];
+  }
+
+  return [
+    template('Oppsett', 0, 60, 'setup'),
+    template('Hovedopptak', 1, 180, getDefaultEventType(projectType)),
+    template('Pause', 4, 30, 'break'),
+    template('Ekstraopptak', 4.5, 120, 'general'),
+    template('Levering/backup', 6.5, 60, 'delivery'),
+  ];
 }

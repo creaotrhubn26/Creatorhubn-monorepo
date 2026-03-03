@@ -447,7 +447,9 @@ export const SuccessBurst: React.FC<SuccessBurstProps> = ({
           width: 8,
           height: 8,
           borderRadius: '50%',
-          bgcolor: color'--tx': `${tx}px`'--ty': `${ty}px`,
+          bgcolor: color,
+          '--tx': `${tx}px`,
+          '--ty': `${ty}px`,
           animation: `${burstParticle} 0.5s ${animationEasings.easeOut} forwards`,
           animationDelay: `${i * 0.02}s`,
         } as React.CSSProperties}
@@ -555,7 +557,8 @@ export const StaggerContainer: React.FC<StaggerContainerProps> = ({
       sx={{
         display: 'flex',
         flexDirection: direction,
-        gap: gap / 8'& > *': {
+        gap: gap / 8,
+        '& > *': {
           animation: `${staggerFadeIn} 0.3s ${animationEasings.easeOut} forwards`,
           opacity: 0,
         },
@@ -587,4 +590,3 @@ export default {
   AnimatedBadge,
   StaggerContainer,
 };
-

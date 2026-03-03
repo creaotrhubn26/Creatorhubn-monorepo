@@ -31,7 +31,7 @@ const queryClient = useQueryClient();
       const auth = await getAuthHeader();
       return apiRequest('/api/component/update', {
         headers: auth,
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },

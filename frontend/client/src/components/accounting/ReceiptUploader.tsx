@@ -57,22 +57,29 @@ function ReceiptUploader({ onUploaded }: { onUploaded?: () => void }) {
         additionalMetadata={additionalMetadata}
         allowedTypes="images"
         maxFiles={5}
-        onUploadComplete={async (results: any[]) => {
-          try {
-            // Track as scanned with Drive fileId if available
-            const first = Array.isArray(results) ? results[0] : null;
-            const fileId = first?.result?.fileId;
-            await api('/api/analytics/track', {
-              method: 'POST',
-              body: JSON.stringify({
-                eventType: 'receipt_scanned',
-                eventData: { id: fileId, merchant, amount: typeof amount === 'number' ? amount : 0, date },
-              }),
-            });
-          } catch (error) {
-            console.error('[Receipts] Failed to track receipt scan:', error);
-          }
-          onUploaded?.();
+        onUploadComplete={(results?: Array<{ result?: { fileId?: string } }>) => {
+          void (async () => {
+            try {
+              // Track as scanned with Drive fileId if available
+              const first = results?.[0] ?? null;
+              const fileId = first?.result?.fileId;
+              await api('/api/analytics/track', {
+                method: 'POST',
+                body: JSON.stringify({
+                  eventType: 'receipt_scanned',
+                  eventData: {
+                    id: fileId,
+                    merchant,
+                    amount: typeof amount === 'number' ? amount : 0,
+                    date,
+                  },
+                }),
+              });
+            } catch (error) {
+              console.error('[Receipts] Failed to track receipt scan:', error);
+            }
+            onUploaded?.();
+          })();
         }}
       />
 	    </Box>
@@ -86,7 +93,6 @@ export default withUniversalIntegration(ReceiptUploader, {
 	componentCategory: 'accounting',
 	featureIds: ['receipt-capture'],
 });
-
 
 
 

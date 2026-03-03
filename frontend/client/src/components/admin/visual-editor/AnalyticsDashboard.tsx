@@ -12,6 +12,7 @@ import {
   Paper,
   Typography,
   Chip,
+  ChipProps,
   LinearProgress,
   Tooltip,
   IconButton,
@@ -28,7 +29,6 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -49,6 +49,7 @@ import {
   TableRow,
   TablePagination,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Analytics,
   TrendingUp,
@@ -218,7 +219,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = memo(({
 }, [onExportClick, eventQueue, currentSession, totalEvents, totalSessions]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): ChipProps['color'] => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isTracking) return 'success';
@@ -268,7 +269,10 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = memo(({
   const renderMinimal = () => (
     <Tooltip title={`Analytics: ${getStatusText()}`}>
       <Chip
-        icon={getStatusIcon()}
+        icon={((): React.ReactElement => {
+          const icon = getStatusIcon();
+          return React.isValidElement(icon) ? icon : <Analytics fontSize="small" />;
+        })()}
         label={totalEvents}
         color={getStatusColor()}
         size="small"
@@ -690,4 +694,3 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = memo(({
 AnalyticsDashboard.displayName ='AnalyticsDashboard';
 
 export default AnalyticsDashboard;
-

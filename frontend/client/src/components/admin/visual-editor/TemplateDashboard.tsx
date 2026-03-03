@@ -11,6 +11,7 @@ import {
   Paper,
   Typography,
   Chip,
+  ChipProps,
   LinearProgress,
   Tooltip,
   IconButton,
@@ -240,7 +241,11 @@ import {
   Description as DescriptionIcon,
 } from '@mui/icons-material';
 import { useTemplate, UseTemplateOptions } from '../../../hooks/useTemplate';
-import { Template as TemplateType } from '../../../utils/templateManager';
+import {
+  Template as TemplateType,
+  TemplateCategory as TemplateCategoryType,
+  TemplateSearchQuery,
+} from '../../../utils/templateManager';
 
 interface TemplateDashboardProps {
   showDetails?: boolean;
@@ -308,26 +313,26 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
+ const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateType | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<Pick<TemplateType, 'name' | 'description'> | null>(null);
 
   // Template options
   const templateOptions: UseTemplateOptions = useMemo(() => ({
     onTemplateAdded: (_data: { template: TemplateType }) => {
       setPage(0);
   },
-    onCategoryAdded: (_data: { category: string }) => {
+    onCategoryAdded: (_data: { category: TemplateCategoryType }) => {
       setFilterCategory('all');
       setPage(0);
   },
-    onSearchCompleted: (_data: { query: string; results: TemplateType[] }) => {
+    onSearchCompleted: (_data: { query: TemplateSearchQuery; results: TemplateType[] }) => {
       setFilterType('all');
       setPage(0);
   },
-    onSearchFailed: (data: { query: string; error: string }) => {
+    onSearchFailed: (data: { query: TemplateSearchQuery; error: string }) => {
       console.error('Template search failed: ', data.error);
   },
     onError: (error: string) => {
@@ -485,7 +490,7 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
 }, [loadTemplate, addNotification]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): ChipProps['color'] => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -535,7 +540,10 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
   const renderMinimal = () => (
     <Tooltip title={`Templates: ${getStatusText()}`}>
       <Chip
-        icon={getStatusIcon()}
+        icon={((): React.ReactElement => {
+          const icon = getStatusIcon();
+          return React.isValidElement(icon) ? icon : <Description fontSize="small" />;
+        })()}
         label={totalTemplates}
         color={getStatusColor()}
         size="small"
@@ -796,7 +804,7 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
                     <ListItemSecondaryAction>
                       <ButtonGroup size="small">
                         <Button
-                          onClick={() => setSelectedTemplate(template as TemplateType)}
+                          onClick={() => setSelectedTemplate({ name: template.name, description: template.description })}
                           startIcon={theming.getThemedIcon('edit')}
                         >
                           Edit
@@ -831,7 +839,7 @@ const TemplateDashboard: React.FC<TemplateDashboardProps> = memo(({
                     </ListItemAvatar>
                     <ListItemText
                       primary={category.name}
-                      secondary={`${category.description} • ${category.templates.length} templates`}
+                      secondary={`${category.description} • ${category.templateIds.length} templates`}
                     />
                     <ListItemSecondaryAction>
                       <ButtonGroup size="small">

@@ -137,7 +137,7 @@ export default function AdminFloatingActionButtons({
 
   // Fetch usage analytics for smart sorting
   const { data: usageData } = useQuery({
-    queryKey: ['admin-action-usage-stats,', 'admin-session'],
+    queryKey: ['admin-action-usage-stats', 'admin-session'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/action-usage-stats', { headers });

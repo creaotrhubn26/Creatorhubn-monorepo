@@ -1,83 +1,67 @@
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
 import {
+  Album,
+  Collections,
+  ContentCopy,
+  Add as AddIcon,
+  Edit,
+  Folder,
+  GridView,
+  Launch,
+  Link,
+  Lock,
+  MoreVert,
+  PersonAdd,
+  PhotoCamera,
+  Public,
+  Share,
+  Sort,
+  Upload,
+  ViewList,
+} from '@mui/icons-material';
+import {
+  Alert,
+  Avatar,
+  Badge,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
+  Chip,
+  CircularProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
+  Fab,
+  FormControl,
+  FormControlLabel,
   Grid,
+  IconButton,
   ImageList,
   ImageListItem,
   ImageListItemBar,
-  TextField,
-  Chip,
+  InputLabel,
   List,
   ListItem,
-  ListItemText,
-  ListItemIcon,
   ListItemAvatar,
-  Avatar,
-  IconButton,
-  Alert,
-  CircularProgress,
-  LinearProgress,
-  Divider,
-  Stack,
-  Tabs,
-  Tab,
-  Paper,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-  Badge,
+  ListItemIcon,
+  ListItemText,
   Menu,
-  Fab,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import {
-  PhotoLibrary,
-  CloudUpload,
-  Album,
-  Share,
-  Add as AddIcon,
-  Folder,
-  Image,
-  Collections,
-  PersonAdd,
-  Link,
-  Download,
-  Visibility,
-  Settings,
-  MoreVert,
-  Launch,
-  ContentCopy as ContentContentCopy,
-  CheckCircle,
-  Error as ErrorIcon,
-  PhotoCamera as PhotoCameraAlt,
-  VideoCall as VideocamCall,
-  GroupWork,
-  Public,
-  Lock,
-  Edit,
-  Delete,
-  Refresh,
-  Star,
-  StarBorder,
-  FilterList as FilterListList,
-  Sort,
-  GridView as ViewGridOn,
-  ViewList,
-} from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 
 interface GooglePhoto {
   id: string;
@@ -87,7 +71,7 @@ interface GooglePhoto {
   creationTime?: string;
   width?: string;
   height?: string;
-  productUrl: string
+  productUrl: string;
 }
 
 interface GooglePhotosAlbum {
@@ -102,698 +86,549 @@ interface GooglePhotosAlbum {
     shareableUrl: string;
     isOwned: boolean;
     isJoined: boolean;
-};
+  };
+}
+
+interface ProjectSummary {
+  id: string;
+  name: string;
+}
+
+interface ShowcasePortfolio {
+  id: string;
+  name: string;
+}
+
+interface GooglePhotosConnectionStatus {
+  success: boolean;
+  authenticated: boolean;
+  message: string;
 }
 
 interface GooglePhotosIntegrationProps {
   profession: string;
   userId: string;
-  projectId?: string
+  projectId?: string;
 }
 
-const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({
-  profession,
-  userId,
-  projectId,
-}) => {
+interface AlbumFormData {
+  title: string;
+  description: string;
+  projectId: string;
+  isCollaborative: boolean;
+  isCommentable: boolean;
+  autoShare: boolean;
+}
+
+const defaultConnectionStatus: GooglePhotosConnectionStatus = {
+  success: false,
+  authenticated: false,
+  message: 'Ikke tilkoblet',
+};
+
+const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({ profession, userId, projectId }) => {
+  const theming = useTheming('photographer');
+  const queryClient = useQueryClient();
+
   const [selectedTab, setSelectedTab] = useState(0);
   const [createAlbumOpen, setCreateAlbumOpen] = useState(false);
   const [shareAlbumOpen, setShareAlbumOpen] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState<GooglePhotosAlbum | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [filterType, setFilterType] = useState('all');
-  const [sortBy, setSortBy] = useState('date,');
-  const [albumFormData, setAlbumFormData] = useState({
-    title: ',',
+  const [filterType, setFilterType] = useState<'all' | 'shared' | 'writeable' | 'readonly'>('all');
+  const [sortBy, setSortBy] = useState<'date' | 'name' | 'count'>('date');
+  const [albumMenuAnchor, setAlbumMenuAnchor] = useState<HTMLElement | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [albumFormData, setAlbumFormData] = useState<AlbumFormData>({
+    title: '',
     description: '',
-    projectId: projectId ||'',
+    projectId: projectId ?? '',
     isCollaborative: false,
     isCommentable: true,
     autoShare: true,
-});
+  });
 
-  const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-
-  // Fetch Google Photos albums
-  const { data: albums = [], isLoading: albumsLoading } = useQuery({
-    queryKey: ['/api/google-photos/albums', ],
+  const { data: albumsData, isLoading: albumsLoading } = useQuery<GooglePhotosAlbum[]>({
+    queryKey: ['/api/google-photos/albums', userId],
     queryFn: async () => {
-      return (await apiRequest('/api/google-photos/albums')) || mockAlbums;
-},
-    staleTime: 2 * 60 * 100,
-});
+      const response = (await apiRequest('/api/google-photos/albums')) as {
+        albums?: GooglePhotosAlbum[];
+      };
+      return Array.isArray(response.albums) ? response.albums : [];
+    },
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Fetch photos from selected album
-  const { data: albumPhotos = [], isLoading: photosLoading } = useQuery({
+  const albums = albumsData ?? [];
+
+  const { data: albumPhotosData, isLoading: photosLoading } = useQuery<GooglePhoto[]>({
     queryKey: ['/api/google-photos/album-photos', selectedAlbum?.id],
     queryFn: async () => {
-      if (!selectedAlbum) return [];
-      return (
-        (await apiRequest(`/api/google-photos/albums/${selectedAlbum.d}/photos`)) || mockPhotos
-      );
-  },
-    enabled: !!selectedAlbum,
-    staleTime: 2 * 60 * 100,
-});
+      if (!selectedAlbum) {
+        return [];
+      }
+      const response = (await apiRequest(`/api/google-photos/albums/${selectedAlbum.id}/photos`)) as {
+        photos?: GooglePhoto[];
+      };
+      return Array.isArray(response.photos) ? response.photos : [];
+    },
+    enabled: Boolean(selectedAlbum),
+    staleTime: 2 * 60 * 1000,
+  });
 
-  // Fetch projects for album organization
-  const { data: projects = [, ],} = useQuery({
+  const albumPhotos = albumPhotosData ?? [];
+
+  const { data: projectsData } = useQuery<ProjectSummary[]>({
     queryKey: ['/api/projects', profession],
-    staleTime: 5 * 60 * 100,
-});
-
-  // Fetch showcase portfolios for integration
-  const { data: showcasePortfolios = [, ],} = useQuery({
-    queryKey: ['/api/showcase/portfolios', profession, userId],
-    staleTime: 5 * 60 * 100,
-});
-
-  // Test Google Photos connection
-  const { data: connectionStatus } = useQuery({
-    queryKey: ['/api/google-photos/test-connection', ],
     queryFn: async () => {
-      return (
-        (await apiRequest('/api/google-photos/test-connection')) || {
-          success: false,
-          authenticated: false,
-          message: 'Ikke tilkoblet' }
-      );
-  },
-    staleTime: 30 * 100,
-});
+      const response = (await apiRequest(`/api/projects?profession=${encodeURIComponent(profession)}`)) as {
+        projects?: ProjectSummary[];
+      };
+      return Array.isArray(response.projects) ? response.projects : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
-  // Create album mutation
+  const projects = projectsData ?? [];
+
+  const { data: showcasePortfoliosData } = useQuery<ShowcasePortfolio[]>({
+    queryKey: ['/api/showcase/portfolios', profession, userId],
+    queryFn: async () => {
+      const response = (await apiRequest(`/api/showcase/portfolios?profession=${encodeURIComponent(profession)}&userId=${encodeURIComponent(userId)}`)) as {
+        portfolios?: ShowcasePortfolio[];
+      };
+      return Array.isArray(response.portfolios) ? response.portfolios : [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const showcasePortfolios = showcasePortfoliosData ?? [];
+
+  const { data: connectionStatus = defaultConnectionStatus } = useQuery<GooglePhotosConnectionStatus>({
+    queryKey: ['/api/google-photos/test-connection', userId],
+    queryFn: async () => {
+      const response = (await apiRequest('/api/google-photos/test-connection')) as GooglePhotosConnectionStatus;
+      return response;
+    },
+    staleTime: 30 * 1000,
+  });
+
   const createAlbumMutation = useMutation({
-    mutationFn: async (albumData: any) => {
-      return await apiRequest('/api/google-photos/albums/create', {
-        method: 'POS',
-        body: JSON.stringify(albumData),
-    });
-  },
+    mutationFn: async (payload: AlbumFormData) => {
+      return (await apiRequest('/api/google-photos/albums/create', {
+        method: 'POST',
+        body: payload,
+      })) as { album?: GooglePhotosAlbum };
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/google-photos/albums', ],
-    });
+      void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/albums'] });
       setCreateAlbumOpen(false);
       resetAlbumForm();
-  },
-});
+    },
+  });
 
-  // Share album mutation
   const shareAlbumMutation = useMutation({
-    mutationFn: async (shareData: any) => {
-      return await apiRequest(`/api/google-photos/albums/${shareData.albumd}/share`, {
-        method: 'POS',
-        body: JSON.stringify(shareData.options),
-    });
-  },
+    mutationFn: async (payload: { albumId: string; options: { isCollaborative: boolean; isCommentable: boolean } }) => {
+      return await apiRequest(`/api/google-photos/albums/${payload.albumId}/share`, {
+        method: 'POST',
+        body: payload.options,
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/google-photos/albums', ],
-    });
+      void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/albums'] });
       setShareAlbumOpen(false);
-  },
-});
+    },
+  });
 
-  // Upload photos mutation
   const uploadPhotosMutation = useMutation({
-    mutationFn: async (uploadData: any) => {
+    mutationFn: async (payload: FormData) => {
       return await apiRequest('/api/google-photos/upload', {
-        method: 'POS',
-        body: uploadData,
-    });
-  },
+        method: 'POST',
+        body: payload,
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/google-photos/album-photos', ],
-    });
-  },
-});
+      void queryClient.invalidateQueries({ queryKey: ['/api/google-photos/album-photos'] });
+    },
+  });
 
   const resetAlbumForm = () => {
     setAlbumFormData({
       title: '',
       description: '',
-      projectId: projectId ||', ',
+      projectId: projectId ?? '',
       isCollaborative: false,
       isCommentable: true,
       autoShare: true,
-  });
-};
+    });
+  };
 
   const handleCreateAlbum = () => {
-    const project = projects.find((p) => p.id === albumFormData.projectId);
-    const finalData = {
-      ...albumFormData,
-      title: albumFormData.title ||
-        `${project?.name || 'Prosjekt'} - ${new Date().toLocaleDateString('nb-NO')}`,
-      userId,
-  };
-    createAlbumMutation.mutate(finalData);
-};
+    const selectedProject = projects.find((project) => project.id === albumFormData.projectId);
+    const title =
+      albumFormData.title || `${selectedProject?.name ?? 'Prosjekt'} - ${new Date().toLocaleDateString('nb-NO')}`;
 
-  const handleShareAlbum = (album: GooglePhotosAlbum, options: any) => {
+    createAlbumMutation.mutate({
+      ...albumFormData,
+      title,
+    });
+  };
+
+  const handleShareAlbum = (album: GooglePhotosAlbum, options: { isCollaborative: boolean; isCommentable: boolean }) => {
     shareAlbumMutation.mutate({
-      albumId: album.d,
-      options: {
-        isCollaborative: options.isCollaborative,
-        isCommentable: options.isCommentable,
-        ...options,
-    },
-  });
-};
+      albumId: album.id,
+      options,
+    });
+  };
 
   const handleUploadPhotos = (files: FileList) => {
     const formData = new FormData();
     Array.from(files).forEach((file) => {
       formData.append('photos', file);
-  });
+    });
 
     if (selectedAlbum) {
       formData.append('albumId', selectedAlbum.id);
-  }
+    }
 
     uploadPhotosMutation.mutate(formData);
-};
+  };
 
   const copyShareLink = (shareUrl: string) => {
-    navigator.clipboard.writeText(shareUrl);
-};
+    navigator.clipboard.writeText(shareUrl).catch((error: unknown) => {
+      console.warn('Could not copy share link:', error);
+    });
+  };
 
   const openInGooglePhotos = (url: string) => {
-    window.open(url, ','_blank');
-};
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
 
-  // Auto-generate album name based on project
-  const generateAlbumName = (projectId: string) => {
-    const project = projects.find((p) => p.id === projectId);
-    if (!project) return '';
+  const generateAlbumName = (selectedProjectId: string) => {
+    const selectedProject = projects.find((project) => project.id === selectedProjectId);
+    if (!selectedProject) {
+      return '';
+    }
 
     const date = new Date().toLocaleDateString('nb-NO');
-    return `${project.name} - ${date}`;
-};
+    return `${selectedProject.name} - ${date}`;
+  };
 
-  // Filter and sort albums
-  const getFilteredAlbums = () => {
-    let filtered = albums;
+  const filteredAlbums = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
 
-    if (filterType !== 'all') {
-      filtered = albums.filter((album) => {
-        switch (filterType) {
-          case 'shared':
-            return album.shareInfo?.isOwned;
-          case 'writeable':
-            return album.isWriteable;
-          case 'readonly':
-            return !album.isWriteable;
-          default: return true;
-    }
+    const byFilter = albums.filter((album) => {
+      switch (filterType) {
+        case 'shared':
+          return Boolean(album.shareInfo);
+        case 'writeable':
+          return album.isWriteable;
+        case 'readonly':
+          return !album.isWriteable;
+        default:
+          return true;
+      }
     });
-  }
 
-    return filtered.sort((a, b) => {
+    const bySearch = byFilter.filter((album) => {
+      if (query.length === 0) {
+        return true;
+      }
+      return album.title.toLowerCase().includes(query);
+    });
+
+    return [...bySearch].sort((a, b) => {
       switch (sortBy) {
         case 'name':
           return a.title.localeCompare(b.title);
         case 'count':
-          return parseInt(b.mediaItemsCount) - parseInt(a.mediaItemsCount);
+          return Number.parseInt(b.mediaItemsCount, 10) - Number.parseInt(a.mediaItemsCount, 10);
         case 'date':
-          return new Date(b.title).getTime() - new Date(a.title).getTime();
-        default: return 0;
-  }
-  });
-};
+        default:
+          return a.title.localeCompare(b.title);
+      }
+    });
+  }, [albums, filterType, searchTerm, sortBy]);
 
-  const tabData = [
-    { label: 'Album', count: albums.length, icon: <Album />,},
-    { label: 'Bilder', count: albumPhotos.length, icon: theming.getThemedIcon(', ') },
-    {
-      label: 'Delt',
-      count: albums.filter((a) => a.shareInfo).length,
-      icon: theming.getThemedIcon(', '),
-  },
-  ];
-
-  // Mock data for development
-  const mockAlbums: GooglePhotosAlbum[] = [
-    {
-      id: 'album-',
-      title: 'Bryllup - Hansen & Andersen',
-      mediaItemsCount: '12',
-      productUrl: 'https://photos.google.com/album/',
-      isWriteable: true,
-      shareInfo: {
-        shareToken: 'token12',
-        shareableUrl: 'https://photos.app.goo.gl/example',
-        isOwned: true,
-        isJoined: false,
-    },
-  },
-    {
-      id: 'album-',
-      title: 'Portrettfotografering - Familie Olsen',
-      mediaItemsCount: '4',
-      productUrl: 'https://photos.google.com/album/',
-      isWriteable: true,
-  },
-  ];
-
-  const mockPhotos: GooglePhoto[] = [
-    {
-      id: 'photo-',
-      filename: 'DSC_0001.jpg',
-      baseUrl: 'https://lh3.googleusercontent.com/example',
-      mimeType: 'image/jpeg',
-      productUrl: 'https://photos.google.com/photo/',
-      width: '192',
-      height: '108' },
-    {
-      id: 'photo-',
-      filename: 'DSC_0002.jpg',
-      baseUrl: 'https://lh3.googleusercontent.com/example',
-      mimeType: 'image/jpeg',
-      productUrl: 'https://photos.google.com/photo/',
-      width: '192',
-      height: '108' },
-  ];
+  const selectedAlbumPhotos = selectedAlbum ? albumPhotos : [];
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Paper elevation={1} sx={{ p:  3, borderRadius:  0 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography variant="h5"
-              sx={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap:  2,
-                fontWeight: 600, color: theming.colors.primary }}>
-              <Avatar sx={{ bgcolor: '#34a853' }}>
-                {theming.getThemedIcon('photoLibrary')}
-              </Avatar>
-              Google Photos Integrasjon
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
-              Administrer album, organiser bilder og del med klienter
-            </Typography>
-          </Box>
-
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Chip
-              icon={connectionStatus?.success ? theming.getThemedIcon('checkCircle') : <ErrorIcon />}
-              label={connectionStatus?.success ? 'Tilkoblet' : 'Ikke tilkoblet'}
-              color={connectionStatus?.success ? 'success' : 'error'}
-              variant="outlined"
-            />
-
-            <Button
-              variant="outlined"
-              startIcon={theming.getThemedIcon('refresh')}
-              onClick={() =>
-                queryClient.invalidateQueries({
-                  queryKey: ['/api/google-photos', ],
-              })
-            }
-            >
-              Oppdater
-            </Button>
-
-            <Button variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setCreateAlbumOpen(true)}
-              sx={{ bgcolor: '#34a853' }}
-              disabled={!connectionStatus?.success}
-            >
-              Nytt album
-            </Button>
+    <Box>
+      <Card sx={{ mb: 2, ...theming.getThemedCardSx() }}>
+        <CardContent sx={theming.getThemedCardSx()}>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }} spacing={2}>
+            <Box>
+              <Typography variant="h6" sx={{ color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PhotoCamera /> Google Photos
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Album, deling og mediebibliotek for prosjektarbeidsflyt.
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip
+                color={connectionStatus.authenticated ? 'success' : 'warning'}
+                icon={connectionStatus.authenticated ? <Public /> : <Lock />}
+                label={connectionStatus.authenticated ? 'Tilkoblet' : 'Frakoblet'}
+                size="small"
+              />
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateAlbumOpen(true)}
+                sx={{ bgcolor: '#34A853', '&:hover': { bgcolor: '#2D8F47' } }}
+              >
+                Opprett album
+              </Button>
+            </Stack>
           </Stack>
-        </Stack>
-      </Paper>
+        </CardContent>
+      </Card>
 
-      <Box sx={{ flex: 1, display: 'flex' }}>
-        {/* Main Content */}
-        <Box sx={{ flex: 1, p: 3 }}>
-          {/* Tabs */}
-          <Paper sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-            <Tabs
-              value={selectedTab}
-              onChange={(_, newValue) => setSelectedTab(newValue)}
-              indicatorColor="primary"
-              textColor="primary"
-              variant="fullWidth"
-            >
-              {tabData.map((tab, index) => (
-                <Tab
-                  key={index}
-                  icon={tab.icon}
-                  label={`${tab.label} (${tab.count})`}
-                  iconPosition="start"
-                />
-              ))}
-            </Tabs>
-          </Paper>
+      <Tabs value={selectedTab} onChange={(_, value: number) => setSelectedTab(value)} sx={{ mb: 2 }}>
+        <Tab label={`Album (${albums.length})`} icon={<Album />} iconPosition="start" />
+        <Tab label={`Bilder (${selectedAlbumPhotos.length})`} icon={<Collections />} iconPosition="start" />
+        <Tab label="Integrasjon" icon={<Folder />} iconPosition="start" />
+      </Tabs>
 
-          {/* Toolbar */}
-          <Paper sx={{ p: 2, mb: 3 ,  ...theming.getThemedCardSx() }}>
-            <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-              <Stack direction="row" spacing={2} alignItems="center">
-                <FormControl size="small" sx={{ minWidth: 120}}>
-                  <InputLabel>Filter</InputLabel>
-                  <Select
-                    value={filterType}
-                    onChange={(e) => setFilterType(e.target.value)}
-                    label="Filter"
-                  >
-                    <MenuItem value="all">Alle</MenuItem>
-                    <MenuItem value="shared">Delt</MenuItem>
-                    <MenuItem value="writeable">Redigerbar</MenuItem>
-                    <MenuItem value="readonly">Kun lesing</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControl size="small" sx={{ minWidth: 120}}>
-                  <InputLabel>Sorter</InputLabel>
-                  <Select value={sortBy} onChange={(e) => setSortBy(e.target.value)} label="Sorter">
-                    <MenuItem value="date">Dato</MenuItem>
-                    <MenuItem value="name">Navn</MenuItem>
-                    <MenuItem value="count">Antall bilder</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-
-              <Stack direction="row" spacing={1}>
-                <IconButton
-                  onClick={() => setViewMode('grid')}
-                  color={viewMode === 'grid' ? 'primary' : 'default'}
+      {selectedTab === 0 ? (
+        <Stack spacing={2}>
+          <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'stretch', md: 'center' }}>
+              <TextField
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Sok album"
+                fullWidth
+                size="small"
+              />
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="filter-label">Filter</InputLabel>
+                <Select
+                  labelId="filter-label"
+                  value={filterType}
+                  label="Filter"
+                  onChange={(event) => setFilterType(event.target.value as typeof filterType)}
                 >
-                  <ViewGrid />
-                </IconButton>
-                <IconButton
-                  onClick={() => setViewMode('list')}
-                  color={viewMode === 'list' ? 'primary' : 'default'}
+                  <MenuItem value="all">Alle</MenuItem>
+                  <MenuItem value="shared">Delte</MenuItem>
+                  <MenuItem value="writeable">Redigerbare</MenuItem>
+                  <MenuItem value="readonly">Read-only</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <InputLabel id="sort-label">Sorter</InputLabel>
+                <Select
+                  labelId="sort-label"
+                  value={sortBy}
+                  label="Sorter"
+                  onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
                 >
-                  <ViewList />
+                  <MenuItem value="date">Dato</MenuItem>
+                  <MenuItem value="name">Navn</MenuItem>
+                  <MenuItem value="count">Antall</MenuItem>
+                </Select>
+              </FormControl>
+              <Tooltip title="Visningsmodus">
+                <IconButton onClick={() => setViewMode((prev) => (prev === 'grid' ? 'list' : 'grid'))}>
+                  {viewMode === 'grid' ? <ViewList /> : <GridView />}
                 </IconButton>
-              </Stack>
+              </Tooltip>
             </Stack>
           </Paper>
 
-          {/* Content based on selected tab */}
-          {selectedTab === 0 &&
-            /* Albums Tab */
-            (albumsLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                <LinearProgress sx={{ width: '50%' }} />
-              </Box>
-            ) : getFilteredAlbums().length === 0 ? (
-              <Paper sx={{ p:  6, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
-                <Album sx={{ fontSize:  64, color: 'text.disabled', mb:  2 }} />
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Ingen album funnet
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                  Opprett ditt første Google Photos album for et prosjekt
-                </Typography>
-                <Button variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => setCreateAlbumOpen(true)}
-                  sx={{ bgcolor: '#34a853' }}
-                >
-                  Opprett album
-                </Button>
-              </Paper>
-            ) : (
-              <Grid container spacing={3}>
-                {getFilteredAlbums().map((album) => (
-                  <Grid item xs={12} sm={6} md={4} key={album.id}>
-                    <Card
-                      sx={{
-                        cursor: 'pointer',
-                        transition: 'transform 0.2', '&:hover': { transform: 'translateY(-2px)' }}}
-                      onClick={() => {
-                        setSelectedAlbum(album);
-                        setSelectedTab(1);
+          {albumsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : viewMode === 'grid' ? (
+            <Grid container spacing={2}>
+              {filteredAlbums.map((album) => (
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={album.id}>
+                  <Card
+                    sx={{ cursor: 'pointer', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-2px)' }, ...theming.getThemedCardSx() }}
+                    onClick={() => {
+                      setSelectedAlbum(album);
+                      setSelectedTab(1);
                     }}
+                  >
+                    <Box
+                      sx={{
+                        height: 180,
+                        background: album.coverPhotoBaseUrl
+                          ? `url(${album.coverPhotoBaseUrl}) center/cover`
+                          : 'linear-gradient(45deg, #f0f0f0 30%, #e0e0e0 90%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
-                      <Box
-                        sx={{
-                          height: 20,
-                          background: album.coverPhotoBaseUrl
-                            ? `url(${album.coverPhotoBaseUl}) center/cover`
-                            : 'linear-gradient(45deg, #f0f0f0 30%, #e0e0e0 90%)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center' }}
-                      >
-                        {!album.coverPhotoBaseUrl && (
-                          <Collections sx={{ fontSize:  48, color: 'text.disabled' }} />
-                        )}
-                      </Box>
-                      <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
-                          {album.title}
-                        </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt:  1 }}>
-                          <Chip
-                            size="small"
-                            label={`${album.mediaItemsCount} bilder`}
-                            icon={theming.getThemedIcon('photoLibrary')}}
-                          />
-                          {album.shareInfo && (
-                            <Chip size="small" label="Delt" icon={theming.getThemedIcon('share')}} color="primary" />
-                          )}
-                          {album.isWriteable && (
-                            <Chip
-                              size="small"
-                              label="Redigerbar"
-                              icon={theming.getThemedIcon('edit')}}
-                              color="secondary"
-                            />
-                          )}
-                        </Stack>
-                        <Stack direction="row" spacing={1} sx={{ mt:  2 }}>
-                          <Button
-                            size="small"
-                            startIcon={theming.getThemedIcon('launch')}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openInGooglePhotos(album.productUrl);
-                          }}
-                          >
-                            Åpne
-                          </Button>
-                          {album.shareInfo && (
-                            <Button
-                              size="small"
-                              startIcon={theming.getThemedIcon('contentCopy')}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                copyShareLink(album.shareInfo!.shareableUrl);
-                            }}
-                            >
-                              Kopier lenke
-                            </Button>
-                          )}
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedAlbum(album);
-                              setShareAlbumOpen(true);
-                          }}
-                          >
-                            {theming.getThemedIcon('share')}
-                          </IconButton>
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            ))}
-
-          {selectedTab === 1 && (
-            /* Photos Tab */
-            <Box>
-              {selectedAlbum ? (
-                <Box>
-                  <Paper sx={{ p: 2, mb: 3 ,  ...theming.getThemedCardSx() }}>
-                    <Stack direction="row" alignItems="center" justifyContent="space-between">
-                      <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedAlbum.title}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {selectedAlbum.mediaItemsCount} bilder
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={2}>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          style={{ display: 'none' }}
-                          id="photo-upload"
-                          onChange={(e) => {
-                            if (e.target.files) {
-                              handleUploadPhotos(e.target.files);
-                          }
-                        }}
-                        />
-                        <label htmlFor="photo-upload">
-                          <Button
-                            component="span"
-                            variant="outlined"
-                            startIcon={theming.getThemedIcon('cloudUpload')}
-                            disabled={uploadPhotosMutation.isPending}
-                          >
-                            {uploadPhotosMutation.isPending ? 'Laster opp...' : 'Last opp bilder'}
-                          </Button>
-                        </label>
-                        <Button variant="outlined" onClick={() => setSelectedAlbum(null)}>
-                          Tilbake til album
-                        </Button>
-                      </Stack>
-                    </Stack>
-                  </Paper>
-
-                  {photosLoading ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                      <LinearProgress sx={{ width: '50%' }} />
+                      {!album.coverPhotoBaseUrl ? <Collections sx={{ fontSize: 48, color: 'text.disabled' }} /> : null}
                     </Box>
-                  ) : albumPhotos.length === 0 ? (
-                    <Paper sx={{ p:  6, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
-                      <PhotoLibrary sx={{ fontSize:  64, color: 'text.disabled', mb:  2 }} />
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        Ingen bilder i album
+                    <CardContent sx={theming.getThemedCardSx()}>
+                      <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
+                        {album.title}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                        Last opp bilder til dette albumet
-                      </Typography>
-                    </Paper>
-                  ) : (
-                    <ImageList cols={4} gap={8}>
-                      {albumPhotos.map((photo) => (
-                        <ImageListItem key={photo.id}>
-                          <img src={photo.baseUrl} alt={photo.filename} loading="lazy" />
-                          <ImageListItemBar
-                            title={photo.filename}
-                            subtitle={photo.mimeType}
-                            actionIcon={
-                              <IconButton
-                                sx={{ color: 'rgba(25, 255, 255, 0.54)' }}
-                                onClick={() => openInGooglePhotos(photo.productUrl)}
-                              >
-                                {theming.getThemedIcon('launch')}
-                              </IconButton>
-                          }
-                          />
-                        </ImageListItem>
-                      ))}
-                    </ImageList>
-                  )}
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                        <Chip size="small" label={`${album.mediaItemsCount} bilder`} icon={<Collections />} />
+                        {album.shareInfo ? <Chip size="small" label="Delt" icon={<Share />} color="primary" /> : null}
+                        {album.isWriteable ? <Chip size="small" label="Redigerbar" icon={<Edit />} color="secondary" /> : null}
+                      </Stack>
+                      <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
+                        <Button
+                          size="small"
+                          startIcon={<Launch />}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openInGooglePhotos(album.productUrl);
+                          }}
+                        >
+                          Apne
+                        </Button>
+                        {album.shareInfo ? (
+                          <Button
+                            size="small"
+                            startIcon={<ContentCopy />}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              copyShareLink(album.shareInfo!.shareableUrl);
+                            }}
+                          >
+                            Kopier lenke
+                          </Button>
+                        ) : null}
+                        <IconButton
+                          size="small"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedAlbum(album);
+                            setShareAlbumOpen(true);
+                          }}
+                        >
+                          <Share />
+                        </IconButton>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Card sx={theming.getThemedCardSx()}>
+              <List>
+                {filteredAlbums.map((album) => (
+                  <ListItem
+                    key={album.id}
+                    secondaryAction={
+                      <Stack direction="row" spacing={0.5}>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSelectedAlbum(album);
+                            setShareAlbumOpen(true);
+                          }}
+                        >
+                          <Share />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => openInGooglePhotos(album.productUrl)}>
+                          <Launch />
+                        </IconButton>
+                      </Stack>
+                    }
+                  >
+                    <ListItemAvatar>
+                      <Avatar src={album.coverPhotoBaseUrl}>
+                        <Collections />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText primary={album.title} secondary={`${album.mediaItemsCount} bilder`} />
+                  </ListItem>
+                ))}
+              </List>
+            </Card>
+          )}
+        </Stack>
+      ) : null}
+
+      {selectedTab === 1 ? (
+        <Stack spacing={2}>
+          {!selectedAlbum ? (
+            <Alert severity="info">Velg et album fra Album-fanen for a se bilder.</Alert>
+          ) : (
+            <>
+              <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
+                <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+                  <Box>
+                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                      {selectedAlbum.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedAlbum.mediaItemsCount} bilder
+                    </Typography>
+                  </Box>
+                  <Button component="label" variant="outlined" startIcon={<Upload />}>
+                    Last opp bilder
+                    <input
+                      hidden
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={(event) => {
+                        if (event.target.files && event.target.files.length > 0) {
+                          handleUploadPhotos(event.target.files);
+                        }
+                      }}
+                    />
+                  </Button>
+                </Stack>
+              </Paper>
+
+              {photosLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
                 </Box>
               ) : (
-                <Paper sx={{ p:  6, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
-                  <Album sx={{ fontSize:  64, color: 'text.disabled', mb:  2 }} />
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    Velg et album
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Velg et album fra Album-fanen for å se bilder
-                  </Typography>
-                </Paper>
-              )}
-            </Box>
-          )}
-
-          {selectedTab === 2 && (
-            /* Shared Albums Tab */
-            <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Delte album
-              </Typography>
-              <Grid container spacing={3}>
-                {albums
-                  .filter((album) => album.shareInfo)
-                  .map((album) => (
-                    <Grid item xs={12} sm={6} md={4} key={album.id}>
-                      <Card sx={theming.getThemedCardSx()}>
-                        <CardContent sx={theming.getThemedCardSx()}>
-                          <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
-                            {album.title}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                            {album.mediaItemsCount} bilder
-                          </Typography>
-                          <Stack spacing={2}>
-                            <Button
-                              fullWidth
-                              variant="outlined"
-                              startIcon={theming.getThemedIcon('contentCopy')}
-                              onClick={() => copyShareLink(album.shareInfo!.shareableUrl)}
-                            >
-                              Kopier delingslenke
-                            </Button>
-                            <Button
-                              fullWidth
-                              variant="outlined"
-                              startIcon={theming.getThemedIcon('launch')}
-                              onClick={() => openInGooglePhotos(album.productUrl)}
-                            >
-                              Åpne i Google Photos
-                            </Button>
-                          </Stack>
-                        </CardContent>
-                      </Card>
-                    </Grid>
+                <ImageList cols={4} gap={12}>
+                  {selectedAlbumPhotos.map((photo) => (
+                    <ImageListItem key={photo.id}>
+                      <img src={`${photo.baseUrl}=w300-h300-c`} alt={photo.filename} loading="lazy" />
+                      <ImageListItemBar
+                        title={photo.filename}
+                        subtitle={photo.creationTime ? new Date(photo.creationTime).toLocaleDateString('nb-NO') : ''}
+                        actionIcon={
+                          <IconButton color="inherit" onClick={() => openInGooglePhotos(photo.productUrl)}>
+                            <Launch />
+                          </IconButton>
+                        }
+                      />
+                    </ImageListItem>
                   ))}
-              </Grid>
-            </Box>
+                </ImageList>
+              )}
+            </>
           )}
-        </Box>
+        </Stack>
+      ) : null}
 
-        {/* Sidebar */}
-        <Paper
-          sx={{
-            width: 30,
-            borderRadius:  0,
-            borderLeft:  1,
-            borderColor: 'divider',
-            p:  2}}
-         sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Hurtighandlinger
-          </Typography>
-
-          <Stack spacing={2}>
-            {/* Project Integration */}
+      {selectedTab === 2 ? (
+        <Grid container spacing={2}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined" sx={theming.getThemedCardSx()}>
-              <CardContent sx={{ pb:  1 ,  ...theming.getThemedCardSx() }}>
-                <Typography
-                  variant="subtitle2"
-                  gutterBottom
-                  sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
-                >
-                  <Folder sx={{ fontSize: 16}} />
-                  Prosjektintegrasjon
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Folder sx={{ fontSize: 16 }} /> Prosjektintegrasjon
                 </Typography>
                 <Stack spacing={1}>
-                  {projects.slice(0, 3).map((project: any) => (
+                  {projects.slice(0, 5).map((project) => (
                     <Button
-                      key={project.d}
+                      key={project.id}
                       size="small"
                       variant="text"
                       onClick={() => {
-                        setAlbumFormData((prev) => ({
-                          ...prev,
-                          projectId: project.d,
-                          title: generateAlbumName(project.id),
-                      }));
+                        setAlbumFormData((prev) => ({ ...prev, projectId: project.id, title: generateAlbumName(project.id) }));
                         setCreateAlbumOpen(true);
-                    }}
+                      }}
                       fullWidth
                       sx={{ justifyContent: 'flex-start' }}
                     >
@@ -803,27 +638,21 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({
                 </Stack>
               </CardContent>
             </Card>
+          </Grid>
 
-            {/* Portfolio Integration */}
+          <Grid size={{ xs: 12, md: 6 }}>
             <Card variant="outlined" sx={theming.getThemedCardSx()}>
-              <CardContent sx={{ pb:  1 ,  ...theming.getThemedCardSx() }}>
-                <Typography
-                  variant="subtitle2"
-                  gutterBottom
-                  sx={{ display: 'flex', alignItems: 'center', gap:  1 }}
-                >
-                  <Collections sx={{ fontSize: 16}} />
-                  Portfolio Integration
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Collections sx={{ fontSize: 16 }} /> Portfolio integration
                 </Typography>
                 <Stack spacing={1}>
-                  {showcasePortfolios.slice(0, 3).map((portfolio: any) => (
+                  {showcasePortfolios.slice(0, 5).map((portfolio) => (
                     <Button
-                      key={portfolio.d}
+                      key={portfolio.id}
                       size="small"
                       variant="text"
-                      onClick={() => {
-                        window.open(`/showcase/${portfolio.id}`, ', '_blank');
-                    }}
+                      onClick={() => window.open(`/showcase/${portfolio.id}`, '_blank', 'noopener,noreferrer')}
                       fullWidth
                       sx={{ justifyContent: 'flex-start' }}
                     >
@@ -833,220 +662,128 @@ const GooglePhotosIntegration: React.FC<GooglePhotosIntegrationProps> = ({
                 </Stack>
               </CardContent>
             </Card>
+          </Grid>
+        </Grid>
+      ) : null}
 
-            {/* Quick Stats */}
-            <Card variant="outlined" sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Statistikk
-                </Typography>
-                <Stack spacing={1}>
-                  <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2">Totalt album: </Typography>
-                    <Chip size="small" label={albums.length} />
-                  </Stack>
-                  <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2">Delte album: </Typography>
-                    <Chip size="small" label={albums.filter((a) => a.shareInfo).length} />
-                  </Stack>
-                  <Stack direction="row" justifyContent="space-between">
-                    <Typography variant="body2">Totalt bilder: </Typography>
-                    <Chip
-                      size="small"
-                      label={albums.reduce((sum, a) => sum + parseInt(a.mediaItemsCount), 0)}
-                    />
-                  </Stack>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Stack>
-        </Paper>
-      </Box>
-
-      {/* Create Album Dialog */}
-      <Dialog
-        open={createAlbumOpen}
-        onClose={() => setCreateAlbumOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Opprett nytt Google Photos album</DialogTitle>
+      <Dialog open={createAlbumOpen} onClose={() => setCreateAlbumOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Opprett album</DialogTitle>
         <DialogContent>
-          <Stack spacing={3} sx={{ mt:  1 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              label="Album tittel"
+              label="Albumnavn"
               value={albumFormData.title}
-              onChange={(e) => setAlbumFormData((prev) => ({ ...prev, title: e.target.value }))}
+              onChange={(event) => setAlbumFormData((prev) => ({ ...prev, title: event.target.value }))}
               fullWidth
-              placeholder="La stå tom for automatisk generering"
             />
-
             <TextField
               label="Beskrivelse"
               value={albumFormData.description}
-              onChange={(e) =>
-                setAlbumFormData((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-              }))
-            }
+              onChange={(event) => setAlbumFormData((prev) => ({ ...prev, description: event.target.value }))}
               fullWidth
               multiline
               rows={3}
             />
-
             <FormControl fullWidth>
-              <InputLabel>Tilknyttet prosjekt</InputLabel>
+              <InputLabel id="project-select-label">Prosjekt</InputLabel>
               <Select
+                labelId="project-select-label"
+                label="Prosjekt"
                 value={albumFormData.projectId}
-                onChange={(e) => {
-                  const projectId = e.target.value;
-                  setAlbumFormData((prev) => ({
-                    ...prev,
-                    projectId,
-                    title: prev.title || generateAlbumName(projectI),
-                }));
-              }}
-                label="Tilknyttet prosjekt"
+                onChange={(event) => setAlbumFormData((prev) => ({ ...prev, projectId: event.target.value }))}
               >
-                <MenuItem value="">Ingen prosjekt</MenuItem>
-                {projects.map((project: any) => (
-                  <MenuItem key={project.d} value={project.id}>
+                {projects.map((project) => (
+                  <MenuItem key={project.id} value={project.id}>
                     {project.name}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-
-            <Stack spacing={2}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={albumFormData.isCollaborative}
-                    onChange={(e) =>
-                      setAlbumFormData((prev) => ({
-                        ...prev,
-                        isCollaborative: e.target.checked,
-                    }))
-                  }
-                  />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={albumFormData.isCollaborative}
+                  onChange={(event) => setAlbumFormData((prev) => ({ ...prev, isCollaborative: event.target.checked }))}
+                />
               }
-                label="Tillat at andre kan legge til bilder"
-              />
-
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={albumFormData.isCommentable}
-                    onChange={(e) =>
-                      setAlbumFormData((prev) => ({
-                        ...prev,
-                        isCommentable: e.target.checked,
-                    }))
-                  }
-                  />
+              label="Samarbeidsalbum"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={albumFormData.isCommentable}
+                  onChange={(event) => setAlbumFormData((prev) => ({ ...prev, isCommentable: event.target.checked }))}
+                />
               }
-                label="Tillat kommentarer"
-              />
-
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={albumFormData.autoShare}
-                    onChange={(e) =>
-                      setAlbumFormData((prev) => ({
-                        ...prev,
-                        autoShare: e.target.checked,
-                    }))
-                  }
-                  />
+              label="Tillat kommentarer"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={albumFormData.autoShare}
+                  onChange={(event) => setAlbumFormData((prev) => ({ ...prev, autoShare: event.target.checked }))}
+                />
               }
-                label="Automatisk generer delingslenke"
-              />
-            </Stack>
-
-            {createAlbumMutation.error && (
-              <Alert severity="error">{createAlbumMutation.error.message}</Alert>
-            )}
+              label="Auto-del med team"
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateAlbumOpen(false)}>Avbryt</Button>
-          <Button variant="contained"
-            onClick={handleCreateAlbum}
-            disabled={createAlbumMutation.isPending}
-           sx={theming.getThemedButtonSx()}>
-            {createAlbumMutation.isPending ? 'Oppretter...' : 'Opprett album'}
+          <Button variant="contained" onClick={handleCreateAlbum} disabled={createAlbumMutation.isPending}>
+            {createAlbumMutation.isPending ? 'Oppretter...' : 'Opprett'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Share Album Dialog */}
-      <Dialog
-        open={shareAlbumOpen}
-        onClose={() => setShareAlbumOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Del album: {selectedAlbum?.title}</DialogTitle>
+      <Dialog open={shareAlbumOpen} onClose={() => setShareAlbumOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Del album</DialogTitle>
         <DialogContent>
-          <Stack spacing={3} sx={{ mt:  1 }}>
-            <Alert severity="info">Konfigurer delingsinnstillinger for albumet</Alert>
-
-            <FormControlLabel
-              control={<Switch defaultChecked />}
-              label="Tillat at andre kan legge til bilder"
-            />
-
-            <FormControlLabel control={<Switch defaultChecked />} label="Tillat kommentarer" />
-
-            {selectedAlbum?.shareInfo && (
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Delingslenke: </Typography>
-                <TextField
-                  fullWidth
-                  value={selectedAlbum.shareInfo.shareableUl}
-                  InputProps={{
-                    readOnly: true,
-                    endAdornment: (
-                      <IconButton
-                        onClick={() => copyShareLink(selectedAlbum.shareInfo!.shareableUrl)}
-                      >
-                        {theming.getThemedIcon('contentCopy')}
-                      </IconButton>
-                    )}}
-                />
-              </Box>
-            )}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="body2">{selectedAlbum?.title ?? 'Ingen album valgt'}</Typography>
+            <Button
+              variant="outlined"
+              startIcon={<ContentCopy />}
+              onClick={() => {
+                if (selectedAlbum?.shareInfo?.shareableUrl) {
+                  copyShareLink(selectedAlbum.shareInfo.shareableUrl);
+                }
+              }}
+              disabled={!selectedAlbum?.shareInfo?.shareableUrl}
+            >
+              Kopier delingslenke
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Share />}
+              onClick={() => {
+                if (selectedAlbum) {
+                  handleShareAlbum(selectedAlbum, {
+                    isCollaborative: true,
+                    isCommentable: true,
+                  });
+                }
+              }}
+              disabled={shareAlbumMutation.isPending || !selectedAlbum}
+            >
+              {shareAlbumMutation.isPending ? 'Deler...' : 'Aktiver deling'}
+            </Button>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShareAlbumOpen(false)}>Lukk</Button>
-          <Button variant="contained"
-            onClick={() => {
-              if (selectedAlbum) {
-                handleShareAlbum(selectedAlbum, {
-                  isCollaborative: true,
-                  isCommentable: true,
-              });
-            }
-          }}
-            disabled={shareAlbumMutation.isPending}
-          >
-            {shareAlbumMutation.isPending ? 'Deler...' : 'Oppdater deling'}
-          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Floating Action Button */}
       <Fab
         color="primary"
         sx={{
           position: 'fixed',
-          bottom:  20,
+          bottom: 20,
           right: 30,
-          bgcolor: '#34a850','&:hover': { bgcolor: '#2d8a47' }}}
+          bgcolor: '#34A850',
+          '&:hover': { bgcolor: '#2D8A47' },
+        }}
         onClick={() => setCreateAlbumOpen(true)}
       >
         <AddIcon />

@@ -187,7 +187,8 @@ export const HDRIRecommendationDialog: React.FC<HDRIRecommendationDialogProps> =
                   bgcolor: selectedHDRI?.id === hdri.id ? 'rgba(76, 175, 80, 0.2)' : '#2a2a2a',
                   border: selectedHDRI?.id === hdri.id ? '2px solid #4caf50' : '2px solid transparent',
                   borderRadius: 2,
-                  transition: 'all 0.2s ease','&:hover': {
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
                     bgcolor: selectedHDRI?.id === hdri.id ? 'rgba(76, 175, 80, 0.25)' : '#333',
                     transform: 'translateY(-2px)',
                   }
@@ -220,7 +221,9 @@ export const HDRIRecommendationDialog: React.FC<HDRIRecommendationDialogProps> =
                         bgcolor: CATEGORY_COLORS[hdri.category] || '#666',
                         color: 'white',
                         fontSize: '0.7rem',
-                        height: 24'& .MuiChip-icon': { color: 'white', fontSize: 14 }}}
+                        height: 24,
+                        '& .MuiChip-icon': { color: 'white', fontSize: 14 },
+                      }}
                     />
 
                     {/* Selected Checkmark */}
@@ -266,7 +269,8 @@ export const HDRIRecommendationDialog: React.FC<HDRIRecommendationDialogProps> =
                         sx={{
                           height: 4,
                           borderRadius: 2,
-                          bgcolor: 'rgba(255,255,255,0.1)','& .MuiLinearProgress-bar': {
+                          bgcolor: 'rgba(255,255,255,0.1)',
+                          '& .MuiLinearProgress-bar': {
                             bgcolor: hdri.matchScore >= 80 ? '#4caf50' : 
                                     hdri.matchScore >= 50 ? '#ff9800' : '#f44336',
                           }}}
@@ -337,4 +341,3 @@ export const HDRIRecommendationDialog: React.FC<HDRIRecommendationDialogProps> =
 };
 
 export default HDRIRecommendationDialog;
-

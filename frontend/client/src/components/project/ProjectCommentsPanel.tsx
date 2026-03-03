@@ -82,7 +82,7 @@ export const ProjectCommentsPanel: React.FC<ProjectCommentsPanelProps> = ({
   const [selectedComment, setSelectedComment] = useState<ProjectComment | null>(null);
   const [responseText, setResponseText] = useState('');
   const [showResponseDialog, setShowResponseDialog] = useState(false);
-  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set();
+  const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [contextComment, setContextComment] = useState<ProjectComment | null>(null);
 
@@ -242,7 +242,7 @@ export const ProjectCommentsPanel: React.FC<ProjectCommentsPanelProps> = ({
   const toggleExpanded = (commentId: string) => {
     setExpandedComments((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(commentId) {
+      if (newSet.has(commentId)) {
         newSet.delete(commentId);
       } else {
         newSet.add(commentId);

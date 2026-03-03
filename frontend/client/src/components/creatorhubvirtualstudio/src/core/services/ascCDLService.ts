@@ -450,7 +450,7 @@ class ASCCDLService {
   importFromXML(xml: string): { params: ASCCDLParams; metadata: ASCCDLMetadata } | null {
     try {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(xml'text/xml');
+      const doc = parser.parseFromString(xml, 'text/xml');
 
       // Check for parse errors
       const parserError = doc.querySelector('parsererror');
@@ -581,4 +581,3 @@ class ASCCDLService {
 }
 
 export const ascCDLService = new ASCCDLService();
-

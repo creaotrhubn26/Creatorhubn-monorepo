@@ -15,7 +15,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { logger } from '../../core/services/logger';
 
-const log = logger.module('FrameAnnotation, ');
+const log = logger.module('FrameAnnotation');
 import {
   Box,
   Paper,
@@ -88,7 +88,7 @@ interface FrameAnnotationOverlayProps {
   frameId: string;
   imageUrl: string;
   annotations: FrameAnnotation[];
-  onAddAnnotation: (annotation: Omit<FrameAnnotation, 'id' | , 'createdAt, '>) => void;
+  onAddAnnotation: (annotation: Omit<FrameAnnotation, 'id' | 'createdAt'>) => void;
   onUpdateAnnotation: (id: string, updates: Partial<FrameAnnotation>) => void;
   onDeleteAnnotation: (id: string) => void;
   placementMode: AnnotationType | null;
@@ -179,7 +179,7 @@ const AnnotationMarker = styled(Box, {
     }),
     
     // Hover effect
-    , '&:hover': {
+    '&:hover': {
       transform: 'translate(-50%, -50%) translateY(-4px) scale(1.1)',
       filter: 'drop-shadow(0 8px 16px rgba(0,0,0,0.3))',
       zIndex: 1,
@@ -205,7 +205,8 @@ const LightRaysEffect = styled(Box)({
   transform: 'translate(-50%, -50%)',
   width: '200%',
   height: '200%',
-  pointerEvents: 'none','& .ray': {
+  pointerEvents: 'none',
+  '& .ray': {
     position: 'absolute',
     top: '50%',
     left: '50%',
@@ -217,13 +218,14 @@ const LightRaysEffect = styled(Box)({
   },
 });
 
-const ArrowFlowLine = styled('svg,')({
+const ArrowFlowLine = styled('svg')({
   position: 'absolute',
   top: 0,
   left: 0,
   width: '100%',
   height: '100%',
-  pointerEvents: 'none','& .flow-path': {
+  pointerEvents: 'none',
+  '& .flow-path': {
     strokeDasharray: '10 5',
     animation: `${arrowFlow} 1s linear infinite`,
   },
@@ -241,7 +243,8 @@ const SelectionRing = styled('svg')({
   top: '50%',
   left: '50%',
   transform: 'translate(-50%, -50%)',
-  pointerEvents: 'none','& circle': {
+  pointerEvents: 'none',
+  '& circle': {
     fill: 'none',
     stroke: '#2196F3',
     strokeWidth: 2,
@@ -316,7 +319,8 @@ const AnnotationIcon: React.FC<AnnotationIconProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              transition: 'all 0.2s ease', '&:hover': {
+              transition: 'all 0.2s ease',
+              '&:hover': {
                 boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
               }}}
           >
@@ -367,8 +371,9 @@ const AnnotationIcon: React.FC<AnnotationIconProps> = ({
                   transform: 'translateY(-50%)',
                   width: size * 0.6,
                   height: 2,
-                  background: `linear-gradient(90deg, ${color || '#2196F3'}, transparent)`, '&::after': {
-                    content: ',""',
+                  background: `linear-gradient(90deg, ${color || '#2196F3'}, transparent)`,
+                  '&::after': {
+                    content: '""',
                     position: 'absolute',
                     right: 0,
                     top: '50%',
@@ -647,7 +652,9 @@ const AnnotationPreview: React.FC<AnnotationPreviewProps> = ({
                     size="small" 
                     onClick={onEdit}
                     sx={{ 
-                      bgcolor: 'rgba(255,255,255,0.05)', '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' }}}
+                      bgcolor: 'rgba(255,255,255,0.05)',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
+                    }}
                   >
                     <Edit sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -658,7 +665,9 @@ const AnnotationPreview: React.FC<AnnotationPreviewProps> = ({
                     onClick={onDelete} 
                     sx={{ 
                       bgcolor: 'rgba(244,67,54,0.1)',
-                      color: 'error.main', '&:hover': { bgcolor: 'rgba(244,67,54,0.2)' }}}
+                      color: 'error.main',
+                      '&:hover': { bgcolor: 'rgba(244,67,54,0.2)' },
+                    }}
                   >
                     <Delete sx={{ fontSize: 16 }} />
                   </IconButton>
@@ -932,4 +941,3 @@ export const FrameAnnotationOverlay: React.FC<FrameAnnotationOverlayProps> = ({
 };
 
 export default FrameAnnotationOverlay;
-

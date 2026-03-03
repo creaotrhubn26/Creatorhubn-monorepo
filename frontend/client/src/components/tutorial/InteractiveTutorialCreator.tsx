@@ -426,7 +426,7 @@ CreatorHub Norge setter veldig stor pris på ditt bidrag til fellesskapet!
                 sx={{
                   width:  12,
                   height:  12,
-                  borderRadius: '50, %',
+                  borderRadius: '50%',
                   backgroundColor: 'error.main',
                   animation: 'pulse 1s infinite'
             }}

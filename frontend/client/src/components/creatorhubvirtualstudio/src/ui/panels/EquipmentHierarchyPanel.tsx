@@ -584,8 +584,10 @@ export function EquipmentHierarchyPanel({
           <MenuItem onClick={() => {
             const stats = equipmentGroupingService.getStatistics();
             log.debug('Grouping Statistics: ', stats);
-            alert(`Total: ${stats.totalNodes} items in ${stats.totalGroups} groups\n` +
-              , `Grouped: ${stats.groupedNodes}, Linked: ${stats.linkedNodes}, Orphaned: ${stats.orphanedNodes}`);
+            alert(
+              `Total: ${stats.totalNodes} items in ${stats.totalGroups} groups\n` +
+                `Grouped: ${stats.groupedNodes}, Linked: ${stats.linkedNodes}, Orphaned: ${stats.orphanedNodes}`
+            );
             setAdvancedMenuAnchor(null);
           }}>
             <ListItemIcon><Visibility fontSize="small" /></ListItemIcon>
@@ -718,4 +720,3 @@ export function EquipmentHierarchyPanel({
 }
 
 export default EquipmentHierarchyPanel;
-

@@ -17,6 +17,7 @@ import {
   AlertTitle,
   List,
   ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Checkbox,
@@ -491,8 +492,7 @@ function LibraryItem({
   }
   
   return (
-    <ListItem
-      button
+    <ListItemButton
       onClick={() => onToggle(suggestion.feature)}
       sx={{
         bgcolor: selected ? 'rgba(33, 150, 243, 0.1)' : 'background.paper',
@@ -559,8 +559,7 @@ function LibraryItem({
           </Box>
         }
       />
-    </ListItem>
+    </ListItemButton>
   );
 }
-
 

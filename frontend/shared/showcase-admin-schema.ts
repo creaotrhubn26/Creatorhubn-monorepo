@@ -15,6 +15,7 @@ import {
   uuid,
   index,
   bigint,
+  AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
@@ -259,7 +260,9 @@ export const showcaseComments = pgTable('showcase_comments', {
   content: text('content').notNull(),
   rating: integer('rating'), // 1-5 stars
   isApproved: boolean('is_approved').default(false),
-  parentCommentId: varchar('parent_comment_id').references(() => showcaseComments.id),
+  parentCommentId: varchar('parent_comment_id').references(
+    (): AnyPgColumn => showcaseComments.id,
+  ),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

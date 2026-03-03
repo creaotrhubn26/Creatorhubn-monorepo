@@ -1,150 +1,175 @@
+import React, { useMemo, useState } from 'react';
+import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import { useTheming } from '../../../utils/theming-helper';
-import React from 'react';
-// Universal Dashboard Box that provides layout functionality to any dashboard
+
+interface DashboardWidgetConfig {
+  id: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+interface DashboardLayoutTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  layout: {
+    widgets: DashboardWidgetConfig[];
+  };
+}
+
+interface UniversalDashboardWrapperProps {
+  children: React.ReactNode;
+  dashboardType: 'photographer' | 'videographer' | 'music_producer' | 'admin' | string;
+  dashboardConfig: {
+    widgets: DashboardWidgetConfig[];
+    availableWidgets: DashboardWidgetConfig[];
+    description?: string;
+  };
+}
+
+interface UniversalWidgetWrapperProps {
+  widget: DashboardWidgetConfig;
+  index: number;
+  children: React.ReactNode;
+  className?: string;
+}
+
+const TEMPLATE_STORAGE_KEY = 'creatorhub.dashboard.templates';
+
+function readSavedTemplates(): DashboardLayoutTemplate[] {
+  try {
+    const raw = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (template): template is DashboardLayoutTemplate =>
+        typeof template === 'object' &&
+        template !== null &&
+        'id' in template &&
+        'name' in template &&
+        'layout' in template,
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function UniversalDashboardWrapper({
   children,
   dashboardType,
-  dashboardConfig
-}: { children: React.ReactNode
-  dashboardType: 'photographer' | 'videographer' | 'music_producer' | 'admin' | string;
-  dashboardConfig: {
-    widgets: any[];
-    availableWidgets: any[];
-    description?: string }
-}) {
-  // Simple wrapper for now - advanced layout features to be activated later
+  dashboardConfig,
+}: UniversalDashboardWrapperProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      {/* LayoutGrid Configuration Available */}
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          LayoutGrid System: {dashboardType}
-        </div>
-      </div>
-      {/* Dashboard Content */}
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        {children}
-      </div>
-    </div>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minHeight: '100%' }}>
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+          Layout System: {dashboardType}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {dashboardConfig.description || 'Tilpass dashboard-oppsettet med widgets og maler.'}
+        </Typography>
+      </Paper>
+      <Box>{children}</Box>
+    </Box>
   );
 }
-// LayoutGrid Mode Overlay Component
-function LayoutModeOverlay() {
-  const { isLayoutMode } = useDashboardLayout();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  if (!isLayoutMode) return null;
+
+export function LayoutModeOverlay({ isLayoutMode }: { isLayoutMode: boolean }) {
+  if (!isLayoutMode) {
+    return null;
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center justify-center min-h-screen">
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">LayoutGrid Edit Mode</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            Drag widgets to rearrange your dashboard layout
-          </p>
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            <div className="flex flex-col items-center justify-center min-h-screen">
-              <div className="flex flex-col items-center justify-center min-h-screen"></div>
-              <span>Draggable</span>
-            </div>
-            <div className="flex flex-col items-center justify-center min-h-screen">
-              <div className="flex flex-col items-center justify-center min-h-screen"></div>
-              <span>Drop Zone</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <Paper sx={{ p: 2, border: '1px dashed', borderColor: 'primary.main', mb: 2 }}>
+      <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+        Layout Edit Mode
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Dra widgets for å omorganisere dashboardet. Slipp dem i ønsket rekkefølge.
+      </Typography>
+    </Paper>
   );
 }
-// Enhanced Widget Box for consistent styling across all dashboards
+
 export function UniversalWidgetWrapper({
   widget,
   index,
   children,
-  className = ""
-}: { widget: any
-  index: number;
-  children: React.ReactNode;
-  className?: string }) {
+  className = '',
+}: UniversalWidgetWrapperProps) {
   return (
-    <DraggableWidget widget={widget} index={index}>
-      <div className={`h-full ${className}`}>
-        {children}
-      </div>
-    </DraggableWidget>
+    <Box className={className} data-widget-id={widget.id} data-widget-index={index} sx={{ height: '100%' }}>
+      {children}
+    </Box>
   );
 }
-// Settings Description Integration Component
+
 export function DashboardLayoutSettings({ dashboardType }: { dashboardType: string }) {
-  const { availableTemplates, loadTemplate, currentLayout } = useDashboardLayout();
+  const theming = useTheming('photographer');
+  const [templates] = useState<DashboardLayoutTemplate[]>(() => readSavedTemplates());
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    templates[0]?.id || null,
+  );
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) || null,
+    [selectedTemplateId, templates],
+  );
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <div>
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">Dashboard LayoutGrid</h3>
-        <p className="text-sm text-gray-600">
-          Manage your dashboard layout templates and customize your workspace
-        </p>
-      </div>
-      {/* Current LayoutGrid */}
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <h4 className="font-medium text-gray-800 mb-3">Current LayoutGrid</h4>
-        {currentLayout ? (
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            <div>
-              <p className="font-medium">{currentLayout.name}</p>
-              <p className="text-sm text-gray-600">{currentLayout.description}</p>
-            </div>
-            <div className="flex flex-col items-center justify-center min-h-screen">
-              <p>{currentLayout.layout.widgets.length} widgets</p>
-              <p>Modified: {new Event(currentLayout.createdAt).toLocaleDateString()}</p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-gray-500">No layout active</p>
-        )}
-      </div>
-      {/* Available Templates */}
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <h4 className="font-medium text-gray-800 mb-3">Saved Templates</h4>
-        {availableTemplates.length > 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-screen">
-            {availableTemplates.map((template) => (
-              <div 
-                key={template.id}
-                className={ `p-3 border rounded-lg cursor-pointer transition-colors hover: shadow-md ${
-                  currentLayout?.id === template.id ? 'border-blue-500 bg-gradient-to-br from-amber-50/30 to-orange-50/20' : 'border-amber-200/50',}`}
-              >
-                <div className="flex flex-col items-center justify-center min-h-screen">
-                  <h5 className="font-medium">{template.name}</h5>
-                    <span className="text-xs bg-gradient-to-br from-amber-100/40 to-orange-100/30 backdrop-blur-lg text-gray-600 px-2 py-1 rounded-xl">
-                      Default
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-600 mb-2">{template.description}</p>
-                <div className="flex flex-col items-center justify-center min-h-screen">
-                  <span>{template.layout.widgets.length} widgets</span>
-                  <span>{new Event(template.createdAt).toLocaleDateString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-gray-500">No saved templates yet</p>
-        )}
-      </div>
-      {/* LayoutGrid Instructions */}
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <h4 className="font-medium text-blue-900 mb-2">Hvordan tilpasse oppsettet ditt</h4>
-          <li>1. Klikk "Endre oppsett" knappen øverst til høyre</li>
-          <li>2. Dra og slipp widgets for å omorganisere dashboardet ditt</li>
-          <li>3. Klikk "Lagre oppsett" for å lage en ny mal</li>
-          <li>4. Bruk"Maler" for å bytte mellom lagrede oppsett</li>
-          <li>5. Eksporter/importer oppsett for å dele med teammedlemmer</li>
-      </div>
-    </div>
+    <Paper sx={{ p: 2, ...theming.getThemedCardSx() }}>
+      <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
+        Dashboard Layout ({dashboardType})
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Velg en lagret mal for å raskt bytte paneloppsett.
+      </Typography>
+
+      {templates.length > 0 ? (
+        <Stack spacing={1}>
+          {templates.map((template) => (
+            <Button
+              key={template.id}
+              variant={template.id === selectedTemplateId ? 'contained' : 'outlined'}
+              onClick={() => setSelectedTemplateId(template.id)}
+            >
+              {template.name}
+            </Button>
+          ))}
+          {selectedTemplate && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="subtitle2">{selectedTemplate.name}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {selectedTemplate.layout.widgets.length} widgets •{' '}
+                {new Date(selectedTemplate.createdAt).toLocaleDateString()}
+              </Typography>
+            </Box>
+          )}
+        </Stack>
+      ) : (
+        <Typography variant="body2" color="text.secondary">
+          Ingen lagrede layout-maler funnet.
+        </Typography>
+      )}
+
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="subtitle2" sx={{ mb: 1 }}>
+          Hvordan tilpasse oppsettet:
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          1. Aktiver layout-modus.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          2. Dra og slipp widgets.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          3. Lagre som ny mal.
+        </Typography>
+      </Box>
+    </Paper>
   );
 }
+
 export default UniversalDashboardWrapper;

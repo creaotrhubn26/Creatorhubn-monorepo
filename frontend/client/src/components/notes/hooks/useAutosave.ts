@@ -1,12 +1,12 @@
 // client/src/components/notes/hooks/useAutosave.ts
 import { useEffect, useRef } from 'react';
-import debounce from 'lodash.debounce';
+import debounce from 'lodash/debounce';
 
 /**
  * Autosave hook: *  - Debounces onSave() whenever any dependency changes
  *  - Binds Cmd/Ctrl+S to immediate save
  */
-export function useAutosave(onSave: () => void, deps: any[], delay = 800) {
+export function useAutosave(onSave: () => void, deps: unknown[], delay = 800) {
   const debounced = useRef(debounce(onSave, delay)).current;
 
   useEffect(() => {

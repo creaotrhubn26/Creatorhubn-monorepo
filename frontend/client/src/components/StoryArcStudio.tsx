@@ -42,16 +42,12 @@ import {
   ContentCopy,
   ContentPaste,
   GridView,
-  Timeline as TimelineIcon,
   Loop,
   KeyboardArrowLeft,
   KeyboardArrowRight,
   Speed as Speed,
-  AutoFixHigh,
   Face as FaceIcon,
   Sync,
-  Link as LinkIcon,
-  AccountTree,
   MovieFilter,
   AutoFixHigh as AutoFixHighIcon,
   GpsFixed,
@@ -92,7 +88,13 @@ import AudioEnhancementDialog from './audio/AudioEnhancementDialog';
 import BatchAudioEnhancementDialog from './audio/BatchAudioEnhancementDialog';
 import AIAudioAssistantDialog from './audio/AIAudioAssistantDialog';
 import StoryArcDataIntegration, { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
-import ProfessionalTimeline, { TimelineMarker, TrackState, TimelineTransition } from './ProfessionalTimeline';
+import ProfessionalTimeline, {
+  AUDIO_TRACK_ROLE_OPTIONS,
+  type AudioTrackRole,
+  TimelineMarker,
+  TrackState,
+  TimelineTransition,
+} from './ProfessionalTimeline';
 import AssetBrowser from './AssetBrowser';
 import StoryArcAutoMonitor from './StoryArcAutoMonitor';
 import InspectorPanel from './InspectorPanel';
@@ -208,10 +210,37 @@ interface SourcePreviewAsset {
 }
 
 type ResolveEditTool = 'select' | 'trim' | 'roll' | 'slip' | 'slide';
-type ResolveWorkspacePreset = 'edit' | 'cut' | 'color' | 'fairlight';
+type ResolveWorkspacePreset = 'edit' | 'cut' | 'color' | 'fairlight' | 'deliver';
 type ResolveDockSlotId = 'dock-1' | 'dock-2' | 'dock-3';
+type ResolveDockSlots = Record<ResolveDockSlotId, ResolveLayoutState | null>;
+type ResolveWorkspaceDockSlots = Record<ResolveWorkspacePreset, ResolveDockSlots>;
 type ResolveMonitorFocus = 'source' | 'program';
+type ResolveWorkflowStep = 'import' | 'assemble' | 'trim' | 'polish' | 'deliver';
 type ResolveWorkspaceProfiles = Record<ResolveWorkspacePreset, ResolveLayoutState | null>;
+type AudioRoleFilter = AudioTrackRole | 'all';
+type StoryArcShortcutCategory =
+  | 'transport'
+  | 'timeline'
+  | 'edit-tools'
+  | 'marks'
+  | 'source-program'
+  | 'history';
+
+interface StoryArcShortcutBinding {
+  id: string;
+  label: string;
+  keys: string;
+  category: StoryArcShortcutCategory;
+  note: string;
+}
+
+interface StoryArcShortcutTrigger {
+  key: string;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}
 
 interface ResolveLayoutState {
   workspacePreset: ResolveWorkspacePreset;
@@ -284,6 +313,7 @@ interface StoryArcEditorTestHook {
   listClips: () => Array<{
     clipId: string;
     trackId: string;
+    trackType: 'video' | 'audio' | 'adjustment' | 'subtitle' | 'graphics';
     start: number;
     duration: number;
     name: string;
@@ -301,6 +331,12 @@ interface StoryArcEditorTestHook {
   slipSelected: (frames: number) => boolean;
   slideSelected: (frames: number) => boolean;
   rollSelected: (frames: number) => boolean;
+  moveSelectedByFrames: (frames: number) => boolean;
+  setSafeTrimEnabled: (enabled: boolean) => void;
+  getSelectedClipIds: () => string[];
+  getProgramMarks: () => { inPoint: number | null; outPoint: number | null };
+  getShortcutParityMatrix: () => StoryArcShortcutBinding[];
+  triggerShortcut: (shortcut: StoryArcShortcutTrigger) => boolean;
   setPlayhead: (seconds: number) => void;
   seedTimelineFixture: () => {
     primaryClipId: string;
@@ -324,10 +360,74 @@ const INITIAL_PANEL_SIZES: PanelSizes = {
 
 const MIN_PANEL_SIZE = 220;
 const MAX_PANEL_SIZE = 500;
+const MIN_TIMELINE_ZOOM = 0.1;
+const MAX_TIMELINE_ZOOM = 5;
+const DEFAULT_TIMELINE_ZOOM = 1;
 const RESOLVE_LAYOUT_STORAGE_KEY = 'storyArcStudio.resolve.layout.v1';
 const RESOLVE_DOCK_SLOTS_STORAGE_KEY = 'storyArcStudio.resolve.dock-slots.v1';
+const RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY = 'storyArcStudio.resolve.workspace-dock-slots.v1';
 const RESOLVE_WORKSPACE_PROFILES_STORAGE_KEY = 'storyArcStudio.resolve.workspace-profiles.v1';
+const TIMELINE_ZOOM_STORAGE_KEY = 'storyArcStudio.timeline.zoom.v1';
 const COMPOSITION_SETTINGS_STORAGE_KEY = 'storyArcStudio.composition.settings.v1';
+const RESOLVE_WORKSPACE_PRESETS: ResolveWorkspacePreset[] = [
+  'edit',
+  'cut',
+  'color',
+  'fairlight',
+  'deliver',
+];
+const RESOLVE_WORKSPACE_ARC_NAV_ITEMS: Array<{
+  preset: ResolveWorkspacePreset;
+  label: string;
+  arcOffset: number;
+}> = [
+  { preset: 'cut', label: 'Cut', arcOffset: 9 },
+  { preset: 'edit', label: 'Edit', arcOffset: 2 },
+  { preset: 'color', label: 'Color', arcOffset: 0 },
+  { preset: 'fairlight', label: 'Fairlight', arcOffset: 2 },
+  { preset: 'deliver', label: 'Deliver', arcOffset: 9 },
+];
+const AUDIO_ROLE_ORDER: AudioTrackRole[] = AUDIO_TRACK_ROLE_OPTIONS.map((option) => option.value);
+const RESOLVE_WORKFLOW_STEPS: Array<{
+  id: ResolveWorkflowStep;
+  label: string;
+  hint: string;
+}> = [
+  { id: 'import', label: 'Import', hint: 'Ingest media, verify bins, prep source monitor' },
+  { id: 'assemble', label: 'Assemble', hint: 'Insert/overwrite rough cut into timeline' },
+  { id: 'trim', label: 'Trim', hint: 'Trim, roll, slip, slide and tighten pacing' },
+  { id: 'polish', label: 'Polish', hint: 'Color, effects, text, sync and captions' },
+  { id: 'deliver', label: 'Deliver', hint: 'Final QC, audio balance, export/render' },
+];
+
+const STORY_ARC_SHORTCUT_PARITY_MATRIX: StoryArcShortcutBinding[] = [
+  { id: 'transport-space', label: 'Play/Pause', keys: 'Space', category: 'transport', note: 'Toggle active monitor playback' },
+  { id: 'transport-j', label: 'Reverse Playback', keys: 'J', category: 'transport', note: 'Reverse shuttle (program) / frame step (source)' },
+  { id: 'transport-k', label: 'Stop', keys: 'K', category: 'transport', note: 'Stop active monitor playback' },
+  { id: 'transport-l', label: 'Forward Playback', keys: 'L', category: 'transport', note: 'Forward shuttle (program) / play source' },
+  { id: 'transport-home', label: 'To Start', keys: 'Home', category: 'transport', note: 'Jump to beginning in active monitor' },
+  { id: 'transport-end', label: 'To End', keys: 'End', category: 'transport', note: 'Jump to end in active monitor' },
+  { id: 'timeline-step-left', label: 'Step Backward', keys: 'ArrowLeft', category: 'timeline', note: 'Step by frame on active monitor' },
+  { id: 'timeline-step-right', label: 'Step Forward', keys: 'ArrowRight', category: 'timeline', note: 'Step by frame on active monitor' },
+  { id: 'timeline-zoom-in', label: 'Zoom In Timeline', keys: '+ / =', category: 'timeline', note: 'Increase timeline zoom level' },
+  { id: 'timeline-zoom-out', label: 'Zoom Out Timeline', keys: '-', category: 'timeline', note: 'Decrease timeline zoom level' },
+  { id: 'timeline-zoom-reset', label: 'Reset Timeline Zoom', keys: 'Cmd/Ctrl + 0', category: 'timeline', note: 'Return zoom to 100%' },
+  { id: 'tool-select', label: 'Select Tool', keys: 'A', category: 'edit-tools', note: 'Switch to select mode' },
+  { id: 'tool-trim', label: 'Trim Tool', keys: 'T', category: 'edit-tools', note: 'Switch to trim mode' },
+  { id: 'tool-roll', label: 'Roll Tool', keys: 'R', category: 'edit-tools', note: 'Switch to roll mode' },
+  { id: 'tool-slip', label: 'Slip Tool', keys: 'Y', category: 'edit-tools', note: 'Switch to slip mode' },
+  { id: 'tool-slide', label: 'Slide Tool', keys: 'U', category: 'edit-tools', note: 'Switch to slide mode' },
+  { id: 'timeline-razor', label: 'Razor at Playhead', keys: 'C', category: 'edit-tools', note: 'Split selected clip(s)' },
+  { id: 'marks-in', label: 'Mark In', keys: 'I', category: 'marks', note: 'Set In mark in active monitor' },
+  { id: 'marks-out', label: 'Mark Out', keys: 'O', category: 'marks', note: 'Set Out mark in active monitor' },
+  { id: 'marks-jump-in', label: 'Jump In Mark', keys: 'Shift + I', category: 'marks', note: 'Jump to In mark in active monitor' },
+  { id: 'marks-jump-out', label: 'Jump Out Mark', keys: 'Shift + O', category: 'marks', note: 'Jump to Out mark in active monitor' },
+  { id: 'source-insert', label: 'Insert Edit', keys: ', / F9', category: 'source-program', note: 'Insert source clip at playhead' },
+  { id: 'source-overwrite', label: 'Overwrite Edit', keys: '. / F10', category: 'source-program', note: 'Overwrite at playhead' },
+  { id: 'source-patch-video', label: 'Patch Video Source', keys: 'Alt + [ / Alt + ]', category: 'source-program', note: 'Cycle source video patch tracks' },
+  { id: 'history-undo', label: 'Undo', keys: 'Cmd/Ctrl + Z', category: 'history', note: 'Undo last timeline operation' },
+  { id: 'history-redo', label: 'Redo', keys: 'Cmd/Ctrl + Shift + Z', category: 'history', note: 'Redo timeline operation' },
+];
 
 const DEFAULT_COMPOSITION_SETTINGS: StoryArcCompositionSettings = {
   enabled: false,
@@ -340,13 +440,155 @@ const DEFAULT_COMPOSITION_SETTINGS: StoryArcCompositionSettings = {
   aspectMask: 'none',
 };
 
+function clampTimelineZoomValue(value: number): number {
+  const clamped = Math.min(MAX_TIMELINE_ZOOM, Math.max(MIN_TIMELINE_ZOOM, value));
+  return Math.round(clamped * 10) / 10;
+}
+
+function buildAudioRoleBooleanMap(defaultValue = false): Record<AudioTrackRole, boolean> {
+  return AUDIO_ROLE_ORDER.reduce<Record<AudioTrackRole, boolean>>((accumulator, role) => {
+    accumulator[role] = defaultValue;
+    return accumulator;
+  }, {} as Record<AudioTrackRole, boolean>);
+}
+
+function inferAudioRoleFromTrackName(trackName: string): AudioTrackRole {
+  const normalized = trackName.toLowerCase();
+  if (normalized.includes('dialog') || normalized.includes('speech') || normalized.includes('lav')) {
+    return 'dialogue';
+  }
+  if (normalized.includes('music') || normalized.includes('score') || normalized.includes('bgm')) {
+    return 'music';
+  }
+  if (normalized.includes('ambi') || normalized.includes('atmo') || normalized.includes('room')) {
+    return 'ambience';
+  }
+  if (normalized.includes('voice') || normalized.includes('vo') || normalized.includes('narr')) {
+    return normalized.includes('narr') ? 'narration' : 'voiceover';
+  }
+  if (normalized.includes('sfx') || normalized.includes('fx') || normalized.includes('effect')) {
+    return 'effects';
+  }
+  return 'dialogue';
+}
+
+function isLikelyAudioTrack(track: Track): boolean {
+  const normalizedTrackId = track.id.toLowerCase();
+  if (track.type === 'audio') {
+    return true;
+  }
+  if (normalizedTrackId.startsWith('audio') || /^a\d+$/.test(normalizedTrackId)) {
+    return true;
+  }
+  return track.name.toLowerCase().includes('audio');
+}
+
+function createDefaultTrackState(track: Track): TrackState {
+  const audioTrack = isLikelyAudioTrack(track);
+  return {
+    locked: false,
+    mute: false,
+    solo: false,
+    visible: true,
+    type: audioTrack ? 'audio' : 'video',
+    audioRole: audioTrack ? inferAudioRoleFromTrackName(track.name) : undefined,
+  };
+}
+
+function normalizeTrackStates(
+  trackList: Track[],
+  incoming: Record<string, TrackState> | null | undefined
+): Record<string, TrackState> {
+  const normalized: Record<string, TrackState> = {};
+  trackList.forEach((track) => {
+    const defaults = createDefaultTrackState(track);
+    const existing = incoming?.[track.id];
+    const type = existing?.type ?? defaults.type;
+    normalized[track.id] = {
+      ...defaults,
+      ...(existing || {}),
+      type,
+      audioRole:
+        type === 'audio'
+          ? existing?.audioRole ?? defaults.audioRole ?? inferAudioRoleFromTrackName(track.name)
+          : undefined,
+    };
+  });
+  return normalized;
+}
+
 function createEmptyWorkspaceProfiles(): ResolveWorkspaceProfiles {
   return {
     edit: null,
     cut: null,
     color: null,
     fairlight: null,
+    deliver: null,
   };
+}
+
+function createEmptyDockSlots(): ResolveDockSlots {
+  return {
+    'dock-1': null,
+    'dock-2': null,
+    'dock-3': null,
+  };
+}
+
+function createEmptyWorkspaceDockSlots(): ResolveWorkspaceDockSlots {
+  return {
+    edit: createEmptyDockSlots(),
+    cut: createEmptyDockSlots(),
+    color: createEmptyDockSlots(),
+    fairlight: createEmptyDockSlots(),
+    deliver: createEmptyDockSlots(),
+  };
+}
+
+function normalizeDockSlots(
+  incoming: Partial<Record<ResolveDockSlotId, ResolveLayoutState | null>> | null | undefined
+): ResolveDockSlots {
+  const defaults = createEmptyDockSlots();
+  if (!incoming) {
+    return defaults;
+  }
+
+  return {
+    'dock-1': incoming['dock-1'] || null,
+    'dock-2': incoming['dock-2'] || null,
+    'dock-3': incoming['dock-3'] || null,
+  };
+}
+
+function normalizeWorkspaceDockSlots(payload: unknown): ResolveWorkspaceDockSlots {
+  const defaults = createEmptyWorkspaceDockSlots();
+  if (!payload || typeof payload !== 'object') {
+    return defaults;
+  }
+
+  const incoming = payload as Record<string, unknown>;
+  const looksLikeLegacyDockMap =
+    Object.prototype.hasOwnProperty.call(incoming, 'dock-1') ||
+    Object.prototype.hasOwnProperty.call(incoming, 'dock-2') ||
+    Object.prototype.hasOwnProperty.call(incoming, 'dock-3');
+
+  if (looksLikeLegacyDockMap) {
+    defaults.edit = normalizeDockSlots(
+      incoming as Partial<Record<ResolveDockSlotId, ResolveLayoutState | null>>
+    );
+    return defaults;
+  }
+
+  RESOLVE_WORKSPACE_PRESETS.forEach((preset) => {
+    const candidate = incoming[preset];
+    if (candidate && typeof candidate === 'object') {
+      defaults[preset] = normalizeDockSlots(
+        candidate as Partial<Record<ResolveDockSlotId, ResolveLayoutState | null>>
+      );
+    }
+  });
+
+  return defaults;
 }
 
 function sanitizeCompositionSettings(value: unknown): StoryArcCompositionSettings | null {
@@ -641,7 +883,9 @@ export default function StoryArcStudio({
   const [currentTime, setCurrentTime] = useState(0);
   const [totalDuration, setTotalDuration] = useState(480); // 8 minutes default
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // 1x normal speed
-  const [timelineZoom, setTimelineZoom] = useState(1);
+  const [timelineZoom, setTimelineZoom] = useState(DEFAULT_TIMELINE_ZOOM);
+  const userAdjustedTimelineZoomRef = useRef(false);
+  const timelineZoomLoadedFromStorageRef = useRef(false);
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showAutoMonitor, setShowAutoMonitor] = useState(false);
@@ -738,7 +982,7 @@ export default function StoryArcStudio({
   const [reviewerMode, setReviewerMode] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
   const [compareSnapshot, setCompareSnapshot] = useState<BeatClip[]>([]);
-  const [collabLocks, setCollabLocks] = useState<Record<string, { user?: string }>>({});
+  const [collabLocks] = useState<Record<string, { user?: string }>>({});
   const [comments, setComments] = useState<Array<{ id: string; time: number; text: string; clipId?: string }>>([]);
   
   // Professional transport state
@@ -775,6 +1019,8 @@ export default function StoryArcStudio({
   );
   const [compositionSettingsReady, setCompositionSettingsReady] = useState(false);
   const [editTool, setEditTool] = useState<ResolveEditTool>('select');
+  const [workflowStep, setWorkflowStep] = useState<ResolveWorkflowStep>('assemble');
+  const [safeTrimMode, setSafeTrimMode] = useState(true);
   const [workspacePreset, setWorkspacePreset] = useState<ResolveWorkspacePreset>('edit');
   const [workspaceProfiles, setWorkspaceProfiles] = useState<ResolveWorkspaceProfiles>(
     () => createEmptyWorkspaceProfiles()
@@ -783,11 +1029,8 @@ export default function StoryArcStudio({
   const [showInspectorPanel, setShowInspectorPanel] = useState(true);
   const [showEffectsPanel, setShowEffectsPanel] = useState(false);
   const [showMixerPanel, setShowMixerPanel] = useState(false);
-  const [savedDockSlots, setSavedDockSlots] = useState<Record<ResolveDockSlotId, ResolveLayoutState | null>>({
-    'dock-1': null,
-    'dock-2': null,
-    'dock-3': null,
-  });
+  const [savedDockSlotsByWorkspace, setSavedDockSlotsByWorkspace] =
+    useState<ResolveWorkspaceDockSlots>(() => createEmptyWorkspaceDockSlots());
   const [layoutStateReady, setLayoutStateReady] = useState(false);
   const [workspaceProfilesReady, setWorkspaceProfilesReady] = useState(false);
   const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
@@ -795,6 +1038,9 @@ export default function StoryArcStudio({
   const [sourceMarkOut, setSourceMarkOut] = useState<number | null>(null);
   const [programMarkIn, setProgramMarkIn] = useState<number | null>(null);
   const [programMarkOut, setProgramMarkOut] = useState<number | null>(null);
+  const [sourcePatchVideoTrackId, setSourcePatchVideoTrackId] = useState<string | null>(null);
+  const [sourcePatchAudioTrackId, setSourcePatchAudioTrackId] = useState<string | null>(null);
+  const [sourcePatchIncludeAudio, setSourcePatchIncludeAudio] = useState(true);
   const [selectedLUTName, setSelectedLUTName] = useState<string | null>(null);
   const [showLUTLibraryDialog, setShowLUTLibraryDialog] = useState(false);
   const [showHLSImportDialog, setShowHLSImportDialog] = useState(false);
@@ -809,6 +1055,24 @@ export default function StoryArcStudio({
   const [undoStack, setUndoStack] = useState<BeatClip[][]>([]);
   const [redoStack, setRedoStack] = useState<BeatClip[][]>([]);
   const [clipClipboard, setClipClipboard] = useState<ClipClipboardItem[]>([]);
+  const [audioRoleMuteState, setAudioRoleMuteState] = useState<Record<AudioTrackRole, boolean>>(
+    () => buildAudioRoleBooleanMap(false)
+  );
+  const [audioRoleSoloState, setAudioRoleSoloState] = useState<Record<AudioTrackRole, boolean>>(
+    () => buildAudioRoleBooleanMap(false)
+  );
+  const [audioRoleFocus, setAudioRoleFocus] = useState<AudioRoleFilter>('all');
+  const activeWorkflowConfig = useMemo(
+    () => RESOLVE_WORKFLOW_STEPS.find((step) => step.id === workflowStep) || RESOLVE_WORKFLOW_STEPS[1],
+    [workflowStep]
+  );
+  const isCutWorkspace = workspacePreset === 'cut';
+  const isEditWorkspace = workspacePreset === 'edit';
+  const isColorWorkspace = workspacePreset === 'color';
+  const isFairlightWorkspace = workspacePreset === 'fairlight';
+  const isDeliverWorkspace = workspacePreset === 'deliver';
+  const currentWorkspaceDockSlots = savedDockSlotsByWorkspace[workspacePreset];
+  const [workspaceDockPointerRatio, setWorkspaceDockPointerRatio] = useState<number | null>(null);
   
   // Refs for resizing
   const leftResizerRef = useRef<HTMLDivElement>(null);
@@ -829,6 +1093,7 @@ export default function StoryArcStudio({
   const previousClipsRef = useRef<BeatClip[]>([]);
   const hlsServiceRef = useRef<HLSStreamingService | null>(null);
   const fixtureTimelineLockRef = useRef(false);
+  const safeTrimWarningAtRef = useRef(0);
   
   // DaVinci Resolve Export Dialog
   const [showResolveExportDialog, setShowResolveExportDialog] = useState(false);
@@ -1354,8 +1619,7 @@ export default function StoryArcStudio({
           return Array.from(merged);
         });
         setTracks(trackData);
-        // initialize track states
-        setTrackStates(Object.fromEntries(trackData.map(t => [t.id, { locked: false, mute: false, solo: false, visible: true, type: t.id.startsWith('audio') ? 'audio' : 'video' }])));
+        setTrackStates(normalizeTrackStates(trackData, null));
       }
     } catch (error) {
       console.error('Error loading story arc:', error);
@@ -1371,6 +1635,7 @@ export default function StoryArcStudio({
       totalDuration,
       zoom: timelineZoom,
       reviewerMode,
+      safeTrimMode,
       magneticEnabled,
       rippleEnabled,
       compareMode,
@@ -1392,9 +1657,44 @@ export default function StoryArcStudio({
     transitions,
     clipMetadata: clipMeta,
     comments,
-  }), [storyArc?.id, storyArcId, totalDuration, timelineZoom, reviewerMode, magneticEnabled, rippleEnabled, compareMode, currentTime, tracks, trackStates, clips, markers, transitions, clipMeta, comments]);
+  }), [storyArc?.id, storyArcId, totalDuration, timelineZoom, reviewerMode, safeTrimMode, magneticEnabled, rippleEnabled, compareMode, currentTime, tracks, trackStates, clips, markers, transitions, clipMeta, comments]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const storedZoom = Number(window.localStorage.getItem(TIMELINE_ZOOM_STORAGE_KEY));
+      if (Number.isFinite(storedZoom)) {
+        const clampedZoom = clampTimelineZoomValue(storedZoom);
+        timelineZoomLoadedFromStorageRef.current = true;
+        userAdjustedTimelineZoomRef.current = true;
+        setTimelineZoom(clampedZoom);
+      }
+    } catch (error) {
+      console.warn('Could not restore timeline zoom state:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      window.localStorage.setItem(TIMELINE_ZOOM_STORAGE_KEY, String(clampTimelineZoomValue(timelineZoom)));
+    } catch (error) {
+      console.warn('Could not persist timeline zoom state:', error);
+    }
+  }, [timelineZoom]);
 
   // Resolve storyArcId from external projectId if needed and then load editor state
+  useEffect(() => {
+    if (timelineZoomLoadedFromStorageRef.current) {
+      return;
+    }
+    userAdjustedTimelineZoomRef.current = false;
+  }, [storyArcId, storyArc?.id]);
+
   useEffect(() => {
     let aborted = false;
     (async () => {
@@ -1420,7 +1720,7 @@ export default function StoryArcStudio({
                 : buildFallbackStoryArc(
                     id,
                     projectContext?.projectName || 'Untitled Project',
-                    totalDuration
+                    0
                   )
             );
           }
@@ -1433,8 +1733,14 @@ export default function StoryArcStudio({
         if (aborted || !json2?.success || !json2?.editorState) return;
         if (fixtureTimelineLockRef.current) return;
         const st = json2.editorState;
-        if (Array.isArray(st.tracks)) setTracks(st.tracks);
-        if (st.trackStates) setTrackStates(st.trackStates);
+        let restoredTracks: Track[] | null = null;
+        if (Array.isArray(st.tracks)) {
+          restoredTracks = st.tracks;
+          setTracks(restoredTracks);
+        }
+        if (restoredTracks) {
+          setTrackStates(normalizeTrackStates(restoredTracks, st.trackStates));
+        }
         if (Array.isArray(st.clips)) {
           const hydratedStoredClips = hydrateClipSources(st.clips);
           setClips(hydratedStoredClips);
@@ -1449,8 +1755,15 @@ export default function StoryArcStudio({
         if (Array.isArray(st.comments)) setComments(st.comments);
         if (st.timeline) {
           if (typeof st.timeline.totalDuration === 'number') setTotalDuration(st.timeline.totalDuration);
-          if (typeof st.timeline.zoom === 'number') setTimelineZoom(st.timeline.zoom);
+          if (
+            typeof st.timeline.zoom === 'number' &&
+            !userAdjustedTimelineZoomRef.current &&
+            !timelineZoomLoadedFromStorageRef.current
+          ) {
+            setTimelineZoom(clampTimelineZoomValue(st.timeline.zoom));
+          }
           if (typeof st.timeline.reviewerMode === 'boolean') setReviewerMode(st.timeline.reviewerMode);
+          if (typeof st.timeline.safeTrimMode === 'boolean') setSafeTrimMode(st.timeline.safeTrimMode);
           if (typeof st.timeline.magneticEnabled === 'boolean') setMagneticEnabled(st.timeline.magneticEnabled);
           if (typeof st.timeline.rippleEnabled === 'boolean') setRippleEnabled(st.timeline.rippleEnabled);
           if (typeof st.timeline.drivePrimaryIntervalMs === 'number') setDrivePrimaryIntervalMs(st.timeline.drivePrimaryIntervalMs);
@@ -1469,7 +1782,7 @@ export default function StoryArcStudio({
       }
     })();
     return () => { aborted = true; };
-  }, [storyArcId, storyArc?.id, projectContext, hydrateClipSources, extractRenderableVideoSources, totalDuration]);
+  }, [storyArcId, storyArc?.id, projectContext, hydrateClipSources, extractRenderableVideoSources]);
 
   // Autosave editor state (debounced) with Drive fallback
   const lastPrimaryUploadRef = useRef<number>(0);
@@ -1809,21 +2122,6 @@ export default function StoryArcStudio({
   }, [clips, cloneClipList]);
 
   useEffect(() => {
-    if (selectedClips.size === 0) {
-      return;
-    }
-
-    const lockOwner = currentUser?.email || currentUser?.id || 'local-user';
-    setCollabLocks((previous) => {
-      const next = { ...previous };
-      selectedClips.forEach((clipId) => {
-        next[clipId] = { user: lockOwner };
-      });
-      return next;
-    });
-  }, [selectedClips, currentUser]);
-
-  useEffect(() => {
     const validation = timelineEngine.validateTimeline(clips, tracks);
     setTimelineWarnings(validation.warnings);
     setTimelineErrors(validation.errors);
@@ -2137,17 +2435,186 @@ export default function StoryArcStudio({
     setSourcePreviewIsPlaying(false);
   }, []);
 
+  const isAudioTrackId = useCallback(
+    (trackId: string | null | undefined): boolean => {
+      if (!trackId) {
+        return false;
+      }
+      const normalizedTrackId = trackId.toLowerCase();
+      if (normalizedTrackId.startsWith('audio') || /^a\d+$/.test(normalizedTrackId)) {
+        return true;
+      }
+      const matchingTrack = tracks.find((track) => track.id === trackId);
+      if (!matchingTrack) {
+        return false;
+      }
+      const overrideType = trackStates[matchingTrack.id]?.type;
+      const effectiveType = overrideType ?? matchingTrack.type;
+      if (effectiveType === 'audio') {
+        return true;
+      }
+      return matchingTrack.name.toLowerCase().includes('audio');
+    },
+    [tracks, trackStates]
+  );
+
+  const resolveAudioRoleForTrackId = useCallback(
+    (trackId: string): AudioTrackRole => {
+      const roleFromState = trackStates[trackId]?.audioRole;
+      if (roleFromState) {
+        return roleFromState;
+      }
+      const track = tracks.find((candidate) => candidate.id === trackId);
+      if (!track) {
+        return 'dialogue';
+      }
+      return inferAudioRoleFromTrackName(track.name);
+    },
+    [tracks, trackStates]
+  );
+
+  const audioTrackIds = useMemo(
+    () => tracks.filter((track) => isAudioTrackId(track.id)).map((track) => track.id),
+    [tracks, isAudioTrackId]
+  );
+
+  const setTrackAudioRole = useCallback((trackId: string, role: AudioTrackRole) => {
+    setTrackStates((previous) => ({
+      ...previous,
+      [trackId]: {
+        ...previous[trackId],
+        type: 'audio',
+        audioRole: role,
+      },
+    }));
+  }, []);
+
+  const isAudioTrackAudible = useCallback(
+    (trackId: string): boolean => {
+      const trackState = trackStates[trackId];
+      if (trackState?.mute) {
+        return false;
+      }
+
+      const anyTrackSolo = audioTrackIds.some((id) => Boolean(trackStates[id]?.solo));
+      if (anyTrackSolo && !trackState?.solo) {
+        return false;
+      }
+
+      const role = resolveAudioRoleForTrackId(trackId);
+      if (audioRoleMuteState[role]) {
+        return false;
+      }
+
+      const anyRoleSolo = AUDIO_ROLE_ORDER.some((candidateRole) => audioRoleSoloState[candidateRole]);
+      if (anyRoleSolo && !audioRoleSoloState[role]) {
+        return false;
+      }
+
+      if (audioRoleFocus !== 'all' && role !== audioRoleFocus) {
+        return false;
+      }
+
+      return true;
+    },
+    [
+      trackStates,
+      audioTrackIds,
+      resolveAudioRoleForTrackId,
+      audioRoleMuteState,
+      audioRoleSoloState,
+      audioRoleFocus,
+    ]
+  );
+
+  const hasTimelineOverlapOnTrack = useCallback(
+    (clipList: BeatClip[], trackId: string): boolean => {
+      const sortedTrackClips = clipList
+        .filter((clip) => clip.trackId === trackId)
+        .sort((left, right) => left.start - right.start);
+
+      for (let index = 1; index < sortedTrackClips.length; index += 1) {
+        const previous = sortedTrackClips[index - 1];
+        const current = sortedTrackClips[index];
+        if (current.start < previous.start + previous.duration - frameTime / 10) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [frameTime]
+  );
+
+  const showSafeTrimBlockedWarning = useCallback(() => {
+    const now = Date.now();
+    if (now - safeTrimWarningAtRef.current < 700) {
+      return;
+    }
+    safeTrimWarningAtRef.current = now;
+    setSnackbar({
+      open: true,
+      message: 'Safe Trim blocked an overlap edit on this track',
+      severity: 'warning',
+    });
+  }, []);
+
   const getPrimaryVideoTrackId = useCallback((): string => {
     const selectedTrack = Array.from(selectedClips)
       .map((clipId) => clips.find((clip) => clip.id === clipId)?.trackId)
-      .find((trackId): trackId is string => Boolean(trackId) && !trackId.toLowerCase().startsWith('audio'));
+      .find((trackId): trackId is string => Boolean(trackId) && !isAudioTrackId(trackId));
     if (selectedTrack) {
       return selectedTrack;
     }
 
-    const videoTrack = tracks.find((track) => track.type === 'video');
+    const videoTrack = tracks.find((track) => !isAudioTrackId(track.id));
     return videoTrack?.id || 'video-1';
-  }, [selectedClips, clips, tracks]);
+  }, [selectedClips, clips, tracks, isAudioTrackId]);
+
+  const getPrimaryAudioTrackId = useCallback((): string | null => {
+    const selectedTrack = Array.from(selectedClips)
+      .map((clipId) => clips.find((clip) => clip.id === clipId)?.trackId)
+      .find((trackId): trackId is string => Boolean(trackId) && isAudioTrackId(trackId));
+    if (selectedTrack) {
+      return selectedTrack;
+    }
+
+    const audioTrack = tracks.find((track) => isAudioTrackId(track.id));
+    return audioTrack?.id ?? null;
+  }, [selectedClips, clips, tracks, isAudioTrackId]);
+
+  const sourcePatchVideoTrackOptions = useMemo(() => {
+    return tracks.filter((track) => !isAudioTrackId(track.id));
+  }, [tracks, isAudioTrackId]);
+
+  const sourcePatchAudioTrackOptions = useMemo(() => {
+    return tracks.filter((track) => isAudioTrackId(track.id));
+  }, [tracks, isAudioTrackId]);
+
+  useEffect(() => {
+    setSourcePatchVideoTrackId((previous) => {
+      if (previous && sourcePatchVideoTrackOptions.some((track) => track.id === previous)) {
+        return previous;
+      }
+      return sourcePatchVideoTrackOptions[0]?.id ?? getPrimaryVideoTrackId();
+    });
+
+    setSourcePatchAudioTrackId((previous) => {
+      if (previous && sourcePatchAudioTrackOptions.some((track) => track.id === previous)) {
+        return previous;
+      }
+      return sourcePatchAudioTrackOptions[0]?.id ?? getPrimaryAudioTrackId();
+    });
+
+    if (sourcePatchAudioTrackOptions.length === 0 && sourcePatchIncludeAudio) {
+      setSourcePatchIncludeAudio(false);
+    }
+  }, [
+    sourcePatchVideoTrackOptions,
+    sourcePatchAudioTrackOptions,
+    sourcePatchIncludeAudio,
+    getPrimaryVideoTrackId,
+    getPrimaryAudioTrackId,
+  ]);
 
   const applyClipUpdates = useCallback(
     (nextClips: BeatClip[], keepSelection?: Set<string>) => {
@@ -2314,7 +2781,20 @@ export default function StoryArcStudio({
         return;
       }
 
-      const trackId = getPrimaryVideoTrackId();
+      const resolvedVideoTrackId =
+        sourcePatchVideoTrackId &&
+        sourcePatchVideoTrackOptions.some((track) => track.id === sourcePatchVideoTrackId)
+          ? sourcePatchVideoTrackId
+          : getPrimaryVideoTrackId();
+      const resolvedAudioTrackId =
+        sourcePatchAudioTrackId &&
+        sourcePatchAudioTrackOptions.some((track) => track.id === sourcePatchAudioTrackId)
+          ? sourcePatchAudioTrackId
+          : getPrimaryAudioTrackId();
+      const insertLinkedAudio =
+        sourcePatchIncludeAudio &&
+        Boolean(resolvedAudioTrackId) &&
+        resolvedAudioTrackId !== resolvedVideoTrackId;
       const programWindow = resolveProgramEditWindow(mode, range.duration);
       const sourceWindowDuration = Math.max(frameTime, timelineEngine.snapToFrame(range.outPoint - range.inPoint));
       const effectiveDuration = Math.max(
@@ -2324,13 +2804,13 @@ export default function StoryArcStudio({
       const insertionStart = programWindow.start;
       const insertionEnd = timelineEngine.snapToFrame(insertionStart + effectiveDuration);
 
-      const generatedClipId = `insert_${Date.now()}`;
-      const generatedClip: BeatClip = {
+      const baseClipId = `insert_${Date.now()}`;
+      const generatedVideoClip: BeatClip = {
         ...sourceClip,
-        id: generatedClipId,
+        id: baseClipId,
         name: sourceClip.name || 'Inserted Clip',
         beatName: sourceClip.beatName || sourceClip.name || 'Inserted Clip',
-        trackId,
+        trackId: resolvedVideoTrackId,
         start: insertionStart,
         duration: effectiveDuration,
         metadata: {
@@ -2344,71 +2824,109 @@ export default function StoryArcStudio({
         },
       };
 
-      const unaffectedTracks = clips.filter((clip) => clip.trackId !== trackId);
-      const targetTrackClips = clips
-        .filter((clip) => clip.trackId === trackId)
-        .sort((a, b) => a.start - b.start);
+      const targetTrackInsertions: Array<{ trackId: string; clip: BeatClip }> = [
+        { trackId: resolvedVideoTrackId, clip: generatedVideoClip },
+      ];
 
-      const editedTrackClips: BeatClip[] = [];
-
-      if (mode === 'insert') {
-        targetTrackClips.forEach((clip) => {
-          if (clip.start >= insertionStart) {
-            editedTrackClips.push({
-              ...clip,
-              start: timelineEngine.snapToFrame(clip.start + effectiveDuration),
-            });
-            return;
-          }
-          editedTrackClips.push(clip);
-        });
-      } else {
-        targetTrackClips.forEach((clip) => {
-          const clipStart = clip.start;
-          const clipEnd = clip.start + clip.duration;
-          const overlaps = clipStart < insertionEnd && clipEnd > insertionStart;
-          if (!overlaps) {
-            editedTrackClips.push(clip);
-            return;
-          }
-
-          if (clipStart < insertionStart) {
-            editedTrackClips.push({
-              ...clip,
-              duration: timelineEngine.snapToFrame(insertionStart - clipStart),
-              metadata: {
-                ...(clip.metadata || {}),
-                outPoint:
-                  (typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint : 0) +
-                  timelineEngine.snapToFrame(insertionStart - clipStart),
-              },
-            });
-          }
-
-          if (clipEnd > insertionEnd) {
-            const rightDuration = timelineEngine.snapToFrame(clipEnd - insertionEnd);
-            editedTrackClips.push({
-              ...clip,
-              id: `${clip.id}_owr_${Date.now()}`,
-              start: insertionEnd,
-              duration: rightDuration,
-              metadata: {
-                ...(clip.metadata || {}),
-                inPoint:
-                  (typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint : 0) +
-                  (insertionEnd - clipStart),
-              },
-            });
-          }
-        });
+      if (insertLinkedAudio && resolvedAudioTrackId) {
+        const generatedAudioClip: BeatClip = {
+          ...sourceClip,
+          id: `${baseClipId}_audio`,
+          name: `${sourceClip.name || 'Inserted Clip'} (Audio)`,
+          beatName: `${sourceClip.beatName || sourceClip.name || 'Inserted Clip'} (Audio)`,
+          trackId: resolvedAudioTrackId,
+          start: insertionStart,
+          duration: effectiveDuration,
+          type: 'audio',
+          metadata: {
+            ...(sourceClip.metadata || {}),
+            inPoint: range.inPoint,
+            outPoint: range.inPoint + effectiveDuration,
+            sourceStartTime: range.inPoint,
+            insertedFromSource: true,
+            editMode: mode,
+            usedProgramRange: programWindow.usingProgramRange,
+            linkedVideoClipId: generatedVideoClip.id,
+            linkedAudio: true,
+          },
+        };
+        targetTrackInsertions.push({ trackId: resolvedAudioTrackId, clip: generatedAudioClip });
       }
 
-      const updatedClips = [...unaffectedTracks, ...editedTrackClips, generatedClip];
-      applyClipUpdates(updatedClips, new Set([generatedClipId]));
+      const applyEditToTrack = (trackId: string, insertedClip: BeatClip): BeatClip[] => {
+        const trackClips = clips
+          .filter((clip) => clip.trackId === trackId)
+          .sort((a, b) => a.start - b.start);
+        const editedTrackClips: BeatClip[] = [];
+
+        if (mode === 'insert') {
+          trackClips.forEach((clip) => {
+            if (clip.start >= insertionStart) {
+              editedTrackClips.push({
+                ...clip,
+                start: timelineEngine.snapToFrame(clip.start + effectiveDuration),
+              });
+              return;
+            }
+            editedTrackClips.push(clip);
+          });
+        } else {
+          trackClips.forEach((clip) => {
+            const clipStart = clip.start;
+            const clipEnd = clip.start + clip.duration;
+            const overlaps = clipStart < insertionEnd && clipEnd > insertionStart;
+            if (!overlaps) {
+              editedTrackClips.push(clip);
+              return;
+            }
+
+            if (clipStart < insertionStart) {
+              editedTrackClips.push({
+                ...clip,
+                duration: timelineEngine.snapToFrame(insertionStart - clipStart),
+                metadata: {
+                  ...(clip.metadata || {}),
+                  outPoint:
+                    (typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint : 0) +
+                    timelineEngine.snapToFrame(insertionStart - clipStart),
+                },
+              });
+            }
+
+            if (clipEnd > insertionEnd) {
+              const rightDuration = timelineEngine.snapToFrame(clipEnd - insertionEnd);
+              editedTrackClips.push({
+                ...clip,
+                id: `${clip.id}_owr_${Date.now()}`,
+                start: insertionEnd,
+                duration: rightDuration,
+                metadata: {
+                  ...(clip.metadata || {}),
+                  inPoint:
+                    (typeof clip.metadata?.inPoint === 'number' ? clip.metadata.inPoint : 0) +
+                    (insertionEnd - clipStart),
+                },
+              });
+            }
+          });
+        }
+
+        editedTrackClips.push(insertedClip);
+        return editedTrackClips;
+      };
+
+      const targetTrackIds = new Set(targetTrackInsertions.map(({ trackId }) => trackId));
+      const unaffectedTracks = clips.filter((clip) => !targetTrackIds.has(clip.trackId));
+      const editedTracks = targetTrackInsertions.flatMap(({ trackId, clip }) =>
+        applyEditToTrack(trackId, clip)
+      );
+      const updatedClips = [...unaffectedTracks, ...editedTracks];
+      const insertedClipIds = new Set(targetTrackInsertions.map(({ clip }) => clip.id));
+      applyClipUpdates(updatedClips, insertedClipIds);
       setActiveSourcePreview({
-        id: generatedClip.id,
-        name: generatedClip.name,
-        sourceFile: generatedClip.sourceFile || '',
+        id: generatedVideoClip.id,
+        name: generatedVideoClip.name,
+        sourceFile: generatedVideoClip.sourceFile || '',
       });
       setCurrentTime(insertionStart);
       const sourceTrimmedByProgramRange = programWindow.duration > sourceWindowDuration + frameTime / 2;
@@ -2427,10 +2945,48 @@ export default function StoryArcStudio({
       resolveSourceEditRange,
       resolveProgramEditWindow,
       getPrimaryVideoTrackId,
+      getPrimaryAudioTrackId,
+      sourcePatchVideoTrackId,
+      sourcePatchAudioTrackId,
+      sourcePatchIncludeAudio,
+      sourcePatchVideoTrackOptions,
+      sourcePatchAudioTrackOptions,
       clips,
       applyClipUpdates,
       frameTime,
     ]
+  );
+
+  const cycleSourcePatchTrack = useCallback(
+    (kind: 'video' | 'audio', direction: 1 | -1) => {
+      if (kind === 'video') {
+        if (sourcePatchVideoTrackOptions.length === 0) {
+          return;
+        }
+        setSourcePatchVideoTrackId((previous) => {
+          const currentIndex = sourcePatchVideoTrackOptions.findIndex((track) => track.id === previous);
+          const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+          const nextIndex =
+            (safeIndex + direction + sourcePatchVideoTrackOptions.length) %
+            sourcePatchVideoTrackOptions.length;
+          return sourcePatchVideoTrackOptions[nextIndex].id;
+        });
+        return;
+      }
+
+      if (sourcePatchAudioTrackOptions.length === 0) {
+        return;
+      }
+      setSourcePatchAudioTrackId((previous) => {
+        const currentIndex = sourcePatchAudioTrackOptions.findIndex((track) => track.id === previous);
+        const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+        const nextIndex =
+          (safeIndex + direction + sourcePatchAudioTrackOptions.length) %
+          sourcePatchAudioTrackOptions.length;
+        return sourcePatchAudioTrackOptions[nextIndex].id;
+      });
+    },
+    [sourcePatchVideoTrackOptions, sourcePatchAudioTrackOptions]
   );
 
   // Professional J/K/L controls
@@ -2587,6 +3143,141 @@ export default function StoryArcStudio({
     availableVideoSources,
     createSyntheticSourceClip,
   ]);
+
+  const primaryAutoBindSource = useMemo(() => {
+    return [
+      activeSourcePreview?.sourceFile,
+      sourcePreviewClip?.sourceFile,
+      previewClip?.sourceFile,
+      ...availableVideoSources,
+    ]
+      .map((candidate) => (typeof candidate === 'string' ? candidate.trim() : ''))
+      .find((candidate) => Boolean(candidate) && isUsableMediaSource(candidate)) || null;
+  }, [
+    activeSourcePreview?.sourceFile,
+    sourcePreviewClip?.sourceFile,
+    previewClip?.sourceFile,
+    availableVideoSources,
+    isUsableMediaSource,
+  ]);
+
+  const missingVideoSourceClipCount = useMemo(() => {
+    return clips.filter((clip) => {
+      const trackId = (clip.trackId || '').toLowerCase();
+      const isAudioTrack = trackId.startsWith('audio') || trackStates[clip.trackId]?.type === 'audio';
+      if (isAudioTrack) {
+        return false;
+      }
+      const source = clip.sourceFile?.trim();
+      return !source || !isUsableMediaSource(source);
+    }).length;
+  }, [clips, trackStates, isUsableMediaSource]);
+
+  const autoBindMissingVideoSources = useCallback(() => {
+    const fallbackSource = primaryAutoBindSource;
+    if (!fallbackSource) {
+      setActiveMonitor('source');
+      setSnackbar({
+        open: true,
+        message: 'Upload or select a source clip before auto-bind.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    let boundCount = 0;
+    const updatedClips = clips.map((clip) => {
+      const trackId = (clip.trackId || '').toLowerCase();
+      const isAudioTrack = trackId.startsWith('audio') || trackStates[clip.trackId]?.type === 'audio';
+      if (isAudioTrack) {
+        return clip;
+      }
+      const source = clip.sourceFile?.trim();
+      if (source && isUsableMediaSource(source)) {
+        return clip;
+      }
+
+      boundCount += 1;
+      return {
+        ...clip,
+        sourceFile: fallbackSource,
+        metadata: {
+          ...(clip.metadata || {}),
+          autoBoundSource: true,
+          missingSource: false,
+          autoBoundAt: new Date().toISOString(),
+        },
+      };
+    });
+
+    if (boundCount === 0) {
+      setSnackbar({
+        open: true,
+        message: 'All timeline clips already have playable media sources.',
+        severity: 'info',
+      });
+      return;
+    }
+
+    applyClipUpdates(updatedClips, selectedClips.size > 0 ? new Set(selectedClips) : undefined);
+    setActiveSourcePreview((previous) => {
+      if (previous?.sourceFile === fallbackSource) {
+        return previous;
+      }
+      return {
+        id: previous?.id || fallbackSource,
+        name: previous?.name || 'Auto-bound Source',
+        sourceFile: fallbackSource,
+        file: sourceFileRegistry[fallbackSource],
+      };
+    });
+    setActiveMonitor('program');
+    setSnackbar({
+      open: true,
+      message: `Auto-bound ${boundCount} clip${boundCount === 1 ? '' : 's'} to selected source.`,
+      severity: 'success',
+    });
+  }, [
+    primaryAutoBindSource,
+    clips,
+    trackStates,
+    isUsableMediaSource,
+    applyClipUpdates,
+    selectedClips,
+    sourceFileRegistry,
+  ]);
+
+  const jumpToFirstTimelineVideoClip = useCallback(() => {
+    const firstVideoClip = clips
+      .filter((clip) => {
+        const trackId = (clip.trackId || '').toLowerCase();
+        const isAudioTrack = trackId.startsWith('audio') || trackStates[clip.trackId]?.type === 'audio';
+        return !isAudioTrack && clip.duration > 0;
+      })
+      .sort((left, right) => left.start - right.start)[0];
+
+    if (!firstVideoClip) {
+      setSnackbar({
+        open: true,
+        message: 'No timeline video clips found yet. Add media from Asset Browser first.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    setCurrentTime(Math.max(0, firstVideoClip.start));
+    setSelectedClips(new Set([firstVideoClip.id]));
+    setActiveMonitor('program');
+
+    const source = firstVideoClip.sourceFile?.trim();
+    if (!source || !isUsableMediaSource(source)) {
+      setSnackbar({
+        open: true,
+        message: 'Selected first clip, but source is missing. Use Auto-bind to attach media.',
+        severity: 'warning',
+      });
+    }
+  }, [clips, trackStates, isUsableMediaSource]);
 
   const captionSourceCandidates = useMemo(() => {
     return [
@@ -2846,9 +3537,23 @@ export default function StoryArcStudio({
     ]
   );
 
+  const setTimelineZoomFromUser = useCallback((nextZoom: number) => {
+    userAdjustedTimelineZoomRef.current = true;
+    setTimelineZoom(clampTimelineZoomValue(nextZoom));
+  }, []);
+
   const handleZoomChange = (event: Event, newValue: number | number[]) => {
-    setTimelineZoom(newValue as number);
+    setTimelineZoomFromUser(newValue as number);
   };
+
+  const adjustTimelineZoom = useCallback((delta: number) => {
+    userAdjustedTimelineZoomRef.current = true;
+    setTimelineZoom((previous) => clampTimelineZoomValue(previous + delta));
+  }, []);
+
+  const resetTimelineZoom = useCallback(() => {
+    setTimelineZoomFromUser(DEFAULT_TIMELINE_ZOOM);
+  }, [setTimelineZoomFromUser]);
 
   const buildDefaultLayoutForPreset = useCallback(
     (preset: ResolveWorkspacePreset): ResolveLayoutState => {
@@ -2903,13 +3608,30 @@ export default function StoryArcStudio({
         };
       }
 
+      if (preset === 'fairlight') {
+        return {
+          workspacePreset: 'fairlight',
+          showAssetPanel: true,
+          showInspectorPanel: true,
+          showEffectsPanel: false,
+          showMixerPanel: true,
+          panelSizes: { leftPanel: 250, rightPanel: 320 },
+          showProgramMonitor: true,
+          monitorFitMode: 'fit',
+          editTool: 'select',
+          showAutoMonitor: false,
+          multicamEnabled: false,
+          multicamApplyToTimeline: true,
+        };
+      }
+
       return {
-        workspacePreset: 'fairlight',
-        showAssetPanel: true,
-        showInspectorPanel: true,
+        workspacePreset: 'deliver',
+        showAssetPanel: false,
+        showInspectorPanel: false,
         showEffectsPanel: false,
-        showMixerPanel: true,
-        panelSizes: { leftPanel: 250, rightPanel: 320 },
+        showMixerPanel: false,
+        panelSizes: { leftPanel: 260, rightPanel: 280 },
         showProgramMonitor: true,
         monitorFitMode: 'fit',
         editTool: 'select',
@@ -2956,7 +3678,7 @@ export default function StoryArcStudio({
   ]);
 
   const applyStoredLayoutState = useCallback((layout: Partial<ResolveLayoutState>) => {
-    if (layout.workspacePreset && ['edit', 'cut', 'color', 'fairlight'].includes(layout.workspacePreset)) {
+    if (layout.workspacePreset && ['edit', 'cut', 'color', 'fairlight', 'deliver'].includes(layout.workspacePreset)) {
       setWorkspacePreset(layout.workspacePreset);
     }
     if (typeof layout.showAssetPanel === 'boolean') {
@@ -3019,6 +3741,80 @@ export default function StoryArcStudio({
     [workspaceProfiles, applyStoredLayoutState, buildDefaultLayoutForPreset]
   );
 
+  const activateWorkspaceFromNav = useCallback(
+    (preset: ResolveWorkspacePreset) => {
+      if (workspacePreset === preset) {
+        return;
+      }
+      applyWorkspacePreset(preset);
+    },
+    [workspacePreset, applyWorkspacePreset]
+  );
+
+  const applyWorkflowStep = useCallback(
+    (step: ResolveWorkflowStep) => {
+      setWorkflowStep(step);
+
+      if (step === 'import') {
+        applyWorkspacePreset('cut');
+        setShowAssetPanel(true);
+        setShowInspectorPanel(false);
+        setShowEffectsPanel(false);
+        setShowMixerPanel(false);
+        setShowProgramMonitor(true);
+        setEditTool('select');
+        setActiveMonitor('source');
+        return;
+      }
+
+      if (step === 'assemble') {
+        applyWorkspacePreset('edit');
+        setShowAssetPanel(true);
+        setShowInspectorPanel(true);
+        setShowEffectsPanel(false);
+        setShowMixerPanel(false);
+        setShowProgramMonitor(true);
+        setEditTool('select');
+        setActiveMonitor('program');
+        return;
+      }
+
+      if (step === 'trim') {
+        applyWorkspacePreset('edit');
+        setShowAssetPanel(false);
+        setShowInspectorPanel(true);
+        setShowEffectsPanel(false);
+        setShowMixerPanel(false);
+        setShowProgramMonitor(true);
+        setEditTool('trim');
+        setActiveMonitor('program');
+        return;
+      }
+
+      if (step === 'polish') {
+        applyWorkspacePreset('color');
+        setShowAssetPanel(false);
+        setShowInspectorPanel(true);
+        setShowEffectsPanel(true);
+        setShowMixerPanel(false);
+        setShowProgramMonitor(true);
+        setEditTool('select');
+        setActiveMonitor('program');
+        return;
+      }
+
+      applyWorkspacePreset('deliver');
+      setShowAssetPanel(false);
+      setShowInspectorPanel(false);
+      setShowEffectsPanel(false);
+      setShowMixerPanel(false);
+      setShowProgramMonitor(true);
+      setEditTool('select');
+      setActiveMonitor('program');
+    },
+    [applyWorkspacePreset]
+  );
+
   useEffect(() => {
     if (typeof window === 'undefined') {
       setWorkspaceProfilesReady(true);
@@ -3037,16 +3833,12 @@ export default function StoryArcStudio({
     }
 
     try {
-      const dockSlotsPayload = window.localStorage.getItem(RESOLVE_DOCK_SLOTS_STORAGE_KEY);
-      if (dockSlotsPayload) {
-        const parsedSlots = JSON.parse(dockSlotsPayload) as Partial<
-          Record<ResolveDockSlotId, ResolveLayoutState | null>
-        >;
-        setSavedDockSlots({
-          'dock-1': parsedSlots['dock-1'] || null,
-          'dock-2': parsedSlots['dock-2'] || null,
-          'dock-3': parsedSlots['dock-3'] || null,
-        });
+      const workspaceDockSlotsPayload =
+        window.localStorage.getItem(RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY) ||
+        window.localStorage.getItem(RESOLVE_DOCK_SLOTS_STORAGE_KEY);
+      if (workspaceDockSlotsPayload) {
+        const parsedDockSlots = JSON.parse(workspaceDockSlotsPayload) as unknown;
+        setSavedDockSlotsByWorkspace(normalizeWorkspaceDockSlots(parsedDockSlots));
       }
     } catch (error) {
       console.warn('Could not restore Resolve dock slots:', error);
@@ -3059,7 +3851,7 @@ export default function StoryArcStudio({
           Record<ResolveWorkspacePreset, ResolveLayoutState | null>
         >;
         const restoredProfiles = createEmptyWorkspaceProfiles();
-        (['edit', 'cut', 'color', 'fairlight'] as const).forEach((preset) => {
+        (['edit', 'cut', 'color', 'fairlight', 'deliver'] as const).forEach((preset) => {
           const candidate = parsedProfiles[preset];
           if (candidate && typeof candidate === 'object') {
             restoredProfiles[preset] = candidate;
@@ -3127,32 +3919,41 @@ export default function StoryArcStudio({
       return;
     }
     try {
-      window.localStorage.setItem(RESOLVE_DOCK_SLOTS_STORAGE_KEY, JSON.stringify(savedDockSlots));
+      window.localStorage.setItem(
+        RESOLVE_WORKSPACE_DOCK_SLOTS_STORAGE_KEY,
+        JSON.stringify(savedDockSlotsByWorkspace)
+      );
     } catch (error) {
       console.warn('Could not persist Resolve dock slots:', error);
     }
-  }, [layoutStateReady, savedDockSlots]);
+  }, [layoutStateReady, savedDockSlotsByWorkspace]);
 
   const saveDockSlot = useCallback(
     (slot: ResolveDockSlotId) => {
       const snapshot = buildLayoutStateSnapshot();
-      setSavedDockSlots((previous) => ({ ...previous, [slot]: snapshot }));
+      setSavedDockSlotsByWorkspace((previous) => ({
+        ...previous,
+        [workspacePreset]: {
+          ...previous[workspacePreset],
+          [slot]: snapshot,
+        },
+      }));
       setSnackbar({
         open: true,
-        message: `Saved current dock layout to ${slot.toUpperCase()}`,
+        message: `Saved ${workspacePreset.toUpperCase()} dock layout to ${slot.toUpperCase()}`,
         severity: 'success',
       });
     },
-    [buildLayoutStateSnapshot]
+    [buildLayoutStateSnapshot, workspacePreset]
   );
 
   const loadDockSlot = useCallback(
     (slot: ResolveDockSlotId) => {
-      const snapshot = savedDockSlots[slot];
+      const snapshot = savedDockSlotsByWorkspace[workspacePreset][slot];
       if (!snapshot) {
         setSnackbar({
           open: true,
-          message: `${slot.toUpperCase()} is empty. Save a layout first.`,
+          message: `${workspacePreset.toUpperCase()} ${slot.toUpperCase()} is empty. Save a layout first.`,
           severity: 'warning',
         });
         return;
@@ -3161,28 +3962,32 @@ export default function StoryArcStudio({
       applyStoredLayoutState(snapshot);
       setSnackbar({
         open: true,
-        message: `Loaded dock layout from ${slot.toUpperCase()}`,
+        message: `Loaded ${workspacePreset.toUpperCase()} dock layout from ${slot.toUpperCase()}`,
         severity: 'success',
       });
     },
-    [savedDockSlots, applyStoredLayoutState]
+    [savedDockSlotsByWorkspace, workspacePreset, applyStoredLayoutState]
   );
 
   const resetResolveLayout = useCallback(() => {
-    const defaultLayout = buildDefaultLayoutForPreset('edit');
+    const defaultLayout = buildDefaultLayoutForPreset(workspacePreset);
     applyStoredLayoutState(defaultLayout);
-    setWorkspacePreset('edit');
+    setWorkspacePreset(workspacePreset);
     setActiveMonitor('program');
     setWorkspaceProfiles((previous) => ({
       ...previous,
-      edit: defaultLayout,
+      [workspacePreset]: defaultLayout,
+    }));
+    setSavedDockSlotsByWorkspace((previous) => ({
+      ...previous,
+      [workspacePreset]: createEmptyDockSlots(),
     }));
     setSnackbar({
       open: true,
-      message: 'Resolve layout reset to Edit defaults',
+      message: `Reset ${workspacePreset.toUpperCase()} workspace layout + dock bank`,
       severity: 'success',
     });
-  }, [applyStoredLayoutState, buildDefaultLayoutForPreset]);
+  }, [applyStoredLayoutState, buildDefaultLayoutForPreset, workspacePreset]);
 
   const updateCompositionGuide = useCallback(
     (guide: keyof CinematographyGuideSet, enabled: boolean) => {
@@ -4261,14 +5066,18 @@ export default function StoryArcStudio({
         return true;
       },
       listClips: () =>
-        clips.map((clip) => ({
-          clipId: clip.id,
-          trackId: clip.trackId,
-          start: clip.start,
-          duration: clip.duration,
-          name: clip.name || clip.beatName || clip.id,
-          sourceFile: clip.sourceFile || '',
-        })),
+        clips.map((clip) => {
+          const effectiveTrackType = isAudioTrackId(clip.trackId) ? 'audio' : 'video';
+          return {
+            clipId: clip.id,
+            trackId: clip.trackId,
+            trackType: effectiveTrackType,
+            start: clip.start,
+            duration: clip.duration,
+            name: clip.name || clip.beatName || clip.id,
+            sourceFile: clip.sourceFile || '',
+          };
+        }),
       snapshot: (clipId) => {
         const targetId = clipId || Array.from(selectedClips)[0];
         if (!targetId) {
@@ -4296,6 +5105,58 @@ export default function StoryArcStudio({
       slipSelected: (frames) => slipSelectedByFrames(frames),
       slideSelected: (frames) => slideSelectedByFrames(frames),
       rollSelected: (frames) => rollSelectedByFrames(frames),
+      moveSelectedByFrames: (frames) => {
+        const target = getSelectedPrimaryClip();
+        if (!target) {
+          return false;
+        }
+        const delta = timelineEngine.snapToFrame(frames * frameTime);
+        if (Math.abs(delta) < frameTime / 10) {
+          return false;
+        }
+        const nextStart = timelineEngine.snapToFrame(Math.max(0, target.start + delta));
+        let next = moveClipWithEditTool(clips, target.id, nextStart, target.trackId);
+        if (safeTrimMode && hasTimelineOverlapOnTrack(next, target.trackId)) {
+          return false;
+        }
+        if (magneticEnabled && editTool !== 'slip') {
+          next = resolveOverlaps(next, target.trackId);
+        }
+        const updatedTarget = next.find((clip) => clip.id === target.id);
+        if (!updatedTarget) {
+          return false;
+        }
+        if (Math.abs(updatedTarget.start - target.start) < frameTime / 10) {
+          return false;
+        }
+        applyClipUpdates(next, new Set([target.id]));
+        return true;
+      },
+      setSafeTrimEnabled: (enabled) => {
+        setSafeTrimMode(enabled);
+      },
+      getSelectedClipIds: () => Array.from(selectedClips),
+      getProgramMarks: () => ({
+        inPoint: programMarkIn,
+        outPoint: programMarkOut,
+      }),
+      getShortcutParityMatrix: () => STORY_ARC_SHORTCUT_PARITY_MATRIX,
+      triggerShortcut: (shortcut) => {
+        if (!shortcut || typeof shortcut.key !== 'string' || shortcut.key.trim().length === 0) {
+          return false;
+        }
+        const keyboardEvent = new KeyboardEvent('keydown', {
+          key: shortcut.key,
+          bubbles: true,
+          cancelable: true,
+          shiftKey: Boolean(shortcut.shiftKey),
+          altKey: Boolean(shortcut.altKey),
+          ctrlKey: Boolean(shortcut.ctrlKey),
+          metaKey: Boolean(shortcut.metaKey),
+        });
+        document.dispatchEvent(keyboardEvent);
+        return keyboardEvent.defaultPrevented;
+      },
       setPlayhead: (seconds) => {
         const nextTime = Math.max(0, Math.min(totalDuration, seconds));
         setCurrentTime(nextTime);
@@ -4312,12 +5173,24 @@ export default function StoryArcStudio({
     };
   }, [
     clips,
+    isAudioTrackId,
     selectedClips,
+    programMarkIn,
+    programMarkOut,
     getClipInPoint,
     trimSelectedByFrames,
     slipSelectedByFrames,
     slideSelectedByFrames,
     rollSelectedByFrames,
+    moveClipWithEditTool,
+    resolveOverlaps,
+    hasTimelineOverlapOnTrack,
+    magneticEnabled,
+    editTool,
+    safeTrimMode,
+    frameTime,
+    getSelectedPrimaryClip,
+    applyClipUpdates,
     totalDuration,
     seedTimelineFixture,
   ]);
@@ -4384,6 +5257,18 @@ export default function StoryArcStudio({
           } else {
             setCurrentTime((previous) => Math.min(totalDuration, previous + frameTime));
             setIsPlaying(false);
+          }
+          break;
+        case 'arrowup':
+          if (!e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey) {
+            e.preventDefault();
+            adjustTimelineZoom(0.1);
+          }
+          break;
+        case 'arrowdown':
+          if (!e.ctrlKey && !e.metaKey && !e.altKey && e.shiftKey) {
+            e.preventDefault();
+            adjustTimelineZoom(-0.1);
           }
           break;
         case 'j': // J/K/L transport controls on active monitor
@@ -4475,6 +5360,12 @@ export default function StoryArcStudio({
           e.preventDefault();
           setEditTool('slide');
           break;
+        case 'q':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setSafeTrimMode((previous) => !previous);
+          }
+          break;
         case 'g':
           if (!e.ctrlKey && !e.metaKey) {
             e.preventDefault();
@@ -4483,6 +5374,28 @@ export default function StoryArcStudio({
             } else {
               setShowCompositionGuides((previous) => !previous);
             }
+          }
+          break;
+        case '=':
+        case '+':
+        case 'add':
+          if (!e.altKey) {
+            e.preventDefault();
+            adjustTimelineZoom(0.1);
+          }
+          break;
+        case '-':
+        case '_':
+        case 'subtract':
+          if (!e.altKey) {
+            e.preventDefault();
+            adjustTimelineZoom(-0.1);
+          }
+          break;
+        case '0':
+          if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+            e.preventDefault();
+            resetTimelineZoom();
           }
           break;
         case 's':
@@ -4541,6 +5454,24 @@ export default function StoryArcStudio({
         case '.':
           e.preventDefault();
           insertOrOverwriteFromSource('overwrite', sourcePreviewClip);
+          break;
+        case '[':
+          if (e.altKey) {
+            e.preventDefault();
+            cycleSourcePatchTrack('video', -1);
+          }
+          break;
+        case ']':
+          if (e.altKey) {
+            e.preventDefault();
+            cycleSourcePatchTrack('video', 1);
+          }
+          break;
+        case '\\':
+          if (e.altKey) {
+            e.preventDefault();
+            cycleSourcePatchTrack('audio', 1);
+          }
           break;
         case 'i': // Mark in / Jump to mark in (Shift+I) on active monitor
           e.preventDefault();
@@ -4611,6 +5542,7 @@ export default function StoryArcStudio({
     sourcePreviewDuration,
     insertOrOverwriteFromSource,
     sourcePreviewClip,
+    cycleSourcePatchTrack,
     multicamEnabled,
     multicamAngleCandidates,
     applyMulticamAngle,
@@ -4619,6 +5551,8 @@ export default function StoryArcStudio({
     seekSourcePlayback,
     stepSourceBackward,
     stepSourceForward,
+    adjustTimelineZoom,
+    resetTimelineZoom,
   ]);
 
   // Playback simulation - FIXED: Enhanced cleanup and dependencies
@@ -4998,14 +5932,71 @@ export default function StoryArcStudio({
         if (!isUsableMediaSource(clip.sourceFile)) {
           return false;
         }
-        const trackId = (clip.trackId || '').toLowerCase();
-        const hasAudioTrackId = trackId.startsWith('audio');
-        const hasAudioTrackType = trackStates[clip.trackId]?.type === 'audio';
-        return hasAudioTrackId || hasAudioTrackType;
+        if (!isAudioTrackId(clip.trackId)) {
+          return false;
+        }
+        return isAudioTrackAudible(clip.trackId);
       }) || null,
-    [clips, trackStates, isUsableMediaSource]
+    [clips, isUsableMediaSource, isAudioTrackId, isAudioTrackAudible]
   );
   const waveformAudioUrl = primaryAudioClip?.sourceFile?.trim() || '';
+  const audioRoleLabelByValue = useMemo(
+    () =>
+      AUDIO_TRACK_ROLE_OPTIONS.reduce<Record<AudioTrackRole, string>>((accumulator, option) => {
+        accumulator[option.value] = option.label;
+        return accumulator;
+      }, {} as Record<AudioTrackRole, string>),
+    []
+  );
+  const mixerAudioTracks = useMemo(
+    () => tracks.filter((track) => isAudioTrackId(track.id)),
+    [tracks, isAudioTrackId]
+  );
+  const mixerAudioTracksSorted = useMemo(() => {
+    return [...mixerAudioTracks].sort((left, right) => {
+      const leftRole = resolveAudioRoleForTrackId(left.id);
+      const rightRole = resolveAudioRoleForTrackId(right.id);
+      const leftRoleIndex = AUDIO_ROLE_ORDER.indexOf(leftRole);
+      const rightRoleIndex = AUDIO_ROLE_ORDER.indexOf(rightRole);
+      if (leftRoleIndex !== rightRoleIndex) {
+        return leftRoleIndex - rightRoleIndex;
+      }
+      return left.name.localeCompare(right.name);
+    });
+  }, [mixerAudioTracks, resolveAudioRoleForTrackId]);
+  const toggleAudioRoleMute = useCallback((role: AudioTrackRole) => {
+    setAudioRoleMuteState((previous) => ({ ...previous, [role]: !previous[role] }));
+  }, []);
+  const toggleAudioRoleSolo = useCallback((role: AudioTrackRole) => {
+    setAudioRoleSoloState((previous) => ({ ...previous, [role]: !previous[role] }));
+  }, []);
+  const clearAudioRoleAutomation = useCallback(() => {
+    setAudioRoleMuteState(buildAudioRoleBooleanMap(false));
+    setAudioRoleSoloState(buildAudioRoleBooleanMap(false));
+    setAudioRoleFocus('all');
+  }, []);
+  const groupAudioTracksByRole = useCallback(() => {
+    setTracks((previous) => {
+      const videoTracks = previous.filter((track) => !isAudioTrackId(track.id));
+      const audioTracks = previous.filter((track) => isAudioTrackId(track.id));
+      const sortedAudioTracks = [...audioTracks].sort((left, right) => {
+        const leftRole = trackStates[left.id]?.audioRole ?? inferAudioRoleFromTrackName(left.name);
+        const rightRole = trackStates[right.id]?.audioRole ?? inferAudioRoleFromTrackName(right.name);
+        const leftIndex = AUDIO_ROLE_ORDER.indexOf(leftRole);
+        const rightIndex = AUDIO_ROLE_ORDER.indexOf(rightRole);
+        if (leftIndex !== rightIndex) {
+          return leftIndex - rightIndex;
+        }
+        return left.name.localeCompare(right.name);
+      });
+      return [...videoTracks, ...sortedAudioTracks];
+    });
+    setSnackbar({
+      open: true,
+      message: 'Audio lanes grouped by role',
+      severity: 'success',
+    });
+  }, [isAudioTrackId, trackStates]);
 
   const activeMonitorLabel = activeMonitor === 'source' ? 'Source Monitor' : 'Program Monitor';
   const activeMonitorIsPlaying = activeMonitor === 'source' ? sourcePreviewIsPlaying : isPlaying;
@@ -6396,68 +7387,87 @@ export default function StoryArcStudio({
           </Box>
         )}
 
-        {/* Toolbar */}
-        <Paper 
+        {/* Workflow Navigator */}
+        <Paper
+          data-testid="workflow-toolbar"
           elevation={0}
-          sx={{ 
-            borderBottom: 1, 
+          sx={{
+            borderBottom: 1,
             borderColor: 'divider',
             px: 2,
             py: 1,
-            bgcolor: 'background.paper'
+            bgcolor: 'background.paper',
           }}
         >
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Typography variant="subtitle2" fontWeight={700}>
+              Workflow
+            </Typography>
             <ButtonGroup size="small" variant="outlined">
-              <Tooltip title="Workspace Presets">
-                <IconButton size="small" disabled>
-                  <AccountTree fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Button
-                size="small"
-                variant={workspacePreset === 'edit' ? 'contained' : 'outlined'}
-                onClick={() => applyWorkspacePreset('edit')}
-              >
-                Edit
-              </Button>
-              <Button
-                size="small"
-                variant={workspacePreset === 'cut' ? 'contained' : 'outlined'}
-                onClick={() => applyWorkspacePreset('cut')}
-              >
-                Cut
-              </Button>
-              <Button
-                size="small"
-                variant={workspacePreset === 'color' ? 'contained' : 'outlined'}
-                onClick={() => applyWorkspacePreset('color')}
-              >
-                Color
-              </Button>
-              <Button
-                size="small"
-                variant={workspacePreset === 'fairlight' ? 'contained' : 'outlined'}
-                onClick={() => applyWorkspacePreset('fairlight')}
-              >
-                Fairlight
-              </Button>
+              {RESOLVE_WORKFLOW_STEPS.map((step) => (
+                <Button
+                  key={`workflow-step-${step.id}`}
+                  size="small"
+                  variant={workflowStep === step.id ? 'contained' : 'outlined'}
+                  onClick={() => applyWorkflowStep(step.id)}
+                >
+                  {step.label}
+                </Button>
+              ))}
             </ButtonGroup>
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={`Now: ${activeWorkflowConfig.label}`}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {activeWorkflowConfig.hint}
+            </Typography>
+          </Stack>
+        </Paper>
 
+        {/* Workspace Toolbar (single contextual toolbar) */}
+        <Paper
+          data-testid="workspace-top-toolbar"
+          elevation={0}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            px: 2,
+            py: 1,
+            bgcolor: 'background.paper',
+          }}
+        >
+          <Stack direction="row" spacing={1.25} alignItems="center" flexWrap="wrap">
+            <Typography variant="subtitle2" fontWeight={700}>
+              Workspace
+            </Typography>
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={`Active: ${workspacePreset.toUpperCase()}`}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Switch workspace from the Arc menu below timeline
+            </Typography>
             <Divider orientation="vertical" flexItem />
 
             <ButtonGroup size="small" variant="outlined">
-              <Tooltip title="Panel Docking">
-                <IconButton size="small" disabled>
-                  <LinkIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
               <Button
                 size="small"
                 variant={showAssetPanel ? 'contained' : 'outlined'}
                 onClick={() => setShowAssetPanel((previous) => !previous)}
               >
                 Bin
+              </Button>
+              <Button
+                size="small"
+                variant={showInspectorPanel ? 'contained' : 'outlined'}
+                onClick={() => setShowInspectorPanel((previous) => !previous)}
+              >
+                Inspector
               </Button>
               <Button
                 size="small"
@@ -6475,19 +7485,132 @@ export default function StoryArcStudio({
               </Button>
               <Button
                 size="small"
-                variant={showInspectorPanel ? 'contained' : 'outlined'}
-                onClick={() => setShowInspectorPanel((previous) => !previous)}
+                variant={showProgramMonitor ? 'contained' : 'outlined'}
+                onClick={() => setShowProgramMonitor((previous) => !previous)}
               >
-                Inspector
+                Monitors
               </Button>
             </ButtonGroup>
 
+            {(isCutWorkspace || isEditWorkspace) && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color="primary"
+                  label="Timeline tools available in the Edit Bar below"
+                />
+              </>
+            )}
+
+            {isColorWorkspace && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <ButtonGroup size="small" variant="outlined">
+                  <Button size="small" onClick={() => setShowTransitionLibrary(true)}>
+                    Transitions
+                  </Button>
+                  <Button size="small" onClick={() => setShowTextOverlayPanel(true)}>
+                    Text
+                  </Button>
+                  <Button size="small" onClick={() => setShowGPUFiltersPanel(true)}>
+                    GPU Filters
+                  </Button>
+                  <Button size="small" onClick={() => setShowColorGradingPanel(true)}>
+                    Grading
+                  </Button>
+                  <Button size="small" onClick={() => setShowLUTLibraryDialog(true)}>
+                    LUTs
+                  </Button>
+                </ButtonGroup>
+                <Chip
+                  size="small"
+                  color={selectedLUTName ? 'success' : 'default'}
+                  label={`Grade: ${selectedLUTName || 'Manual/None'}`}
+                />
+              </>
+            )}
+
+            {isFairlightWorkspace && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <ButtonGroup size="small" variant="outlined">
+                  <Button size="small" onClick={groupAudioTracksByRole}>
+                    Group Lanes
+                  </Button>
+                  <Button size="small" onClick={clearAudioRoleAutomation}>
+                    Clear Roles
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      const audioClips = clips.filter(
+                        (clip) => clip.trackId?.startsWith('A') || clip.trackId?.startsWith('audio')
+                      );
+                      if (audioClips.length === 0) {
+                        setSnackbar({
+                          open: true,
+                          message: 'Ingen lydspor funnet i tidslinjen',
+                          severity: 'warning',
+                        });
+                        return;
+                      }
+                      setSelectedAudioTrackId(null);
+                      setOpenMixerDirectly(false);
+                      setShowAIAudioAssistant(true);
+                    }}
+                  >
+                    AI Mix
+                  </Button>
+                  <Button size="small" onClick={() => setShowAutoCaptionsPanel(true)}>
+                    Auto Captions
+                  </Button>
+                </ButtonGroup>
+                <Chip
+                  size="small"
+                  color={audioMeterLevel > 0.8 ? 'error' : audioMeterLevel > 0.4 ? 'warning' : 'success'}
+                  label={`Meter ${Math.round(audioMeterLevel * 100)}%`}
+                />
+              </>
+            )}
+
+            {isDeliverWorkspace && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <ButtonGroup size="small" variant="outlined">
+                  <Button size="small" variant="contained" onClick={() => setShowExportDialog(true)}>
+                    Quick Export
+                  </Button>
+                  <Button size="small" onClick={() => setShowResolveExportDialog(true)}>
+                    DaVinci Export
+                  </Button>
+                  <Button size="small" onClick={() => setShowHLSImportDialog(true)}>
+                    Stream Export/Import
+                  </Button>
+                </ButtonGroup>
+                {captionsExport && (
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button size="small" onClick={() => downloadCaptionFile(captionsExport.srt, 'srt')}>
+                      SRT
+                    </Button>
+                    <Button size="small" onClick={() => downloadCaptionFile(captionsExport.vtt, 'vtt')}>
+                      VTT
+                    </Button>
+                  </ButtonGroup>
+                )}
+              </>
+            )}
+
+            <Box sx={{ flexGrow: 1 }} />
+
+            <Chip
+              size="small"
+              color="info"
+              variant="outlined"
+              label={`Dock bank: ${workspacePreset.toUpperCase()}`}
+            />
             <ButtonGroup size="small" variant="outlined">
-              <Tooltip title="Load docking slots">
-                <IconButton size="small" disabled>
-                  <Save fontSize="small" />
-                </IconButton>
-              </Tooltip>
               <Button size="small" onClick={() => loadDockSlot('dock-1')}>
                 Dock 1
               </Button>
@@ -6498,7 +7621,6 @@ export default function StoryArcStudio({
                 Dock 3
               </Button>
             </ButtonGroup>
-
             <ButtonGroup size="small" variant="outlined">
               <Button size="small" onClick={() => saveDockSlot('dock-1')}>
                 Save 1
@@ -6510,222 +7632,44 @@ export default function StoryArcStudio({
                 Save 3
               </Button>
               <Button size="small" color="warning" onClick={resetResolveLayout}>
-                Reset Layout
+                Reset
               </Button>
             </ButtonGroup>
-
-            <Divider orientation="vertical" flexItem />
-
-            <ButtonGroup size="small" variant="outlined">
-              <Button
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip
                 size="small"
-                variant={editTool === 'select' ? 'contained' : 'outlined'}
-                onClick={() => setEditTool('select')}
-              >
-                Select (A)
-              </Button>
-              <Button
-                size="small"
-                variant={editTool === 'trim' ? 'contained' : 'outlined'}
-                onClick={() => setEditTool('trim')}
-              >
-                Trim (T)
-              </Button>
-              <Button
-                size="small"
-                variant={editTool === 'roll' ? 'contained' : 'outlined'}
-                onClick={() => setEditTool('roll')}
-              >
-                Roll (R)
-              </Button>
-              <Button
-                size="small"
-                variant={editTool === 'slip' ? 'contained' : 'outlined'}
-                onClick={() => setEditTool('slip')}
-              >
-                Slip (Y)
-              </Button>
-              <Button
-                size="small"
-                variant={editTool === 'slide' ? 'contained' : 'outlined'}
-                onClick={() => setEditTool('slide')}
-              >
-                Slide (U)
-              </Button>
-            </ButtonGroup>
-
-            {/* Edit Tools */}
-            <ButtonGroup size="small">
-              <Tooltip title="Undo (Ctrl+Z)">
-                <IconButton size="small" onClick={performUndo} disabled={undoStack.length === 0}>
-                  <Undo fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Redo (Ctrl+Y)">
-                <IconButton size="small" onClick={performRedo} disabled={redoStack.length === 0}>
-                  <Redo fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </ButtonGroup>
-
-            <Divider orientation="vertical" flexItem />
-
-            {/* Clip Tools */}
-            <ButtonGroup size="small">
-              <Tooltip title="Cut (Ctrl+X)">
-                <IconButton size="small" onClick={cutSelectedClips} disabled={selectedClips.size === 0}>
-                  <ContentCut fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Copy (Ctrl+C)">
-                <IconButton size="small" onClick={copySelectedClips} disabled={selectedClips.size === 0}>
-                  <ContentCopy fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Paste (Ctrl+V)">
-                <IconButton size="small" onClick={pasteClipboardClips} disabled={clipClipboard.length === 0}>
-                  <ContentPaste fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </ButtonGroup>
-
-            <ButtonGroup size="small" variant="outlined">
-              <Button
-                size="small"
-                data-testid="select-playhead-clip-button"
-                onClick={selectClipUnderPlayhead}
-              >
-                Select @Playhead (D)
-              </Button>
-              <Button
-                size="small"
-                data-testid="razor-selected-button"
-                onClick={razorSelectedAtPlayhead}
-                disabled={selectedClips.size === 0}
-              >
-                Razor (C)
-              </Button>
-              <Button
-                size="small"
-                data-testid="lift-selected-button"
-                onClick={liftSelectedClips}
-                disabled={selectedClips.size === 0}
-              >
-                Lift (;)
-              </Button>
-              <Button
-                size="small"
-                data-testid="extract-selected-button"
-                onClick={extractSelectedClips}
-                disabled={selectedClips.size === 0}
-              >
-                Extract (')
-              </Button>
-            </ButtonGroup>
-
-            <Divider orientation="vertical" flexItem />
-
-            {/* Zoom Controls */}
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 200 }}>
-              <IconButton size="small" onClick={() => setTimelineZoom(Math.max(0.1, timelineZoom - 0.1))}>
-                <ZoomOut fontSize="small" />
-              </IconButton>
-              <Slider
-                value={timelineZoom}
-                onChange={handleZoomChange}
-                min={0.1}
-                max={5}
-                step={0.1}
-                size="small"
-                sx={{ mx: 1, width: 100 }}
+                color={currentWorkspaceDockSlots['dock-1'] ? 'success' : 'default'}
+                variant={currentWorkspaceDockSlots['dock-1'] ? 'filled' : 'outlined'}
+                label="1"
               />
-              <IconButton size="small" onClick={() => setTimelineZoom(Math.min(5, timelineZoom + 0.1))}>
-                <ZoomIn fontSize="small" />
-              </IconButton>
-              <Typography variant="caption" sx={{ minWidth: 40, textAlign: 'center' }}>
-                {Math.round(timelineZoom * 100)}%
-              </Typography>
+              <Chip
+                size="small"
+                color={currentWorkspaceDockSlots['dock-2'] ? 'success' : 'default'}
+                variant={currentWorkspaceDockSlots['dock-2'] ? 'filled' : 'outlined'}
+                label="2"
+              />
+              <Chip
+                size="small"
+                color={currentWorkspaceDockSlots['dock-3'] ? 'success' : 'default'}
+                variant={currentWorkspaceDockSlots['dock-3'] ? 'filled' : 'outlined'}
+                label="3"
+              />
             </Stack>
 
-            <Divider orientation="vertical" flexItem />
-
-            {/* AI Audio Mix Button */}
-            <Tooltip title="AI Audio Assistant - Automatic mixing">
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<AutoFixHigh />}
-                onClick={() => {
-                  // Get all audio clips from timeline
-                  const audioClips = clips.filter(c => c.trackId?.startsWith('A') || c.trackId?.startsWith('audio'));
-                  if (audioClips.length === 0) {
-                    setSnackbar({
-                      open: true,
-                      message: 'Ingen lydspor funnet i tidslinjen',
-                      severity: 'warning'
-                    });
-                    return;
-                  }
-                  setSelectedAudioTrackId(null);
-                  setOpenMixerDirectly(false);
-                  setShowAIAudioAssistant(true);
-                }}
-                sx={{
-                  borderColor: '#9333ea',
-                  color: '#9333ea','&:hover': {
-                    borderColor: '#7e22ce',
-                    bgcolor: 'rgba(147, 51, 234, 0.1)'
-                  }
-                }}
-              >
-                AI Mix
-              </Button>
-            </Tooltip>
-
-            <Box sx={{ flexGrow: 1 }} />
-
-            {/* Timecode Display */}
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box sx={{
-                px: 2,
-                py: 0.5,
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.35,
                 bgcolor: 'rgba(0,0,0,0.3)',
                 borderRadius: 1,
                 border: '1px solid rgba(255,255,255,0.1)',
-                fontFamily: 'monospace'
-              }}>
-                <Typography variant="caption" sx={{ color: 'text.primary', fontSize: 12 }}>
-                  {formatTimecode(currentTime)} / {formatTimecode(totalDuration)}
-                </Typography>
-              </Box>
-              
-              {isPlaying && (
-                <Chip 
-                  label={isLooping ? "LOOP" : "PLAY"}
-                  size="small"
-                  sx={{
-                    bgcolor: isLooping ? 'rgba(63, 81, 181, 0.3)' : 'rgba(76, 175, 80, 0.3)',
-                    color: 'white',
-                    fontWeight: 600,
-                    fontSize: 10
-                  }}
-                />
-              )}
-            </Stack>
-
-            {/* View Options */}
-            <ButtonGroup size="small">
-              <Tooltip title="Grid View">
-                <IconButton size="small">
-                  <GridView fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Timeline View">
-                <IconButton size="small">
-                  <TimelineIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </ButtonGroup>
+                fontFamily: 'monospace',
+              }}
+            >
+              <Typography variant="caption" sx={{ color: 'text.primary', fontSize: 12 }}>
+                {formatTimecode(currentTime)} / {formatTimecode(totalDuration)}
+              </Typography>
+            </Box>
           </Stack>
         </Paper>
 
@@ -7171,6 +8115,55 @@ export default function StoryArcStudio({
                           label={`O: ${sourceMarkOut !== null ? formatTimecode(sourceMarkOut) : '--:--:--'}`}
                           variant="outlined"
                         />
+                        <FormControl size="small" sx={{ minWidth: 120 }}>
+                          <InputLabel id="source-video-target-label">V Target</InputLabel>
+                          <Select
+                            labelId="source-video-target-label"
+                            data-testid="source-video-target-select"
+                            label="V Target"
+                            value={sourcePatchVideoTrackId ?? ''}
+                            onChange={(event) => setSourcePatchVideoTrackId(event.target.value || null)}
+                          >
+                            {sourcePatchVideoTrackOptions.map((track) => (
+                              <MenuItem key={`source-video-target-${track.id}`} value={track.id}>
+                                {track.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <FormControl
+                          size="small"
+                          sx={{ minWidth: 120 }}
+                          disabled={sourcePatchAudioTrackOptions.length === 0}
+                        >
+                          <InputLabel id="source-audio-target-label">A Target</InputLabel>
+                          <Select
+                            labelId="source-audio-target-label"
+                            data-testid="source-audio-target-select"
+                            label="A Target"
+                            value={sourcePatchAudioTrackId ?? ''}
+                            onChange={(event) => setSourcePatchAudioTrackId(event.target.value || null)}
+                          >
+                            {sourcePatchAudioTrackOptions.map((track) => (
+                              <MenuItem key={`source-audio-target-${track.id}`} value={track.id}>
+                                {track.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                        <FormControlLabel
+                          sx={{ ml: 0.5 }}
+                          control={
+                            <Switch
+                              size="small"
+                              checked={sourcePatchIncludeAudio && sourcePatchAudioTrackOptions.length > 0}
+                              onChange={(event) => setSourcePatchIncludeAudio(event.target.checked)}
+                              disabled={sourcePatchAudioTrackOptions.length === 0}
+                              inputProps={{ 'data-testid': 'source-include-audio-toggle' }}
+                            />
+                          }
+                          label="Linked A/V"
+                        />
                         <Box sx={{ flex: 1 }} />
                         <Button
                           data-testid="source-insert-button"
@@ -7284,6 +8277,35 @@ export default function StoryArcStudio({
                             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
                               Add a video asset to any non-audio track to see live monitor playback.
                             </Typography>
+                            {missingVideoSourceClipCount > 0 && (
+                              <Chip
+                                size="small"
+                                color="warning"
+                                variant="outlined"
+                                label={`${missingVideoSourceClipCount} clip${missingVideoSourceClipCount === 1 ? '' : 's'} missing source`}
+                              />
+                            )}
+                            <Stack direction="row" spacing={1}>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="primary"
+                                onClick={autoBindMissingVideoSources}
+                                disabled={!primaryAutoBindSource}
+                                data-testid="program-monitor-auto-bind-button"
+                              >
+                                Auto-bind Missing Clips
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="inherit"
+                                onClick={jumpToFirstTimelineVideoClip}
+                                data-testid="program-monitor-jump-first-clip-button"
+                              >
+                                Jump to First Clip
+                              </Button>
+                            </Stack>
                           </Stack>
                         )}
                         <CinematographyCompositionOverlay
@@ -7583,9 +8605,64 @@ export default function StoryArcStudio({
                     color={audioMeterLevel > 0.8 ? 'error' : audioMeterLevel > 0.4 ? 'warning' : 'success'}
                     label={`Meter ${Math.round(audioMeterLevel * 100)}%`}
                   />
-                  {tracks
-                    .filter((track) => track.type === 'audio' || track.id.toLowerCase().startsWith('audio'))
-                    .map((track) => {
+                  <Button size="small" variant="outlined" onClick={groupAudioTracksByRole}>
+                    Group Lanes
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={clearAudioRoleAutomation}>
+                    Clear Role Ops
+                  </Button>
+                  <FormControl size="small" sx={{ minWidth: 170 }}>
+                    <InputLabel id="audio-role-focus-label">Role Focus</InputLabel>
+                    <Select
+                      labelId="audio-role-focus-label"
+                      value={audioRoleFocus}
+                      label="Role Focus"
+                      onChange={(event) => setAudioRoleFocus(event.target.value as AudioRoleFilter)}
+                    >
+                      <MenuItem value="all">All Roles</MenuItem>
+                      {AUDIO_TRACK_ROLE_OPTIONS.map((option) => (
+                        <MenuItem key={`audio-role-focus-${option.value}`} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {AUDIO_TRACK_ROLE_OPTIONS.map((roleOption) => {
+                    const roleCount = mixerAudioTracks.filter(
+                      (track) => resolveAudioRoleForTrackId(track.id) === roleOption.value
+                    ).length;
+                    return (
+                      <Stack key={`audio-role-chip-${roleOption.value}`} direction="row" spacing={0.5} alignItems="center">
+                        <Chip
+                          size="small"
+                          variant={audioRoleFocus === roleOption.value ? 'filled' : 'outlined'}
+                          color={audioRoleFocus === roleOption.value ? 'primary' : 'default'}
+                          label={`${roleOption.label} (${roleCount})`}
+                          onClick={() =>
+                            setAudioRoleFocus((previous) =>
+                              previous === roleOption.value ? 'all' : roleOption.value
+                            )
+                          }
+                        />
+                        <Chip
+                          size="small"
+                          color={audioRoleMuteState[roleOption.value] ? 'warning' : 'default'}
+                          variant={audioRoleMuteState[roleOption.value] ? 'filled' : 'outlined'}
+                          label="M"
+                          onClick={() => toggleAudioRoleMute(roleOption.value)}
+                        />
+                        <Chip
+                          size="small"
+                          color={audioRoleSoloState[roleOption.value] ? 'success' : 'default'}
+                          variant={audioRoleSoloState[roleOption.value] ? 'filled' : 'outlined'}
+                          label="S"
+                          onClick={() => toggleAudioRoleSolo(roleOption.value)}
+                        />
+                      </Stack>
+                    );
+                  })}
+                  {mixerAudioTracksSorted.map((track) => {
+                      const role = resolveAudioRoleForTrackId(track.id);
                       const trackVolume = clips
                         .filter((clip) => clip.trackId === track.id)
                         .map((clip) => (typeof clip.metadata?.volume === 'number' ? clip.metadata.volume : 1));
@@ -7593,11 +8670,25 @@ export default function StoryArcStudio({
                         trackVolume.length > 0
                           ? trackVolume.reduce((sum, value) => sum + value, 0) / trackVolume.length
                           : 1;
+                      const isRoleFocused = audioRoleFocus === 'all' || role === audioRoleFocus;
+                      const trackAudible = isAudioTrackAudible(track.id);
                       return (
-                        <Stack key={track.id} direction="row" spacing={0.5} alignItems="center">
+                        <Stack
+                          key={track.id}
+                          direction="row"
+                          spacing={0.5}
+                          alignItems="center"
+                          sx={{ opacity: isRoleFocused ? 1 : 0.55 }}
+                        >
                           <Typography variant="caption" sx={{ minWidth: 52 }}>
                             {track.name}
                           </Typography>
+                          <Chip
+                            size="small"
+                            label={audioRoleLabelByValue[role]}
+                            color={trackAudible ? 'success' : 'default'}
+                            variant={trackAudible ? 'filled' : 'outlined'}
+                          />
                           <Slider
                             size="small"
                             value={avgVolume}
@@ -7635,6 +8726,298 @@ export default function StoryArcStudio({
               </Paper>
             )}
 
+            {(isCutWorkspace || isEditWorkspace) && (
+              <Paper
+                data-testid="timeline-edit-toolbar"
+                elevation={0}
+                sx={{
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  px: 1.25,
+                  py: 0.9,
+                  bgcolor: 'background.paper',
+                  flexShrink: 0,
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Typography variant="subtitle2" fontWeight={700}>
+                    {isCutWorkspace ? 'Cut Bar' : 'Edit Bar'}
+                  </Typography>
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button
+                      size="small"
+                      startIcon={<GpsFixed fontSize="small" />}
+                      aria-label="Select (A)"
+                      variant={editTool === 'select' ? 'contained' : 'outlined'}
+                      onClick={() => setEditTool('select')}
+                    >
+                      Select (A)
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<ContentCut fontSize="small" />}
+                      aria-label="Trim (T)"
+                      variant={editTool === 'trim' ? 'contained' : 'outlined'}
+                      onClick={() => setEditTool('trim')}
+                    >
+                      Trim (T)
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<Sync fontSize="small" />}
+                      aria-label="Roll (R)"
+                      variant={editTool === 'roll' ? 'contained' : 'outlined'}
+                      onClick={() => setEditTool('roll')}
+                    >
+                      Roll (R)
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<KeyboardArrowLeft fontSize="small" />}
+                      aria-label="Slip (Y)"
+                      variant={editTool === 'slip' ? 'contained' : 'outlined'}
+                      onClick={() => setEditTool('slip')}
+                    >
+                      Slip (Y)
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<KeyboardArrowRight fontSize="small" />}
+                      aria-label="Slide (U)"
+                      variant={editTool === 'slide' ? 'contained' : 'outlined'}
+                      onClick={() => setEditTool('slide')}
+                    >
+                      Slide (U)
+                    </Button>
+                  </ButtonGroup>
+
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button
+                      size="small"
+                      data-testid="safe-trim-toggle-button"
+                      aria-label="Toggle safe trim mode"
+                      variant={safeTrimMode ? 'contained' : 'outlined'}
+                      color={safeTrimMode ? 'success' : 'inherit'}
+                      onClick={() => setSafeTrimMode((previous) => !previous)}
+                    >
+                      Safe Trim
+                    </Button>
+                    <Button
+                      size="small"
+                      aria-label="Toggle magnetic mode"
+                      variant={magneticEnabled ? 'contained' : 'outlined'}
+                      onClick={() => setMagneticEnabled((previous) => !previous)}
+                    >
+                      Magnetic
+                    </Button>
+                    <Button
+                      size="small"
+                      aria-label="Toggle ripple mode"
+                      variant={rippleEnabled ? 'contained' : 'outlined'}
+                      onClick={() => setRippleEnabled((previous) => !previous)}
+                    >
+                      Ripple
+                    </Button>
+                  </ButtonGroup>
+
+                  <ButtonGroup size="small">
+                    <Tooltip title="Undo (Ctrl+Z)">
+                      <IconButton
+                        size="small"
+                        aria-label="Undo (Ctrl+Z)"
+                        onClick={performUndo}
+                        disabled={undoStack.length === 0}
+                      >
+                        <Undo fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Redo (Ctrl+Y)">
+                      <IconButton
+                        size="small"
+                        aria-label="Redo (Ctrl+Y)"
+                        onClick={performRedo}
+                        disabled={redoStack.length === 0}
+                      >
+                        <Redo fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Cut (Ctrl+X)">
+                      <IconButton
+                        size="small"
+                        aria-label="Cut selected clips (Ctrl+X)"
+                        onClick={cutSelectedClips}
+                        disabled={selectedClips.size === 0}
+                      >
+                        <ContentCut fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Copy (Ctrl+C)">
+                      <IconButton
+                        size="small"
+                        aria-label="Copy selected clips (Ctrl+C)"
+                        onClick={copySelectedClips}
+                        disabled={selectedClips.size === 0}
+                      >
+                        <ContentCopy fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Paste (Ctrl+V)">
+                      <IconButton
+                        size="small"
+                        aria-label="Paste clips (Ctrl+V)"
+                        onClick={pasteClipboardClips}
+                        disabled={clipClipboard.length === 0}
+                      >
+                        <ContentPaste fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </ButtonGroup>
+
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button
+                      size="small"
+                      data-testid="select-playhead-clip-button"
+                      startIcon={<GpsFixed fontSize="small" />}
+                      aria-label="Select clip at playhead (D)"
+                      onClick={selectClipUnderPlayhead}
+                    >
+                      Select @Playhead (D)
+                    </Button>
+                    <Button
+                      size="small"
+                      data-testid="razor-selected-button"
+                      startIcon={<ContentCut fontSize="small" />}
+                      aria-label="Razor selected clips at playhead (C)"
+                      onClick={razorSelectedAtPlayhead}
+                      disabled={selectedClips.size === 0}
+                    >
+                      Razor (C)
+                    </Button>
+                    <Button
+                      size="small"
+                      data-testid="lift-selected-button"
+                      aria-label="Lift selected clips"
+                      onClick={liftSelectedClips}
+                      disabled={selectedClips.size === 0}
+                    >
+                      Lift (;)
+                    </Button>
+                    <Button
+                      size="small"
+                      data-testid="extract-selected-button"
+                      aria-label="Extract selected clips"
+                      onClick={extractSelectedClips}
+                      disabled={selectedClips.size === 0}
+                    >
+                      Extract (')
+                    </Button>
+                  </ButtonGroup>
+
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 220 }}>
+                    <Tooltip title="Zoom Out Timeline (- or Shift+ArrowDown)">
+                      <IconButton
+                        data-testid="timeline-zoom-out-button"
+                        size="small"
+                        aria-label="Zoom out timeline"
+                        onClick={() => adjustTimelineZoom(-0.1)}
+                      >
+                        <ZoomOut fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Slider
+                      data-testid="timeline-zoom-slider"
+                      aria-label="Timeline zoom level"
+                      value={timelineZoom}
+                      onChange={handleZoomChange}
+                      min={MIN_TIMELINE_ZOOM}
+                      max={MAX_TIMELINE_ZOOM}
+                      step={0.1}
+                      size="small"
+                      sx={{ mx: 0.5, width: 110 }}
+                    />
+                    <Tooltip title="Zoom In Timeline (+ or Shift+ArrowUp)">
+                      <IconButton
+                        data-testid="timeline-zoom-in-button"
+                        size="small"
+                        aria-label="Zoom in timeline"
+                        onClick={() => adjustTimelineZoom(0.1)}
+                      >
+                        <ZoomIn fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Typography
+                      data-testid="timeline-zoom-value"
+                      variant="caption"
+                      sx={{ minWidth: 42, textAlign: 'center' }}
+                    >
+                      {Math.round(timelineZoom * 100)}%
+                    </Typography>
+                  </Stack>
+
+                  <Box sx={{ flexGrow: 1 }} />
+                  <Chip size="small" variant="outlined" label={`${selectedClips.size} selected`} />
+                </Stack>
+              </Paper>
+            )}
+
+            {isDeliverWorkspace ? (
+              <Paper
+                data-testid="deliver-workspace-panel"
+                elevation={0}
+                sx={{
+                  border: 1,
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  p: 2,
+                  bgcolor: 'background.paper',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
+                  minHeight: 320,
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                  <Typography variant="h6" fontWeight={700}>
+                    Deliver Page
+                  </Typography>
+                  <Chip size="small" color="primary" variant="outlined" label="Export & Final QC" />
+                  <Chip size="small" variant="outlined" label={`Duration: ${formatTimecode(totalDuration)}`} />
+                  <Chip size="small" variant="outlined" label={`Tracks: ${tracks.length}`} />
+                  <Chip size="small" variant="outlined" label={`Clips: ${clips.length}`} />
+                </Stack>
+                <Alert severity="info">
+                  Use this page for final checks, subtitle export, and rendering to delivery formats.
+                </Alert>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  <Button variant="contained" onClick={() => setShowExportDialog(true)}>
+                    Quick Export
+                  </Button>
+                  <Button variant="outlined" onClick={() => setShowResolveExportDialog(true)}>
+                    DaVinci Resolve Export
+                  </Button>
+                  <Button variant="outlined" onClick={() => setShowHLSImportDialog(true)}>
+                    Stream Package
+                  </Button>
+                  <Button variant="outlined" onClick={() => setShowAutoCaptionsPanel(true)}>
+                    Generate Captions
+                  </Button>
+                </Stack>
+                {captionsExport && (
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                    <Button size="small" variant="outlined" onClick={() => downloadCaptionFile(captionsExport.srt, 'srt')}>
+                      Download SRT
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => downloadCaptionFile(captionsExport.vtt, 'vtt')}>
+                      Download VTT
+                    </Button>
+                    <Button size="small" color="warning" onClick={() => setCaptionsExport(null)}>
+                      Clear Caption Package
+                    </Button>
+                  </Stack>
+                )}
+              </Paper>
+            ) : (
+              <>
             <ProfessionalTimeline
               clips={clips}
               tracks={tracks}
@@ -7656,6 +9039,10 @@ export default function StoryArcStudio({
               onClipMove={(clipId, newStart, newTrackId) => {
                 const snappedStart = timelineEngine.snapToFrame(newStart);
                 let next = moveClipWithEditTool(clips, clipId, snappedStart, newTrackId);
+                if (safeTrimMode && hasTimelineOverlapOnTrack(next, newTrackId)) {
+                  showSafeTrimBlockedWarning();
+                  return;
+                }
                 if (magneticEnabled && editTool !== 'slip') {
                   next = resolveOverlaps(next, newTrackId);
                 }
@@ -7670,6 +9057,10 @@ export default function StoryArcStudio({
                   newDuration,
                   resizeMode === 'resize-left' ? 'resize-left' : 'resize-right'
                 );
+                if (safeTrimMode && targetTrack && hasTimelineOverlapOnTrack(next, targetTrack)) {
+                  showSafeTrimBlockedWarning();
+                  return;
+                }
                 if (magneticEnabled && targetTrack && editTool !== 'roll') {
                   next = resolveOverlaps(next, targetTrack);
                 }
@@ -7677,16 +9068,30 @@ export default function StoryArcStudio({
               }}
               onTimelineClick={handleTimelineClick}
               onCurrentTimeChange={handleCurrentTimeChange}
-              onZoomChange={(z) => setTimelineZoom(z)}
+              onZoomChange={(z) => setTimelineZoomFromUser(z)}
               trackHeightScale={trackHeightScale}
               markers={markers}
               trackStates={trackStates}
               onTrackToggle={(trackId, changes) => setTrackStates(prev => ({ ...prev, [trackId]: { ...prev[trackId], ...changes } }))}
               onTrackRename={(trackId, name) => setTracks(prev => prev.map(t => t.id === trackId ? { ...t, name } : t))}
               onTrackTypeChange={(trackId, type) => {
-                setTrackStates(prev => ({ ...prev, [trackId]: { ...prev[trackId], type } }));
+                setTrackStates((previous) => {
+                  const matchingTrack = tracks.find((track) => track.id === trackId);
+                  const defaultRole = matchingTrack
+                    ? inferAudioRoleFromTrackName(matchingTrack.name)
+                    : 'dialogue';
+                  return {
+                    ...previous,
+                    [trackId]: {
+                      ...previous[trackId],
+                      type,
+                      audioRole: type === 'audio' ? previous[trackId]?.audioRole ?? defaultRole : undefined,
+                    },
+                  };
+                });
                 setTracks(prev => prev.map(t => t.id === trackId ? { ...t, type: type === 'audio' ? 'audio' : 'video' } : t));
               }}
+              onTrackAudioRoleChange={setTrackAudioRole}
               transitions={transitions}
               clipMetadata={clipMeta}
               filterTags={filterTags}
@@ -7770,6 +9175,127 @@ export default function StoryArcStudio({
                 />
               </Paper>
             )}
+              </>
+            )}
+
+            <Box
+              sx={{
+                position: 'fixed',
+                left: '50%',
+                bottom: { xs: 8, md: 12 },
+                transform: 'translateX(-50%)',
+                zIndex: 1350,
+                display: 'flex',
+                justifyContent: 'center',
+                pointerEvents: 'none',
+              }}
+            >
+              <Paper
+                data-testid="workspace-bottom-arc-nav"
+                elevation={10}
+                sx={{
+                  position: 'relative',
+                  px: 1.25,
+                  py: 0.8,
+                  borderRadius: '26px 26px 18px 18px',
+                  border: '1px solid',
+                  borderColor: 'rgba(255,255,255,0.14)',
+                  bgcolor: 'rgba(11, 15, 24, 0.93)',
+                  backdropFilter: 'blur(10px)',
+                  overflow: 'visible',
+                  pointerEvents: 'auto',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    left: '10%',
+                    right: '10%',
+                    top: -14,
+                    height: 14,
+                    borderRadius: '16px 16px 0 0',
+                    background:
+                      'linear-gradient(180deg, rgba(97,120,255,0.45) 0%, rgba(97,120,255,0.02) 100%)',
+                    pointerEvents: 'none',
+                  },
+                }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={{ xs: 1.1, sm: 1.5, md: 2.4 }}
+                  alignItems="flex-end"
+                  onMouseMove={(event) => {
+                    const navRect = event.currentTarget.getBoundingClientRect();
+                    if (navRect.width <= 0) {
+                      return;
+                    }
+                    const rawRatio = (event.clientX - navRect.left) / navRect.width;
+                    const nextRatio = Math.max(0, Math.min(1, rawRatio));
+                    setWorkspaceDockPointerRatio((previous) => {
+                      if (previous === null) {
+                        return nextRatio;
+                      }
+                      return Math.abs(previous - nextRatio) < 0.003 ? previous : nextRatio;
+                    });
+                  }}
+                  onMouseLeave={() => setWorkspaceDockPointerRatio(null)}
+                >
+                  {RESOLVE_WORKSPACE_ARC_NAV_ITEMS.map((workspaceNavItem, navIndex) => {
+                    const isActive = workspacePreset === workspaceNavItem.preset;
+                    const normalizedCenter =
+                      (navIndex + 0.5) / RESOLVE_WORKSPACE_ARC_NAV_ITEMS.length;
+                    const distance = workspaceDockPointerRatio === null
+                      ? Number.POSITIVE_INFINITY
+                      : Math.abs(workspaceDockPointerRatio - normalizedCenter);
+                    const sigma = 0.17;
+                    const gaussianWeight =
+                      workspaceDockPointerRatio === null
+                        ? 0
+                        : Math.exp(-(distance * distance) / (2 * sigma * sigma));
+                    const hoverScale = 1 + 0.22 * gaussianWeight;
+                    const hoverLift = 9 * gaussianWeight;
+                    const activeBoost = isActive ? 0.02 : 0;
+                    const finalScale = Math.max(1, hoverScale + activeBoost);
+                    const finalTranslateY = workspaceNavItem.arcOffset - hoverLift;
+
+                    return (
+                      <Button
+                        key={`workspace-nav-${workspaceNavItem.preset}`}
+                        data-testid={`workspace-nav-${workspaceNavItem.preset}`}
+                        size="small"
+                        onClick={() => activateWorkspaceFromNav(workspaceNavItem.preset)}
+                        variant={isActive ? 'contained' : 'outlined'}
+                        sx={{
+                          minWidth: { xs: 68, md: 82 },
+                          px: 1.35,
+                          mx: { xs: 0.12, sm: 0.24, md: 0.56 },
+                          borderRadius: 999,
+                          textTransform: 'none',
+                          fontWeight: 700,
+                          letterSpacing: 0.2,
+                          transform: `translateY(${finalTranslateY}px) scale(${finalScale})`,
+                          transformOrigin: 'center bottom',
+                          transition:
+                            'transform 90ms linear, background-color 110ms ease, border-color 110ms ease, box-shadow 110ms ease',
+                          borderColor: isActive
+                            ? 'rgba(133, 161, 255, 0.9)'
+                            : 'rgba(255,255,255,0.22)',
+                          bgcolor: isActive ? 'rgba(87, 114, 247, 0.95)' : 'rgba(20, 27, 40, 0.86)',
+                          color: isActive ? '#fff' : 'rgba(235,239,255,0.92)',
+                          boxShadow: isActive
+                            ? '0 6px 22px rgba(64, 102, 255, 0.42)'
+                            : '0 2px 8px rgba(0,0,0,0.28)',
+                          '&:hover': {
+                            borderColor: 'rgba(133, 161, 255, 0.95)',
+                            bgcolor: isActive ? 'rgba(87, 114, 247, 1)' : 'rgba(39, 52, 77, 0.96)',
+                          },
+                        }}
+                      >
+                        {workspaceNavItem.label}
+                      </Button>
+                    );
+                  })}
+                </Stack>
+              </Paper>
+            </Box>
           </Box>
 
           {showInspectorPanel && (

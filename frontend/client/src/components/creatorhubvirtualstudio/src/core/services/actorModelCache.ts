@@ -318,7 +318,7 @@ class ActorModelCacheService {
     if (!db) return;
     
     return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME'readwrite');
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       store.delete(id);
       transaction.oncomplete = () => resolve();
@@ -331,7 +331,7 @@ class ActorModelCacheService {
     if (!db) return;
     
     return new Promise((resolve) => {
-      const transaction = db.transaction(STORE_NAME'readwrite');
+      const transaction = db.transaction(STORE_NAME, 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
       store.clear();
       transaction.oncomplete = () => resolve();
@@ -536,4 +536,3 @@ class ActorModelCacheService {
 }
 
 export const actorModelCache = new ActorModelCacheService();
-

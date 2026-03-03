@@ -198,7 +198,7 @@ export const TutorialSubmissionSystem: React.FC<TutorialSubmissionSystemProps> =
         </Alert>
 
         <Stepper activeStep={activeStep} orientation="vertical">
-          {/* Step 0: Quality Control , *, /}
+          {/* Step 0: Quality Control */}
           <Step>
             <StepLabel>Kvalitetskontroll</StepLabel>
             <StepContent>
@@ -257,7 +257,7 @@ export const TutorialSubmissionSystem: React.FC<TutorialSubmissionSystemProps> =
             </StepContent>
           </Step>
 
-          {/* Step 1: Submission Details , *, /}
+          {/* Step 1: Submission Details */}
           <Step>
             <StepLabel>Innsendingsdetaljer</StepLabel>
             <StepContent>
@@ -311,7 +311,7 @@ export const TutorialSubmissionSystem: React.FC<TutorialSubmissionSystemProps> =
             </StepContent>
           </Step>
 
-          {/* Step 2: Confirmation , *, /}
+          {/* Step 2: Confirmation */}
           <Step>
             <StepLabel>Bekreftelse</StepLabel>
             <StepContent>
@@ -338,7 +338,7 @@ export const TutorialSubmissionSystem: React.FC<TutorialSubmissionSystemProps> =
             </StepContent>
           </Step>
 
-          {/* Step 3: Submit , *, /}
+          {/* Step 3: Submit */}
           <Step>
             <StepLabel>Send til Admin</StepLabel>
             <StepContent>

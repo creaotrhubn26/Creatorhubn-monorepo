@@ -81,8 +81,8 @@ export class VideoExporter {
       const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
 
       await this.ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`'application/wasm'),
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       });
 
       // Set up progress logging
@@ -290,7 +290,10 @@ export class VideoExporter {
   ): Promise<void> {
     // Position coordinates
     const positions = {
-      'top-left' : '10:10','top-right': `${width - 200}:10`'bottom-left': `10:${height - 50}`'bottom-right': `${width - 200}:${height - 50}`,
+      'top-left': '10:10',
+      'top-right': `${width - 200}:10`,
+      'bottom-left': `10:${height - 50}`,
+      'bottom-right': `${width - 200}:${height - 50}`,
       center: `${(width - 200) / 2}:${(height - 50) / 2}`,
     };
 
@@ -327,8 +330,15 @@ export class VideoExporter {
         const filter = `overlay=${position}:alpha=${opacity}`;
 
         await this.ffmpeg.exec([
-          '-i','output.mp4','-i','watermark.png','-filter_complex',
-          filter'-codec:a','copy','output_watermarked.mp4',
+          '-i',
+          'output.mp4',
+          '-i',
+          'watermark.png',
+          '-filter_complex',
+          filter,
+          '-codec:a',
+          'copy',
+          'output_watermarked.mp4',
         ]);
       } catch (error) {
         log.error('SVG watermark rendering failed:', error);
@@ -339,8 +349,13 @@ export class VideoExporter {
       const filter = `drawtext=text='${watermark.text}':x=${position.split(' : ')[0]}:y=${position.split(' : ')[1]}:fontsize=24:fontcolor=white@${opacity}:shadowcolor=black@0.5:shadowx=2:shadowy=2`;
 
       await this.ffmpeg.exec([
-        '-i','output.mp4','-vf',
-        filter'-codec:a','copy','output_watermarked.mp4',
+        '-i',
+        'output.mp4',
+        '-vf',
+        filter,
+        '-codec:a',
+        'copy',
+        'output_watermarked.mp4',
       ]);
     } else if (watermark.image) {
       // Image watermark
@@ -350,8 +365,15 @@ export class VideoExporter {
       const filter = `overlay=${position}:alpha=${opacity}`;
 
       await this.ffmpeg.exec([
-        '-i','output.mp4','-i','watermark.png','-filter_complex',
-        filter'-codec:a','copy', 'output_watermarked.mp4',
+        '-i',
+        'output.mp4',
+        '-i',
+        'watermark.png',
+        '-filter_complex',
+        filter,
+        '-codec:a',
+        'copy',
+        'output_watermarked.mp4',
       ]);
     }
   }

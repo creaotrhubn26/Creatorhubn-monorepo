@@ -155,7 +155,7 @@ export default function SmartMeetingPreparation({
   const updateSmartMeetingPreparation = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/meeting/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

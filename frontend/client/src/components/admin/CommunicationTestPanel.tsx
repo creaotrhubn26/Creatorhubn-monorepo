@@ -100,8 +100,8 @@ export default function CommunicationTestPanel({
   const theming = useTheming('prototype_tester');
 
   // Comprehensive Feature System for Communication Test Panel
-  const communicationTestPanelAccess = features.checkFeatureAccess('communication-test-panel,');
-  const communicationTestingAccess = features.checkFeatureAccess('communication-testing,');
+  const communicationTestPanelAccess = features.checkFeatureAccess('communication-test-panel');
+  const communicationTestingAccess = features.checkFeatureAccess('communication-testing');
   const messageTestingAccess = features.checkFeatureAccess('message-testing, ');
   const notificationTestingAccess = features.checkFeatureAccess('notification-testing');
   const realTimeTestingAccess = features.checkFeatureAccess('real-time-testing');
@@ -467,8 +467,8 @@ export default function CommunicationTestPanel({
     setLoading(true);
     try {
       const response = await fetch('/api/communication/channels', {
-        method: 'POS',
-        headers: { , 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: `Test Channel ${Date.now()}`,
           type: 'project',
@@ -504,8 +504,8 @@ export default function CommunicationTestPanel({
     setLoading(true);
     try {
       const response = await fetch('/api/communication/messages', {
-        method: 'POS',
-        headers: { , 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: newMessage,
           channelId: 'test-channel',
@@ -661,7 +661,7 @@ export default function CommunicationTestPanel({
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <Paper elevation={2}, sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
+      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Box>
             <Box display="flex" alignItems="center" gap={1}>
@@ -728,7 +728,7 @@ export default function CommunicationTestPanel({
         {/* System Health Tab */}
         <TabPanel value={activeTab} index={0}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -761,7 +761,7 @@ export default function CommunicationTestPanel({
                   </Box>
 
                   {/* Google Chat Status */}
-                  <Box mb={2} p={2}, sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  <Box mb={2} p={2} sx={{ border: 1, borderColor: 'divider', borderRadius: 1 }}>
                     <Typography variant="subtitle2" gutterBottom>
                       Google Chat Status
                     </Typography>
@@ -770,7 +770,7 @@ export default function CommunicationTestPanel({
                         sx={{
                           width: 8,
                           height: 8,
-                          borderRadius: '50, %',
+                          borderRadius: '50%',
                           backgroundColor:
                             communicationStatus.googleChatStatus === 'connected'
                               ? '#4caf50'
@@ -862,7 +862,7 @@ export default function CommunicationTestPanel({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -900,7 +900,7 @@ export default function CommunicationTestPanel({
         {/* Monitoring Tab */}
         <TabPanel value={activeTab} index={1}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -928,7 +928,7 @@ export default function CommunicationTestPanel({
                     </Typography>
                   </Box>
 
-                  <Alert severity={monitoringActive ? 'success' : 'warning'}, sx={{ mb: 2 }}>
+                  <Alert severity={monitoringActive ? 'success' : 'warning'} sx={{ mb: 2 }}>
                     {monitoringActive
                       ? 'System is actively monitoring communication health. Status updates every 30 seconds.'
                       : 'Monitoring is paused. Click "Resume Monitoring" to restart automatic health checks.'}
@@ -948,7 +948,7 @@ export default function CommunicationTestPanel({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1007,7 +1007,7 @@ export default function CommunicationTestPanel({
         {/* Channels Tab */}
         <TabPanel value={activeTab} index={2}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -1071,7 +1071,7 @@ export default function CommunicationTestPanel({
         {/* Messages Tab */}
         <TabPanel value={activeTab} index={3}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1126,7 +1126,7 @@ export default function CommunicationTestPanel({
         {/* Integration Status Tab */}
         <TabPanel value={activeTab} index={4}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1174,7 +1174,7 @@ export default function CommunicationTestPanel({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid item xs={12} md={6}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1222,7 +1222,7 @@ export default function CommunicationTestPanel({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -1239,7 +1239,7 @@ export default function CommunicationTestPanel({
                             testType: 'all',
                             source: 'integration_panel',
                             timestamp: new Date().toISOString(),
-                          }'high',
+                          }, 'high',
                         );
 
                         analytics.trackEvent('integration_test_triggered', {
@@ -1262,7 +1262,7 @@ export default function CommunicationTestPanel({
                           {
                             requester: 'communication_test_panel',
                             timestamp: new Date().toISOString(),
-                          }'medium',
+                          }, 'medium',
                         );
 
                         analytics.trackEvent('status_request_broadcasted', {

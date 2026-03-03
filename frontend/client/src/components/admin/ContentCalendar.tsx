@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
@@ -104,17 +104,17 @@ export default function ContentCalendar() {
   const professionConfig = professionConfigs?.[currentProfession];
   const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
   const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
-  const theming = useTheming(currentProfession);
+  useTheming(currentProfession);
 
   // Fetch calendar events for current month
-  const { data: events = [], isLoading } = useQuery({
+  const { data: events = [], isLoading } = useQuery<CalendarEvent[]>({
       queryKey: ['/api/content-calendar', format(currentMonth, 'yyyy-MM')],
     queryFn: async () => {
       const response = await fetch(
         `/api/content-calendar/events?month=${format(currentMonth, 'yyyy-MM')}`
       );
       if (!response.ok) throw new Error('Failed to fetch events');
-      return response.json();
+      return (await response.json()) as CalendarEvent[];
     },
   });
 
@@ -260,7 +260,7 @@ export default function ContentCalendar() {
                     <Typography
                       variant="body2"
                       sx={{
-                        fontWeight: sTodayDate ? 600 : 400,
+                        fontWeight: isTodayDate ? 600 : 400,
                         color: isTodayDate ? '#ff8c00' : 'text.primary',
                         mb: 0.5}}
                     >

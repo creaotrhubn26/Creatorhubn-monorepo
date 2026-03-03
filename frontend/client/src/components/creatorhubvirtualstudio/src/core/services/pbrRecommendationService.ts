@@ -1398,7 +1398,7 @@ const HDRI_PBR_MAP: Record<string, { essential: string[]; recommended: string[] 
   }, 'overcast': {
     essential: ['backdrop-grey'],
     recommended: ['stool-posing','v-flat-white'],
-  }'school': {
+  }, 'school': {
     essential: ['backdrop-grey','stool-posing'],
     recommended: ['apple-box','v-flat-white'],
   },
@@ -1605,4 +1605,3 @@ export default {
   getPBRItemById,
   getPBRItemsByCategory,
 };
-

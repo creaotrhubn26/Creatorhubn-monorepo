@@ -3,76 +3,84 @@
  * View, filter, and convert quotes to projects
  */
 
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '@/lib/queryClient';
 import { useTheming } from '@/utils/theming-helper';
 import QuoteKanbanView from './QuoteKanbanView';
 import QuoteReminderSettings from './QuoteReminderSettings';
-import { quoteDriveSync } from '@/services/quote-drive-sync';
+import { quoteDriveSync, QuoteSyncJob } from '@/services/quote-drive-sync';
 import { quoteArchiveConfig } from '@/services/document-archive-config';
 import { mapQuoteToFikenInvoice, ensureFikenCustomer } from '@/lib/fiken/invoice-mapper';
-import { createFikenClient } from '@/lib/fiken/api';
+import ContractAmendmentHistory from '../contracts/ContractAmendmentHistory';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
   Chip,
-  Grid,
-  TextField,
-  MenuItem,
-  IconButton,
+  CircularProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
+  DialogContent,
+  DialogTitle,
   Divider,
+  Grid,
+  IconButton,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Paper,
   Stack,
-  Alert,
   Tab,
   Tabs,
+  TextField,
   Tooltip,
-  Menu,
+  Typography,
 } from '@mui/material';
 import {
-  Receipt as ReceiptIcon,
-  CheckCircle,
-  Cancel,
   AccessTime,
-  AttachMoney,
-  CalendarToday,
-  Visibility,
-  Edit,
-  Delete,
   Add as AddIcon,
-  TrendingUp,
-  FilterList,
+  Cancel,
+  Chat,
+  CheckCircle,
   ContentCopy,
-  Send,
+  Edit,
   Email,
   GetApp,
-  MoreVert,
-  VisibilityOff,
+  GridView as GridViewIcon,
+  History as HistoryIcon,
+  Link as LinkIcon,
   MarkEmailRead,
   MarkEmailUnread,
-  Warning,
-  Chat,
-  ViewModule as GridViewIcon,
-  ViewKanban as KanbanViewIcon,
+  MoreVert,
+  Receipt as ReceiptIcon,
+  Send,
   Settings as SettingsIcon,
-  Link as LinkIcon,
-  Image as ImageIcon,
-  History as HistoryIcon,
+  TrendingUp,
+  ViewKanban as KanbanViewIcon,
+  Visibility,
+  Warning,
 } from '@mui/icons-material';
-import ContractAmendmentHistory from '../contracts/ContractAmendmentHistory';
+
+type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'draft';
+
+type ViewedStatus = {
+  icon: React.ReactElement;
+  text: string;
+  color: 'default' | 'warning' | 'success';
+};
+
+interface ProjectCreationData {
+  package?: {
+    includedImages?: number;
+    name?: string;
+  };
+  chatSpaceId?: string;
+  [key: string]: unknown;
+}
 
 interface Quote {
   id: string;
@@ -85,7 +93,7 @@ interface Quote {
   basePrice: string;
   totalAmount: string;
   currency: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'draft';
+  status: QuoteStatus;
   validUntil: string;
   profession: string;
   projectType: string;
@@ -96,18 +104,15 @@ interface Quote {
     email: string;
   };
   approvers: unknown[];
-  projectCreationData: unknown;
+  projectCreationData: ProjectCreationData;
   projectId?: string;
   createdAt: string;
-  sentAt: string;
+  sentAt?: string;
   acceptedAt?: string;
   viewedAt?: string;
-  businessInfo?: any;
-  isFinal?: boolean; // Mark if this is the final version
-  // Contract amendment tracking
-  quoteType?: string; // 'standard','extra_images','contract_amendment'
-  contractAmendmentFor?: string; // Original project ID if amendment
-  // Fiken invoice tracking
+  isFinal?: boolean;
+  quoteType?: string;
+  contractAmendmentFor?: string;
   fikenInvoiceId?: string;
   fikenInvoiceNumber?: string;
   fikenCustomerId?: string;
@@ -116,299 +121,567 @@ interface Quote {
   fikenInvoiceUrl?: string;
 }
 
+interface QuoteStats {
+  total: number;
+  pending: number;
+  accepted: number;
+  rejected: number;
+  totalValue: number;
+  acceptedValue: number;
+  conversionRate: number;
+}
+
 interface QuoteManagementProps {
   onCreateProject?: (quoteData: unknown) => void;
 }
 
+interface EditQuoteState {
+  title: string;
+  description: string;
+  totalAmount: string;
+  validUntil: string;
+}
+
+const STATUS_TABS: Array<{ label: string; value: string }> = [
+  { label: 'Alle', value: 'all' },
+  { label: 'Utkast', value: 'draft' },
+  { label: 'Venter', value: 'pending' },
+  { label: 'Godkjent', value: 'accepted' },
+  { label: 'Avvist', value: 'rejected' },
+  { label: 'Utløpt', value: 'expired' },
+  { label: 'Ekstra bilder', value: 'extra_images' },
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toStringValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeStatus(value: unknown): QuoteStatus {
+  const normalized = toStringValue(value, 'draft');
+  if (
+    normalized === 'draft' ||
+    normalized === 'pending' ||
+    normalized === 'accepted' ||
+    normalized === 'rejected' ||
+    normalized === 'expired'
+  ) {
+    return normalized;
+  }
+  return 'draft';
+}
+
+function normalizeQuote(value: unknown): Quote | null {
+  if (!isRecord(value)) return null;
+
+  const clientInfoRaw = isRecord(value.clientInfo) ? value.clientInfo : {};
+  const projectCreationData = isRecord(value.projectCreationData)
+    ? (value.projectCreationData as ProjectCreationData)
+    : {};
+
+  const quote: Quote = {
+    id: toStringValue(value.id),
+    quoteNumber: toStringValue(value.quoteNumber),
+    clientId: toStringValue(value.clientId),
+    clientName: toStringValue(value.clientName),
+    clientEmail: toStringValue(value.clientEmail),
+    title: toStringValue(value.title),
+    description: toStringValue(value.description),
+    basePrice: toStringValue(value.basePrice, '0'),
+    totalAmount: toStringValue(value.totalAmount, '0'),
+    currency: toStringValue(value.currency, 'NOK'),
+    status: normalizeStatus(value.status),
+    validUntil: toStringValue(value.validUntil),
+    profession: toStringValue(value.profession),
+    projectType: toStringValue(value.projectType),
+    clientInfo: {
+      name: toStringValue(clientInfoRaw.name, toStringValue(value.clientName)),
+      address: toStringValue(clientInfoRaw.address),
+      phoneNumber: toStringValue(clientInfoRaw.phoneNumber),
+      email: toStringValue(clientInfoRaw.email, toStringValue(value.clientEmail)),
+    },
+    approvers: toArray<unknown>(value.approvers),
+    projectCreationData,
+    projectId: toStringValue(value.projectId) || undefined,
+    createdAt: toStringValue(value.createdAt, new Date().toISOString()),
+    sentAt: toStringValue(value.sentAt) || undefined,
+    acceptedAt: toStringValue(value.acceptedAt) || undefined,
+    viewedAt: toStringValue(value.viewedAt) || undefined,
+    isFinal: typeof value.isFinal === 'boolean' ? value.isFinal : undefined,
+    quoteType: toStringValue(value.quoteType) || undefined,
+    contractAmendmentFor: toStringValue(value.contractAmendmentFor) || undefined,
+    fikenInvoiceId: toStringValue(value.fikenInvoiceId) || undefined,
+    fikenInvoiceNumber: toStringValue(value.fikenInvoiceNumber) || undefined,
+    fikenCustomerId: toStringValue(value.fikenCustomerId) || undefined,
+    fikenInvoiceStatus: toStringValue(value.fikenInvoiceStatus) || undefined,
+    fikenSyncStatus: toStringValue(value.fikenSyncStatus) || undefined,
+    fikenInvoiceUrl: toStringValue(value.fikenInvoiceUrl) || undefined,
+  };
+
+  if (!quote.id || !quote.quoteNumber || !quote.title) {
+    return null;
+  }
+
+  return quote;
+}
+
+function extractQuotes(payload: unknown): Quote[] {
+  if (Array.isArray(payload)) {
+    return payload.map(normalizeQuote).filter((quote): quote is Quote => quote !== null);
+  }
+
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  if (Array.isArray(payload.quotes)) {
+    return payload.quotes
+      .map(normalizeQuote)
+      .filter((quote): quote is Quote => quote !== null);
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data
+      .map(normalizeQuote)
+      .filter((quote): quote is Quote => quote !== null);
+  }
+
+  return [];
+}
+
+function extractStats(payload: unknown, quotes: Quote[]): QuoteStats {
+  if (isRecord(payload) && isRecord(payload.stats)) {
+    const statsRecord = payload.stats;
+    const total = Number(statsRecord.total);
+    const pending = Number(statsRecord.pending);
+    const accepted = Number(statsRecord.accepted);
+    const rejected = Number(statsRecord.rejected);
+    const totalValue = Number(statsRecord.totalValue);
+    const acceptedValue = Number(statsRecord.acceptedValue);
+    const conversionRate = Number(statsRecord.conversionRate);
+
+    if (
+      Number.isFinite(total) &&
+      Number.isFinite(pending) &&
+      Number.isFinite(accepted) &&
+      Number.isFinite(rejected) &&
+      Number.isFinite(totalValue) &&
+      Number.isFinite(acceptedValue) &&
+      Number.isFinite(conversionRate)
+    ) {
+      return {
+        total,
+        pending,
+        accepted,
+        rejected,
+        totalValue,
+        acceptedValue,
+        conversionRate,
+      };
+    }
+  }
+
+  const total = quotes.length;
+  const pending = quotes.filter((quote) => quote.status === 'pending').length;
+  const accepted = quotes.filter((quote) => quote.status === 'accepted').length;
+  const rejected = quotes.filter((quote) => quote.status === 'rejected').length;
+  const totalValue = quotes.reduce((sum, quote) => sum + Number.parseFloat(quote.totalAmount || '0'), 0);
+  const acceptedValue = quotes
+    .filter((quote) => quote.status === 'accepted')
+    .reduce((sum, quote) => sum + Number.parseFloat(quote.totalAmount || '0'), 0);
+  const conversionRate = total > 0 ? (accepted / total) * 100 : 0;
+
+  return {
+    total,
+    pending,
+    accepted,
+    rejected,
+    totalValue,
+    acceptedValue,
+    conversionRate,
+  };
+}
+
+function parseErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return 'Unknown error';
+}
+
+function formatCurrency(amount: string): string {
+  const value = Number.parseFloat(amount);
+  if (!Number.isFinite(value)) return amount;
+  return new Intl.NumberFormat('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatDate(value: string): string {
+  if (!value) return 'N/A';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('nb-NO', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function isExpiringSoon(validUntil: string): boolean {
+  const msLeft = new Date(validUntil).getTime() - Date.now();
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  return daysLeft <= 7 && daysLeft > 0;
+}
+
+function isExpired(validUntil: string): boolean {
+  return new Date(validUntil).getTime() < Date.now();
+}
+
+function getViewedStatus(quote: Quote): ViewedStatus {
+  if (!quote.sentAt) {
+    return { icon: <Send fontSize="small" />, text: 'Ikke sendt', color: 'default' };
+  }
+  if (!quote.viewedAt) {
+    return { icon: <MarkEmailUnread fontSize="small" />, text: 'Ikke åpnet', color: 'warning' };
+  }
+  return {
+    icon: <MarkEmailRead fontSize="small" />,
+    text: `Åpnet ${new Date(quote.viewedAt).toLocaleDateString('nb-NO')}`,
+    color: 'success',
+  };
+}
+
+function getStatusColor(status: QuoteStatus): string {
+  switch (status) {
+    case 'pending':
+      return '#ff9800';
+    case 'accepted':
+      return '#4caf50';
+    case 'rejected':
+      return '#f44336';
+    case 'expired':
+      return '#9e9e9e';
+    case 'draft':
+    default:
+      return '#607d8b';
+  }
+}
+
+function getStatusIcon(status: QuoteStatus): React.ReactElement {
+  switch (status) {
+    case 'pending':
+      return <AccessTime fontSize="small" />;
+    case 'accepted':
+      return <CheckCircle fontSize="small" />;
+    case 'rejected':
+      return <Cancel fontSize="small" />;
+    case 'expired':
+      return <Warning fontSize="small" />;
+    case 'draft':
+    default:
+      return <ReceiptIcon fontSize="small" />;
+  }
+}
+
+function openInNewTab(url: string): void {
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 export default function QuoteManagement({ onCreateProject }: QuoteManagementProps) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  // Use user's profession for theming, fallback to 'photographer'
   const userProfession = user?.profession || 'photographer';
   const theming = useTheming(userProfession);
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
-  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const [quoteMenuAnchor, setQuoteMenuAnchor] = useState<{
-    element: HTMLElement;
-    quote: Quote;
-  } | null>(null);
-  const [sendDialogOpen, setSendDialogOpen] = useState(false);
-  const [selectedQuoteForAction, setSelectedQuoteForAction] = useState<Quote | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'kanban'>('grid');
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
+  const [selectedQuoteForAction, setSelectedQuoteForAction] = useState<Quote | null>(null);
+  const [quoteMenuAnchor, setQuoteMenuAnchor] = useState<HTMLElement | null>(null);
   const [reminderSettingsOpen, setReminderSettingsOpen] = useState(false);
   const [driveSyncEnabled] = useState(true);
+  const [syncJobs, setSyncJobs] = useState<QuoteSyncJob[]>([]);
 
-  // Fiken integration state
   const [fikenInvoiceDialogOpen, setFikenInvoiceDialogOpen] = useState(false);
   const [fikenInvoiceCreating, setFikenInvoiceCreating] = useState(false);
   const [fikenError, setFikenError] = useState<string | null>(null);
-  const [selectedAccountCode, setSelectedAccountCode] = useState<string>('');
+  const [selectedAccountCode, setSelectedAccountCode] = useState('3000');
 
-  // Amendment history state
   const [amendmentHistoryOpen, setAmendmentHistoryOpen] = useState(false);
   const [selectedProjectForHistory, setSelectedProjectForHistory] = useState<{
     id: string;
     title: string;
   } | null>(null);
 
-  // Subscribe to quote drive sync updates
+  const [editState, setEditState] = useState<EditQuoteState>({
+    title: '',
+    description: '',
+    totalAmount: '0',
+    validUntil: '',
+  });
+  const [linkProjectId, setLinkProjectId] = useState('');
+
   useEffect(() => {
     const unsubscribe = quoteDriveSync.subscribe((jobs) => {
-      console.log(`📊 Quote sync jobs updated: ${jobs.length} active, `);
+      setSyncJobs(jobs);
     });
     return unsubscribe;
   }, []);
 
-  // Set default account code when data is fetched
-  useEffect(() => {
-    if (accountCodeData?.accountCode && !selectedAccountCode) {
-      setSelectedAccountCode(accountCodeData.accountCode);
-    }
-  }, [accountCodeData, selectedAccountCode]);
-
-  // Helper to sync quote to Google Drive
   const syncQuoteToDrive = (quote: Quote) => {
     if (!driveSyncEnabled) return;
 
     const quoteDate = new Date(quote.createdAt);
     const quotePdfUrl = `/api/quotes/${quote.id}/pdf`;
+    const folderPath = quoteArchiveConfig.getFolderPath(quoteDate, quote.status);
 
-    console.log()
-      `📊 Syncing quote ${quote.quoteNumber} for ${quote.clientName} to Google Drive${quote.isFinal ? ' (FINAL)' : ','}`,
-    );
-
-    quoteDriveSync.queueUpload()
+    quoteDriveSync.queueUpload(
       quote.id,
       quote.quoteNumber,
       quote.clientName,
       quotePdfUrl,
       quote.projectId,
-      undefined, // Will use default from config
+      folderPath,
       quoteDate,
       quote.status,
       quote.isFinal,
     );
   };
 
-  // Fetch all quotes
-  const { data: quotesData, isLoading } = useQuery({
-    queryKey: ['/api/quotes/all,', statusFilter, user?.id],
+  const quotesQuery = useQuery({
+    queryKey: ['/api/quotes/all', statusFilter, user?.id],
     queryFn: async () => {
-      let url;
       if (statusFilter === 'all') {
-        url = `/api/quotes/all?userId=${user?.id}`;
-      } else if (statusFilter === 'extra_images') {
-        url = `/api/quotes/all?userId=${user?.id}&quoteType=extra_images&status=pending`;
-      } else {
-        url = `/api/quotes/all?userId=${user?.id}&status=${statusFilter}`;
+        return apiRequest(`/api/quotes/all?userId=${user?.id ?? ''}`);
       }
-      return apiRequest(url);
+      if (statusFilter === 'extra_images') {
+        return apiRequest(`/api/quotes/all?userId=${user?.id ?? ''}&quoteType=extra_images&status=pending`);
+      }
+      return apiRequest(`/api/quotes/all?userId=${user?.id ?? ''}&status=${statusFilter}`);
     },
-    enabled: !!user?.id,
-    refetchInterval: 10000, // Refetch every 10 seconds
+    enabled: Boolean(user?.id),
+    refetchInterval: 10000,
   });
 
-  // Fetch quote statistics
-  const { data: statsData } = useQuery({
-    queryKey: ['/api/quotes/stats/overview,', user?.id],
-    queryFn: () => apiRequest(`/api/quotes/stats/overview?userId=${user?.id}`),
-    enabled: !!user?.id,
+  const statsQuery = useQuery({
+    queryKey: ['/api/quotes/stats/overview', user?.id],
+    queryFn: () => apiRequest(`/api/quotes/stats/overview?userId=${user?.id ?? ''}`),
+    enabled: Boolean(user?.id),
   });
 
-  // Fetch recommended account code for Fiken invoice
-  const { data: accountCodeData } = useQuery({
+  const accountCodeQuery = useQuery({
     queryKey: ['/api/fiken/invoices/account-code', user?.id],
     queryFn: () => apiRequest('/api/fiken/invoices/account-code'),
-    enabled: !!user?.id && fikenInvoiceDialogOpen,
+    enabled: Boolean(user?.id) && fikenInvoiceDialogOpen,
   });
 
-  const quotes = quotesData?.quotes || [];
-  const stats = statsData?.stats || {
-    total: 0,
-    pending: 0,
-    accepted: 0,
-    rejected: 0,
-    totalValue: 0,
-    acceptedValue: 0,
-    conversionRate: 0,
+  useEffect(() => {
+    const payload = accountCodeQuery.data;
+    if (!isRecord(payload)) return;
+    const accountCode = toStringValue(payload.accountCode);
+    if (accountCode) {
+      setSelectedAccountCode(accountCode);
+    }
+  }, [accountCodeQuery.data]);
+
+  const quotes = useMemo(() => extractQuotes(quotesQuery.data), [quotesQuery.data]);
+  const stats = useMemo(() => extractStats(statsQuery.data, quotes), [quotes, statsQuery.data]);
+
+  const invalidateQuoteQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/quotes/stats/overview'] });
   };
 
-  // Update quote status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ quoteId, status }: { quoteId: string; status: string }) => {
-      // Mark as final when accepting
-      const updateData: unknown = { status };
-      if (status === 'accepted') {
-        updateData.isFinal = true;
-      }
-
+    mutationFn: async ({ quoteId, status }: { quoteId: string; status: QuoteStatus }) => {
       return apiRequest(`/api/quotes/${quoteId}/status`, {
         method: 'PUT',
-        body: JSON.stringify(updateData),
+        body: { status },
       });
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/stats/overview'] });
-      setDetailDialogOpen(false);
-
-      // Auto-sync to Google Drive when status changes to accepted (will be marked as FINAL)
-      if (variables.status === 'accepted' && selectedQuote) {
-        // Create updated quote object with isFinal flag
-        const finalQuote = { ...selectedQuote, isFinal: true };
+    onSuccess: (_, variables) => {
+      invalidateQuoteQueries();
+      if (selectedQuote && selectedQuote.id === variables.quoteId && variables.status === 'accepted') {
+        const finalQuote = { ...selectedQuote, status: 'accepted' as const, isFinal: true };
+        setSelectedQuote(finalQuote);
         syncQuoteToDrive(finalQuote);
-
-        // Prompt to create Fiken invoice
         setFikenInvoiceDialogOpen(true);
       }
     },
   });
 
-  // Update quote mutation
   const updateQuoteMutation = useMutation({
-    mutationFn: async ({ quoteId, updateData }: { quoteId: string; updateData: any }) => {
+    mutationFn: async ({ quoteId, updateData }: { quoteId: string; updateData: Record<string, unknown> }) => {
       return apiRequest(`/api/quotes/${quoteId}`, {
         method: 'PUT',
-        body: JSON.stringify(updateData),
+        body: updateData,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/stats/overview'] });
+      invalidateQuoteQueries();
       setEditDialogOpen(false);
       setDetailDialogOpen(false);
     },
   });
 
-  // Duplicate quote mutation
   const duplicateQuoteMutation = useMutation({
     mutationFn: async (quoteId: string) => {
-      const [originalQuote] = await queryClient.fetchQuery({
-        queryKey: [`/api/quotes/${quoteId}`],
-        queryFn: () => apiRequest(`/api/quotes/${quoteId}`),
-      });
+      const originalPayload = await apiRequest(`/api/quotes/${quoteId}`);
+      const originalQuote = normalizeQuote(
+        isRecord(originalPayload) && isRecord(originalPayload.data)
+          ? originalPayload.data
+          : originalPayload,
+      );
+
+      if (!originalQuote) {
+        throw new Error('Kunne ikke lese originaltilbud for kopiering');
+      }
 
       return apiRequest('/api/quotes/create', {
         method: 'POST',
-        body: JSON.stringify({
-          ...originalQuote,
-          id: undefined,
-          quoteNumber: undefined,
+        body: {
           title: `${originalQuote.title} (Kopi)`,
+          description: originalQuote.description,
+          basePrice: originalQuote.basePrice,
+          totalPrice: originalQuote.totalAmount,
+          validUntil: originalQuote.validUntil,
+          notes: '',
+          clientInfo: originalQuote.clientInfo,
+          approvers: originalQuote.approvers,
+          profession: originalQuote.profession,
+          projectType: originalQuote.projectType,
           status: 'draft',
-          sentAt: null,
-          acceptedAt: null,
-          respondedAt: null,
-          viewedAt: null,
-          projectId: null,
-        }),
+        },
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/stats/overview'] });
+      invalidateQuoteQueries();
     },
   });
 
-  // Send quote email mutation
   const sendQuoteMutation = useMutation({
-    mutationFn: async ({ quoteId, quote }: { quoteId: string; quote: Quote }) => {
-      return apiRequest(`/api/quotes/${quoteId}/send-email`, {
+    mutationFn: async (quote: Quote) => {
+      return apiRequest(`/api/quotes/${quote.id}/send-email`, {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           clientEmail: quote.clientEmail,
           clientName: quote.clientName,
-          projectId: quote.projectId || quoteId,
+          projectId: quote.projectId || quote.id,
           photographerId: user?.id,
           quoteDetails: {
             projectType: quote.projectType,
-            totalAmount: parseFloat(quote.totalAmount),
-            includedImages: quote.projectCreationData?.package?.includedImages || 0,
-            packageName: quote.projectCreationData?.package?.name || 'Tilpasset',
-            deliveryTime: '2-3 uker' },
-        }),
+            totalAmount: Number.parseFloat(quote.totalAmount || '0'),
+            includedImages: quote.projectCreationData.package?.includedImages ?? 0,
+            packageName: quote.projectCreationData.package?.name ?? 'Tilpasset',
+            deliveryTime: '2-3 uker',
+          },
+        },
       });
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
+    onSuccess: (_, quote) => {
+      invalidateQuoteQueries();
       setSendDialogOpen(false);
-
-      // Auto-sync to Google Drive after sending
-      syncQuoteToDrive(variables.quote);
+      syncQuoteToDrive(quote);
     },
   });
 
-  // Export to Google Sheets mutation
   const exportToSheetsMutation = useMutation({
     mutationFn: async () => {
-      const allQuotes = quotes;
-
-      // Format data for Google Sheets
-      const sheetData = allQuotes.map((q: Quote) => [
-        q.quoteNumber,
-        q.clientName,
-        q.clientEmail,
-        q.title,
-        q.totalAmount,
-        q.status,
-        new Date(q.createdAt).toLocaleDateString('nb-NO'),
-        q.sentAt ? new Date(q.sentAt).toLocaleDateString('nb-NO') : '-',
-        q.viewedAt ? new Date(q.viewedAt).toLocaleDateString('nb-NO') : 'Ikke åpnet',
-        new Date(q.validUntil).toLocaleDateString('nb-NO'),
+      const rows = quotes.map((quote) => [
+        quote.quoteNumber,
+        quote.clientName,
+        quote.clientEmail,
+        quote.title,
+        quote.totalAmount,
+        quote.status,
+        new Date(quote.createdAt).toLocaleDateString('nb-NO'),
+        quote.sentAt ? new Date(quote.sentAt).toLocaleDateString('nb-NO') : '-',
+        quote.viewedAt ? new Date(quote.viewedAt).toLocaleDateString('nb-NO') : 'Ikke åpnet',
+        new Date(quote.validUntil).toLocaleDateString('nb-NO'),
       ]);
 
       return apiRequest('/api/google-sheets/export-quotes', {
         method: 'POST',
         headers: {
-          'x-user-email': user?.email || ',',
+          'x-user-email': user?.email || '',
         },
-        body: JSON.stringify({
+        body: {
           sheetName: `Tilbud - ${new Date().toLocaleDateString('nb-NO')}`,
           headers: [
-            'Tilbudsnummer','Kunde','E-post''Tittel','Beløp','Status', 'Opprettet', 'Sendt', 'Åpnet', 'Gyldig til',
+            'Tilbudsnummer',
+            'Kunde',
+            'E-post',
+            'Tittel',
+            'Beløp',
+            'Status',
+            'Opprettet',
+            'Sendt',
+            'Åpnet',
+            'Gyldig til',
           ],
-          data: sheetData,
-        }),
+          data: rows,
+        },
       });
     },
   });
 
-  // Link quote to project mutation
   const linkProjectMutation = useMutation({
     mutationFn: async ({ quoteId, projectId }: { quoteId: string; projectId: string }) => {
       return apiRequest(`/api/quotes/${quoteId}/link-project`, {
         method: 'PUT',
-        body: JSON.stringify({ projectId }),
+        body: { projectId },
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
+      invalidateQuoteQueries();
       setConvertDialogOpen(false);
+      setLinkProjectId('');
     },
   });
 
-  // Create chat space for quote mutation
   const createChatMutation = useMutation({
     mutationFn: async (quoteId: string) => {
       return apiRequest(`/api/quotes/${quoteId}/create-chat`, {
-        method: 'POST' });
+        method: 'POST',
+      });
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
-      // Open chat widget with the new space
-      if (data.spaceUrl) {
-        window.open(data.spaceUrl','_blank');
+    onSuccess: (payload) => {
+      invalidateQuoteQueries();
+      if (isRecord(payload)) {
+        const spaceUrl = toStringValue(payload.spaceUrl);
+        if (spaceUrl) {
+          openInNewTab(spaceUrl);
+        }
       }
     },
   });
 
-  // Create Fiken invoice from accepted quote
+  const deleteQuoteMutation = useMutation({
+    mutationFn: async (quoteId: string) => {
+      return apiRequest(`/api/quotes/${quoteId}`, {
+        method: 'DELETE',
+      });
+    },
+    onSuccess: () => {
+      invalidateQuoteQueries();
+      setDetailDialogOpen(false);
+    },
+  });
+
   const handleCreateFikenInvoice = async () => {
     if (!selectedQuote) return;
 
@@ -416,67 +689,55 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
       setFikenInvoiceCreating(true);
       setFikenError(null);
 
-      // 1. Ensure customer exists in Fiken
-      const fikenCustomerId = await ensureFikenCustomer()
+      const customerId = await ensureFikenCustomer(
         selectedQuote.clientName,
         selectedQuote.clientEmail,
-        selectedQuote.clientInfo?.phoneNumber,
+        selectedQuote.clientInfo.phoneNumber,
       );
 
-      // 2. Map quote to Fiken invoice format
-      const invoiceData = mapQuoteToFikenInvoice(selectedQuote, fikenCustomerId);
+      const invoiceData = mapQuoteToFikenInvoice(selectedQuote, customerId);
 
-      // 3. Create invoice draft in Fiken via backend
-      const response = await apiRequest(`/api/fiken/invoices/create`, {
+      const response = await apiRequest('/api/fiken/invoices/create', {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           quoteId: selectedQuote.id,
           invoiceData,
-          fikenCustomerId,
-          accountCode: selectedAccountCode, // Pass selected account code
-        }),
+          fikenCustomerId: customerId,
+          accountCode: selectedAccountCode,
+        },
       });
 
-      // 4. Update quote with Fiken invoice details
+      const draftId =
+        isRecord(response) && (typeof response.draftId === 'number' || typeof response.draftId === 'string')
+          ? String(response.draftId)
+          : undefined;
+
       await updateQuoteMutation.mutateAsync({
         quoteId: selectedQuote.id,
         updateData: {
-          fikenInvoiceId: response.draftId.toString(),
-          fikenCustomerId: fikenCustomerId.toString(),
+          fikenInvoiceId: draftId,
+          fikenCustomerId: String(customerId),
           fikenInvoiceStatus: 'draft',
           fikenSyncStatus: 'synced',
           fikenSyncedAt: new Date().toISOString(),
         },
       });
 
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes/all'] });
       setFikenInvoiceDialogOpen(false);
-    } catch (error: unknown) {
-      console.error('Failed to create Fiken invoice: ', error);
-      setFikenError(error.message || 'Failed to create invoice in Fiken');
+    } catch (error) {
+      setFikenError(parseErrorMessage(error));
     } finally {
       setFikenInvoiceCreating(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return '#ff9800';
-      case 'accepted': return '#4caf50';
-      case 'rejected': return '#f44336';
-      case 'expired': return '#9e9e9e';
-      default: return '#2196f3';
-    }
+  const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, quote: Quote) => {
+    setSelectedQuoteForAction(quote);
+    setQuoteMenuAnchor(event.currentTarget);
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <AccessTime />;
-      case 'accepted': return <CheckCircle />;
-      case 'rejected': return <Cancel />;
-      case 'expired': return <AccessTime />;
-      default: return <ReceiptIcon />;
-    }
+  const closeMenu = () => {
+    setQuoteMenuAnchor(null);
   };
 
   const handleViewDetails = (quote: Quote) => {
@@ -486,129 +747,150 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
 
   const handleEditQuote = (quote: Quote) => {
     setSelectedQuote(quote);
+    setEditState({
+      title: quote.title,
+      description: quote.description,
+      totalAmount: quote.totalAmount,
+      validUntil: quote.validUntil.split('T')[0] || quote.validUntil,
+    });
     setEditDialogOpen(true);
   };
 
   const handleConvertToProject = (quote: Quote) => {
     setSelectedQuote(quote);
-    if (onCreateProject) {
-      // Use the provided callback
-      onCreateProject(quote.projectCreationData);
-      setConvertDialogOpen(false);
-    } else {
-      // Navigate to project creation with quote data
-      navigate('/projects/create', {
-        state: { quoteData: quote.projectCreationData, quoteId: quote.id },
-      });
-    }
-  };
-
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat('nb-NO', {
-      style: 'currency',
-      currency: 'NOK' }).format(parseFloat(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('nb-NO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric' });
-  };
-
-  const isExpiringSoon = (validUntil: string) => {
-    const daysUntilExpiry = Math.ceil()
-      (new Date(validUntil).getTime() - Date.now() / (1000 * 60 * 60 * 24),
-    );
-    return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-  };
-
-  const isExpired = (validUntil: string) => {
-    return new Date(validUntil) < new Date();
-  };
-
-  const getViewedStatus = (quote: Quote) => {
-    if (!quote.sentAt) return { icon: <Send />, text: 'Ikke sendt', color: 'default' as const };
-    if (!quote.viewedAt)
-      return { icon: <MarkEmailUnread />, text: 'Ikke åpnet', color: 'warning' as const };
-    return {
-      icon: <MarkEmailRead />,
-      text: `Åpnet ${new Date(quote.viewedAt).toLocaleDateString('nb-NO')}`,
-      color: 'success' as const,
-    };
+    setConvertDialogOpen(true);
   };
 
   const handleQuoteAction = (action: string, quote: Quote) => {
-    setQuoteMenuAnchor(null);
+    closeMenu();
+
     switch (action) {
-      case 'duplicate': duplicateQuoteMutation.mutate(quote.id);
+      case 'menu':
+      case 'view':
+        handleViewDetails(quote);
         break;
-      case 'send': setSelectedQuoteForAction(quote);
+      case 'edit':
+        handleEditQuote(quote);
+        break;
+      case 'duplicate':
+        duplicateQuoteMutation.mutate(quote.id);
+        break;
+      case 'send':
+        setSelectedQuoteForAction(quote);
         setSendDialogOpen(true);
         break;
-      case 'chat': // Check if quote already has a chat space
-        const chatSpaceId = (quote.projectCreationData as any)?.chatSpaceId;
+      case 'download':
+        openInNewTab(`/api/quotes/${quote.id}/pdf`);
+        break;
+      case 'convert':
+        handleConvertToProject(quote);
+        break;
+      case 'chat': {
+        const chatSpaceId = quote.projectCreationData.chatSpaceId;
         if (chatSpaceId) {
-          // Open existing chat space
-          const spaceUrl = `https://chat.google.com/room/${chatSpaceId.split('/').pop()}`;
-          window.open(spaceUrl, ','_blank');
-        } else {
-          // Create new chat space
-          createChatMutation.mutate(quote.id);
+          const roomId = chatSpaceId.split('/').pop();
+          if (roomId) {
+            openInNewTab(`https://chat.google.com/room/${roomId}`);
+            break;
+          }
+        }
+        createChatMutation.mutate(quote.id);
+        break;
+      }
+      case 'delete':
+        if (window.confirm(`Er du sikker på at du vil slette tilbud ${quote.quoteNumber}?`)) {
+          deleteQuoteMutation.mutate(quote.id);
         }
         break;
-      case 'delete': if (confirm(`Er du sikker på at du vil slette tilbud ${quote.quoteNumber}?`)) {
-          // Add delete mutation
-        }
+      default:
         break;
     }
   };
 
-  return ()
+  const handleSaveEdit = () => {
+    if (!selectedQuote) return;
+    updateQuoteMutation.mutate({
+      quoteId: selectedQuote.id,
+      updateData: {
+        title: editState.title,
+        description: editState.description,
+        totalAmount: editState.totalAmount,
+        validUntil: editState.validUntil,
+      },
+    });
+  };
+
+  const handleConfirmConvert = () => {
+    if (!selectedQuote) return;
+
+    if (linkProjectId.trim()) {
+      linkProjectMutation.mutate({ quoteId: selectedQuote.id, projectId: linkProjectId.trim() });
+      return;
+    }
+
+    if (onCreateProject) {
+      onCreateProject(selectedQuote.projectCreationData);
+      setConvertDialogOpen(false);
+      return;
+    }
+
+    window.location.assign('/projects/create');
+  };
+
+  const selectedTabIndex = STATUS_TABS.findIndex((tab) => tab.value === statusFilter);
+
+  return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <ReceiptIcon sx={{ fontSize: 32 }} />
           Tilbudsoversikt
         </Typography>
+
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {/* View Mode Toggle */}
           <Box
             sx={{
               display: 'flex',
               border: '1px solid',
               borderColor: 'divider',
               borderRadius: 1,
-              overflow: 'hidden' }}>
+              overflow: 'hidden',
+            }}
+          >
             <IconButton
               size="small"
               onClick={() => setViewMode('grid')}
+              aria-label="Rutenettvisning"
               sx={{
                 borderRadius: 0,
+                color: viewMode === 'grid' ? 'white' : 'text.secondary',
                 bgcolor: viewMode === 'grid' ? 'primary.main' : 'transparent',
-                color: viewMode === 'grid' ? 'white' : 'text.secondary', '&:hover': {
-                  bgcolor: viewMode === 'grid' ? 'primary.dark' : 'action.hover' }}}
+                '&:hover': {
+                  bgcolor: viewMode === 'grid' ? 'primary.dark' : 'action.hover',
+                },
+              }}
             >
               <GridViewIcon />
             </IconButton>
             <IconButton
               size="small"
               onClick={() => setViewMode('kanban')}
+              aria-label="Kanbanvisning"
               sx={{
                 borderRadius: 0,
+                color: viewMode === 'kanban' ? 'white' : 'text.secondary',
                 bgcolor: viewMode === 'kanban' ? 'primary.main' : 'transparent',
-                color: viewMode === 'kanban' ? 'white' : 'text.secondary','&:hover': {
-                  bgcolor: viewMode === 'kanban' ? 'primary.dark' : 'action.hover' }}}
+                '&:hover': {
+                  bgcolor: viewMode === 'kanban' ? 'primary.dark' : 'action.hover',
+                },
+              }}
             >
               <KanbanViewIcon />
             </IconButton>
           </Box>
 
-          <Tooltip title="Configure reminder settings">
-            <IconButton
-              onClick={() => setReminderSettingsOpen(true)}
-              sx={{ color: 'text.secondary' }}>
+          <Tooltip title="Konfigurer påminnelser">
+            <IconButton onClick={() => setReminderSettingsOpen(true)}>
               <SettingsIcon />
             </IconButton>
           </Tooltip>
@@ -621,10 +903,11 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
           >
             {exportToSheetsMutation.isPending ? 'Eksporterer...' : 'Eksporter til Sheets'}
           </Button>
+
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => navigate('/quotes/create')}
+            onClick={() => window.location.assign('/quotes/create')}
             sx={theming.getThemedButtonSx()}
           >
             Opprett nytt tilbud
@@ -632,7 +915,44 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
         </Box>
       </Box>
 
-      {/* Statistics Cards */}
+      {syncJobs.length > 0 ? (
+        <Stack spacing={1.5} sx={{ mb: 2.5 }}>
+          {syncJobs.map((job) => (
+            <Alert
+              key={job.id}
+              severity={job.status === 'error' ? 'error' : job.status === 'success' ? 'success' : 'info'}
+              action={
+                job.status === 'error' ? (
+                  <Button size="small" onClick={() => quoteDriveSync.retryJob(job.id)}>
+                    Prøv igjen
+                  </Button>
+                ) : (
+                  <Button size="small" onClick={() => quoteDriveSync.cancelJob(job.id)}>
+                    Lukk
+                  </Button>
+                )
+              }
+            >
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {job.quoteNumber} - {job.clientName}
+              </Typography>
+              <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                {job.status === 'uploading'
+                  ? `Laster opp til ${job.folderName}`
+                  : job.status === 'error'
+                    ? job.error || 'Synk mislyktes'
+                    : job.status === 'success'
+                      ? 'Synkronisering fullført'
+                      : 'Venter i kø'}
+              </Typography>
+              {job.status === 'uploading' || job.status === 'pending' ? (
+                <LinearProgress variant="determinate" value={job.progress} />
+              ) : null}
+            </Alert>
+          ))}
+        </Stack>
+      ) : null}
+
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
@@ -640,7 +960,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
               <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                 {stats.total}
               </Typography>
-              <Typography color="textSecondary">Totalt tilbud</Typography>
+              <Typography color="text.secondary">Totalt tilbud</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -650,7 +970,7 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
               <Typography variant="h4" color="warning.main">
                 {stats.pending}
               </Typography>
-              <Typography color="textSecondary">Venter på svar</Typography>
+              <Typography color="text.secondary">Venter på svar</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -660,125 +980,93 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
               <Typography variant="h4" color="success.main">
                 {stats.accepted}
               </Typography>
-              <Typography color="textSecondary">Godkjent</Typography>
+              <Typography color="text.secondary">Godkjent</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Stack direction="row" spacing={1} alignItems="center">
                 <TrendingUp color="primary" />
                 <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                   {stats.conversionRate.toFixed(1)}%
                 </Typography>
-              </Box>
-              <Typography color="textSecondary">Konverteringsrate</Typography>
+              </Stack>
+              <Typography color="text.secondary">Konverteringsrate</Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Filters */}
       <Paper sx={{ p: 2, mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <FilterList />
-          <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
-            <Tab label="Alle" onClick={() => setStatusFilter('all')} />
-            <Tab label="Venter" onClick={() => setStatusFilter('pending')} />
-            <Tab label="Godkjent" onClick={() => setStatusFilter('accepted')} />
-            <Tab label="Avvist" onClick={() => setStatusFilter('rejected')} />
-            <Tab label="Ekstra Bilder" onClick={() => setStatusFilter('extra_images')} />
-          </Tabs>
-        </Box>
+        <Tabs
+          value={selectedTabIndex >= 0 ? selectedTabIndex : 0}
+          onChange={(_, index: number) => setStatusFilter(STATUS_TABS[index]?.value || 'all')}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          {STATUS_TABS.map((tab) => (
+            <Tab key={tab.value} label={tab.label} />
+          ))}
+        </Tabs>
       </Paper>
 
-      {/* Quotes List */}
-      {isLoading ? ()
-        <Typography>Laster tilbud...</Typography>
-      ) : quotes.length === 0 ? ()
+      {quotesQuery.isLoading ? (
+        <Box sx={{ py: 8, display: 'flex', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Box>
+      ) : quotes.length === 0 ? (
         <Alert severity="info">
-          Ingen tilbud funnet. Opprett ditt første tilbud for å komme i gang!
+          Ingen tilbud funnet. Opprett ditt første tilbud for å komme i gang.
         </Alert>
-      ) : viewMode === 'kanban' ? ()
+      ) : viewMode === 'kanban' ? (
         <QuoteKanbanView
           quotes={quotes}
-          onQuoteClick={handleViewDetails}
-          onQuoteAction={(action, quote) => {
-            if (action === 'menu') {
-              // Open menu for the quote - we'll handle this with the existing menu
-              handleQuoteAction(action, quote);
+          onQuoteClick={(kanbanQuote) => {
+            const selectedQuote = quotes.find((quote) => quote.id === kanbanQuote.id);
+            if (selectedQuote) {
+              handleViewDetails(selectedQuote);
+            }
+          }}
+          onQuoteAction={(action, kanbanQuote) => {
+            const selectedQuote = quotes.find((quote) => quote.id === kanbanQuote.id);
+            if (selectedQuote) {
+              handleQuoteAction(action, selectedQuote);
             }
           }}
         />
-      ) : ()
+      ) : (
         <Grid container spacing={2}>
-          {quotes.map((quote: Quote) => ()
+          {quotes.map((quote) => (
             <Grid item xs={12} md={6} key={quote.id}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      mb: 2}}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                     <Box sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
                         <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                           {quote.title}
                         </Typography>
-                        {isExpiringSoon(quote.validUntil) && ()
-                          <Tooltip
-                            title={`Utløper om ${Math.ceil((new Date(quote.validUntil).getTime() - Date.now() / (1000 * 60 * 60 * 24)} dager`}
-                          >
-                            <Chip
-                              icon={<Warning />}
-                              label="Utløper snart"
-                              size="small"
-                              color="warning"
-                              sx={{ fontWeight: 'bold' }} />
-                          </Tooltip>
-                        )}
-                        {isExpired(quote.validUntil) && quote.status === 'pending' && ()
-                          <Chip
-                            icon={<Warning />}
-                            label="Utløpt"
-                            size="small"
-                            color="error"
-                            sx={{ fontWeight: 'bold' }} />
-                        )}
-                        {/* Contract Amendment Badge */}
-                        {quote.quoteType === 'extra_images' && ()
-                          <Tooltip title="Ekstra bilder til eksisterende prosjekt">
-                            <Chip
-                              icon={<ImageIcon />}
-                              label="Ekstra bilder"
-                              size="small"
-                              sx={{
-                                bgcolor: '#4CAF50',
-                                color: 'white',
-                                fontWeight: 'bold' }} />
-                          </Tooltip>
-                        )}
-                        {quote.quoteType === 'contract_amendment' && ()
-                          <Tooltip title="Tillegg til kontrakt">
-                            <Chip
-                              icon={<LinkIcon />}
-                              label="Kontraktstillegg"
-                              size="small"
-                              sx={{
-                                bgcolor: '#2196F3',
-                                color: 'white',
-                                fontWeight: 'bold' }} />
-                          </Tooltip>
-                        )}
-                      </Box>
-                      <Typography variant="caption" color="textSecondary">
+                        {isExpiringSoon(quote.validUntil) ? (
+                          <Chip icon={<Warning />} label="Utløper snart" size="small" color="warning" />
+                        ) : null}
+                        {isExpired(quote.validUntil) && quote.status === 'pending' ? (
+                          <Chip icon={<Warning />} label="Utløpt" size="small" color="error" />
+                        ) : null}
+                        {quote.quoteType === 'extra_images' ? (
+                          <Chip icon={<LinkIcon />} label="Ekstra bilder" size="small" color="success" />
+                        ) : null}
+                        {quote.quoteType === 'contract_amendment' ? (
+                          <Chip icon={<LinkIcon />} label="Kontraktstillegg" size="small" color="info" />
+                        ) : null}
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
                         {quote.quoteNumber}
                       </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 0.5 alignItems: 'center' }}>
+
+                    <Stack direction="row" spacing={0.5} alignItems="center">
                       <Chip
                         icon={getStatusIcon(quote.status)}
                         label={quote.status.toUpperCase()}
@@ -786,115 +1074,47 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                         sx={{
                           bgcolor: getStatusColor(quote.status),
                           color: 'white',
-                          fontWeight: 'bold' }} />
-                      <IconButton
-                        size="small"
-                        onClick={(e) => setQuoteMenuAnchor({ element: e.currentTarget, quote })}
-                      >
+                          fontWeight: 700,
+                        }}
+                      />
+                      <IconButton size="small" onClick={(event) => handleOpenMenu(event, quote)}>
                         <MoreVert />
                       </IconButton>
-                    </Box>
+                    </Stack>
                   </Box>
 
-                  <Divider sx={{ my: 2 }} />
+                  <Divider sx={{ my: 1.5 }} />
 
                   <Stack spacing={1}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="textSecondary">
-                        Kunde: </Typography>
-                      <Typography variant="body2" fontWeight="bold">
+                      <Typography variant="body2" color="text.secondary">
+                        Kunde:
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700}>
                         {quote.clientName}
                       </Typography>
                     </Box>
 
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="textSecondary">
-                        Beløp: </Typography>
-                      <Typography
-                        variant="body2"
-                        fontWeight="bold"
-                        sx={{ color: theming.colors.primary }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Beløp:
+                      </Typography>
+                      <Typography variant="body2" fontWeight={700} sx={{ color: theming.colors.primary }}>
                         {formatCurrency(quote.totalAmount)}
                       </Typography>
                     </Box>
 
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="textSecondary">
-                        Gyldig til: </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Gyldig til:
+                      </Typography>
                       <Typography variant="body2">{formatDate(quote.validUntil)}</Typography>
                     </Box>
 
-                    {quote.projectId && ()
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center' }}>
-                        <Typography variant="body2" color="textSecondary">
-                          Prosjekt: </Typography>
-                        <Box sx={{ display: 'flex', gap: 0.5 alignItems: 'center' }}>
-                          <Chip label="Koblet" size="small" color="success" />
-                          <Tooltip title="Se kontraktshistorikk">
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                setSelectedProjectForHistory({
-                                  id: quote.projectId!,
-                                  title: quote.title,
-                                });
-                                setAmendmentHistoryOpen(true);
-                              }}
-                              sx={{ color: '#2196F3' }}>
-                              <HistoryIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </Box>
-                    )}
-
-                    {/* Contract Amendment Link */}
-                    {quote.contractAmendmentFor && ()
-                      <Box
-                        sx={{
-                          p: 1.5
-                         , bgcolor: 'rgba(76, 175, 80, 0.1)',
-                          borderRadius: 1,
-                          border: '1px solid rgba(76, 175, 80, 0.3)' }}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <LinkIcon sx={{ color: '#4CAF50', fontSize: 18 }} />
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="caption" color="textSecondary" display="block">
-                              Tillegg for prosjekt: </Typography>
-                            <Typography
-                              variant="body2"
-                              fontWeight="bold"
-                              sx={{
-                                color: '#4CAF50',
-                                cursor: 'pointer','&:hover': { textDecoration: 'underline' }}}
-                              onClick={() => {
-                                // Navigate to original project
-                                window.open(`/projects/${quote.contractAmendmentFor}`','_blank');
-                              }}
-                            >
-                              {quote.contractAmendmentFor.substring(0, 8)}...
-                            </Typography>
-                          </Box>
-                          <Tooltip title="Se opprinnelig prosjekt">
-                            <IconButton size="small" sx={{ color: '#4CAF50' }}>
-                              <Visibility fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        </Stack>
-                      </Box>
-                    )}
-
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center' }}>
-                      <Typography variant="body2" color="textSecondary">
-                        E-post status: </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        E-post status:
+                      </Typography>
                       <Chip
                         icon={getViewedStatus(quote).icon}
                         label={getViewedStatus(quote).text}
@@ -904,83 +1124,66 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
                       />
                     </Box>
 
-                    {/* Fiken Invoice Status */}
-                    {quote.fikenInvoiceId && ()
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center' }}>
-                        <Typography variant="body2" color="textSecondary">
-                          Fiken faktura: </Typography>
+                    {quote.fikenInvoiceId ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Fiken:
+                        </Typography>
+                        <Chip
+                          size="small"
+                          color="success"
+                          label={quote.fikenInvoiceStatus || 'Synket'}
+                          onClick={
+                            quote.fikenInvoiceUrl
+                              ? () => {
+                                  openInNewTab(quote.fikenInvoiceUrl || '');
+                                }
+                              : undefined
+                          }
+                        />
+                      </Box>
+                    ) : null}
+
+                    {quote.projectId ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Prosjekt:
+                        </Typography>
                         <Stack direction="row" spacing={0.5} alignItems="center">
-                          <img
-                            src="https://fiken.no/wp-content/themes/fiken/dist/images/fiken-logo.svg"
-                            alt="Fiken"
-                            style={{ height: 14, marginRight: 4 }} />
-                          <Chip
-                            label={
-                              quote.fikenInvoiceStatus === 'draft'
-                                ? 'Utkast'
-                                : quote.fikenInvoiceStatus === 'sent'
-                                  ? 'Sendt'
-                                  : quote.fikenInvoiceStatus === 'paid'
-                                    ? 'Betalt'
-                                    : quote.fikenInvoiceStatus || 'Opprettet'
-                            }
-                            size="small"
-                            color={
-                              quote.fikenInvoiceStatus === 'paid'
-                                ? 'success'
-                                : quote.fikenInvoiceStatus === 'sent'
-                                  ? 'info'
-                                  : 'default'
-                            }
-                            variant="outlined"
-                          />
-                          {quote.fikenInvoiceNumber && ()
-                            <Typography variant="caption" color="textSecondary">
-                              #{quote.fikenInvoiceNumber}
-                            </Typography>
-                          )}
+                          <Chip label="Koblet" size="small" color="success" />
+                          <Tooltip title="Se kontraktshistorikk">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setSelectedProjectForHistory({ id: quote.projectId || '', title: quote.title });
+                                setAmendmentHistoryOpen(true);
+                              }}
+                            >
+                              <HistoryIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
                         </Stack>
                       </Box>
-                    )}
+                    ) : null}
                   </Stack>
 
-                  <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Visibility />}
-                      onClick={() => handleViewDetails(quote)}
-                      fullWidth
-                    >
-                      Detaljer
+                  <Stack direction="row" spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Button size="small" startIcon={<Visibility />} onClick={() => handleViewDetails(quote)}>
+                      Se
                     </Button>
-                    {(quote.status === 'pending' || quote.status === 'draft') && ()
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<Edit />}
-                        onClick={() => handleEditQuote(quote)}
-                        fullWidth
-                      >
-                        Rediger
-                      </Button>
-                    )}
-                    {quote.status === 'accepted' && !quote.projectId && ()
-                      <Button
-                        size="small"
-                        variant="contained"
-                        onClick={() => handleConvertToProject(quote)}
-                        sx={theming.getThemedButtonSx()}
-                        fullWidth
-                      >
-                        Opprett prosjekt
-                      </Button>
-                    )}
-                  </Box>
+                    <Button size="small" startIcon={<Edit />} onClick={() => handleEditQuote(quote)}>
+                      Rediger
+                    </Button>
+                    <Button size="small" startIcon={<Email />} onClick={() => handleQuoteAction('send', quote)}>
+                      Send
+                    </Button>
+                    <Button size="small" startIcon={<GetApp />} onClick={() => handleQuoteAction('download', quote)}>
+                      PDF
+                    </Button>
+                    <Button size="small" startIcon={<LinkIcon />} onClick={() => handleConvertToProject(quote)}>
+                      Prosjekt
+                    </Button>
+                  </Stack>
                 </CardContent>
               </Card>
             </Grid>
@@ -988,531 +1191,271 @@ export default function QuoteManagement({ onCreateProject }: QuoteManagementProp
         </Grid>
       )}
 
-      {/* Quote Detail Dialog */}
-      <Dialog
-        open={detailDialogOpen}
-        onClose={() => setDetailDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
+      <Menu
+        anchorEl={quoteMenuAnchor}
+        open={Boolean(quoteMenuAnchor) && Boolean(selectedQuoteForAction)}
+        onClose={closeMenu}
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ReceiptIcon />
-            Tilbudsdetaljer
-          </Box>
-        </DialogTitle>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('view', selectedQuoteForAction)}>
+          <Visibility sx={{ mr: 1 }} fontSize="small" />
+          Se detaljer
+        </MenuItem>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('edit', selectedQuoteForAction)}>
+          <Edit sx={{ mr: 1 }} fontSize="small" />
+          Rediger
+        </MenuItem>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('send', selectedQuoteForAction)}>
+          <Send sx={{ mr: 1 }} fontSize="small" />
+          Send tilbud
+        </MenuItem>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('download', selectedQuoteForAction)}>
+          <GetApp sx={{ mr: 1 }} fontSize="small" />
+          Last ned PDF
+        </MenuItem>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('duplicate', selectedQuoteForAction)}>
+          <ContentCopy sx={{ mr: 1 }} fontSize="small" />
+          Dupliser
+        </MenuItem>
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('chat', selectedQuoteForAction)}>
+          <Chat sx={{ mr: 1 }} fontSize="small" />
+          Åpne chat
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={() => selectedQuoteForAction && handleQuoteAction('delete', selectedQuoteForAction)}>
+          <Cancel sx={{ mr: 1 }} fontSize="small" />
+          Slett
+        </MenuItem>
+      </Menu>
+
+      <Dialog open={detailDialogOpen && Boolean(selectedQuote)} onClose={() => setDetailDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Tilbudsdetaljer</DialogTitle>
         <DialogContent>
-          {selectedQuote && ()
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="h6" gutterBottom>
-                {selectedQuote.title}
+          {selectedQuote ? (
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <Typography variant="h6">{selectedQuote.title}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedQuote.description}
               </Typography>
-              <Typography variant="body2" color="textSecondary" gutterBottom>
-                {selectedQuote.quoteNumber}
+              <Divider />
+              <Typography variant="body2">
+                <strong>Tilbudsnummer:</strong> {selectedQuote.quoteNumber}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Kunde:</strong> {selectedQuote.clientName} ({selectedQuote.clientEmail})
+              </Typography>
+              <Typography variant="body2">
+                <strong>Beløp:</strong> {formatCurrency(selectedQuote.totalAmount)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Gyldig til:</strong> {formatDate(selectedQuote.validUntil)}
+              </Typography>
+              <Typography variant="body2">
+                <strong>Status:</strong>{' '}
+                <Chip
+                  icon={getStatusIcon(selectedQuote.status)}
+                  label={selectedQuote.status.toUpperCase()}
+                  size="small"
+                  sx={{ bgcolor: getStatusColor(selectedQuote.status), color: 'white', fontWeight: 700 }}
+                />
               </Typography>
 
-              <Divider sx={{ my: 2 }} />
-
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="textSecondary">
-                    Kunde
-                  </Typography>
-                  <Typography variant="body1">{selectedQuote.clientName}</Typography>
-                  <Typography variant="body2" color="textSecondary">
-                    {selectedQuote.clientEmail}
-                  </Typography>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="textSecondary">
-                    Totalbeløp
-                  </Typography>
-                  <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-                    {formatCurrency(selectedQuote.totalAmount)}
-                  </Typography>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Typography variant="caption" color="textSecondary">
-                    Beskrivelse
-                  </Typography>
-                  <Typography variant="body2">{selectedQuote.description}</Typography>
-                </Grid>
-
-                {selectedQuote.businessInfo?.logo && ()
-                  <Grid item xs={12} sm={6}>
-                    <Typography variant="caption" color="textSecondary">
-                      Bedriftslogo
-                    </Typography>
-                    <Box sx={{ mt: 1 }}>
-                      <img
-                        src={selectedQuote.businessInfo.logo}
-                        alt="Business Logo"
-                        style={{ maxWidth: '150px', maxHeight: '80px', objectFit: 'contain' }} />
-                    </Box>
-                  </Grid>
-                )}
-
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="textSecondary">
-                    Opprettet
-                  </Typography>
-                  <Typography variant="body2">{formatDate(selectedQuote.createdAt)}</Typography>
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="textSecondary">
-                    Gyldig til
-                  </Typography>
-                  <Typography variant="body2">{formatDate(selectedQuote.validUntil)}</Typography>
-                </Grid>
-
-                {selectedQuote.approvers && selectedQuote.approvers.length > 0 && ()
-                  <Grid item xs={12}>
-                    <Typography variant="caption" color="textSecondary">
-                      Godkjennere
-                    </Typography>
-                    <List dense>
-                      {selectedQuote.approvers.map((approver: any, index: number) => ()
-                        <ListItem key={index}>
-                          <ListItemText primary={approver.name} secondary={approver.email} />
-                        </ListItem>
-                      ))}
-                    </List>
-                  </Grid>
-                )}
-              </Grid>
-            </Box>
-          )}
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={updateStatusMutation.isPending || selectedQuote.status === 'pending'}
+                  onClick={() => updateStatusMutation.mutate({ quoteId: selectedQuote.id, status: 'pending' })}
+                >
+                  Sett som venter
+                </Button>
+                <Button
+                  size="small"
+                  color="success"
+                  variant="contained"
+                  disabled={updateStatusMutation.isPending || selectedQuote.status === 'accepted'}
+                  onClick={() => updateStatusMutation.mutate({ quoteId: selectedQuote.id, status: 'accepted' })}
+                >
+                  Marker godkjent
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  disabled={updateStatusMutation.isPending || selectedQuote.status === 'rejected'}
+                  onClick={() => updateStatusMutation.mutate({ quoteId: selectedQuote.id, status: 'rejected' })}
+                >
+                  Marker avvist
+                </Button>
+              </Stack>
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetailDialogOpen(false)}>Lukk</Button>
-          {selectedQuote &&
-            (selectedQuote.status === 'pending' || selectedQuote.status === 'draft') && ()
-              <>
-                <Button
-                  startIcon={<Edit />}
-                  onClick={() => {
-                    setDetailDialogOpen(false);
-                    handleEditQuote(selectedQuote);
-                  }}
-                >
-                  Rediger
-                </Button>
-                {selectedQuote.status === 'pending' && ()
-                  <>
-                    <Button
-                      color="error"
-                      onClick={() =>
-                        updateStatusMutation.mutate({
-                          quoteId: selectedQuote.id,
-                          status: 'rejected' })
-                      }
-                    >
-                      Avvis
-                    </Button>
-                    <Button
-                      variant="contained"
-                      color="success"
-                      onClick={() =>
-                        updateStatusMutation.mutate({
-                          quoteId: selectedQuote.id,
-                          status: 'accepted' })
-                      }
-                    >
-                      Godkjenn
-                    </Button>
-                  </>
-                )}
-              </>
-            )}
-          {selectedQuote && selectedQuote.status === 'accepted' && !selectedQuote.projectId && ()
-            <Button
-              variant="contained"
-              onClick={() => handleConvertToProject(selectedQuote)}
-              sx={theming.getThemedButtonSx()}
-            >
-              Opprett prosjekt
-            </Button>
-          )}
+          {selectedQuote ? (
+            <>
+              <Button onClick={() => handleEditQuote(selectedQuote)} startIcon={<Edit />}>
+                Rediger
+              </Button>
+              <Button onClick={() => handleConvertToProject(selectedQuote)} startIcon={<LinkIcon />}>
+                Opprett prosjekt
+              </Button>
+            </>
+          ) : null}
         </DialogActions>
       </Dialog>
 
-      {/* Edit Quote Dialog */}
-      <Dialog
-        open={editDialogOpen}
-        onClose={() => setEditDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Edit />
-            Rediger tilbud
-          </Box>
-        </DialogTitle>
+      <Dialog open={editDialogOpen && Boolean(selectedQuote)} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Rediger tilbud</DialogTitle>
         <DialogContent>
-          {selectedQuote && ()
-            <Box sx={{ mt: 2 }}>
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Du redigerer tilbud {selectedQuote.quoteNumber}. Endringer vil oppdatere tilbudet
-                umiddelbart.
-              </Alert>
-
-              <Grid container spacing={3}>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Tittel"
-                    defaultValue={selectedQuote.title}
-                    onChange={(e) => {
-                      setSelectedQuote({ ...selectedQuote, title: e.target.value });
-                    }}
-                  />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={3}
-                    label="Beskrivelse"
-                    defaultValue={selectedQuote.description}
-                    onChange={(e) => {
-                      setSelectedQuote({ ...selectedQuote, description: e.target.value });
-                    }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Grunnpris"
-                    type="number"
-                    defaultValue={selectedQuote.basePrice}
-                    onChange={(e) => {
-                      setSelectedQuote({ ...selectedQuote, basePrice: e.target.value });
-                    }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Gyldig til"
-                    type="date"
-                    defaultValue={new Date(selectedQuote.validUntil).toISOString().split('T')[0]}
-                    onChange={(e) => {
-                      setSelectedQuote({ ...selectedQuote, validUntil: e.target.value });
-                    }}
-                    InputLabelProps={{ shrink: true }} />
-                </Grid>
-
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={2}
-                    label="Notater"
-                    defaultValue={selectedQuote.notes}
-                    onChange={(e) => {
-                      setSelectedQuote({ ...selectedQuote, notes: e.target.value });
-                    }}
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-          )}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Tittel"
+              value={editState.title}
+              onChange={(event) => setEditState((prev) => ({ ...prev, title: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Beskrivelse"
+              value={editState.description}
+              onChange={(event) => setEditState((prev) => ({ ...prev, description: event.target.value }))}
+              fullWidth
+              multiline
+              rows={4}
+            />
+            <TextField
+              label="Totalbeløp"
+              value={editState.totalAmount}
+              onChange={(event) => setEditState((prev) => ({ ...prev, totalAmount: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Gyldig til"
+              type="date"
+              value={editState.validUntil}
+              onChange={(event) => setEditState((prev) => ({ ...prev, validUntil: event.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setEditDialogOpen(false)}>Avbryt</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              if (selectedQuote) {
-                updateQuoteMutation.mutate({
-                  quoteId: selectedQuote.id,
-                  updateData: {
-                    title: selectedQuote.title,
-                    description: selectedQuote.description,
-                    basePrice: selectedQuote.basePrice,
-                    validUntil: selectedQuote.validUntil,
-                    notes: selectedQuote.notes,
-                  },
-                });
-              }
-            }
-            disabled={updateQuoteMutation.isPending}
-            sx={theming.getThemedButtonSx()}
-          >
-            {updateQuoteMutation.isPending ? 'Lagrer...' : 'Lagre endringer'}
+          <Button onClick={handleSaveEdit} variant="contained" disabled={updateQuoteMutation.isPending}>
+            {updateQuoteMutation.isPending ? 'Lagrer...' : 'Lagre'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Quick Action Menu */}
-      <Menu
-        anchorEl={quoteMenuAnchor?.element}
-        open={Boolean(quoteMenuAnchor)}
-        onClose={() => setQuoteMenuAnchor(null)}
-      >
-        <MenuItem
-          onClick={() => quoteMenuAnchor && handleQuoteAction('duplicate', quoteMenuAnchor.quote)}
-        >
-          <ContentCopy sx={{ mr: 1 }} /> Dupliser tilbud
-        </MenuItem>
-        <MenuItem
-          onClick={() => quoteMenuAnchor && handleQuoteAction('send', quoteMenuAnchor.quote)}
-          disabled={!quoteMenuAnchor?.quote.sentAt && quoteMenuAnchor?.quote.status === 'draft'}
-        >
-          <Send sx={{ mr: 1 }} /> {quoteMenuAnchor?.quote.sentAt ? 'Send på nytt' : 'Send tilbud'}
-        </MenuItem>
-        <MenuItem
-          onClick={() => quoteMenuAnchor && handleQuoteAction('chat', quoteMenuAnchor.quote)}
-        >
-          <Chat sx={{ mr: 1 }} /> Åpne chat med kunde
-        </MenuItem>
-        <Divider />
-        <MenuItem
-          onClick={() =>
-            quoteMenuAnchor && window.open(`/api/quotes/${quoteMenuAnchor.quote.id}/pdf`, ', '_blank')
-          }}
-        >
-          <GetApp sx={{ mr: 1 }} /> Last ned PDF
-        </MenuItem>
-        <Divider />
-        <MenuItem
-          onClick={() => quoteMenuAnchor && handleQuoteAction('delete', quoteMenuAnchor.quote)}
-          sx={{ color: 'error.main' }}>
-          <Delete sx={{ mr: 1 }} /> Slett tilbud
-        </MenuItem>
-      </Menu>
-
-      {/* Send/Resend Quote Dialog */}
-      <Dialog
-        open={sendDialogOpen}
-        onClose={() => setSendDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Email />
-            {selectedQuoteForAction?.sentAt ? 'Send tilbud på nytt' : 'Send tilbud til kunde'}
-          </Box>
-        </DialogTitle>
+      <Dialog open={convertDialogOpen && Boolean(selectedQuote)} onClose={() => setConvertDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Konverter tilbud til prosjekt</DialogTitle>
         <DialogContent>
-          {selectedQuoteForAction && ()
-            <Box sx={{ mt: 2 }}>
-              <Alert severity="info" sx={{ mb: 3 }}>
-                Tilbudet vil bli sendt til <strong>{selectedQuoteForAction.clientEmail}</strong> med
-                e-postsporing aktivert.
+          {selectedQuote ? (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Velg om tilbudet skal kobles til eksisterende prosjekt eller opprette nytt prosjekt.
+              </Typography>
+              <TextField
+                label="Eksisterende prosjekt-ID (valgfritt)"
+                value={linkProjectId}
+                onChange={(event) => setLinkProjectId(event.target.value)}
+                fullWidth
+              />
+              <Alert severity="info">
+                Hvis feltet er tomt opprettes et nytt prosjekt med data fra tilbudet.
               </Alert>
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConvertDialogOpen(false)}>Avbryt</Button>
+          <Button
+            onClick={handleConfirmConvert}
+            variant="contained"
+            disabled={linkProjectMutation.isPending}
+            startIcon={<LinkIcon />}
+          >
+            {linkProjectMutation.isPending ? 'Kobler...' : 'Fortsett'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-              <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Tilbudsdetaljer: </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Tilbud:</strong> {selectedQuoteForAction.quoteNumber}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Kunde:</strong> {selectedQuoteForAction.clientName}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Beløp:</strong> {formatCurrency(selectedQuoteForAction.totalAmount)}
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  <strong>Gyldig til:</strong> {formatDate(selectedQuoteForAction.validUntil)}
-                </Typography>
-              </Box>
-
-              {selectedQuoteForAction.sentAt && ()
-                <Alert severity="warning" sx={{ mt: 2 }}>
-                  Dette tilbudet ble sendt {formatDate(selectedQuoteForAction.sentAt)}. Kunden vil
-                  motta en ny e-post.
-                </Alert>
-              )}
-            </Box>
-          )}
+      <Dialog open={sendDialogOpen && Boolean(selectedQuoteForAction)} onClose={() => setSendDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Send tilbud på e-post</DialogTitle>
+        <DialogContent>
+          {selectedQuoteForAction ? (
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <Typography>
+                Send <strong>{selectedQuoteForAction.quoteNumber}</strong> til{' '}
+                <strong>{selectedQuoteForAction.clientEmail}</strong>?
+              </Typography>
+              <Alert severity="info">Tilbudet synkroniseres automatisk til Google Drive etter sending.</Alert>
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSendDialogOpen(false)}>Avbryt</Button>
           <Button
+            onClick={() => selectedQuoteForAction && sendQuoteMutation.mutate(selectedQuoteForAction)}
             variant="contained"
-            startIcon={<Send />}
-            onClick={() => {
-              if (selectedQuoteForAction) {
-                sendQuoteMutation.mutate({
-                  quoteId: selectedQuoteForAction.id,
-                  quote: selectedQuoteForAction,
-                });
-              }}
-            }
             disabled={sendQuoteMutation.isPending}
-            sx={theming.getThemedButtonSx()}
+            startIcon={<Send />}
           >
-            {sendQuoteMutation.isPending ? 'Sender...' : 'Send tilbud'}
+            {sendQuoteMutation.isPending ? 'Sender...' : 'Send nå'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Reminder Settings Dialog */}
+      <Dialog
+        open={fikenInvoiceDialogOpen && Boolean(selectedQuote)}
+        onClose={() => setFikenInvoiceDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Opprett Fiken-faktura</DialogTitle>
+        <DialogContent>
+          {selectedQuote ? (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2">
+                Opprett fakturautkast i Fiken for tilbud <strong>{selectedQuote.quoteNumber}</strong>.
+              </Typography>
+              <TextField
+                label="Inntektskonto"
+                value={selectedAccountCode}
+                onChange={(event) => setSelectedAccountCode(event.target.value)}
+                fullWidth
+              />
+              {accountCodeQuery.isFetching ? <LinearProgress /> : null}
+              {fikenError ? <Alert severity="error">{fikenError}</Alert> : null}
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFikenInvoiceDialogOpen(false)}>Senere</Button>
+          <Button
+            onClick={handleCreateFikenInvoice}
+            variant="contained"
+            disabled={fikenInvoiceCreating}
+          >
+            {fikenInvoiceCreating ? 'Oppretter...' : 'Opprett faktura'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {selectedProjectForHistory ? (
+        <ContractAmendmentHistory
+          open={amendmentHistoryOpen}
+          onClose={() => setAmendmentHistoryOpen(false)}
+          projectId={selectedProjectForHistory.id}
+          projectTitle={selectedProjectForHistory.title}
+        />
+      ) : null}
+
       <QuoteReminderSettings
         open={reminderSettingsOpen}
         onClose={() => setReminderSettingsOpen(false)}
         userId={user?.id}
       />
-
-      {/* Fiken Invoice Creation Dialog */}
-      <Dialog
-        open={fikenInvoiceDialogOpen}
-        onClose={() => !fikenInvoiceCreating && setFikenInvoiceDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <img
-              src="https://fiken.no/wp-content/themes/fiken/dist/images/fiken-logo.svg"
-              alt="Fiken"
-              style={{ height: 28 }} />
-            <Typography variant="h6">Opprett faktura i Fiken</Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          {selectedQuote && ()
-            <Box sx={{ mt: 2 }}>
-              <Alert severity="success" sx={{ mb: 3 }}>
-                🎉 Tilbudet er godkjent! Vil du opprette en faktura i Fiken for dette tilbudet?
-              </Alert>
-
-              {fikenError && ()
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {fikenError}
-                </Alert>
-              )}
-
-              <Paper sx={{ p: 2, bgcolor: 'background.default', mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Tilbudsdetaljer: </Typography>
-                <Stack spacing={1}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      Tilbudsnummer: </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {selectedQuote.quoteNumber}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      Kunde: </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {selectedQuote.clientName}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      E-post: </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {selectedQuote.clientEmail}
-                    </Typography>
-                  </Box>
-                  <Divider />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      Beløp (eks. mva): </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {formatCurrency(selectedQuote.totalAmount)}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="textSecondary">
-                      MVA (25%): </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {formatCurrency((parseFloat(selectedQuote.totalAmount) * 0.25).toString()}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="h6" color="primary">
-                      Total (inkl. mva): </Typography>
-                    <Typography variant="h6" color="primary">
-                      {formatCurrency((parseFloat(selectedQuote.totalAmount) * 1.25).toString()}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-
-              {/* Account Code Selection */}
-              <Paper sx={{ p: 2, bgcolor: 'background.default', mb: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Inntektskonto (norsk kontoplan): </Typography>
-                {accountCodeData ? ()
-                  <>
-                    <Alert severity="info" sx={{ mb: 2, fontSize: '0.875rem' }}>
-                      <strong>Anbefalt:</strong> {accountCodeData.accountCode} -{''}
-                      {accountCodeData.description}
-                      <br />
-                      <Typography variant="caption" color="textSecondary">
-                        Basert på: {accountCodeData.companyName} ({accountCodeData.businessType})
-                      </Typography>
-                    </Alert>
-                    <TextField
-                      fullWidth
-                      select
-                      label="Velg inntektskonto"
-                      value={selectedAccountCode}
-                      onChange={(e) => setSelectedAccountCode(e.target.value)}
-                      size="small"
-                      helperText="Velg korrekt inntektskonto i henhold til norsk kontoplan"
-                    >
-                      <MenuItem value="3000">3000 - Salgsinntekt tjenester (AS)</MenuItem>
-                      <MenuItem value="3100">3100 - Honorarinntekter (ENK)</MenuItem>
-                      <MenuItem value="3200">3200 - Konsulenthonorar</MenuItem>
-                      <MenuItem value="3400">3400 - Annen driftsinntekt</MenuItem>
-                    </TextField>
-                  </>
-                ) : ()
-                  <Typography variant="body2" color="textSecondary">
-                    Laster inn kontoinformasjon...
-                  </Typography>
-                )}
-              </Paper>
-
-              <Alert severity="info">
-                Fakturaen vil opprettes som utkast i Fiken. Du kan redigere den før sending.
-              </Alert>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFikenInvoiceDialogOpen(false)} disabled={fikenInvoiceCreating}>
-            Avbryt
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleCreateFikenInvoice}
-            disabled={fikenInvoiceCreating}
-            startIcon={fikenInvoiceCreating ? undefined : <ReceiptIcon />}
-            sx={theming.getThemedButtonSx()}
-          >
-            {fikenInvoiceCreating ? 'Oppretter faktura...' : 'Opprett faktura i Fiken'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Contract Amendment History Dialog */}
-      {selectedProjectForHistory && ()
-        <ContractAmendmentHistory
-          open={amendmentHistoryOpen}
-          onClose={() => {
-            setAmendmentHistoryOpen(false);
-            setSelectedProjectForHistory(null);
-          }
-          projectId={selectedProjectForHistory.id}
-          projectTitle={selectedProjectForHistory.title}
-        />
-      )}
     </Box>
   );
 }

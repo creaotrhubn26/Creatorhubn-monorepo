@@ -79,7 +79,7 @@ interface AIAnalyticsInsightsProps {
 }
 
 export default function AIAnalyticsInsights({
-  dateRange = '30daysAgo,',
+  dateRange = '30daysAgo',
   autoRefresh = true
 }: AIAnalyticsInsightsProps) {
   const [expandedInsight, setExpandedInsight] = useState<string | false>(false);
@@ -501,7 +501,9 @@ export default function AIAnalyticsInsights({
                   Top Recommendations:
                 </Typography>
                 <List dense>
-                  {report.recommendations.slice(0, 3).map((recommendation, index) => (
+                  {report.recommendations
+                    .slice(0, 3)
+                    .map((recommendation: string, index: number) => (
                     <ListItem key={index} sx={{ py: 0 }}>
                       <ListItemIcon>
                         <Lightbulb sx={{ color: '#ff6b35', fontSize: 16 }} />
@@ -511,7 +513,7 @@ export default function AIAnalyticsInsights({
                         sx={{ '& .MuiListItemText-primary': { color: '#ffffff', fontSize: '0.875rem' } }}
                       />
                     </ListItem>
-                  ))}
+                    ))}
                 </List>
               </Grid>
             </Grid>

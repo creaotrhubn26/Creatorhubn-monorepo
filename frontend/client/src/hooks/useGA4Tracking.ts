@@ -7,8 +7,8 @@
  *   trackEvent('button_click', { button_name: 'create_project' });
  */
 
-import { useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useCallback, useMemo } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import {
   trackEvent,
   trackPageView,
@@ -31,13 +31,13 @@ import {
   trackModalOpen,
   trackFormSubmission,
   initializeGA4Tracking
-} from '@/utils/ga4-client-tracking';
+} from '../utils/ga4-client-tracking';
 
 export function useGA4Tracking() {
   const auth = useAuth();
-  const userId = auth?.state?.user?.id;
-  const userEmail = auth?.state?.user?.email;
-  const profession = auth?.state?.user?.profession || 'unknown';
+  const userId = auth.user?.id;
+  const userEmail = auth.user?.email;
+  const profession = auth.user?.profession || 'unknown';
 
   // ============================================================================
   // USER LIFECYCLE
@@ -240,7 +240,7 @@ export function useGA4Tracking() {
     }
   }, [userId, profession]);
 
-  return {
+  return useMemo(() => ({
     // User lifecycle
     trackUserRegistration,
     trackUserLogin,
@@ -282,6 +282,27 @@ export function useGA4Tracking() {
     userId,
     userEmail,
     profession
-  };
+  }), [
+    trackUserRegistration,
+    trackUserLogin,
+    trackOnboarding,
+    trackOnboardingFinished,
+    trackSubscriptionStart,
+    trackSubscriptionComplete,
+    trackProject,
+    trackDashboard,
+    trackFeature,
+    trackWorkspaceConnect,
+    trackDriveUpload,
+    trackButton,
+    trackModal,
+    trackForm,
+    trackPhotographerGallery,
+    trackVideoEditing,
+    trackCustomEvent,
+    initializeTracking,
+    userId,
+    userEmail,
+    profession
+  ]);
 }
-

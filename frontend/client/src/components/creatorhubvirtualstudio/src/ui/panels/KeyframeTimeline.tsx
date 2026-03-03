@@ -198,8 +198,9 @@ function KeyframeDiamond({
         backgroundColor: selected ? '#f44336' : '#2196f3',
         border: `2px solid ${selected ? '#fff' : '#1565c0'}`,
         cursor: isDragging ? 'grabbing' : 'grab',
-        zIndex: , selected ? 10 : 1,
-        transition: isDragging ? 'none' : 'all 0.1s','&:hover': {
+        zIndex: selected ? 10 : 1,
+        transition: isDragging ? 'none' : 'all 0.1s',
+        '&:hover': {
           transform: 'translateY(-50%) rotate(45deg) scale(1.2)',
           boxShadow: '0 0 8px rgba(33, 150, 243, 0.5)',
         }}}
@@ -1023,4 +1024,3 @@ export function KeyframeTimeline({ clipId, height = 300 }: KeyframeTimelineProps
 }
 
 export default KeyframeTimeline;
-

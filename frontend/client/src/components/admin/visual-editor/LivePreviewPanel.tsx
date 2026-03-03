@@ -50,6 +50,7 @@ import {
   Close,
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
 import html2canvas from 'html2canvas';
 import { AccessibilityChecker } from './AccessibilityChecker';
 
@@ -176,12 +177,18 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
       };
 
       // Track interactions
-      win.document.addEventListener('click', (e: unknown) => {
-        addInteraction('click', e.target.tagName, e);
+      win.document.addEventListener('click', (e: Event) => {
+        const target = e.target;
+        if (target instanceof HTMLElement) {
+          addInteraction('click', target.tagName, e);
+        }
       });
 
-      win.document.addEventListener('input', (e: unknown) => {
-        addInteraction('input', e.target.tagName, e);
+      win.document.addEventListener('input', (e: Event) => {
+        const target = e.target;
+        if (target instanceof HTMLElement) {
+          addInteraction('input', target.tagName, e);
+        }
       });
     }
 
@@ -351,7 +358,7 @@ export const LivePreviewPanel: React.FC<LivePreviewPanelProps> = ({ code, mode =
     return html;
   };
 
-  const generateElementHTML = (element: unknown): string => {
+  const generateElementHTML = (element: EditorElement): string => {
     const baseStyle = `
       left: ${element.x}px;
       top: ${element.y}px;
@@ -667,7 +674,7 @@ document.getElementById('${element.id}')?.addEventListener('click', function(e) 
           {dimensions.width} × {dimensions.height}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          {state.elements.length} element{state.elements.length !== 1 ? 's' : ''}
+          {state.elements.length} element{state.elements.length !== 1 ? 's' : ', '}
         </Typography>
       </Box>
 

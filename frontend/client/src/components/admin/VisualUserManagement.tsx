@@ -1,73 +1,52 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import { useMemo, useState, type FC } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Grid,
-  Alert,
   Chip,
-  Badge,
-  Button,
-  IconButton,
-  Tooltip,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemText,
+  MenuItem,
+  Select,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  LinearProgress,
-  Switch,
-  FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemSecondaryAction,
-  Avatar,
-  Divider,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import {
-  People,
-  Person,
-  Settings,
   CheckCircle,
-  Error,
-  Warning,
-  Info,
-  ExpandMore,
-  Visibility,
   Edit,
-  Security,
-  Star,
-  PhotoCamera as PhotoCameraAltFront,
-  Videocam as Videocamcam,
-  MusicNote as MusicNoteNote,
-  Business as DirectionsBusiness,
-  Storage,
-  CloudSync,
-  Assessment,
-  Schedule,
-  ToggleOn,
-  ToggleOff,
+  Error,
+  Person,
   Refresh,
-  Add,
-  Search,
-  FilterList as FilterListList,
+  Security,
+  Warning,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
-interface User {
+interface UserRecord {
   id: string;
   email: string;
   firstName: string;
@@ -76,11 +55,11 @@ interface User {
   packageId: string;
   packageTier: string;
   activeFeatures: string[];
-  lastActivity: Date;
+  lastActivity: string;
   status: 'active' | 'inactive' | 'suspended';
   onboardingCompleted: boolean;
-  trialExpiresAt?: Date;
-  subscriptionStatus: 'trial' | 'active' | 'expired' | 'cancelled'
+  trialExpiresAt?: string;
+  subscriptionStatus: 'trial' | 'active' | 'expired' | 'cancelled';
 }
 
 interface UserPackage {
@@ -91,7 +70,7 @@ interface UserPackage {
   features: string[];
   monthlyPrice: number;
   maxProjects: number;
-  maxStorage: number
+  maxStorage: number;
 }
 
 interface FeatureFlag {
@@ -100,720 +79,701 @@ interface FeatureFlag {
   enabled: boolean;
   rolloutPercentage: number;
   targetProfessions: string[];
-  businessCritical: boolean
+  businessCritical: boolean;
+}
+
+interface AccessAnalytics {
+  activeUsers: number;
+  failedLogins24h: number;
+  mfaEnabledUsers: number;
+  avgSessionMinutes: number;
 }
 
 interface ServiceValidationResult {
   service: string;
   status: 'configured' | 'missing' | 'error';
   details: string;
-  dependencies: string[]
+  dependencies: string[];
 }
 
-const VisualUserManagement: React.FC = () => {
-  const [selectedUser, setSelectedUser] = useState<Person | null>(null);
-  const [showUserDialog, setShowUserDialog] = useState(false);
-  const [showValidationDialog, setShowValidationDialog] = useState(false);
-  const [validationResults, setValidationResults] = useState<ServiceValidationResult[]>([]);
-  const [filterProfession, setFilterProfession] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-
-  const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
-
-  // Hent brukerdata
-  const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['/api/admin/users,', ],
-    refetchInterval: 6000,
-});
-
-  // Hent pakker
-  const { data: packagesData, isLoading: packagesLoading } = useQuery({
-    queryKey: ['/api/admin/user-packages', ],
-    refetchInterval: 30000,
-});
-
-  // Hent feature flags
-  const { data: featureFlagsData, isLoading: flagsLoading } = useQuery({
-    queryKey: ['/api/admin/feature-flags', ],
-    refetchInterval: 30000,
-});
-
-  // Hent user analytics
-  const { data: analyticsData } = useQuery({
-    queryKey: ['/api/admin/user-access-analytics', ],
-    refetchInterval: 6000,
-});
-
-  // Mutation for å oppdatere feature flags
-  const updateFeatureMutation = useMutation({
-    mutationFn: async ({
-      flagd,
-      enabled,
-      rolloutPercentage,
-  }: {
-      flagId: string;
-      enabled?: boolean;
-      rolloutPercentage?: number;
-}) => {
-      const response = await fetch(`/api/admin/feature-flags/${flagId}/status`, {
-        method: 'PATC',
-        headers: { , 'Content-Type': 'application/json'},
-        body: JSON.stringify({ enabled, rolloutPercentage }),
-    });
-      if (!response.ok) throw new Error('Failed to update feature flag');
-      return response.json();
+const fallbackUsers: UserRecord[] = [
+  {
+    id: 'user-1',
+    email: 'daniel@creatorhub.no',
+    firstName: 'Daniel',
+    lastName: 'Normann',
+    profession: 'photographer',
+    packageId: 'photo-pro',
+    packageTier: 'professional',
+    activeFeatures: ['universal-showcase-premium', 'ai-content-enhancement', 'real-time-collaboration'],
+    lastActivity: '2026-02-28T10:20:00Z',
+    status: 'active',
+    onboardingCompleted: true,
+    subscriptionStatus: 'active',
   },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/feature-flags', ]});
+  {
+    id: 'user-2',
+    email: 'studio@storyarc.no',
+    firstName: 'Lina',
+    lastName: 'Berg',
+    profession: 'videographer',
+    packageId: 'video-studio',
+    packageTier: 'enterprise',
+    activeFeatures: ['story-arc-studio', 'script-manager'],
+    lastActivity: '2026-02-27T19:05:00Z',
+    status: 'active',
+    onboardingCompleted: true,
+    subscriptionStatus: 'active',
   },
-});
+  {
+    id: 'user-3',
+    email: 'trial@creatorhub.no',
+    firstName: 'Maja',
+    lastName: 'Holt',
+    profession: 'music_producer',
+    packageId: 'music-trial',
+    packageTier: 'starter',
+    activeFeatures: ['chat-widget'],
+    lastActivity: '2026-02-20T09:00:00Z',
+    status: 'inactive',
+    onboardingCompleted: false,
+    trialExpiresAt: '2026-03-10T00:00:00Z',
+    subscriptionStatus: 'trial',
+  },
+];
 
-  const getProfessionIcon = (profession: string) => {
-    const icons = {
-      photographer: <PhotoCameraFront sx={{ color: '#2e7d32'}} />,
-      videographer: <Videocam sx={{ color: '#1565c0'}} />,
-      music_producer: <MusicNote sx={{ color: '#7b1fa2'}} />,
-      vendor: <Business sx={{ color: '#f57c00'}} />,
+const fallbackPackages: UserPackage[] = [
+  {
+    id: 'photo-pro',
+    displayName: 'Photo Professional',
+    profession: 'photographer',
+    tier: 'professional',
+    features: ['universal-showcase-premium', 'ai-content-enhancement'],
+    monthlyPrice: 799,
+    maxProjects: 80,
+    maxStorage: 200,
+  },
+  {
+    id: 'video-studio',
+    displayName: 'Video Studio',
+    profession: 'videographer',
+    tier: 'enterprise',
+    features: ['story-arc-studio', 'script-manager', 'video-ai-enhancement'],
+    monthlyPrice: 1499,
+    maxProjects: 250,
+    maxStorage: 2000,
+  },
+  {
+    id: 'music-trial',
+    displayName: 'Music Trial',
+    profession: 'music_producer',
+    tier: 'starter',
+    features: ['chat-widget'],
+    monthlyPrice: 0,
+    maxProjects: 10,
+    maxStorage: 20,
+  },
+];
+
+const fallbackFeatureFlags: FeatureFlag[] = [
+  {
+    id: 'story-arc-studio',
+    name: 'Story Arc Studio',
+    enabled: true,
+    rolloutPercentage: 100,
+    targetProfessions: ['videographer', 'photographer'],
+    businessCritical: true,
+  },
+  {
+    id: 'script-manager',
+    name: 'Script Manager',
+    enabled: true,
+    rolloutPercentage: 80,
+    targetProfessions: ['videographer'],
+    businessCritical: false,
+  },
+  {
+    id: 'ai-content-enhancement',
+    name: 'AI Content Enhancement',
+    enabled: true,
+    rolloutPercentage: 100,
+    targetProfessions: ['photographer', 'videographer', 'music_producer'],
+    businessCritical: false,
+  },
+];
+
+const fallbackAnalytics: AccessAnalytics = {
+  activeUsers: 2,
+  failedLogins24h: 1,
+  mfaEnabledUsers: 1,
+  avgSessionMinutes: 32,
+};
+
+function tabA11yProps(index: number) {
+  return {
+    id: `visual-user-management-tab-${index}`,
+    'aria-controls': `visual-user-management-tabpanel-${index}`,
   };
-    return icons[profession] || theming.getThemedIcon('person');
-};
+}
 
-  const getProfessionColor = (profession: string) => {
-    const colors = {
-      photographer: '#2e7d30',
-      videographer: '#1565c0',
-      music_producer: '#7b1fa0',
-      vendor: '#f57c00',
-  };
-    return colors[profession] || '#757575';
-};
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
+  return (
+    <Box
+      role="tabpanel"
+      hidden={value !== index}
+      id={`visual-user-management-tabpanel-${index}`}
+      aria-labelledby={`visual-user-management-tab-${index}`}
+      sx={{ pt: 2 }}
+    >
+      {value === index ? children : null}
+    </Box>
+  );
+}
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      active: '#4caf50',
-      inactive: '#ff9800',
-      suspended: '#f44330',
-      trial: '#2196f0',
-      expired: '#f44330',
-      cancelled: '#9e9e90',
-  };
-    return colors[status] || '#757575';
-};
+async function safeApiRequest<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const response = await apiRequest(url);
+    return response as T;
+  } catch {
+    return fallback;
+  }
+}
 
-  const validateUserServices = async (user: User) => {
-    setValidationResults([]);
-    setShowValidationDialog(true);
+function getServiceValidation(user: UserRecord, packages: UserPackage[], flags: FeatureFlag[]): ServiceValidationResult[] {
+  const selectedPackage = packages.find((entry) => entry.id === user.packageId);
+  const criticalFlagFailures = flags.filter(
+    (flag) => flag.businessCritical && !flag.enabled && flag.targetProfessions.includes(user.profession),
+  );
 
-    // Mock service validation - i ekte implementasjon ville dette sjekke faktiske tjenester
-    const mockValidation: ServiceValidationResult[] = [
-      {
-        service: 'Google Drive Integration',
-        status: 'configured',
-        details: 'User has active Google Drive connection with proper permissions',
-        dependencies: ['google-oauth','workload-identity'],
-    },
-      {
-        service: 'Showcase Premium Features',
-        status: user.activeFeatures.includes('universal-showcase-premium')
-          ? 'configured'
-          : 'missing',
-        details: user.activeFeatures.includes('universal-showcase-premium')
-          ? 'Premium showcase features active'
-          : 'User package does not include premium showcase',
-        dependencies: ['google-drive-integration','cdn-access'],
-    },
-      {
-        service: 'Real-time Collaboration',
-        status: 'configured',
-        details: 'WebSocket infrastructure and real-time features operational',
-        dependencies: ['websocket-server','conflict-resolution'],
-    },
-      {
-        service: 'Payment Processing',
-        status: user.profession === 'vendor' ? 'configured' : 'missing',
-        details: user.profession === 'vendor'
-            ? 'Stripe integration active for vendor payments'
-            : 'Not applicable for user profession',
-        dependencies: ['stripe-integration','norwegian-vat'],
-    },
-      {
-        service: 'AI Content Enhancement',
-        status: user.activeFeatures.includes('ai-content-enhancement') ? 'configured' : 'missing',
-        details: user.activeFeatures.includes('ai-content-enhancement')
-          ? 'CreatorBot AI assistance available'
-          : 'AI features not included in user package',
-        dependencies: ['openai-api','content-analysis'],
-    },
-    ];
-
-    setValidationResults(mockValidation);
-};
-
-  // Mock brukerdata hvis ikke tilgjengelig
-  const mockUsers: User[] = [
+  return [
     {
-      id: ', ',
-      email: 'daniel@creatorhubn.com',
-      firstName: 'Daniel',
-      lastName: 'Admin',
-      profession: 'photographer',
-      packageId: 'photographer-professional',
-      packageTier: 'professional',
-      activeFeatures: [
-        'universal-showcase-premium', 'real-time-collaboration', 'ai-content-enhancement',
-      ],
-      lastActivity: new Date(),
-      status: 'active',
-      onboardingCompleted: true,
-      subscriptionStatus: 'active',
-  },
+      service: 'Package Provisioning',
+      status: selectedPackage ? 'configured' : 'missing',
+      details: selectedPackage
+        ? `Package ${selectedPackage.displayName} attached to account.`
+        : 'User has packageId without matching package definition.',
+      dependencies: ['package-registry', 'billing-mapper'],
+    },
     {
-      id: ', ',
-      email: 'fotograf@eksempel.no',
-      firstName: 'Lars',
-      lastName: 'Olsen',
-      profession: 'photographer',
-      packageId: 'photographer-basic',
-      packageTier: 'basic',
-      activeFeatures: ['project-creation','basic-showcase'],
-      lastActivity: new Date(Date.now() - 2 * 60 * 60 * 100),
-      status: 'active',
-      onboardingCompleted: true,
-      trialExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 100),
-      subscriptionStatus: 'trial',
-  },
+      service: 'Feature Entitlement',
+      status: user.activeFeatures.length > 0 ? 'configured' : 'missing',
+      details:
+        user.activeFeatures.length > 0
+          ? `${user.activeFeatures.length} active feature entitlements detected.`
+          : 'No feature entitlements mapped to this account.',
+      dependencies: ['feature-flag-service', 'entitlement-resolver'],
+    },
     {
-      id: ', ',
-      email: 'video@produksjon.no',
-      firstName: 'Maria',
-      lastName: 'Hansen',
-      profession: 'videographer',
-      packageId: 'videographer-professional',
-      packageTier: 'professional',
-      activeFeatures: ['unlimited-projects','video-showcase','large-file-support'],
-      lastActivity: new Date(Date.now() - 24 * 60 * 60 * 100),
-      status: 'active',
-      onboardingCompleted: false,
-      subscriptionStatus: 'trial',
-  },
+      service: 'Critical Feature Flags',
+      status: criticalFlagFailures.length === 0 ? 'configured' : 'error',
+      details:
+        criticalFlagFailures.length === 0
+          ? 'All required business-critical flags are enabled.'
+          : `Missing critical flags: ${criticalFlagFailures.map((flag) => flag.id).join(', ')}`,
+      dependencies: ['flag-distribution', 'rollout-checker'],
+    },
+    {
+      service: 'Onboarding State',
+      status: user.onboardingCompleted ? 'configured' : 'missing',
+      details: user.onboardingCompleted
+        ? 'User completed onboarding flow.'
+        : 'User has not completed onboarding flow.',
+      dependencies: ['onboarding-tracker'],
+    },
+    {
+      service: 'Subscription State',
+      status: user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trial' ? 'configured' : 'error',
+      details: `Subscription status is ${user.subscriptionStatus}.`,
+      dependencies: ['subscription-service', 'payment-provider'],
+    },
   ];
-
-  const displayUsers = users || mockUsers;
-  const displayPackages = packagesData?.userPackages || [];
-  const displayFeatureFlags = featureFlagsData?.featureFlags || [];
-
-  // Filter brukere
-  const filteredUsers = displayUsers.filter((user) => {
-    const professionMatch = filterProfession === 'all' || user.profession === filterProfession;
-    const statusMatch = filterStatus === 'all' || user.status === filterStatus;
-    return professionMatch && statusMatch;
-});
-
-  if (usersLoading || packagesLoading || flagsLoading) {
-    return (
-      <Box sx={{ p:  3 }}>
-        <LinearProgress sx={{ mb:  2 }} />
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Laster brukeradministrasjon...
-        </Typography>
-      </Box>
-    );
 }
+
+function formatProfessionLabel(profession: string): string {
+  return profession.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getStatusColor(status: UserRecord['status'] | UserRecord['subscriptionStatus']) {
+  if (status === 'active' || status === 'trial') {
+    return 'success';
+  }
+
+  if (status === 'inactive' || status === 'expired') {
+    return 'warning';
+  }
+
+  return 'default';
+}
+
+const VisualUserManagement: FC = () => {
+  const queryClient = useQueryClient();
+  const [tabValue, setTabValue] = useState(0);
+  const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [professionFilter, setProfessionFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
+
+  const usersQuery = useQuery({
+    queryKey: ['/api/admin/users'],
+    queryFn: async () => safeApiRequest<UserRecord[]>('/api/admin/users', fallbackUsers),
+    refetchInterval: 30000,
+  });
+
+  const packagesQuery = useQuery({
+    queryKey: ['/api/admin/user-packages'],
+    queryFn: async () => safeApiRequest<UserPackage[]>('/api/admin/user-packages', fallbackPackages),
+    refetchInterval: 60000,
+  });
+
+  const featureFlagsQuery = useQuery({
+    queryKey: ['/api/admin/feature-flags'],
+    queryFn: async () => safeApiRequest<FeatureFlag[]>('/api/admin/feature-flags', fallbackFeatureFlags),
+    refetchInterval: 30000,
+  });
+
+  const analyticsQuery = useQuery({
+    queryKey: ['/api/admin/user-access-analytics'],
+    queryFn: async () => safeApiRequest<AccessAnalytics>('/api/admin/user-access-analytics', fallbackAnalytics),
+    refetchInterval: 30000,
+  });
+
+  const users = usersQuery.data ?? fallbackUsers;
+  const packages = packagesQuery.data ?? fallbackPackages;
+  const featureFlags = featureFlagsQuery.data ?? fallbackFeatureFlags;
+  const analytics = analyticsQuery.data ?? fallbackAnalytics;
+
+  const updateFeatureFlagMutation = useMutation({
+    mutationFn: async ({ flagId, enabled }: { flagId: string; enabled: boolean }) => {
+      await apiRequest(`/api/admin/feature-flags/${encodeURIComponent(flagId)}/status`, {
+        method: 'PATCH',
+        body: { enabled },
+      });
+    },
+    onSuccess: async () => {
+      setOperationMessage('Feature flag updated successfully.');
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/feature-flags'] });
+    },
+    onError: () => {
+      setOperationMessage('Could not update feature flag.');
+    },
+  });
+
+  const updateUserStatusMutation = useMutation({
+    mutationFn: async ({ userId, status }: { userId: string; status: UserRecord['status'] }) => {
+      await apiRequest(`/api/admin/users/${encodeURIComponent(userId)}/status`, {
+        method: 'PATCH',
+        body: { status },
+      });
+    },
+    onSuccess: async () => {
+      setOperationMessage('User status updated successfully.');
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+    },
+    onError: () => {
+      setOperationMessage('Could not update user status.');
+    },
+  });
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 ||
+        user.firstName.toLowerCase().includes(normalizedSearch) ||
+        user.lastName.toLowerCase().includes(normalizedSearch) ||
+        user.email.toLowerCase().includes(normalizedSearch);
+
+      const matchesProfession = professionFilter === 'all' || user.profession === professionFilter;
+      const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
+
+      return matchesSearch && matchesProfession && matchesStatus;
+    });
+  }, [users, searchTerm, professionFilter, statusFilter]);
+
+  const professionOptions = useMemo(() => {
+    return Array.from(new Set(users.map((user) => user.profession))).sort((left, right) => left.localeCompare(right));
+  }, [users]);
+
+  const isLoading = usersQuery.isLoading || packagesQuery.isLoading || featureFlagsQuery.isLoading || analyticsQuery.isLoading;
+
+  const selectedUserValidation = useMemo(() => {
+    if (!selectedUser) {
+      return [] as ServiceValidationResult[];
+    }
+
+    return getServiceValidation(selectedUser, packages, featureFlags);
+  }, [selectedUser, packages, featureFlags]);
+
+  const handleRefresh = async () => {
+    await Promise.all([usersQuery.refetch(), packagesQuery.refetch(), featureFlagsQuery.refetch(), analyticsQuery.refetch()]);
+  };
+
+  const openUserDialog = (user: UserRecord) => {
+    setSelectedUser(user);
+    setUserDialogOpen(true);
+  };
+
+  const openValidationDialog = (user: UserRecord) => {
+    setSelectedUser(user);
+    setValidationDialogOpen(true);
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box sx={{ mb:  4 }}>
-        <Typography variant="h4"
-          gutterBottom
-          sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
-          <People sx={{ fontSize: '2rem', color: '#ff8c00'}} />
-          Visuell Brukeradministrasjon
+    <Box sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
+        <Typography variant="h5" fontWeight={700}>
+          Visual User Management
         </Typography>
-        <Typography variant="body1" color="text.secondary" sx={{ mb:  2 }}>
-          Administrer brukere, pakker og tjenester med visuell status-validering
-        </Typography>
+        <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+          Refresh
+        </Button>
+      </Stack>
 
-        <Box
-          sx={{
-            display: 'flex',
-            gap:  2,
-            alignItems: 'center',
-            flexWrap: 'wrap'}}
+      {operationMessage ? (
+        <Alert
+          severity={operationMessage.includes('successfully') ? 'success' : 'warning'}
+          sx={{ mt: 2 }}
+          onClose={() => setOperationMessage(null)}
         >
-          <Button variant="contained"
-            startIcon={theming.getThemedIcon('refresh')}
-            onClick={() => queryClient.invalidateQueries()}
-            sx={{
-              backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67e00'}}}
-          >
-            Oppdater data
-          </Button>
+          {operationMessage}
+        </Alert>
+      ) : null}
 
-          <FormControlLabel
-            control={
-              <Switch
-                value={filterProfession}
-                onChange={(e) => setFilterProfession(e.target.value)}
-              />
-          }
-            label="Filter profession"
-          />
+      {isLoading ? <LinearProgress sx={{ mt: 2 }} /> : null}
 
-          <FormControlLabel
-            control={
-              <Switch value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} />
-          }
-            label="Filter status"
-          />
-        </Box>
-      </Box>
-
-      {/* Brukerstatistikk Cards */}
-      <Grid container spacing={3}, sx={{ mb:  4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#e8f5e0', textAlign: 'center',  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <People sx={{ fontSize:  40, color: '#4caf50', mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#4caf50', fontWeight: 600}}>
-                {analyticsData?.totalUsers || displayUsers.length}
-              </Typography>
+      <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
               <Typography variant="body2" color="text.secondary">
-                Totale Brukere
+                Total Users
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {users.length}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#e3f2fd', textAlign: 'center',  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <CheckCircle sx={{ fontSize:  40, color: '#2196f0', mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#2196f0', fontWeight: 600}}>
-                {analyticsData?.activeUsers ||
-                  displayUsers.filter((u) => u.status === 'active').length}
-              </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
               <Typography variant="body2" color="text.secondary">
-                Aktive Brukere
+                Active Users
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {analytics.activeUsers}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#fff3e0', textAlign: 'center',  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Star sx={{ fontSize:  40, color: '#ff9800', mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#ff9800', fontWeight: 600}}>
-                {displayUsers.filter((u) => u.subscriptionStatus === 'trial').length}
-              </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
               <Typography variant="body2" color="text.secondary">
-                Trial Brukere
+                Failed Logins (24h)
+              </Typography>
+              <Typography variant="h5" fontWeight={700} color={analytics.failedLogins24h > 0 ? 'warning.main' : 'text.primary'}>
+                {analytics.failedLogins24h}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#f3e5f0', textAlign: 'center',  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Security sx={{ fontSize:  40, color: '#9c27b0', mb:  1 }} />
-              <Typography variant="h4" sx={{  color: '#9c27b0', fontWeight: 600}}>
-                {analyticsData?.authenticationMetrics?.successRate || 98.5}%
-              </Typography>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
               <Typography variant="body2" color="text.secondary">
-                Auth Success Rate
+                Avg Session (min)
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {analytics.avgSessionMinutes}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Brukertabell */}
-      <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6"
-            gutterBottom
-            sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            {theming.getThemedIcon('assessment')}
-            Bruker- og Tjenestestatus
-          </Typography>
+      <Box sx={{ mt: 3 }}>
+        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)}>
+          <Tab label="Users" {...tabA11yProps(0)} />
+          <Tab label="Feature Flags" {...tabA11yProps(1)} />
+          <Tab label="Security" icon={<Security />} iconPosition="start" {...tabA11yProps(2)} />
+        </Tabs>
 
-          <TableContainer component={Paper} variant="outlined">
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Bruker</TableCell>
-                  <TableCell>Profesjon</TableCell>
-                  <TableCell>Pakke</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Aktive Features</TableCell>
-                  <TableCell>Sist Aktiv</TableCell>
-                  <TableCell>Handlinger</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                        <Avatar
-                          sx={{
-                            backgroundColor: getProfessionColor(user.profession)}}
-                        >
-                          {getProfessionIcon(user.profession)}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="body2" sx={{ fontWeight: 600}>
-                            {user.firstName} {user.lastName}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {user.email}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </TableCell>
-
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        label={user.profession}
-                        sx={{
-                          backgroundColor: getProfessionColor(user.profession),
-                          color: 'white',
-                          textTransform: 'capitalize'}}
-                      />
-                    </TableCell>
-
-                    <TableCell>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 600}>
-                          {user.packageTier}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {user.packageId}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-
-                    <TableCell>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap:  1}}
-                      >
-                        <Chip
-                          size="small"
-                          label={user.status}
-                          sx={{
-                            backgroundColor: getStatusColor(user.status),
-                            color: 'white'}}
-                        />
-                        <Chip
-                          size="small"
-                          label={user.subscriptionStatus}
-                          variant="outlined"
-                          sx={{
-                            borderColor: getStatusColor(user.subscriptionStatus),
-                            color: getStatusColor(user.subscriptionStatus)}}
-                        />
-                      </Box>
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge badgeContent={user.activeFeatures.length} color="primary">
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            gap: 0.5,
-                            maxWidth: 20}}
-                        >
-                          {user.activeFeatures.slice(0, 2).map((feature) => (
-                            <Chip
-                              key={feature}
-                              size="small"
-                              label={feature.replace(/-/g, '')}
-                              variant="outlined"
-                              sx={{ fontSize: '0.6rem'}}
-                            />
-                          ))}
-                          {user.activeFeatures.length > 2 && (
-                            <Chip
-                              size="small"
-                              label={`+${user.activeFeatures.length - 2}`}
-                              variant="outlined"
-                              sx={{ fontSize: '0.6rem'}}
-                            />
-                          )}
-                        </Box>
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography variant="body2">
-                        {new Date(user.lastActivity).toLocaleDateString('no-NO')}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(user.lastActivity).toLocaleTimeString('no-NO')}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      <Box sx={{ display: 'flex', gap:  1 }}>
-                        <Tooltip title="Se brukerdetaljer">
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setSelectedUser(user);
-                              setShowUserDialog(true);
-                          }}
-                          >
-                            {theming.getThemedIcon('visibility')}
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Valider tjenester">
-                          <IconButton
-                            size="small"
-                            onClick={() => validateUserServices(user)}
-                            sx={{ color: '#ff8c00'}}
-                          >
-                            {theming.getThemedIcon('settings')}
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
+        <TabPanel value={tabValue} index={0}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <TextField
+              label="Search users"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              fullWidth
+            />
+            <FormControl sx={{ minWidth: 200 }}>
+              <InputLabel id="user-profession-filter">Profession</InputLabel>
+              <Select
+                labelId="user-profession-filter"
+                label="Profession"
+                value={professionFilter}
+                onChange={(event) => setProfessionFilter(event.target.value)}
+              >
+                <MenuItem value="all">All</MenuItem>
+                {professionOptions.map((profession) => (
+                  <MenuItem key={profession} value={profession}>
+                    {formatProfessionLabel(profession)}
+                  </MenuItem>
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </CardContent>
-      </Card>
+              </Select>
+            </FormControl>
+            <FormControl sx={{ minWidth: 200 }}>
+              <InputLabel id="user-status-filter">Status</InputLabel>
+              <Select
+                labelId="user-status-filter"
+                label="Status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <MenuItem value="all">All</MenuItem>
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="inactive">Inactive</MenuItem>
+                <MenuItem value="suspended">Suspended</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
 
-      {/* Feature Flags Management */}
-      <Card sx={theming.getThemedCardSx()}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6"
-            gutterBottom
-            sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            <ToggleOn />
-            Feature Flag Management
-          </Typography>
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Profession</TableCell>
+                    <TableCell>Plan</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Subscription</TableCell>
+                    <TableCell>Features</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id} hover>
+                      <TableCell>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <Avatar>
+                            <Person />
+                          </Avatar>
+                          <Box>
+                            <Typography fontWeight={600}>
+                              {user.firstName} {user.lastName}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {user.email}
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={formatProfessionLabel(user.profession)} variant="outlined" />
+                      </TableCell>
+                      <TableCell>{user.packageTier}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={user.status} color={getStatusColor(user.status)} />
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={user.subscriptionStatus} color={getStatusColor(user.subscriptionStatus)} />
+                      </TableCell>
+                      <TableCell>{user.activeFeatures.length}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1}>
+                          <Tooltip title="Open user details">
+                            <Button size="small" variant="outlined" startIcon={<Edit />} onClick={() => openUserDialog(user)}>
+                              Edit
+                            </Button>
+                          </Tooltip>
+                          <Tooltip title="Validate service wiring">
+                            <Button size="small" variant="outlined" onClick={() => openValidationDialog(user)}>
+                              Validate
+                            </Button>
+                          </Tooltip>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() =>
+                              updateUserStatusMutation.mutate({
+                                userId: user.id,
+                                status: user.status === 'suspended' ? 'active' : 'suspended',
+                              })
+                            }
+                          >
+                            {user.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
+                          </Button>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-          {displayFeatureFlags.map((flag) => (
-            <Accordion key={flag.id}, sx={{ mb:  1 }}>
-              <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap:  2,
-                    width: '100%'}}
-                >
-                  <Switch
-                    checked={flag.enabled}
-                    onChange={(e) =>
-                      updateFeatureMutation.mutate({
-                        flagId: flag.d,
-                        enabled: e.target.checked,
-                    })
-                  }
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <Typography variant="body1" sx={{ fontWeight: 600}>
-                    {flag.name}
-                  </Typography>
-                  <Box sx={{ ml: 'auto', display: 'flex', gap:  1 }}>
-                    <Chip
-                      size="small"
-                      label={`${flag.rolloutPercentage}%`}
-                      sx={{ backgroundColor: '#2196f0', color: 'white'}}
-                    />
-                    {flag.businessCritical && (
-                      <Chip
-                        size="small"
-                        label="Critical"
-                        sx={{ backgroundColor: '#f44330', color: 'white'}}
+        <TabPanel value={tabValue} index={1}>
+          <Card>
+            <CardContent>
+              <List disablePadding>
+                {featureFlags.map((flag) => (
+                  <ListItem
+                    key={flag.id}
+                    divider
+                    secondaryAction={
+                      <Switch
+                        checked={flag.enabled}
+                        onChange={(event) =>
+                          updateFeatureFlagMutation.mutate({
+                            flagId: flag.id,
+                            enabled: event.target.checked,
+                          })
+                        }
                       />
-                    )}
-                  </Box>
-                </Box>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Target Professions: </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                      {flag.targetProfessions.map((prof) => (
-                        <Chip
-                          key={prof}
-                          size="small"
-                          label={prof}
-                          sx={{
-                            backgroundColor: getProfessionColor(prof),
-                            color: 'white'}}
-                        />
-                      ))}
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Rollout Percentage: </Typography>
-                    <LinearProgress
-                      variant="determinate"
-                      value={flag.rolloutPercentage}
-                      sx={{ height:  8, borderRadius:  4 }}
+                    }
+                  >
+                    <ListItemAvatar>
+                      <Avatar>{flag.businessCritical ? <Warning /> : <CheckCircle />}</Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={flag.name}
+                      secondary={
+                        <>
+                          <Typography variant="caption" component="span" display="block">
+                            ID: {flag.id} · Rollout: {flag.rolloutPercentage}%
+                          </Typography>
+                          <Typography variant="caption" component="span" display="block">
+                            Target professions: {flag.targetProfessions.map(formatProfessionLabel).join(', ')}
+                          </Typography>
+                        </>
+                      }
                     />
-                  </Grid>
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-        </CardContent>
-      </Card>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-      {/* User Details Dialog */}
-      <Dialog
-        open={showUserDialog}
-        onClose={() => setShowUserDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          Brukerdetaljer: {selectedUser?.firstName} {selectedUser?.lastName}
-        </DialogTitle>
+        <TabPanel value={tabValue} index={2}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Security Posture
+                  </Typography>
+                  <Stack spacing={1}>
+                    <Alert severity={analytics.failedLogins24h > 3 ? 'warning' : 'success'}>
+                      Failed logins (24h): {analytics.failedLogins24h}
+                    </Alert>
+                    <Alert severity={analytics.mfaEnabledUsers > 0 ? 'success' : 'warning'}>
+                      MFA enabled users: {analytics.mfaEnabledUsers}
+                    </Alert>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Immediate Actions
+                  </Typography>
+                  <Stack spacing={1}>
+                    <Button variant="outlined" onClick={() => setStatusFilter('suspended')}>
+                      Show Suspended Users
+                    </Button>
+                    <Button variant="outlined" onClick={() => setStatusFilter('all')}>
+                      Reset User Filters
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+      </Box>
+
+      <Dialog open={userDialogOpen} onClose={() => setUserDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>User Details</DialogTitle>
         <DialogContent>
-          {selectedUser && (
-            <Box sx={{ pt:  2 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    Grunnleggende informasjon
-                  </Typography>
-                  <List>
-                    <ListItem>
-                      <ListItemIcon>{getProfessionIcon(selectedUser.profession)}</ListItemIcon>
-                      <ListItemText primary="Profesjon" secondary={selectedUser.profession} />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemIcon>
-                        {theming.getThemedIcon('star')}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Pakke"
-                        secondary={`${selectedUser.packageTier} (${selectedUser.packageId})`}
-                      />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemIcon>
-                        {theming.getThemedIcon('schedule')}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary="Sist aktiv"
-                        secondary={new Date(selectedUser.lastActivity).toLocaleString('no-NO')}
-                      />
-                    </ListItem>
-                  </List>
-                </Grid>
-
-                <Grid item xs={12} md={6}>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    Aktive Features
-                  </Typography>
-                  <List>
-                    {selectedUser.activeFeatures.map((feature) => (
-                      <ListItem key={feature}>
-                        <ListItemIcon>
-                          <CheckCircle sx={{ color: '#4caf50'}} />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary={feature.replace(/-/g, ', ')}
-                          secondary="Aktiv og konfigurert"
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
+          {selectedUser ? (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField label="First Name" value={selectedUser.firstName} fullWidth InputProps={{ readOnly: true }} />
+              <TextField label="Last Name" value={selectedUser.lastName} fullWidth InputProps={{ readOnly: true }} />
+              <TextField label="Email" value={selectedUser.email} fullWidth InputProps={{ readOnly: true }} />
+              <TextField label="Package" value={selectedUser.packageId} fullWidth InputProps={{ readOnly: true }} />
+              <TextField
+                label="Last Activity"
+                value={new Date(selectedUser.lastActivity).toLocaleString('nb-NO')}
+                fullWidth
+                InputProps={{ readOnly: true }}
+              />
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Active Features
+                </Typography>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {selectedUser.activeFeatures.map((feature) => (
+                    <Chip key={feature} size="small" label={feature} />
+                  ))}
+                </Stack>
+              </Box>
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowUserDialog(false)}>Lukk</Button>
-          <Button variant="contained"
-            onClick={() => selectedUser && validateUserServices(selectedUser)}
-            sx={{ backgroundColor: '#ff8c00'}}
-          >
-            Valider tjenester
-          </Button>
+          <Button onClick={() => setUserDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Service Validation Dialog */}
-      <Dialog
-        open={showValidationDialog}
-        onClose={() => setShowValidationDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Tjeneste Validering</DialogTitle>
+      <Dialog open={validationDialogOpen} onClose={() => setValidationDialogOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Service Validation</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-            Validerer at alle nødvendige tjenester er korrekt konfigurert for brukeren
-          </Typography>
-
-          {validationResults.map((result) => (
-            <Card key={result.service}, sx={{ mb:  2 ,  ...theming.getThemedCardSx() }}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  {result.status === 'configured' && <CheckCircle sx={{ color: '#4caf50'}} />}
-                  {result.status === 'missing' && <Warning sx={{ color: '#ff9800'}} />}
-                  {result.status === 'error' && <Error sx={{ color: '#f44336'}} />}
-
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{result.service}</Typography>
-
-                  <Chip
-                    size="small"
-                    label={result.status}
-                    sx={{
-                      backgroundColor: result.status === 'configured'
-                          ? '#4caf50'
-                          : result.status === 'missing'
-                            ? '#ff9800' : '#f44330',
-                      color: 'white'}}
-                  />
-                </Box>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  {result.details}
-                </Typography>
-
-                {result.dependencies.length > 0 && (
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600, mb:  1 }}>
-                      Avhengigheter: </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                      {result.dependencies.map((dep) => (
-                        <Chip key={dep} size="small" label={dep} variant="outlined" />
-                      ))}
-                    </Box>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+          <List disablePadding>
+            {selectedUserValidation.map((result) => (
+              <ListItem key={result.service} divider>
+                <ListItemAvatar>
+                  <Avatar>
+                    {result.status === 'configured' ? <CheckCircle /> : result.status === 'missing' ? <Warning /> : <Error />}
+                  </Avatar>
+                </ListItemAvatar>
+                <ListItemText
+                  primary={result.service}
+                  secondary={
+                    <>
+                      <Typography variant="body2" component="span" display="block">
+                        {result.details}
+                      </Typography>
+                      <Typography variant="caption" component="span" display="block">
+                        Dependencies: {result.dependencies.join(', ')}
+                      </Typography>
+                    </>
+                  }
+                />
+                <Chip
+                  size="small"
+                  color={
+                    result.status === 'configured' ? 'success' : result.status === 'missing' ? 'warning' : 'error'
+                  }
+                  label={result.status}
+                />
+              </ListItem>
+            ))}
+          </List>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowValidationDialog(false)}>Lukk</Button>
-          <Button variant="contained" sx={{ backgroundColor: '#ff8c00',  ...theming.getThemedButtonSx() }}>
-            Eksporter rapport
-          </Button>
+          <Button onClick={() => setValidationDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

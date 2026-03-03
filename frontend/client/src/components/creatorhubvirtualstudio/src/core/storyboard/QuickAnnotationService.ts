@@ -127,16 +127,16 @@ export class QuickAnnotationService {
     
     switch (type) {
       case 'arrow_left':
-        this.drawArrow(pos.x, pos.y'left', config.color!, config.size!);
+        this.drawArrow(pos.x, pos.y, 'left', config.color!, config.size!);
         break;
       case 'arrow_right':
-        this.drawArrow(pos.x, pos.y'right', config.color!, config.size!);
+        this.drawArrow(pos.x, pos.y, 'right', config.color!, config.size!);
         break;
       case 'arrow_up':
-        this.drawArrow(pos.x, pos.y'up', config.color!, config.size!);
+        this.drawArrow(pos.x, pos.y, 'up', config.color!, config.size!);
         break;
       case 'arrow_down':
-        this.drawArrow(pos.x, pos.y'down', config.color!, config.size!);
+        this.drawArrow(pos.x, pos.y, 'down', config.color!, config.size!);
         break;
       case 'actor_marker':
         this.drawActorMarker(pos.x, pos.y, config.color!, config.size!);
@@ -348,7 +348,7 @@ export class QuickAnnotationService {
     // Glow effect
     const gradient = this.ctx.createRadialGradient(0, 0, 0, 0, 0, size);
     gradient.addColorStop(0, color + '80');
-    gradient.addColorStop(1'transparent');
+    gradient.addColorStop(1, 'transparent');
     this.ctx.beginPath();
     this.ctx.arc(0, 0, size, 0, Math.PI * 2);
     this.ctx.fillStyle = gradient;
@@ -472,4 +472,3 @@ export class QuickAnnotationService {
 export const quickAnnotationService = new QuickAnnotationService();
 
 export default quickAnnotationService;
-

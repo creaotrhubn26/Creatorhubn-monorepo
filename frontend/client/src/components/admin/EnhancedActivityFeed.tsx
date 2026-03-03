@@ -70,6 +70,13 @@ import {
   Notifications,
   TrendingUp,
 } from '@mui/icons-material';
+import Timeline from '@mui/lab/Timeline';
+import TimelineItem from '@mui/lab/TimelineItem';
+import TimelineSeparator from '@mui/lab/TimelineSeparator';
+import TimelineConnector from '@mui/lab/TimelineConnector';
+import TimelineContent from '@mui/lab/TimelineContent';
+import TimelineDot from '@mui/lab/TimelineDot';
+import TimelineOppositeContent from '@mui/lab/TimelineOppositeContent';
 import PaymentMethodLogo from '../common/PaymentMethodLogo';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -123,7 +130,7 @@ export default function EnhancedActivityFeed({
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   
   // Push notifications - get userId from auth if available
-  const userId = auth?.user?.id || auth?.user?.sub;
+  const userId = auth.state.user?.id ?? 'guest';
   const { pushEnabled, isSupported } = usePushNotifications(userId);
 
   // State
@@ -134,7 +141,7 @@ export default function EnhancedActivityFeed({
   // Advanced filters state (used by UI below)
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>(', ');
+  const [endDate, setEndDate] = useState<string>('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
 
@@ -586,9 +593,9 @@ useEffect(() => {
                   size="small" 
                   variant="outlined"
                   onClick={() => {
-                    setSearchQuery(', ');
-                    setStartDate(', ');
-                    setEndDate(', ');
+                    setSearchQuery('');
+                    setStartDate('');
+                    setEndDate('');
                     setCategoryFilter('all');
                     setPriorityFilter('all');
                   }}

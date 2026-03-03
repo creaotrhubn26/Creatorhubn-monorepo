@@ -18,7 +18,6 @@ import {
   AccordionDetails,
   Tab,
   Tabs,
-  Grid,
   TextField,
   Select,
   MenuItem,
@@ -41,7 +40,10 @@ import {
   Switch,
   Divider,
   IconButton,
+  Alert,
+  ButtonGroup,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   PlayArrow,
   Stop,
@@ -61,6 +63,31 @@ interface AnimationToolsProps {
   onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
+interface AnimationPreset {
+  id: string;
+  name: string;
+  duration: number;
+  easing: string;
+}
+
+interface AnimationLayer {
+  id: string;
+  name: string;
+  keyframes: unknown[];
+}
+
+interface AnimationStory {
+  id: string;
+  layers: AnimationLayer[];
+  duration: number;
+  elements: unknown[];
+  settings: {
+    autoPlay: boolean;
+    loopEnabled: boolean;
+    timeline: string;
+  };
+}
+
 export const AnimationTools: React.FC<AnimationToolsProps> = ({
   selectedProject,
   onProjectUpdate,
@@ -75,7 +102,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
 
   // Component registration and performance monitoring
   useEffect(() => {
-    const endTiming = performance.startTiming('animation_tools_render,');
+    const endTiming = performance.startTiming('animation_tools_render');
     
     lifecycle.registerComponent({
       id: 'AnimationTools',
@@ -118,18 +145,18 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
     };
   }, [analytics, lifecycle, performance, debugging, selectedProject?.id]);
 
-  const [animationPresets, setAnimationPresets] = useState([
+  const [animationPresets, setAnimationPresets] = useState<AnimationPreset[]>([
     { id: 'fadeIn', name: 'Fade In', duration: 300, easing: 'ease-in' },
     { id: 'slideUp', name: 'Slide Up', duration: 500, easing: 'ease-out' },
     { id: 'bounce', name: 'Bounce', duration: 800, easing: 'ease-out' },
     { id: 'spin', name: 'Spin', duration: 600, easing: 'linear' }
   ]);
-  const [selectedPreset, setSelectedPreset] = useState<Record<string, unknown> | null>(null);
+  const [selectedPreset, setSelectedPreset] = useState<AnimationPreset | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentStory, setCurrentStory] = useState<Record<string, unknown> | null>(null);
+  const [currentStory, setCurrentStory] = useState<AnimationStory | null>(null);
   const [timelineZoom, setTimelineZoom] = useState(1);
   const [selectedKeyframe, setSelectedKeyframe] = useState<string | null>(null);
-  const [animationLayers, setAnimationLayers] = useState<Record<string, unknown>[]>([]);
+  const [animationLayers, setAnimationLayers] = useState<AnimationLayer[]>([]);
   const [reducedMotion, setReducedMotion] = useState(false);
   
   // ScrollStory functionality - using the real hook
@@ -147,7 +174,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
   } = useScrollStory();
 
   // Animation Functions from original file
-  const handleApplyAnimation = useCallback((element: string, preset: Record<string, unknown>) => {
+  const handleApplyAnimation = useCallback((element: string, preset: AnimationPreset) => {
     setSelectedPreset(preset);
 
     onNotificationCreate?.({
@@ -165,14 +192,14 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
     if (!animationLayers.length) return;
 
     try {
-      const scrollStory = {
+      const scrollStory: AnimationStory = {
         id: `story_${Date.now()}`,
         layers: animationLayers,
         duration: 500,
         elements: [],
         settings: {
           autoPlay: false,
-          loupEnabled: true,
+          loopEnabled: true,
           timeline: 'continuous'
         }
       };
@@ -220,7 +247,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
           <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Animation Presets</Typography>
           <Grid container spacing={2}>
             {animationPresets.map((preset) => (
-              <Grid size={{ xs: 12, sm: 6, md: 3 }} key={preset.id}>
+              <Grid key={preset.id} size={{ xs: 12, sm: 6, md: 3 }}>
                 <Card
                   sx={{ cursor: 'pointer', ...theming.getThemedCardSx() }}
                   onClick={() => handleApplyAnimation('selected_element', preset)}
@@ -296,7 +323,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
           {/* Layer List */}
           <List component="div">
             {animationLayers.map((layer, index) => (
-              <ListItem key={index} divider>
+              <ListItem divider key={layer.id || `layer-${index}`}>
                 <ListItemIcon>
                   {theming.getThemedIcon('timeline')}
                 </ListItemIcon>
@@ -392,7 +419,7 @@ export const AnimationTools: React.FC<AnimationToolsProps> = ({
                 variant="contained"
                 startIcon={theming.getThemedIcon('play')}
                 disabled={isPlaying}
-                onClick={() => previewStory(scrollCurrentStory?.id || ', ')}
+                onClick={() => previewStory(scrollCurrentStory?.id || '')}
                 sx={theming.getThemedButtonSx()}
               >
                 {isPlaying ? 'Playing...' : 'Preview'}

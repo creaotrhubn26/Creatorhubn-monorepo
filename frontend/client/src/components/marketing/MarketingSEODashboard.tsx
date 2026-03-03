@@ -72,6 +72,41 @@ interface TabPanelProps {
   value: number
 }
 
+interface SeoKeyword {
+  id?: string;
+  keyword: string;
+  position: number;
+  searchVolume?: number;
+  difficulty?: number;
+  trend?: string;
+  url?: string;
+  cpc?: number;
+  competitionLevel?: string;
+}
+
+interface SeoPage {
+  id?: string;
+  url: string;
+  title?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  status?: string;
+}
+
+interface SeoBacklink {
+  id?: string;
+  source?: string;
+  target?: string;
+  authority?: number;
+}
+
+interface SeoResearchStats {
+  stats?: {
+    loaded?: boolean;
+    totalPapers?: number;
+  };
+}
+
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
 
@@ -122,15 +157,15 @@ export default function MarketingSEODashboard() {
   const theming = useTheming('photographer');
 
   // SEO data queries
-  const { data: keywords = [], isLoading: keywordsLoading } = useQuery({
+  const { data: keywords = [], isLoading: keywordsLoading } = useQuery<SeoKeyword[]>({
     queryKey: ['/api/seo/keywords', ],
 });
 
-  const { data: pages = [], isLoading: pagesLoading } = useQuery({
+  const { data: pages = [], isLoading: pagesLoading } = useQuery<SeoPage[]>({
     queryKey: ['/api/seo/pages', ],
 });
 
-  const { data: backlinks = [], isLoading: backlinksLoading } = useQuery({
+  const { data: backlinks = [], isLoading: backlinksLoading } = useQuery<SeoBacklink[]>({
     queryKey: ['/api/seo/backlinks'],
   });
 
@@ -152,13 +187,14 @@ export default function MarketingSEODashboard() {
     enabled: false, // Manual trigger
   });
 
-  const { data: researchStats } = useQuery({
+  const { data: researchStats } = useQuery<SeoResearchStats>({
     queryKey: ['/api/seo/research/stats'],
   });
 
   // Mutations
   const addKeywordMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/seo/keywords','POST', data),
+    mutationFn: (data: unknown) =>
+      apiRequest('/api/seo/keywords', { method: 'POST', body: data as Record<string, unknown> }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/keywords', ],});
       setAddKeywordOpen(false);
@@ -176,7 +212,8 @@ export default function MarketingSEODashboard() {
 });
 
   const addPageMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/seo/pages','POST', data),
+    mutationFn: (data: unknown) =>
+      apiRequest('/api/seo/pages', { method: 'POST', body: data as Record<string, unknown> }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/pages', ],});
       setAddPageOpen(false);
@@ -191,7 +228,7 @@ export default function MarketingSEODashboard() {
 });
 
   const syncSEODataMutation = useMutation({
-    mutationFn: () => apiRequest('/api/seo/sync-data','POST'),
+    mutationFn: () => apiRequest('/api/seo/sync-data', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/keywords', ],});
       queryClient.invalidateQueries({ queryKey: ['/api/seo/backlinks', ],});
@@ -199,18 +236,18 @@ export default function MarketingSEODashboard() {
 });
 
   const syncAnalyticsMutation = useMutation({
-    mutationFn: () => apiRequest('/api/seo/sync-analytics','POST'),
+    mutationFn: () => apiRequest('/api/seo/sync-analytics', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/pages', ],});
   },
 });
 
   const indexPageMutation = useMutation({
-    mutationFn: (url: string) => apiRequest('/api/seo/index-page','POST', { url }),
+    mutationFn: (url: string) => apiRequest('/api/seo/index-page', { method: 'POST', body: { url } }),
   });
 
   const startCrawlMutation = useMutation({
-    mutationFn: (url: string) => apiRequest('/api/seo/start-crawl','POST', { url }),
+    mutationFn: (url: string) => apiRequest('/api/seo/start-crawl', { method: 'POST', body: { url } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/crawl-results'] });
       setCrawlResultsOpen(true);
@@ -218,14 +255,15 @@ export default function MarketingSEODashboard() {
   });
 
   const bulkIndexMutation = useMutation({
-    mutationFn: () => apiRequest('/api/seo/bulk-index-pages','POST'),
+    mutationFn: () => apiRequest('/api/seo/bulk-index-pages', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/pages'] });
     },
   });
 
   const bulkImportKeywordsMutation = useMutation({
-    mutationFn: (keywords: string) => apiRequest('/api/seo/bulk-import-keywords','POST', { keywords }),
+    mutationFn: (keywords: string) =>
+      apiRequest('/api/seo/bulk-import-keywords', { method: 'POST', body: { keywords } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/keywords'] });
       setBulkImportOpen(false);
@@ -234,7 +272,8 @@ export default function MarketingSEODashboard() {
   });
 
   const validateSchemaMutation = useMutation({
-    mutationFn: (url: string) => apiRequest('/api/seo/validate-schema','POST', { url }),
+    mutationFn: (url: string) =>
+      apiRequest('/api/seo/validate-schema', { method: 'POST', body: { url } }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/seo/schema-validation'] });
     },
@@ -244,9 +283,12 @@ export default function MarketingSEODashboard() {
   const totalKeywords = keywords.length;
   const avgPosition =
     keywords.length > 0
-      ? Math.round(keywords.reduce((sum: number, k: any) => sum + k.position, 0) / keywords.length)
+      ? Math.round(
+          keywords.reduce((sum: number, keyword: SeoKeyword) => sum + (keyword.position || 0), 0) /
+            keywords.length,
+        )
       : 0;
-  const indexedPages = pages.filter((p: any) => p.status === 'indexed').length;
+  const indexedPages = pages.filter((page: SeoPage) => page.status === 'indexed').length;
   const totalBacklinks = backlinks.length;
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -1054,38 +1096,38 @@ export default function MarketingSEODashboard() {
               <Typography variant="h6" gutterBottom>Innholdsanalyse</Typography>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
-                  <Card>
+                  <MuiCard>
                     <CardContent>
                       <Typography variant="subtitle2" color="text.secondary">Lesbarhet Score</Typography>
                       <Typography variant="h4">72/100</Typography>
                       <LinearProgress variant="determinate" value={72} sx={{ mt: 1 }} />
                     </CardContent>
-                  </Card>
+                  </MuiCard>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Card>
+                  <MuiCard>
                     <CardContent>
                       <Typography variant="subtitle2" color="text.secondary">SEO Score</Typography>
                       <Typography variant="h4">85/100</Typography>
                       <LinearProgress variant="determinate" value={85} sx={{ mt: 1 }} />
                     </CardContent>
-                  </Card>
+                  </MuiCard>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Card>
+                  <MuiCard>
                     <CardContent>
                       <Typography variant="subtitle2" color="text.secondary">Engasjement</Typography>
                       <Typography variant="h4">3.2 min</Typography>
                       <Typography variant="caption" color="text.secondary">Avg. lesetid</Typography>
                     </CardContent>
-                  </Card>
+                  </MuiCard>
                 </Grid>
               </Grid>
             </Box>
 
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
-                <Card>
+                <MuiCard>
                   <CardContent>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                       <Typography variant="h6">AI Innholdsforslag</Typography>
@@ -1115,11 +1157,11 @@ export default function MarketingSEODashboard() {
                       </ListItem>
                     </List>
                   </CardContent>
-                </Card>
+                </MuiCard>
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card>
+                <MuiCard>
                   <CardContent>
                     <Typography variant="h6" gutterBottom>Nøkkelord Densitet</Typography>
                     <Box sx={{ mb: 2 }}>
@@ -1147,7 +1189,7 @@ export default function MarketingSEODashboard() {
                       Analyser Flere Nøkkelord
                     </Button>
                   </CardContent>
-                </Card>
+                </MuiCard>
               </Grid>
             </Grid>
           </TabPanel>
@@ -1160,7 +1202,7 @@ export default function MarketingSEODashboard() {
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <Card>
+            <MuiCard>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Månedlig SEO Rapport</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1175,10 +1217,10 @@ export default function MarketingSEODashboard() {
                   </Button>
                 </Box>
               </CardContent>
-            </Card>
+            </MuiCard>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Card>
+            <MuiCard>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Konkurranseanalyse</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1188,10 +1230,10 @@ export default function MarketingSEODashboard() {
                   Generer Analyse
                 </Button>
               </CardContent>
-            </Card>
+            </MuiCard>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Card>
+            <MuiCard>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Eksporter Data</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1206,7 +1248,7 @@ export default function MarketingSEODashboard() {
                   </Button>
                 </Box>
               </CardContent>
-            </Card>
+            </MuiCard>
           </Grid>
         </Grid>
 
@@ -1260,7 +1302,7 @@ export default function MarketingSEODashboard() {
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
-            <Card>
+            <MuiCard>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Aktive Varsler</Typography>
                 <List dense>
@@ -1293,11 +1335,11 @@ export default function MarketingSEODashboard() {
                   Se Alle Varsler
                 </Button>
               </CardContent>
-            </Card>
+            </MuiCard>
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Card>
+            <MuiCard>
               <CardContent>
                 <Typography variant="h6" gutterBottom>Varslingsinnstillinger</Typography>
                 <List dense>
@@ -1322,7 +1364,7 @@ export default function MarketingSEODashboard() {
                   Konfigurer Varsler
                 </Button>
               </CardContent>
-            </Card>
+            </MuiCard>
           </Grid>
         </Grid>
 
@@ -1330,7 +1372,7 @@ export default function MarketingSEODashboard() {
           <Typography variant="h6" gutterBottom>Integrasjoner</Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
+              <MuiCard>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Google />
@@ -1341,10 +1383,10 @@ export default function MarketingSEODashboard() {
                     Konfigurer
                   </Button>
                 </CardContent>
-              </Card>
+              </MuiCard>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
+              <MuiCard>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Search />
@@ -1355,10 +1397,10 @@ export default function MarketingSEODashboard() {
                     Konfigurer
                   </Button>
                 </CardContent>
-              </Card>
+              </MuiCard>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
+              <MuiCard>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Notifications />
@@ -1369,10 +1411,10 @@ export default function MarketingSEODashboard() {
                     Koble til
                   </Button>
                 </CardContent>
-              </Card>
+              </MuiCard>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Card>
+              <MuiCard>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     <Email />
@@ -1383,7 +1425,7 @@ export default function MarketingSEODashboard() {
                     Konfigurer
                   </Button>
                 </CardContent>
-              </Card>
+              </MuiCard>
             </Grid>
           </Grid>
         </Box>

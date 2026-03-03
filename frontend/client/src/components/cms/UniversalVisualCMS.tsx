@@ -1,785 +1,577 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  AppBar,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Grid,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
   Chip,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Tabs,
-  Tab,
-  Paper,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Drawer,
-  Toolbar,
-  AppBar,
-  Fab,
-  SpeedDial,
-  SpeedDialIcon,
-  SpeedDialAction,
-  Tooltip,
-  Badge,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  List,
+  ListItemButton,
+  ListItemText,
+  MenuItem,
+  Select,
   Stack,
-  Avatar,
-  Menu,
+  Switch,
+  TextField,
+  Toolbar,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Edit,
-  Save,
-  Cancel,
   Add,
   Delete,
+  Edit,
+  HorizontalRule,
+  Preview,
+  Save,
+  Settings,
   Visibility,
   VisibilityOff,
-  Settings,
-  Palette,
-  Code,
-  Dashboard,
-  ViewQuilt,
-  TextFields,
-  Image,
-  VideoLibrary,
-  AudioFile,
-  InsertChart,
-  TableChart,
-  List as ListIcon,
-  GridView,
-  FormatColorFill,
-  FormatSize,
-  FormatBold,
-  FormatItalic,
-  FormatUnderlined,
-  FormatAlignLeft,
-  FormatAlignCenter,
-  FormatAlignRight,
-  DragIndicator,
-  ExpandMore,
-  PlayArrow,
-  Stop,
-  Refresh,
-  Download,
-  Upload,
-  Share,
-  ContentCopy,
-  RestoreFromTrash,
-  History,
-  Undo,
-  Redo,
-  ZoomIn,
-  ZoomOut,
-  Fullscreen,
-  FullscreenExit,
 } from '@mui/icons-material';
-
-// Visual Editing Libraries
-import { Editor, Frame, Element, useNode, useEditor } from '@craftjs/core';
-import { Layers } from '@craftjs/layers';
-import MonacoEditor from '@monaco-editor/react';
-import { ChromePicker } from 'react-color';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import GridLayout from 'react-grid-layout';
-import { Resizable } from 'react-resizable';
-import Slider from 'rc-slider';
-import { useDebounce } from 'use-debounce';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
-import { produce } from 'immer';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
-// CSS for react-grid-layout
-import 'react-grid-layout/css/styles.css';
-import 'react-resizable/css/styles.css';
+type ComponentType = 'text' | 'button' | 'image' | 'divider';
 
-interface ComponentConfig {
+type PageStatus = 'draft' | 'published' | 'archived';
+
+interface CMSComponent {
   id: string;
-  type: string;
-  name: string;
-  props: Record<string, any>;
-  style: Record<string, any>;
-  children?: ComponentConfig[];
-  position: { x: number; y: number; w: number; h: number };
-  metadata: {
-    profession?: string;
-    category?: string;
-    editable?: boolean;
-    deletable?: boolean;
-};
+  type: ComponentType;
+  label: string;
+  props: {
+    text?: string;
+    src?: string;
+    alt?: string;
+    href?: string;
+  };
+  style: {
+    color?: string;
+    backgroundColor?: string;
+    fontSize?: number;
+    padding?: number;
+  };
 }
 
-interface PageConfig {
+interface CMSPage {
   id: string;
   name: string;
   route: string;
-  profession: string;
-  status: 'draft' | 'published' | 'archived';
-  components: ComponentConfig[];
-  globalStyles: Record<string, any>;
-  meta: {
-    title?: string;
-    description?: string;
-    keywords?: string[];
-};
-  createdAt: string;
-  updatedAt: string
+  status: PageStatus;
+  components: CMSComponent[];
+  updatedAt: string;
 }
 
-// Editable Components
-const EditableText = ({ text, fontSize = 16, color = '#000000', fontWeight = 'normal', ...props }) => {
-  const { connectors: { connect, drag }, selected, actions: { setProp } } = useNode();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [editable, setEditable] = useState(false);
-  
-  return (
-    <div
-      ref={(ref) => connect(drag(ref))}
-      onClick={() => selected && setEditable(true)}
-      onBlur={() => setEditable(false)}
-      {...props}
-    >
-      <Typography
-        contentEditable={editable}
-        suppressContentEditableWarning={true}
-        style={{
-          fontSize,
-          color,
-          fontWeight,
-          border: selected ? '2px dashed #2196F3' : 'none',
-          padding: selected ? '4px' : ', ',
-          minHeight: '20px'
-    }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            setEditable(false);
-        }
-      }}
-        onInput={(e) => {
-          setProp(props => props.text = e.currentTarget.textContent);
-      }}
-      >
-        {text}
-      </Typography>
-    </div>
-  );
+const EMPTY_PAGE = (): CMSPage => ({
+  id: nanoid(),
+  name: 'Untitled Page',
+  route: '/new-page',
+  status: 'draft',
+  components: [],
+  updatedAt: new Date().toISOString(),
+});
+
+const normalizePage = (value: unknown): CMSPage | null => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const data = value as Partial<CMSPage>;
+  if (!data.id || !data.name || !data.route) {
+    return null;
+  }
+
+  return {
+    id: String(data.id),
+    name: String(data.name),
+    route: String(data.route),
+    status:
+      data.status === 'published' || data.status === 'archived' || data.status === 'draft'
+        ? data.status
+        : 'draft',
+    components: Array.isArray(data.components)
+      ? data.components
+          .map((component) => {
+            if (!component || typeof component !== 'object') {
+              return null;
+            }
+            const typed = component as Partial<CMSComponent>;
+            if (!typed.id || !typed.type || !typed.label) {
+              return null;
+            }
+            if (typed.type !== 'text' && typed.type !== 'button' && typed.type !== 'image' && typed.type !== 'divider') {
+              return null;
+            }
+            return {
+              id: String(typed.id),
+              type: typed.type,
+              label: String(typed.label),
+              props: typed.props ?? {},
+              style: typed.style ?? {},
+            };
+          })
+          .filter((component): component is CMSComponent => component !== null)
+      : [],
+    updatedAt: data.updatedAt ? String(data.updatedAt) : new Date().toISOString(),
+  };
 };
 
-const EditableButton = ({ text, backgroundColor = '#2196F3', textColor = '#FFFFFF', ...props }) => {
-  const { connectors: { connect, drag }, selected, actions: { setProp } } = useNode();
-  
-  return (
-    <Button
-      ref={(ref) => connect(drag(ref))}
-      variant="contained"
-      style={{
-        backgroundColor,
-        color: textColor,
-        border: selected ? '2px dashed #FF9800' : 'none'
-  }}
-      {...props}
-    >
-      {text}
-    </Button>
-  );
+const createComponentTemplate = (type: ComponentType): CMSComponent => {
+  switch (type) {
+    case 'button':
+      return {
+        id: nanoid(),
+        type,
+        label: 'Button',
+        props: { text: 'Click me', href: '#' },
+        style: { backgroundColor: '#1976d2', color: '#ffffff', padding: 10 },
+      };
+    case 'image':
+      return {
+        id: nanoid(),
+        type,
+        label: 'Image',
+        props: { src: '/placeholder.svg', alt: 'Image' },
+        style: { padding: 6 },
+      };
+    case 'divider':
+      return {
+        id: nanoid(),
+        type,
+        label: 'Divider',
+        props: {},
+        style: { padding: 8 },
+      };
+    case 'text':
+    default:
+      return {
+        id: nanoid(),
+        type: 'text',
+        label: 'Text',
+        props: { text: 'Editable text block' },
+        style: { fontSize: 16, color: '#111827', padding: 4 },
+      };
+  }
 };
 
-const EditableImage = ({ src, alt = ', ', width = 200, height = 150, ...props }) => {
-  const { connectors: { connect, drag }, selected } = useNode();
-  
-  return (
-    <img
-      ref={(ref) => connect(drag(ref))}
-      src={src}
-      alt={alt}
-      style={{
-        width,
-        height,
-        objectFit: 'cover',
-        border: selected ? '2px dashed #4CAF50' : 'none',
-        cursor: 'move'
-  }}
-      {...props}
-    />
-  );
-};
-
-const EditableContainer = ({ backgroundColor = '#FFFFFF', padding = 16, margin = 8, children, ...props }) => {
-  const { connectors: { connect, drag }, selected } = useNode();
-  
-  return (
-    <Box
-      ref={(ref) => connect(drag(ref))}
-      style={{
-        backgroundColor,
-        padding,
-        margin,
-        minHeight: '50px',
-        border: selected ? '2px dashed #9C27B0' : '1px solid #E0E0E0',
-        borderRadius: '4px'
-  }}
-      {...props}
-    >
-      {children}
-    </Box>
-  );
-};
-
-// Settings Panels
-const TextSettings = () => {
-  const { actions: { setProp }, fontSize, color, fontWeight, text } = useNode((node) => ({
-    fontSize: node.data.props.fontSize,
-    color: node.data.props.color,
-    fontWeight: ode.data.props.fontWeight,
-    text: node.data.props.text
-}));
-
-  return (
-    <Box sx={{ p:  2 }}>
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Tekst Innstillinger</Typography>
-      
-      <TextField
-        fullWidth
-        label="Tekst"
-        value={text}
-        onChange={(e) => setProp(props => props.text = e.target.value)}
-        sx={{ mb:  2 }}
-      />
-      
-      <Typography variant="body2" gutterBottom>Skriftstørrelse</Typography>
-      <Slider
-        value={fontSize}
-        onChange={(value) => setProp(props => props.fontSize = value)}
-        min={10}
-        max={72}
-        sx={{ mb:  2 }}
-      />
-      
-      <Typography variant="body2" gutterBottom>Farge</Typography>
-      <ChromePicker
-        color={color}
-        onChange={(color) => setProp(props => props.color = color.hex)}
-      />
-      
-      <FormControl fullWidth sx={{ mt:  2 }}>
-        <InputLabel>Skriftvekt</InputLabel>
-        <Select
-          value={fontWeight}
-          onChange={(e) => setProp(props => props.fontWeight = e.target.value)}
+const renderComponentPreview = (component: CMSComponent) => {
+  switch (component.type) {
+    case 'button':
+      return (
+        <Button
+          variant="contained"
+          href={component.props.href}
+          sx={{
+            color: component.style.color,
+            backgroundColor: component.style.backgroundColor,
+            px: Math.max(1, (component.style.padding ?? 8) / 8),
+          }}
         >
-          <MenuItem value="normal">Normal</MenuItem>
-          <MenuItem value="bold">Fet</MenuItem>
-          <MenuItem value="lighter">Tynnere</MenuItem>
-        </Select>
-      </FormControl>
-    </Box>
-  );
-};
-
-const ButtonSettings = () => {
-  const { actions: { setProp }, text, backgroundColor, textColor } = useNode((node) => ({
-    text: node.data.props.text,
-    backgroundColor: node.data.props.backgroundColor,
-    textColor: node.data.props.textColor
-}));
-
-  return (
-    <Box sx={{ p:  2 }}>
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Knapp Innstillinger</Typography>
-      
-      <TextField
-        fullWidth
-        label="Knapp Tekst"
-        value={text}
-        onChange={(e) => setProp(props => props.text = e.target.value)}
-        sx={{ mb:  2 }}
-      />
-      
-      <Typography variant="body2" gutterBottom>Bakgrunnsfarge</Typography>
-      <ChromePicker
-        color={backgroundColor}
-        onChange={(color) => setProp(props => props.backgroundColor = color.hex)}
-      />
-      
-      <Typography variant="body2" gutterBottom sx={{ mt:  2 }}>Tekstfarge</Typography>
-      <ChromePicker
-        color={textColor}
-        onChange={(color) => setProp(props => props.textColor = color.hex)}
-      />
-    </Box>
-  );
-};
-
-// Component Definitions
-EditableText.craft = {
-  props: { text: 'Rediger denne teksten', fontSize:  16, color: '#000000', fontWeight: 'normal' },
-  related: { settings: TextSettings }
-};
-
-EditableButton.craft = {
-  props: { text: 'Klikk meg', backgroundColor: '#2196F0', textColor: '#FFFFFF' },
-  related: { settings: ButtonSettings }
-};
-
-EditableImage.craft = {
-  props: { src: '/placeholder-image.jpg', alt: 'Placeholder', width: 20, height: 150,}
-};
-
-EditableContainer.craft = {
-  props: { backgroundColor: '#FFFFF0', padding:  16, margin:  8 },
-  rules: { canMoveIn: () => true, canMoveOut: () => true }
+          {component.props.text ?? 'Button'}
+        </Button>
+      );
+    case 'image':
+      return (
+        <Box
+          component="img"
+          src={component.props.src ?? '/placeholder.svg'}
+          alt={component.props.alt ?? 'Image'}
+          sx={{
+            maxWidth: '100%',
+            maxHeight: 220,
+            borderRadius: 1,
+            border: '1px solid rgba(148,163,184,0.5)',
+          }}
+        />
+      );
+    case 'divider':
+      return <Divider sx={{ my: 1 }} />;
+    case 'text':
+    default:
+      return (
+        <Typography
+          sx={{
+            fontSize: component.style.fontSize,
+            color: component.style.color,
+            p: component.style.padding,
+          }}
+        >
+          {component.props.text ?? 'Text'}
+        </Typography>
+      );
+  }
 };
 
 export default function UniversalVisualCMS() {
-  const queryClient = useQueryClient();
-  const [currentPage, setCurrentPage] = useState<PageConfig | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [selectedProfession, setSelectedProfession] = useState('photographer,');
-  const [showLayers, setShowLayers] = useState(true);
-  const [showSettings, setShowSettings] = useState(true);
+  const theming = useTheming('photographer');
+
+  const [currentPage, setCurrentPage] = useState<CMSPage>(EMPTY_PAGE());
+  const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
-  const [codeMode, setCodeMode] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [showPageDialog, setShowPageDialog] = useState(false);
+  const [newPageName, setNewPageName] = useState('');
+  const [newPageRoute, setNewPageRoute] = useState('');
 
-  // Fetch all pages
-  const { data: pages = [], isLoading } = useQuery({
-    queryKey: ['/api/cms/pages', ],
-    queryFn: () => apiRequest('/api/cms/pages', ),
-    retry: false,
-});
-
-  // Fetch professions for filtering
-  const { data: professions = [, ],} = useQuery({
-    queryKey: ['/api/admin/cms/professions', ],
-    queryFn: () => apiRequest('/api/admin/cms/professions', ),
-    retry: false,
-});
-
-  // Save page mutation
-  const savePageMutation = useMutation({
-    mutationFn: async (pageData: PageConfig) => {
-      if (pageData.id) {
-        return apiRequest(`/api/cms/pages/${pageData.d}`, {
-          headers: {
-          "Content-Type" : "application/json"
+  const { data: pages = [] } = useQuery({
+    queryKey: ['/api/cms/pages'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/cms/pages', { method: 'GET' });
+      const raw = Array.isArray(response) ? response : Array.isArray(response?.pages) ? response.pages : [];
+      const normalized = raw.map(normalizePage).filter((item): item is CMSPage => item !== null);
+      return normalized;
     },
-          method: 'PU',
-          body: JSON.stringify(pageData)
-    });
-    } else {
-        return apiRequest('/api/cms/pages', {
-          headers: {
-          "Content-Type" : "application/json"
-    },
-          method: 'POS',
-          body: JSON.stringify(pageData)
-    });
-    }
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/cms/pages', ],});
-  }
-});
-
-  const handleSavePage = useCallback(() => {
-    if (!currentPage) return;
-    
-    const updatedPage = produce(currentPage, draft => {
-      draft.updatedAt = new Date().toISOString();
   });
-    
-    savePageMutation.mutate(updatedPage);
-}, [currentPage, savePageMutation]);
 
-  const createNewPage = () => {
-    const newPage: PageConfig = {
-      id: nanoid(),
-      name: 'Ny Side',
-      route: '/ny-side',
-      profession: selectedProfession,
-      status: 'draft',
-      components: [],
-      globalStyles: {},
-      meta: {
-        title: 'Ny Side',
-        description: 'Beskrivelse av ny side',
-        keywords: []
-  },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-};
-    setCurrentPage(newPage);
-    setIsEditing(true);
-};
+  const saveMutation = useMutation({
+    mutationFn: async (page: CMSPage) => {
+      await apiRequest(`/api/cms/pages/${encodeURIComponent(page.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(page),
+      });
+    },
+  });
 
-  const componentLibrary = [
-    { name: 'Tekst', component: EditableText, icon: <TextFields />,},
-    { name: 'Knapp', component: EditableButton, icon: <Dashboard />,},
-    { name: 'Bilde', component: EditableImage, icon: <Image />,},
-    { name: 'Container', component: EditableContainer, icon: <ViewQuilt />,}
-  ];
+  const selectedComponent = useMemo(() => {
+    if (!selectedComponentId) {
+      return null;
+    }
+    return currentPage.components.find((component) => component.id === selectedComponentId) ?? null;
+  }, [currentPage.components, selectedComponentId]);
+
+  const handleAddComponent = (type: ComponentType) => {
+    const component = createComponentTemplate(type);
+    setCurrentPage((previous) => ({
+      ...previous,
+      components: [...previous.components, component],
+      updatedAt: new Date().toISOString(),
+    }));
+    setSelectedComponentId(component.id);
+  };
+
+  const handleDeleteComponent = (componentId: string) => {
+    setCurrentPage((previous) => ({
+      ...previous,
+      components: previous.components.filter((component) => component.id !== componentId),
+      updatedAt: new Date().toISOString(),
+    }));
+    if (selectedComponentId === componentId) {
+      setSelectedComponentId(null);
+    }
+  };
+
+  const handleSavePage = async () => {
+    await saveMutation.mutateAsync(currentPage);
+  };
+
+  const handleCreatePage = () => {
+    const created: CMSPage = {
+      ...EMPTY_PAGE(),
+      name: newPageName.trim() || 'Untitled Page',
+      route: newPageRoute.trim() || `/page-${Date.now()}`,
+    };
+    setCurrentPage(created);
+    setSelectedComponentId(null);
+    setShowPageDialog(false);
+    setNewPageName('');
+    setNewPageRoute('');
+  };
+
+  const patchSelectedComponent = (patch: Partial<CMSComponent>) => {
+    if (!selectedComponentId) {
+      return;
+    }
+
+    setCurrentPage((previous) => ({
+      ...previous,
+      components: previous.components.map((component) => {
+        if (component.id !== selectedComponentId) {
+          return component;
+        }
+        return {
+          ...component,
+          ...patch,
+          props: { ...component.props, ...patch.props },
+          style: { ...component.style, ...patch.style },
+        };
+      }),
+      updatedAt: new Date().toISOString(),
+    }));
+  };
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Top Toolbar */}
-      <AppBar position="static" sx={{ zIndex: 120}}>
-        <Toolbar>
-          <Typography variant="h6" sx={{  flexGrow:  1  }}>
-            🎨 Universal Visual CMS - Hele Plattformen Redigerbar
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <AppBar position="static" color="default" elevation={0} sx={{ borderBottom: '1px solid rgba(148,163,184,0.25)' }}>
+        <Toolbar sx={{ gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary, mr: 1 }}>
+            Universal Visual CMS
           </Typography>
-          
-          <Stack direction="row" spacing={1}>
-            <FormControl size="small" sx={{ minWidth: 150}}>
-              <InputLabel sx={{ color: 'white' }}>Profesjon</InputLabel>
-              <Select
-                value={selectedProfession}
-                onChange={(e) => setSelectedProfession(e.target.value)}
-                sx={{ color: 'white','.MuiOutlinedInput-notchedOutline': { borderColor: 'white' } }}
-              >
-                {professions.map((prof: any) => (
-                  <MenuItem key={prof.key} value={prof.key}>
-                    {prof.icon} {prof.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
 
-            <Button
-              startIcon={theming.getThemedIcon('add')}
-              onClick={createNewPage}
-              sx={{ color: 'white', borderColor: 'white' }}
-              variant="outlined"
+          <Button startIcon={<Add />} onClick={() => setShowPageDialog(true)}>
+            New Page
+          </Button>
+          <Button
+            startIcon={<Save />}
+            variant="contained"
+            onClick={() => {
+              void handleSavePage();
+            }}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? 'Saving...' : 'Save'}
+          </Button>
+
+          <FormControl size="small" sx={{ minWidth: 140 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              label="Status"
+              value={currentPage.status}
+              onChange={(event) =>
+                setCurrentPage((previous) => ({
+                  ...previous,
+                  status: event.target.value as PageStatus,
+                }))
+              }
             >
-              Ny Side
-            </Button>
-            
-            <Button
-              startIcon={isEditing ? theming.getThemedIcon('stop') : theming.getThemedIcon('edit')}
-              onClick={() => setIsEditing(!isEditing)}
-              sx={{ color: 'white', borderColor: 'white' }}
-              variant="outlined"
-            >
-              {isEditing ? 'Stopp Redigering' : 'Start Redigering'}
-            </Button>
-            
-            <IconButton sx={{ color: 'white' }} onClick={() => setPreviewMode(!previewMode)}>
-              {previewMode ? theming.getThemedIcon('fullscreenExit') : theming.getThemedIcon('fullscreen')}
-            </IconButton>
+              <MenuItem value="draft">Draft</MenuItem>
+              <MenuItem value="published">Published</MenuItem>
+              <MenuItem value="archived">Archived</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: 'auto' }}>
+            <Tooltip title="Toggle preview mode">
+              <IconButton onClick={() => setPreviewMode((state) => !state)}>
+                {previewMode ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </Tooltip>
+            <Chip label={previewMode ? 'Preview' : 'Edit'} color={previewMode ? 'success' : 'default'} size="small" />
           </Stack>
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ display: 'flex', flex:  1 }}>
-        {/* Left Sidebar - Component Library */}
-        {!previewMode && (
-          <Drawer
-            variant="persistent"
-            anchor="left"
-            open={isEditing}
-            sx={{
-              width: 320,
-              flexShrink: 0,
-              '& .MuiDrawer-paper': { width: 320, position: 'relative' }
-            }}
-          >
-            <Box sx={{ p: 2 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📚 Komponent Bibliotek
-              </Typography>
-              
-              <Grid container spacing={1}>
-                {componentLibrary.map((item, index) => (
-                  <Grid size={{ xs:  6 }} key={index}>
-                    <Card
-                      sx={{
-                        cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' },
-                        textAlign: 'center',
-                        p: 1 }}
-                     sx={theming.getThemedCardSx()}>
-                      <CardContent sx={{ p: '8px !important' ,  ...theming.getThemedCardSx() }}>
-                        {item.icon}
-                        <Typography variant="caption" display="block">
-                          {item.name}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
+      <Box sx={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <Drawer variant="permanent" anchor="left" PaperProps={{ sx: { position: 'relative', width: 260 } }}>
+          <Toolbar />
+          <Box sx={{ px: 1.5, py: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Pages
+            </Typography>
+            <List dense>
+              {pages.map((page) => (
+                <ListItemButton
+                  key={page.id}
+                  selected={page.id === currentPage.id}
+                  onClick={() => {
+                    setCurrentPage(page);
+                    setSelectedComponentId(null);
+                  }}
+                >
+                  <ListItemText
+                    primary={page.name}
+                    secondary={`${page.route} • ${page.status}`}
+                    primaryTypographyProps={{ noWrap: true }}
+                    secondaryTypographyProps={{ noWrap: true }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          </Box>
 
-              <Divider sx={{ my:  2 }} />
-
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📄 Eksisterende Sider
-              </Typography>
-              
-              <List dense>
-                {pages
-                  .filter((page: PageConfig) => page.profession === selectedProfession)
-                  .map((page: PageConfig) => (
-                    <ListItem
-                      key={page.d}
-                      button
-                      onClick={() => setCurrentPage(page)}
-                      selected={currentPage?.id === page.id}
-                    >
-                      <ListItemText
-                        primary={page.name}
-                        secondary={`${page.route} • ${page.status}`}
-                      />
-                      <Chip
-                        label={page.status}
-                        size="small"
-                        color={page.status === 'published' ? 'success' : 'default'}
-                      />
-                    </ListItem>
-                  ))}
-              </List>
-            </Box>
-          </Drawer>
-        )}
-
-        {/* Main Editor Area */}
-        <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-          {currentPage ? (
-            <Editor
-              resolver={{
-                EditableText,
-                EditableButton,
-                EditableImage,
-                EditableContainer
-            }}
-              enabled={isEditing}
-            >
-              <Box
-                sx={{
-                  height: '100%',
-                  transform: `scale(${zoomLevel})`,
-                  transformOrigin: 'top left',
-                  overflow: 'auto',
-                  bgcolor: '#f5f5f5'
-            }}
-              >
-                <Frame>
-                  <Element is={EditableContainer} padding={20} canvas>
-                    <EditableText text="Velkommen til din redigerbare side!" fontSize={32} fontWeight="bold" />
-                    <EditableButton text="Klikk for å handle" />
-                    <EditableImage src="/placeholder-image.jpg" width={300} height={200} />
-                  </Element>
-                </Frame>
-              </Box>
-
-              {/* Layers Panel */}
-              {!previewMode && showLayers && (
-                <Paper
-                  sx={{
-                    position: 'absolute',
-                    top:  16,
-                    left:  16,
-                    width: 20,
-                    maxHeight: 40,
-                    overflow: 'auto',
-                    zIndex: 1000}}
-                 sx={theming.getThemedCardSx()}>
-                  <Box sx={{ p:  2 }}>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                      🗂️ Lag
-                    </Typography>
-                    <Layers expandRootOnLoad />
-                  </Box>
-                </Paper>
-              )}
-            </Editor>
-          ) : (
-            <Box
-              sx={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: 2 }}
-            >
-              <Typography variant="h4" color="textSecondary" sx={{ color: theming.colors.primary }}>
-                Ingen side valgt
-              </Typography>
-              <Typography variant="body1" color="textSecondary">
-                Velg en eksisterende side eller opprett en ny for å starte redigeringen
-              </Typography>
-              <Button variant="contained" startIcon={theming.getThemedIcon('add')} onClick={createNewPage} sx={theming.getThemedButtonSx()}>
-                Opprett Ny Side
+          <Divider />
+          <Box sx={{ px: 1.5, py: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Add component
+            </Typography>
+            <Stack spacing={0.75}>
+              <Button size="small" onClick={() => handleAddComponent('text')} startIcon={<Edit />}>
+                Text
               </Button>
-            </Box>
+              <Button size="small" onClick={() => handleAddComponent('button')} startIcon={<Add />}>
+                Button
+              </Button>
+              <Button size="small" onClick={() => handleAddComponent('image')} startIcon={<Preview />}>
+                Image
+              </Button>
+              <Button size="small" onClick={() => handleAddComponent('divider')} startIcon={<HorizontalRule />}>
+                Divider
+              </Button>
+            </Stack>
+          </Box>
+        </Drawer>
+
+        <Box sx={{ flex: 1, p: 2, overflowY: 'auto' }}>
+          <TextField
+            fullWidth
+            label="Page Name"
+            value={currentPage.name}
+            onChange={(event) =>
+              setCurrentPage((previous) => ({
+                ...previous,
+                name: event.target.value,
+                updatedAt: new Date().toISOString(),
+              }))
+            }
+            sx={{ mb: 1 }}
+          />
+          <TextField
+            fullWidth
+            label="Route"
+            value={currentPage.route}
+            onChange={(event) =>
+              setCurrentPage((previous) => ({
+                ...previous,
+                route: event.target.value,
+                updatedAt: new Date().toISOString(),
+              }))
+            }
+            sx={{ mb: 2 }}
+          />
+
+          {currentPage.components.length === 0 ? (
+            <Alert severity="info">No components on this page yet. Add one from the left panel.</Alert>
+          ) : (
+            <Grid container spacing={1.5}>
+              {currentPage.components.map((component) => (
+                <Grid key={component.id} item xs={12}>
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      borderColor: component.id === selectedComponentId ? 'primary.main' : undefined,
+                    }}
+                  >
+                    <CardContent sx={{ display: 'flex', justifyContent: 'space-between', gap: 1.5 }}>
+                      <Box sx={{ flex: 1 }} onClick={() => setSelectedComponentId(component.id)}>
+                        <Typography variant="caption" color="text.secondary">
+                          {component.type.toUpperCase()} · {component.label}
+                        </Typography>
+                        <Box sx={{ mt: 0.75 }}>{renderComponentPreview(component)}</Box>
+                      </Box>
+                      {!previewMode && (
+                        <IconButton
+                          color="error"
+                          onClick={() => handleDeleteComponent(component.id)}
+                          aria-label={`Delete ${component.label}`}
+                        >
+                          <Delete />
+                        </IconButton>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
           )}
         </Box>
 
-        {/* Right Sidebar - Settings */}
-        {!previewMode && showSettings && currentPage && isEditing && (
-          <Drawer
-            variant="persistent"
-            anchor="right"
-            open={true}
-            sx={{
-              width: 30,
-              flexShrink: 0, '& .MuiDrawer-paper': { width: 30, position: 'relative' }
-          }}
-          >
-            <Box sx={{ p:  2 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                ⚙️ Innstillinger
-              </Typography>
-              
-              <TextField
-                fullWidth
-                label="Side Navn"
-                value={currentPage.name}
-                onChange={(e) => setCurrentPage(prev => prev ? { ...prev, name: e.target.value } : null)}
-                sx={{ mb:  2 }}
-              />
-              
-              <TextField
-                fullWidth
-                label="Rute"
-                value={currentPage.route}
-                onChange={(e) => setCurrentPage(prev => prev ? { ...prev, route: e.target.value } : null)}
-                sx={{ mb:  2 }}
-              />
+        <Drawer variant="permanent" anchor="right" PaperProps={{ sx: { position: 'relative', width: 300 } }}>
+          <Toolbar />
+          <Box sx={{ px: 1.5, py: 1.25 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Settings fontSize="small" /> Component Settings
+            </Typography>
 
-              <FormControl fullWidth sx={{ mb:  2 }}>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={currentPage.status}
-                  onChange={(e) => setCurrentPage(prev => prev ? { ...prev, status: e.target.value as any } : null)}
-                >
-                  <MenuItem value="draft">Utkast</MenuItem>
-                  <MenuItem value="published">Publisert</MenuItem>
-                  <MenuItem value="archived">Arkivert</MenuItem>
-                </Select>
-              </FormControl>
+            {!selectedComponent ? (
+              <Alert severity="info">Select a component to edit its properties.</Alert>
+            ) : (
+              <Stack spacing={1.25}>
+                <TextField
+                  label="Label"
+                  value={selectedComponent.label}
+                  onChange={(event) => patchSelectedComponent({ label: event.target.value })}
+                />
 
-              <Divider sx={{ my:  2 }} />
-              
-              <Typography variant="body2" gutterBottom>
-                Zoom: {Math.round(zoomLevel * 10)}%
-              </Typography>
-              <Slider
-                value={zoomLevel}
-                onChange={(value) => setZoomLevel(Array.isArray(value) ? value[0] : value)}
-                min={0.25}
-                max={2}
-                step={0.25}
-                marks={[
-                  { value: 0, .label: '50%' },
-                  { value: 1, label: '100%' },
-                  { value: 1, .label: '150%' }
-                ]}
-                sx={{ mb:  2 }}
-              />
+                {selectedComponent.type !== 'divider' && (
+                  <TextField
+                    label="Text"
+                    value={selectedComponent.props.text ?? ''}
+                    onChange={(event) => patchSelectedComponent({ props: { text: event.target.value } })}
+                  />
+                )}
 
-              <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                <Button
-                  variant="outlined"
-                  startIcon={theming.getThemedIcon('save')}
-                  onClick={handleSavePage}
-                  disabled={savePageMutation.isPending}
-                  fullWidth
-                >
-                  Lagre
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={theming.getThemedIcon('download')}
-                  fullWidth
-                >
-                  Eksporter
-                </Button>
+                {selectedComponent.type === 'image' && (
+                  <>
+                    <TextField
+                      label="Image URL"
+                      value={selectedComponent.props.src ?? ''}
+                      onChange={(event) => patchSelectedComponent({ props: { src: event.target.value } })}
+                    />
+                    <TextField
+                      label="Alt text"
+                      value={selectedComponent.props.alt ?? ''}
+                      onChange={(event) => patchSelectedComponent({ props: { alt: event.target.value } })}
+                    />
+                  </>
+                )}
+
+                <TextField
+                  type="number"
+                  label="Font size"
+                  value={selectedComponent.style.fontSize ?? 16}
+                  onChange={(event) =>
+                    patchSelectedComponent({ style: { fontSize: Number(event.target.value) || 16 } })
+                  }
+                />
+
+                <TextField
+                  label="Text color"
+                  value={selectedComponent.style.color ?? '#111827'}
+                  onChange={(event) => patchSelectedComponent({ style: { color: event.target.value } })}
+                />
+
+                <TextField
+                  label="Background color"
+                  value={selectedComponent.style.backgroundColor ?? ''}
+                  onChange={(event) =>
+                    patchSelectedComponent({ style: { backgroundColor: event.target.value || undefined } })
+                  }
+                />
+
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">Preview Mode</Typography>
+                  <Switch checked={previewMode} onChange={() => setPreviewMode((state) => !state)} />
+                </Stack>
               </Stack>
-            </Box>
-          </Drawer>
-        )}
+            )}
+          </Box>
+        </Drawer>
       </Box>
 
-      {/* Floating Action Button */}
-      {!previewMode && (
-        <SpeedDial
-          ariaLabel="CMS Actions"
-          sx={{ position: 'fixed', bottom:  16, right: 16}}
-          icon={<SpeedDialIcon />}
-        >
-          <SpeedDialAction
-            icon={showLayers ? theming.getThemedIcon('visibilityOff') : theming.getThemedIcon('visibility')}
-            tooltipTitle={showLayers ? 'Skjul Lag' : 'Vis Lag'}
-            onClick={() => setShowLayers(!showLayers)}
-          />
-          <SpeedDialAction
-            icon={showSettings ? theming.getThemedIcon('visibilityOff') : theming.getThemedIcon('settings')}
-            tooltipTitle={showSettings ? 'Skjul Innstillinger' : 'Vis Innstillinger'}
-            onClick={() => setShowSettings(!showSettings)}
-          />
-          <SpeedDialAction
-            icon={<Code />}
-            tooltipTitle="Kodemodus"
-            onClick={() => setCodeMode(!codeMode)}
-          />
-          <SpeedDialAction
-            icon={theming.getThemedIcon('refresh')}}
-            tooltipTitle="Oppdater"
-            onClick={() => window.location.reload()}
-          />
-        </SpeedDial>
-      )}
-
-      {/* Code Mode Dialog */}
-      <Dialog open={codeMode} onClose={() => setCodeMode(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>🔧 Kode Redigering</DialogTitle>
-        <DialogContent sx={{ height: '60vh' }}>
-          <MonacoEditor
-            height="100%"
-            language="typescript"
-            value={currentPage ? JSON.stringify(currentPage, null, 2) : ''}
-            onChange={(value) => {
-              try {
-                const parsed = JSON.parse(value || ', ');
-                setCurrentPage(parsed);
-            } catch (e) {
-                // Invalid JSON, ignore
-            }
-          }}
-            options={{
-              theme: 'vs-dark',
-              fontSize:  14,
-              wordWrap: 'on',
-              minimap: { enabled: true }
-          }}
-          />
+      <Dialog open={showPageDialog} onClose={() => setShowPageDialog(false)}>
+        <DialogTitle>Create page</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.25} sx={{ minWidth: 320, pt: 0.5 }}>
+            <TextField
+              label="Page name"
+              value={newPageName}
+              onChange={(event) => setNewPageName(event.target.value)}
+            />
+            <TextField
+              label="Route"
+              placeholder="/landing"
+              value={newPageRoute}
+              onChange={(event) => setNewPageRoute(event.target.value)}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCodeMode(false)}>Lukk</Button>
-          <Button onClick={handleSavePage} variant="contained" sx={theming.getThemedButtonSx()}>
-            Lagre Endringer
+          <Button onClick={() => setShowPageDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreatePage}>
+            Create
           </Button>
         </DialogActions>
       </Dialog>

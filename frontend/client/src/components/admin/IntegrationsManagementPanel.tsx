@@ -782,13 +782,13 @@ export default function IntegrationsManagementPanel({
   const CreateApiKeyDialog = () => {
     const [formData, setFormData] = useState({
       name:  '',
-      service:  '',
+      service:  ', ',
       apiKey:  '',
       keyType: 'bearer',
       permissions:  '',
       monthlyQuota: '1000',
       // For custom API services
-      customBaseUrl:  '',
+      customBaseUrl:  ', ',
       customAuthHeader: 'Authorization'
 });
 
@@ -1087,7 +1087,7 @@ export default function IntegrationsManagementPanel({
   const CreateWebhookDialog = () => {
     const [formData, setFormData] = useState({
       name:  '',
-      url:  '',
+      url:  ', ',
       service:  '',
       events: ''
 });
@@ -1179,7 +1179,7 @@ export default function IntegrationsManagementPanel({
   const CreateOAuthDialog = () => {
     const [formData, setFormData] = useState({
       name:  '',
-      provider:  '',
+      provider:  ', ',
       scopes:  '',
       redirectUris: ''
 });

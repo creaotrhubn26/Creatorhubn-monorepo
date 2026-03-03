@@ -134,7 +134,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
       headers: {
         "Content-Type" : "application/json"
     ,},
-      method: 'POS',
+      method: 'POST',
       body: JSON.stringify({ userd, profession })
 }),
     onSuccess: () => {
@@ -149,7 +149,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
       headers: {
         "Content-Type" : "application/json"
     ,},
-      method: 'POS',
+      method: 'POST',
       body: JSON.stringify({ 
         userd, 
         projectId: 'current', 
@@ -173,7 +173,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
       headers: {
         "Content-Type" : "application/json"
     ,},
-      method: 'POS',
+      method: 'POST',
       body: JSON.stringify({ 
         userd, 
         projectId: 'current',
@@ -202,7 +202,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
         headers: {
           "Content-Type" : "application/json"
       ,},
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ 
           userd, 
           projectId: 'current',
@@ -252,7 +252,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
       headers: {
         "Content-Type" : "application/json"
     ,},
-      method: 'POS',
+      method: 'POST',
       body: JSON.stringify({ 
         userd, 
         projectId: 'current',
@@ -332,7 +332,7 @@ const FilesTab: React.FC<FilesTabProps> = ({
               <Box sx={{ 
                 width:  8, 
                 height:  8, 
-                borderRadius: '50, %', 
+                borderRadius: '50%', 
                 bgcolor: 'success.main',
                 animation: 'pulse 2s infinite'
             }} />

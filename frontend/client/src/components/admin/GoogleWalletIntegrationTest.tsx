@@ -1,72 +1,114 @@
 /**
  * CreatorHub Norge - Google Wallet Integration Test
- * Test component for Google Wallet API integration
+ * Integration smoke tester for wallet/membership data flow and communication.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
   Button,
-  Typography,
-  Paper,
+  Card,
+  CardContent,
+  Chip,
+  Divider,
   List,
   ListItem,
   ListItemText,
-  Chip,
-  Divider,
-  Alert,
-  Grid,
-  Card,
-  CardContent,
+  Paper,
+  Typography,
 } from '@mui/material';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';
+import Grid from '@mui/material/Grid2';
 import {
+  Business,
   CardMembership,
   QrCode,
-  Business,
   School,
   Work,
-  Star,
 } from '@mui/icons-material';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 
+type TestStatus = 'PASS' | 'FAIL';
+
+interface TestResultEntry {
+  key: string;
+  status: TestStatus;
+  detail?: string;
+}
+
+interface MembershipWorkflowStep {
+  step: number;
+  action: string;
+  data: Record<string, unknown>;
+}
+
+const COMPONENT_ID = 'google-wallet-membership-test';
+
 const GoogleWalletIntegrationTest: React.FC = () => {
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Profession system hooks
   const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
+
   const currentProfession = professionAdapter.profession || 'prototype_tester';
   const professionIcon = getProfessionIcon(currentProfession);
   const professionConfig = professionConfigs?.[currentProfession];
   const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
   const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
-  
-  // Theming system - use dynamic profession
   const theming = useTheming(currentProfession);
 
-  const [testResults, setTestResults] = useState<any>({});
+  const [testResults, setTestResults] = useState<TestResultEntry[]>([]);
   const [dataFlowMessages, setDataFlowMessages] = useState<string[]>([]);
   const [communicationMessages, setCommunicationMessages] = useState<string[]>([]);
 
+  const appendDataFlowMessage = useCallback((message: string) => {
+    setDataFlowMessages((prev) => [message, ...prev].slice(0, 40));
+  }, []);
+
+  const appendCommunicationMessage = useCallback((message: string) => {
+    setCommunicationMessages((prev) => [message, ...prev].slice(0, 80));
+  }, []);
+
+  const sendIntegrationMessage = useCallback(
+    (type: string, data: Record<string, unknown>) => {
+      communication.sendMessage({
+        from: COMPONENT_ID,
+        to: 'broadcast',
+        type,
+        priority: 'medium',
+        data: {
+          ...data,
+          timestamp: Date.now(),
+        },
+      });
+    },
+    [communication]
+  );
+
   const runGoogleWalletIntegrationTest = useCallback(() => {
-    const results: any = {};
+    const results: TestResultEntry[] = [];
 
-    // Test 1: MasterIntegration Access
-    results.masterIntegrationAccess = integration && communication && dataFlow && componentRegistry ? 'PASS' : 'FAIL';
+    const hasCoreIntegration = Boolean(integration && communication && dataFlow && componentRegistry);
+    results.push({
+      key: 'Core Integration Context',
+      status: hasCoreIntegration ? 'PASS' : 'FAIL',
+    });
 
-    // Test 2: Component Registration
-    const isRegistered = componentRegistry.getComponent('google-wallet-membership');
-    results.componentRegistration = isRegistered ? 'PASS' : 'FAIL';
+    const isMembershipComponentRegistered = Boolean(componentRegistry.getComponent('google-wallet-membership'));
+    results.push({
+      key: 'Wallet Component Registry',
+      status: isMembershipComponentRegistered ? 'PASS' : 'FAIL',
+      detail: isMembershipComponentRegistered
+        ? 'google-wallet-membership found'
+        : 'google-wallet-membership missing',
+    });
 
-    // Test 3: Simulate Membership Card Creation
-    const testMembershipCard = {
-      id: 'test-membership-12',
+    sendIntegrationMessage('membership:cardCreated', {
+      id: 'test-membership-001',
       organizationName: 'CreatorHub Norge',
       membershipType: 'Professional',
       memberNumber: 'MEM001',
@@ -74,379 +116,309 @@ const GoogleWalletIntegrationTest: React.FC = () => {
       benefits: ['Priority support', 'Exclusive content', 'Discounts'],
       isActive: true,
       autoRenew: true,
-      createdAt: new Date().toISOString()
-    };
+      createdAt: new Date().toISOString(),
+    });
 
-    communication.sendMessage({
-      from: 'google-wallet-membership-test',
-      to: 'all',
-      type: 'membership:cardCreated',
-      data: {
-        ...testMembershipCard,
-        createdBy: 'google-wallet-membership-test',
-        timestamp: Date.now()
-      }
-  });
-    results.membershipCardCreation = 'PASS (check console for message)';
-
-    // Test 4: Simulate Organization Update
-    const testOrganization = {
-      id: 'org-12',
+    sendIntegrationMessage('membership:organizationUpdated', {
+      id: 'org-001',
       name: 'Norwegian Photographers Association',
       type: 'Professional Organization',
       description: 'Leading photography organization in Norway',
-      memberCount: 120,
-      established: '2015'
-    };
+      memberCount: 1200,
+      established: '2015',
+    });
 
-    communication.sendMessage({
-      from: 'google-wallet-membership-test',
-      to: 'all',
-      type: 'membership:organizationUpdated',
-      data: {
-        ...testOrganization,
-        updatedBy: 'google-wallet-membership-test',
-        timestamp: Date.now()
-      }
-  });
-    results.organizationUpdate = 'PASS (check console for message)';
-
-    // Test 5: Simulate Tier Upgrade
-    const tierUpgrade = {
-      cardId: 'test-membership-12',
-      oldTier: 'SILVE',
-      newTier: 'GOL',
+    sendIntegrationMessage('membership:tierUpgraded', {
+      cardId: 'test-membership-001',
+      oldTier: 'SILVER',
+      newTier: 'GOLD',
       upgradeReason: 'Annual renewal with benefits',
-      effectiveDate: new Date().toISOString()
-  ,};
+      effectiveDate: new Date().toISOString(),
+    });
 
-    communication.sendMessage({
-      from: 'google-wallet-membership-test',
-      to: 'all',
-      type: 'membership:tierUpgraded',
-      data: {
-        ...tierUpgrade,
-        upgradedBy: 'google-wallet-membership-test',
-        timestamp: Date.now()
-    }
-  });
-    results.tierUpgrade = 'PASS (check console for message)';
-
+    results.push({ key: 'Message Dispatch', status: 'PASS', detail: 'Created/Updated/Upgraded events broadcasted' });
     setTestResults(results);
-}, [integration, communication, dataFlow, componentRegistry]);
+  }, [communication, componentRegistry, dataFlow, integration, sendIntegrationMessage]);
 
-  const testDataFlow = useCallback(() => {
+  const testDataFlow = useCallback(async () => {
     setDataFlowMessages([]);
-    
-    // Test membership cards data flow
+
     const membershipCardsData = [
       {
-        id: 'card-',
+        id: 'card-001',
         organizationName: 'CreatorHub Norge',
         membershipType: 'Professional',
-        tier: 'GOL',
+        tier: 'GOLD',
         isActive: true,
-        memberSince: '2023-01-1',
-        renewalDate: '2024-01-15'
-    ,},
+        memberSince: '2023-01-15',
+        renewalDate: '2027-01-15',
+      },
       {
-        id: 'card-',
+        id: 'card-002',
         organizationName: 'Norwegian Photographers Association',
         membershipType: 'Business',
-        tier: 'SILVE',
+        tier: 'SILVER',
         isActive: true,
-        memberSince: '2023-06-0',
-        renewalDate: '2024-06-01'
-    }
+        memberSince: '2023-06-01',
+        renewalDate: '2027-06-01',
+      },
     ];
 
-    dataFlow.syncData('google-wallet-membership: cards', membershipCardsData);
-    setDataFlowMessages(prev => [...prev, `Synced membership cards: ${membershipCardsData.length} cards`]);
-
-    // Test organizations data flow
     const organizationsData = [
       {
-        id: 'org-',
+        id: 'org-001',
         name: 'CreatorHub Norge',
         type: 'Platform',
         description: 'Creative platform for photographers and videographers',
-        memberCount: 5000
-    ,},
+        memberCount: 5000,
+      },
       {
-        id: 'org-',
+        id: 'org-002',
         name: 'Norwegian Photographers Association',
         type: 'Professional Organization',
         description: 'Leading photography organization in Norway',
-        memberCount: 1250
-    }
+        memberCount: 1250,
+      },
     ];
 
-    dataFlow.syncData('google-wallet-membership: organizations', organizationsData);
-    setDataFlowMessages(prev => [...prev, `Synced organizations: ${organizationsData.length} organizations`]);
+    await dataFlow.syncData('google-wallet-membership:cards', membershipCardsData);
+    appendDataFlowMessage(`Synced membership cards: ${membershipCardsData.length}`);
+    await dataFlow.syncData('google-wallet-membership:organizations', organizationsData);
+    appendDataFlowMessage(`Synced organizations: ${organizationsData.length}`);
 
-    // Simulate another component requesting this data
-    const requestedCards = dataFlow.getData('google-wallet-membership: cards');
-    const requestedOrgs = dataFlow.getData('google-wallet-membership:organizations');
-    
-    setDataFlowMessages(prev => [...prev, `Requested cards data: ${JSON.stringify(requestedCards)}`]);
-    setDataFlowMessages(prev => [...prev, `Requested orgs data: ${JSON.stringify(requestedOrgs)}`]);
+    const requestedCards = dataFlow.getSyncedData('google-wallet-membership:cards');
+    const requestedOrgs = dataFlow.getSyncedData('google-wallet-membership:organizations');
 
-}, [dataFlow]);
+    appendDataFlowMessage(`Read cards snapshot size: ${Array.isArray(requestedCards) ? requestedCards.length : 0}`);
+    appendDataFlowMessage(`Read org snapshot size: ${Array.isArray(requestedOrgs) ? requestedOrgs.length : 0}`);
+  }, [appendDataFlowMessage, dataFlow]);
 
   const testCommunication = useCallback(() => {
     setCommunicationMessages([]);
-    
-    // Test membership card creation communication
-    const membershipCardMessage = {
-      cardId: 'test-card-45',
+
+    sendIntegrationMessage('membership:cardCreated', {
+      cardId: 'test-card-123',
       organizationName: 'Test Organization',
       membershipType: 'Professional',
-      tier: 'PLATINU',
-      timestamp: Date.now()
-  ,};
+      tier: 'PLATINUM',
+    });
+    appendCommunicationMessage('Broadcasted membership:cardCreated');
 
-    communication.sendMessage({
-      from: 'google-wallet-membership-test',
-      to: 'all',
-      type: 'membership:cardCreated',
-      data: membershipCardMessage
-  ,});
-    setCommunicationMessages(prev => [...prev, `Broadcasted membership card creation: ${JSON.stringify(membershipCardMessage)}`]);
-
-    // Test organization update communication
-    const organizationMessage = {
-      orgId: 'test-org-78',
+    sendIntegrationMessage('membership:organizationUpdated', {
+      orgId: 'test-org-456',
       name: 'Updated Organization',
       memberCount: 200,
-      timestamp: Date.now()
-  ,};
+    });
+    appendCommunicationMessage('Broadcasted membership:organizationUpdated');
 
-    communication.sendMessage({
-      from: 'google-wallet-membership-test',
-      to: 'all',
-      type: 'membership:organizationUpdated',
-      data: organizationMessage
-  ,});
-    setCommunicationMessages(prev => [...prev, `Broadcasted organization update: ${JSON.stringify(organizationMessage)}`]);
+    const unsubscribe = communication.onMessage((message) => {
+      if (message.from !== COMPONENT_ID) {
+        return;
+      }
+      appendCommunicationMessage(`Echo ${message.type}: ${JSON.stringify(message.data)}`);
+    });
 
-    // Listen for responses
-    const unsubscribe = communication.onMessage((message: any) => {
-      if (message.type === 'membership:cardCreated' && message.from === 'google-wallet-membership-test') {
-        setCommunicationMessages(prev => [...prev, `Received membership card broadcast: ${JSON.stringify(message.data)}`]);
-    }
-      if (message.type === 'membership: organizationUpdated' && message.from === 'google-wallet-membership-test') {
-        setCommunicationMessages(prev => [...prev, `Received organization update broadcast: ${JSON.stringify(message.data)}`]);
-    }
-  });
-
-    // Clean up listener after 5 seconds
-    setTimeout(() => {
-      unsubscribe();
-  }, 5000);
-
-}, [communication]);
+    window.setTimeout(unsubscribe, 3000);
+  }, [appendCommunicationMessage, communication, sendIntegrationMessage]);
 
   const simulateMembershipWorkflow = useCallback(() => {
     setCommunicationMessages([]);
-    
-    // Simulate a complete membership workflow
-    const workflowSteps = [
-      { step: 1, action: 'User applies for membership', data: { organization: 'CreatorHub Norge', tier: 'BRONZE'}},
-      { step: 2, action: 'Application approved', data: { status: 'approved', approvedBy: 'admin'}},
-      { step: 3, action: 'Digital card created', data: { cardId: 'card-workflow-12', qrCode: 'QR123456' } },
-      { step: 4, action: 'Card added to Google Wallet', data: { walletId: 'wallet-12', status: 'active' } },
+
+    const workflowSteps: MembershipWorkflowStep[] = [
+      { step: 1, action: 'User applies for membership', data: { organization: 'CreatorHub Norge', tier: 'BRONZE' } },
+      { step: 2, action: 'Application approved', data: { status: 'approved', approvedBy: 'admin' } },
+      { step: 3, action: 'Digital card created', data: { cardId: 'card-workflow-001', qrCode: 'QR123456' } },
+      { step: 4, action: 'Card added to Google Wallet', data: { walletId: 'wallet-001', status: 'active' } },
       { step: 5, action: 'Welcome email sent', data: { emailSent: true, template: 'welcome-professional' } },
-      { step: 6, action: 'Benefits activated', data: { benefits: ['Priority support', 'Exclusive content'] } }
+      { step: 6, action: 'Benefits activated', data: { benefits: ['Priority support', 'Exclusive content'] } },
     ];
 
     workflowSteps.forEach((step, index) => {
-      setTimeout(() => {
-        communication.sendMessage({
-          from: 'google-wallet-membership-test',
-          to: 'all',
-          type: 'membership:workflowStep',
-          data: {
-            ...step,
-            timestamp: Date.now()
-        }
-      });
-        
-        setCommunicationMessages(prev => [...prev, `Step ${step.step}: ${step.action} - ${JSON.stringify(step.data)}`]);
-    }, index * 1000);
-  });
+      window.setTimeout(() => {
+        sendIntegrationMessage('membership:workflowStep', {
+          step: step.step,
+          action: step.action,
+          data: step.data,
+        });
+        appendCommunicationMessage(`Step ${step.step}: ${step.action}`);
+      }, index * 700);
+    });
+  }, [appendCommunicationMessage, sendIntegrationMessage]);
 
-}, [communication]);
+  const integrationSnapshot = useMemo(() => {
+    const allComponents = componentRegistry.getAllComponents();
+    const walletComponents = allComponents
+      .filter((component) => component.id.includes('wallet') || component.id.includes('membership'))
+      .map((component) => component.id);
+
+    return {
+      componentCount: allComponents.length,
+      walletComponents,
+      cardsDataPresent: Boolean(dataFlow.getSyncedData('google-wallet-membership:cards')),
+      orgDataPresent: Boolean(dataFlow.getSyncedData('google-wallet-membership:organizations')),
+    };
+  }, [componentRegistry, dataFlow]);
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+    <Box sx={{ p: 3 }}>
+      <Typography
+        variant="h5"
+        gutterBottom
+        sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}
+      >
         {professionIcon && (
-          <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
-            {professionIcon}
-          </Box>
+          <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>{professionIcon}</Box>
         )}
         <CardMembership color="primary" />
         {enhancedProfessionConfig?.displayName || professionConfig?.displayName
           ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Google Wallet Integration Test`
           : 'Google Wallet Integration Test'}
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-        This component tests the Google Wallet membership card integration and verifies seamless communication
-        between all components in the unified workflow system.
+
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+        Validates Google Wallet membership integration across communication, component registry, and data flow.
       </Typography>
 
-      <Grid container spacing={2} sx={{ mb:  3 }}>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Button variant="contained" onClick={runGoogleWalletIntegrationTest} fullWidth sx={theming.getThemedButtonSx()}>
             Run Integration Test
           </Button>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Button variant="outlined" onClick={testDataFlow} fullWidth>
             Test Data Flow
           </Button>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Button variant="outlined" onClick={testCommunication} fullWidth>
             Test Communication
           </Button>
         </Grid>
-        <Grid size={{ xs:  12, sm:  6, md:  3 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Button variant="outlined" onClick={simulateMembershipWorkflow} fullWidth>
             Simulate Workflow
           </Button>
         </Grid>
       </Grid>
 
-      <Divider sx={{ my:  3 }} />
+      <Divider sx={{ my: 3 }} />
 
-      {/* Test Results */}
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
         Test Results
       </Typography>
       <Paper elevation={1} sx={{ ...theming.getThemedCardSx(), p: 2, mb: 3 }}>
         <List dense>
-          {Object.entries(testResults).map(([key, value]) => (
-            <ListItem key={key}>
+          {testResults.map((result) => (
+            <ListItem key={result.key}>
               <ListItemText
-                primary={key.replace(/([A-Z])/g, ' $1').trim()}
-                secondary={
-                  <Chip
-                    label={value}
-                    color={value.startsWith('PASS') ? 'success' : value.startsWith('FAIL') ? 'error' : 'warning'}
-                    size="small"
-                  />
-              }
+                primary={result.key}
+                secondary={result.detail}
+              />
+              <Chip
+                label={result.status}
+                size="small"
+                color={result.status === 'PASS' ? 'success' : 'error'}
               />
             </ListItem>
           ))}
         </List>
       </Paper>
 
-      {/* Data Flow Messages */}
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
         Data Flow Messages
       </Typography>
-      <Paper elevation={1} sx={{ p: 2, mb: 3, ...theming.getThemedCardSx() }}>
+      <Paper elevation={1} sx={{ ...theming.getThemedCardSx(), p: 2, mb: 3 }}>
         <List dense>
-          {dataFlowMessages.map((msg, index) => (
-            <ListItem key={index}>
-              <ListItemText primary={msg} />
+          {dataFlowMessages.map((message, index) => (
+            <ListItem key={`${message}-${index}`}>
+              <ListItemText primary={message} />
             </ListItem>
           ))}
         </List>
       </Paper>
 
-      {/* Communication Messages */}
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
         Communication Messages
       </Typography>
-      <Paper elevation={1} sx={{ p: 2, mb: 3, ...theming.getThemedCardSx() }}>
+      <Paper elevation={1} sx={{ ...theming.getThemedCardSx(), p: 2, mb: 3 }}>
         <List dense>
-          {communicationMessages.map((msg, index) => (
-            <ListItem key={index}>
-              <ListItemText primary={msg} />
+          {communicationMessages.map((message, index) => (
+            <ListItem key={`${message}-${index}`}>
+              <ListItemText primary={message} />
             </ListItem>
           ))}
         </List>
       </Paper>
 
-      {/* Integration Status */}
       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
         Integration Status
       </Typography>
       <Grid container spacing={2}>
-        <Grid size={{ xs:  12, sm:  6 }}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <QrCode color="primary" />
                 Digital Cards
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Membership cards, loyalty programs, and digital passes
+                Membership cards, loyalty programs and digital passes.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt:  1 }} />
+              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs: 12 }} sm={6}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Business color="primary" />
                 Organizations
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Professional organizations and business memberships
+                Professional organizations and business memberships.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt:  1 }} />
+              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs: 12 }} sm={6}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Work color="primary" />
                 Professional
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Professional photographer and videographer memberships
+                Professional photographer and videographer memberships.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt:  1 }} />
+              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{ xs: 12 }} sm={6}>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <School color="primary" />
                 Student
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Student memberships and educational programs
+                Student memberships and educational programs.
               </Typography>
-              <Chip label="Active" color="success" size="small" sx={{ mt:  1 }} />
+              <Chip label="Active" color="success" size="small" sx={{ mt: 1 }} />
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Master Integration State */}
-      <Typography variant="h6" gutterBottom sx={{  mt:  3  }}>
+      <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
         Master Integration State (Partial View)
       </Typography>
       <Paper elevation={1} sx={{ ...theming.getThemedCardSx(), p: 2 }}>
         <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-          {JSON.stringify({
-            componentRegistry: Array.from(componentRegistry.getAllComponents().keys()),
-            dataFlowNodes: Array.from(dataFlow.getAllNodes().keys()),
-            googleWalletComponents: Array.from(componentRegistry.getAllComponents().keys()).filter(key =>
-              key.includes('google-wallet') || key.includes('membership')
-            ),
-          }, null, 2)}
+          {JSON.stringify(integrationSnapshot, null, 2)}
         </pre>
       </Paper>
     </Box>
@@ -454,5 +426,3 @@ const GoogleWalletIntegrationTest: React.FC = () => {
 };
 
 export default GoogleWalletIntegrationTest;
-
-

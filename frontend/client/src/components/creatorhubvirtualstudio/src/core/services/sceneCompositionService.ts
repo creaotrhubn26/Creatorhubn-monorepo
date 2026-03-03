@@ -37,7 +37,9 @@ export class SceneCompositionService {
     // Segment image to detect objects
     const segmentation = await sam2Service.segmentImageFromUrl(
       imageUrl,
-      undefined'auto','small'
+      undefined,
+      'auto',
+      'small',
     );
 
     const objects = segmentation.masks.map(mask => ({
@@ -264,7 +266,6 @@ export class SceneCompositionService {
 }
 
 export const sceneCompositionService = new SceneCompositionService();
-
 
 
 

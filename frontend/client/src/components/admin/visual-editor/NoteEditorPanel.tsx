@@ -18,7 +18,16 @@ import {
 import NoteEditor from '../../notes/NoteEditor';
 
 interface NoteEditorPanelProps {
-  selectedProject?: { id: string; name?: string };
+  selectedProject?: {
+    id: string;
+    name?: string;
+    description?: string;
+    status?: string;
+    clientId?: string;
+    dueDate?: Date | string;
+    priority?: string;
+    tags?: string[];
+  };
   onProjectUpdate?: (project: Record<string, unknown>) => void;
   onWorklogCreate?: (worklog: Record<string, unknown>) => void;
   onNotificationCreate?: (notification: Record<string, unknown>) => void;
@@ -35,7 +44,7 @@ export const NoteEditorPanel: React.FC<NoteEditorPanelProps> = ({
   // Theming system
   // const theming = useTheming('prototype_tester');
   const theming = {
-    getThemedCardSx: () => ({ p: 2, m: 1 }),
+    getThemedCardSx: () => ({}),
     getThemedButtonSx: () => ({ mt: 2 }),
     getThemedIcon: (icon: string) => <span>{icon}</span>,
     colors: { primary: '#1976d2' }
@@ -47,7 +56,7 @@ export const NoteEditorPanel: React.FC<NoteEditorPanelProps> = ({
 
   // Component registration and performance monitoring
   useEffect(() => {
-    const endTiming = performance.startTiming('note_editor_panel_render,');
+    const endTiming = performance.startTiming('note_editor_panel_render');
     
     lifecycle.registerComponent({
       id: 'NoteEditorPanel',

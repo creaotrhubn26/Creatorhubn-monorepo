@@ -139,6 +139,9 @@ const RECOMMENDED_MODELS = {
   ],
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 export default function AILocalModelProvider({
   open,
   onClose,
@@ -165,7 +168,7 @@ export default function AILocalModelProvider({
       setProvider(currentConfig.provider);
       setEndpoint(currentConfig.endpoint);
       setEnabled(currentConfig.enabled);
-      setSelectedModel(currentConfig.defaultModel || ',');
+      setSelectedModel(currentConfig.defaultModel || '');
       setMaxTokens(currentConfig.maxTokens);
       setTemperature(currentConfig.temperature);
       setStreamResponse(currentConfig.streamResponse);
@@ -182,7 +185,7 @@ export default function AILocalModelProvider({
 
   const checkConnection = useCallback(async () => {
     setIsLoading(true);
-    setConnectionStatus('unknown, ');
+    setConnectionStatus('unknown');
 
     try {
       let response;
@@ -225,30 +228,54 @@ export default function AILocalModelProvider({
 
       if (provider === 'ollama') {
         response = await fetch(`${endpoint}/api/tags`);
-        const data = await response.json();
-        models = (data.models || []).map((m: unknown) => ({
-          id: m.name,
-          name: m.name,
-          provider: 'ollama',
-          size: formatBytes(m.size),
-          parameters: m.details?.parameter_size || 'Unknown',
-          quantization: m.details?.quantization_level,
-          status: 'available',
-          downloaded: true,
-          contextLength: 4096,
-        }));
+        const data: unknown = await response.json();
+        const sourceModels =
+          isRecord(data) && Array.isArray(data.models) ? data.models : [];
+
+        models = sourceModels
+          .map((entry): LocalModel | null => {
+            if (!isRecord(entry) || typeof entry.name !== 'string') {
+              return null;
+            }
+            const details = isRecord(entry.details) ? entry.details : {};
+            return {
+              id: entry.name,
+              name: entry.name,
+              provider: 'ollama',
+              size: formatBytes(typeof entry.size === 'number' ? entry.size : 0),
+              parameters:
+                typeof details.parameter_size === 'string' ? details.parameter_size : 'Unknown',
+              quantization:
+                typeof details.quantization_level === 'string'
+                  ? details.quantization_level
+                  : undefined,
+              status: 'available',
+              downloaded: true,
+              contextLength: 4096,
+            };
+          })
+          .filter((model): model is LocalModel => model !== null);
       } else if (provider === 'lmstudio') {
         response = await fetch(`${endpoint}/v1/models`);
-        const data = await response.json();
-        models = (data.data || []).map((m: unknown) => ({
-          id: m.id,
-          name: m.id,
-          provider: 'lmstudio',
-          size: 'Unknown',
-          parameters: 'Unknown',
-          status: 'available',
-          downloaded: true,
-        }));
+        const data: unknown = await response.json();
+        const sourceModels = isRecord(data) && Array.isArray(data.data) ? data.data : [];
+
+        models = sourceModels
+          .map((entry): LocalModel | null => {
+            if (!isRecord(entry) || typeof entry.id !== 'string') {
+              return null;
+            }
+            return {
+              id: entry.id,
+              name: entry.id,
+              provider: 'lmstudio',
+              size: 'Unknown',
+              parameters: 'Unknown',
+              status: 'available',
+              downloaded: true,
+            };
+          })
+          .filter((model): model is LocalModel => model !== null);
       }
 
       setAvailableModels(models);
@@ -303,18 +330,18 @@ export default function AILocalModelProvider({
       if (response?.ok) {
         setTestResult({
           success: true,
-          message: `✅ Model working! Response, time: ${responseTime}ms`,
+          message: `✅ Model working! Response time: ${responseTime}ms`,
         });
       } else {
         setTestResult({
           success: false,
-          message: `❌ Test, failed: ${response?.statusText || 'Unknown error'}`,
+          message: `❌ Test failed: ${response?.statusText || 'Unknown error'}`,
         });
       }
     } catch (error) {
       setTestResult({
         success: false,
-        message: `❌ Test, failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `❌ Test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
     } finally {
       setIsLoading(false);
@@ -422,12 +449,12 @@ export default function AILocalModelProvider({
               Local AI Models (Offline Mode)
             </Typography>
             {connectionStatus === 'connected' && (
-              <Chip
-                icon={<CheckCircle />}
-                label="Connected"
-                size="small"
-                sx={{ bgcolor: 'rgba(7, 6, 1, 758, 0, 0.3)', color: 'white' }} />
-            )}
+                <Chip
+                  icon={<CheckCircle />}
+                  label="Connected"
+                  size="small"
+                  sx={{ bgcolor: 'rgba(255, 255, 255, 0.25)', color: 'white' }} />
+              )}
           </Box>
           <IconButton size="small" onClick={onClose} sx={{ color: 'white' }}>
             <Close />
@@ -714,7 +741,7 @@ export default function AILocalModelProvider({
                 2. Install and run: <code>ollama serve</code>
               </Typography>
               <Typography variant="body2" sx={{ mb: 2 }}>
-                3. Download a model: <code>ollama pull, codellama:7b</code>
+                3. Download a model: <code>ollama pull codellama:7b</code>
               </Typography>
             </Box>
 

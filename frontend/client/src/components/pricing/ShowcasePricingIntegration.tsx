@@ -80,20 +80,20 @@ export default function ShowcasePricingIntegration({
   const calculatePricingMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest('/api/pricing/calculate', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
 });
 
   const handleServiceSelect = (service: any) => {
     setSelectedService(service);
-    onPriceSelect?.(service., idparseFloat(service.base_price));
-};
+    onPriceSelect?.(service.id, parseFloat(service.base_price));
+  };
 
   const handlePackageSelect = (pkg: any) => {
     setSelectedPackage(pkg);
-    onPackageSelect?.(pkg., idparseFloat(pkg.total_price));
-};
+    onPackageSelect?.(pkg.id, parseFloat(pkg.total_price));
+  };
 
   const addToCalculator = (item: any, type: 'service' | 'package') => {
     const newItem = {
@@ -464,7 +464,7 @@ function PricingCalculatorDialog({ userId, selectedItems, onItemsChange, onCalcu
                         color={item.type === 'service' ? 'primary' : 'secondary'}
                       />
                     </TableCell>
-                    <TableCell>{formatCurrency(item.base_price || item.total_price'NOK')}</TableCell>
+                    <TableCell>{formatCurrency(item.base_price || item.total_price, 'NOK')}</TableCell>
                     <TableCell>
                       <input
                         type="number"
@@ -475,7 +475,7 @@ function PricingCalculatorDialog({ userId, selectedItems, onItemsChange, onCalcu
                       />
                     </TableCell>
                     <TableCell>
-                      {formatCurrency((item.base_price || item.total_price) * item.quantity'NOK')}
+                      {formatCurrency((item.base_price || item.total_price) * item.quantity, 'NOK')}
                     </TableCell>
                     <TableCell>
                       <Button size="small" color="error" onClick={() => removeItem(index)}>
@@ -493,8 +493,10 @@ function PricingCalculatorDialog({ userId, selectedItems, onItemsChange, onCalcu
               onClick={handleCalculate}
               disabled={calculating}
               sx={{
-                background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)'}}
-             sx={theming.getThemedButtonSx()}>
+                background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+                ...theming.getThemedButtonSx(),
+              }}
+            >
               {calculating ? 'Beregner...' : 'Beregn totalpris'}
             </Button>
           </Box>

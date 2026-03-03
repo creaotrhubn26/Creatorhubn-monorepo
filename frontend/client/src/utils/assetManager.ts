@@ -54,7 +54,7 @@ export interface Asset {
   id: string;
   name: string;
   description: string;
-  type: 'image, ' | 'video, ' | 'audio' | 'document' | 'font' | 'icon' | 'template' | 'component' | 'other';
+  type: 'image' | 'video' | 'audio' | 'document' | 'font' | 'icon' | 'template' | 'component' | 'other';
   category: string;
   subcategory?: string;
   tags: string[];
@@ -330,11 +330,11 @@ class AssetManager {
       this.buildSearchIndex();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
   } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
   }
 }
 

@@ -14,7 +14,7 @@ export interface AuditEvent {
   details: Record<string, any>;
   ipAddress?: string;
   userAgent?: string;
-  severity: 'low, ' | 'medium, ' | 'high' | 'critical';
+  severity: 'low' | 'medium' | 'high' | 'critical';
   category: 'user' | 'system' | 'security' | 'performance' | 'error';
   tags: string[];
   metadata: Record<string, any>;
@@ -136,7 +136,7 @@ class AuditLogger {
 
   private setupErrorHandling(): void {
     if (typeof window !== 'undefined') {
-      window.addEventListener('error, ', (event) => {
+      window.addEventListener('error', (event: ErrorEvent) => {
         this.log({
           action: 'javascript_error',
           resource: 'browser',
@@ -359,8 +359,14 @@ class AuditLogger {
 
   private shouldLogEvent(event: AuditEvent, logLevel: string): boolean {
     const severityLevels = { debug: 0, info: 1, warn: 2, error: 3 };
-    const eventLevel = severityLevels[event.severity as keyof typeof severityLevels] || 0;
-    const configLevel = severityLevels[logLevel as keyof typeof severityLevels] || 1;
+    const eventLevelBySeverity = {
+      low: severityLevels.info,
+      medium: severityLevels.warn,
+      high: severityLevels.error,
+      critical: severityLevels.error,
+    } as const;
+    const eventLevel = eventLevelBySeverity[event.severity];
+    const configLevel = severityLevels[logLevel as keyof typeof severityLevels] || severityLevels.info;
 
     return eventLevel >= configLevel;
 }
@@ -401,7 +407,7 @@ class AuditLogger {
 
     try {
       const response = await fetch(this.config.remoteEndpoint, {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type' : 'application/json','Authorization': `Bearer ${this.config.apiKey}`,
           'X-Audit-Batch-Size': events.length.toString()
@@ -628,7 +634,6 @@ export const auditLogger = new AuditLogger();
 // Export types and class
 export { AuditLogger };
 export default auditLogger;
-
 
 
 

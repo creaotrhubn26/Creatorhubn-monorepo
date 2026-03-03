@@ -1,40 +1,39 @@
-import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { Box, Typography, Chip } from '@mui/material';
-import { apiRequest } from '@/lib/queryClient';
+import { Chip, type ChipProps } from '@mui/material';
 
-interface BadgeProps {
+interface BadgeProps extends Omit<ChipProps, 'label' | 'color'> {
   children: React.ReactNode;
   variant?: 'default' | 'secondary' | 'destructive' | 'outline';
-  className?: string
+  className?: string;
 }
 
-function MaterialBadgeComponent(
-  // Theming system
-  const theming = useTheming('photographer');{ children, variant = 'default', className, ...props }: BadgeProps) {
-  const getColor = () => {
-    switch (variant) {
-      case 'secondary': return 'secondary';
-      case 'destructive': return 'error';
-      case 'outline': return 'default';
-      default: return'primary';
-}
+const variantToColor = (variant: BadgeProps['variant']): ChipProps['color'] => {
+  switch (variant) {
+    case 'secondary':
+      return 'secondary';
+    case 'destructive':
+      return 'error';
+    case 'outline':
+      return 'default';
+    case 'default':
+    default:
+      return 'primary';
+  }
 };
 
+function MaterialBadgeComponent({ children, variant = 'default', className, ...props }: BadgeProps) {
   return (
-    <Chip 
+    <Chip
       label={children}
-      color={getColor() as any}
+      color={variantToColor(variant)}
       size="small"
       className={className}
+      variant={variant === 'outline' ? 'outlined' : 'filled'}
       {...props}
     />
   );
 }
 
-// Named exports for compatibility
 export const MaterialBadge = MaterialBadgeComponent;
 export const Badge = MaterialBadgeComponent;
 export default MaterialBadgeComponent;

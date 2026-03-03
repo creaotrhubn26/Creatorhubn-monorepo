@@ -66,7 +66,7 @@ const OnboardingCameraIntegration: React.FC<OnboardingCameraIntegrationProps> = 
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           userd,
           profession,
@@ -218,16 +218,25 @@ const OnboardingCameraIntegration: React.FC<OnboardingCameraIntegrationProps> = 
         ) : (
           <Button variant="contained"
             size="large"
-            startIcon={importCamerasMutation.isPending ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('upload')}
+            startIcon={
+              importCamerasMutation.isPending ? (
+                <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+              ) : (
+                theming.getThemedIcon('upload')
+              )
+            }
             onClick={() => importCamerasMutation.mutate()}
             disabled={importCamerasMutation.isPending}
             sx={{ 
-              bgcolor: professionColor'&:hover': {
+              bgcolor: professionColor,
+              '&:hover': {
                 bgcolor: professionColor,
-                opacity: 0.9 },
+                opacity: 0.9,
+              },
               mb:  2,
               px:  4,
-              py: 1.5 }}
+              py: 1.5,
+            }}
           >
             {importCamerasMutation.isPending ? 'Importerer...' : 'Importer til Utstyrsadministrasjon'}
           </Button>

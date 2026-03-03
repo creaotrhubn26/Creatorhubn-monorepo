@@ -1,74 +1,54 @@
 /**
- * ScrollStoryEditor - No-Code Visual Story Builder
- *
- * Features: * - 📝 Drag-and-drop page builder
- * - 🎬 Visual animation timeline
- * - 📁 Integrated media library
- * - 💾 Save/Load from Google Drive
- * - 🚀 One-click publish
- * - 🎨 Template library
- * - 🔧 Live preview
+ * ScrollStoryEditor - no-code visual story builder
+ * Functional editor with pages, templates, media picker, preview and publish dialog
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
+  Alert,
   AppBar,
-  Toolbar,
-  Typography,
+  Box,
   Button,
-  IconButton,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Drawer,
+  IconButton,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListItemButton,
-  Divider,
-  Tooltip,
-  Tabs,
-  Tab,
-  Paper,
-  Stack,
-  Chip,
-  TextField,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Menu,
   MenuItem,
-  Fab,
-  Alert,
+  Paper,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Toolbar,
+  Typography,
 } from '@mui/material';
 import {
-  Save,
-  CloudUpload,
-  Publish,
-  Preview,
   Add,
-  Delete,
-  Edit,
-  ContentCopy,
-  Settings,
-  Image,
-  VideoLibrary,
-  Animation,
-  Timeline,
-  Menu as MenuIcon,
-  Close,
-  PlayArrow,
   ArrowBack,
-  FolderOpen,
-  Code,
+  CloudUpload,
+  ContentCopy,
+  Delete,
   Download,
+  FolderOpen,
+  Image,
+  Menu as MenuIcon,
+  PlayArrow,
+  Publish,
+  Save,
+  Settings,
   Share,
-  Palette,
-  ViewModule,
+  VideoLibrary,
 } from '@mui/icons-material';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import type { ScrollStory, ScrollStoryPage } from './useScrollStory';
-import ScrollStoryWithToasts from './ScrollStoryWithToasts';
 import GoogleDriveMediaPicker from './GoogleDriveMediaPicker';
 
 interface ScrollStoryEditorProps {
@@ -80,238 +60,336 @@ interface ScrollStoryEditorProps {
   onClose?: () => void;
 }
 
-type EditorView = 'pages' | 'animations' | 'settings' | 'preview';
+type EditorView = 'pages' | 'settings' | 'preview';
+
+type StoryPageLayout = 'centered' | 'split' | 'full-bleed';
+
+interface StoryMediaItem {
+  type: 'image' | 'video' | 'audio';
+  url: string;
+  thumbnail?: string;
+}
+
+const buildEmptyPage = (index: number): ScrollStoryPage => ({
+  id: `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+  title: `Page ${index + 1}`,
+  content: '',
+  media: [],
+  animations: [],
+  triggers: [],
+  order: index,
+});
+
+const buildDefaultStory = (): ScrollStory => {
+  const firstPage = buildEmptyPage(0);
+  return {
+    id: `story-${Date.now()}`,
+    name: 'Untitled Story',
+    description: '',
+    pages: [firstPage],
+    scrollTriggers: [],
+    animations: [],
+    settings: {
+      theme: 'light',
+      autoplay: false,
+      loop: false,
+      showProgress: true,
+      showControls: true,
+      transitionDuration: 800,
+      easing: 'ease-in-out',
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+};
+
+const buildTemplateStories = (): ScrollStory[] => {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: 'template-product-launch',
+      name: 'Product Launch',
+      description: 'Narrative launch page with highlights and CTA.',
+      pages: [
+        {
+          ...buildEmptyPage(0),
+          id: 'tpl-launch-1',
+          title: 'Opening',
+          content: 'Introduce the product story and audience pain-point.',
+        },
+        {
+          ...buildEmptyPage(1),
+          id: 'tpl-launch-2',
+          title: 'Feature Highlights',
+          content: 'Show key moments with supporting visuals and stats.',
+          order: 1,
+        },
+        {
+          ...buildEmptyPage(2),
+          id: 'tpl-launch-3',
+          title: 'Call to Action',
+          content: 'Close with a clear CTA and social proof.',
+          order: 2,
+        },
+      ],
+      scrollTriggers: [],
+      animations: [],
+      settings: {
+        theme: 'light',
+        autoplay: false,
+        loop: false,
+        showProgress: true,
+        showControls: true,
+        transitionDuration: 700,
+        easing: 'ease-in-out',
+      },
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: 'template-documentary',
+      name: 'Documentary Arc',
+      description: 'Chronological story with evidence and voice-over blocks.',
+      pages: [
+        {
+          ...buildEmptyPage(0),
+          id: 'tpl-doc-1',
+          title: 'Context',
+          content: 'Set historical or project context with opening visuals.',
+        },
+        {
+          ...buildEmptyPage(1),
+          id: 'tpl-doc-2',
+          title: 'Conflict',
+          content: 'Describe challenge and stakes through media and text.',
+          order: 1,
+        },
+        {
+          ...buildEmptyPage(2),
+          id: 'tpl-doc-3',
+          title: 'Resolution',
+          content: 'Summarize outcome and next steps.',
+          order: 2,
+        },
+      ],
+      scrollTriggers: [],
+      animations: [],
+      settings: {
+        theme: 'dark',
+        autoplay: true,
+        loop: false,
+        showProgress: true,
+        showControls: true,
+        transitionDuration: 900,
+        easing: 'ease-in-out',
+      },
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+};
+
+const generateEmbedCode = (storyId: string): string => {
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+  return `<iframe src="${base}/stories/${storyId}" width="100%" height="800" frameborder="0" allowfullscreen></iframe>`;
+};
 
 export default function ScrollStoryEditor({
   initialStory,
-  projectId,
   projectDriveFolderId,
   onSave,
   onPublish,
   onClose,
-}: ScrollStoryEditorProps) {
-  const { analytics, features } = useEnhancedMasterIntegration();
-
-  // Story state
-  const [story, setStory] = useState<ScrollStory>(
-    initialStory || {
-      id: `story-${Date.now()}`,
-      name: 'Untitled Story',
-      pages: [],
-      animations: [],
-      scrollTriggers: [],
-      settings: {
-        backgroundColor: '#ffffff',
-        showProgress: true,
-        enableParallax: true,
-        enableKeyboardNav: true,
-      },
-    },
-  );
-
-  // UI state
+}: ScrollStoryEditorProps): React.ReactElement {
+  const [story, setStory] = useState<ScrollStory>(initialStory ?? buildDefaultStory());
   const [view, setView] = useState<EditorView>('pages');
-  const [selectedPageIndex, setSelectedPageIndex] = useState<number>(0);
+  const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
-  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
 
-  // Track editor usage
-  useEffect(() => {
-    analytics.trackEvent('scroll_story_editor_opened', {
-      storyId: story.id,
-      pageCount: story.pages.length,
-      hasInitialStory: !!initialStory,
+  const templates = useMemo(() => buildTemplateStories(), []);
+
+  const selectedPage = story.pages[selectedPageIndex] ?? null;
+
+  const updateStory = (patch: Partial<ScrollStory>): void => {
+    setStory((prev) => ({ ...prev, ...patch, updatedAt: new Date().toISOString() }));
+    setSaveStatus('unsaved');
+  };
+
+  const updatePage = (index: number, patch: Partial<ScrollStoryPage>): void => {
+    setStory((prev) => {
+      const pages = prev.pages.map((page, pageIndex) =>
+        pageIndex === index ? { ...page, ...patch } : page,
+      );
+      return {
+        ...prev,
+        pages,
+        updatedAt: new Date().toISOString(),
+      };
     });
+    setSaveStatus('unsaved');
+  };
 
-    features.trackFeatureUsage('scroll-story-editor,', 'opened', {
-      storyId: story.id,
+  const addPage = (): void => {
+    setStory((prev) => {
+      const newPage = buildEmptyPage(prev.pages.length);
+      return {
+        ...prev,
+        pages: [...prev.pages, newPage],
+        updatedAt: new Date().toISOString(),
+      };
     });
-  }, []);
-
-  // Mark as unsaved when story changes
-  useEffect(() => {
-    if (initialStory && JSON.stringify(story) !== JSON.stringify(initialStory) {
-      setSaveStatus('unsaved,');
-    }
-  }, [story, initialStory]);
-
-  // Add new page
-  const handleAddPage = useCallback(() => {
-    const newPage: ScrollStoryPage = {
-      id: `page-${Date.now()}`,
-      title: `Page ${story.pages.length + 1}`,
-      content: ', ',
-      media: [],
-      layout: 'centered',
-      backgroundColor: '#ffffff',
-    };
-
-    setStory((prev) => ({
-      ...prev,
-      pages: [...prev.pages, newPage],
-    }));
-
     setSelectedPageIndex(story.pages.length);
     setSaveStatus('unsaved');
+  };
 
-    analytics.trackEvent('scroll_story_page_added', {
-      storyId: story.id,
-      pageIndex: story.pages.length,
-    });
-  }, [story.pages.length, story.id, analytics]);
+  const duplicatePage = (index: number): void => {
+    const source = story.pages[index];
+    if (!source) {
+      return;
+    }
 
-  // Delete page
-  const handleDeletePage = useCallback(
-    (index: number) => {
-      if (story.pages.length === 1) {
-        alert('Cannot delete the last page');
-        return;
-      }
+    const duplicated: ScrollStoryPage = {
+      ...source,
+      id: `page-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: `${source.title} (Copy)`,
+      order: index + 1,
+    };
 
-      setStory((prev) => ({
+    setStory((prev) => {
+      const pages = [...prev.pages.slice(0, index + 1), duplicated, ...prev.pages.slice(index + 1)].map(
+        (page, pageIndex) => ({ ...page, order: pageIndex }),
+      );
+      return {
         ...prev,
-        pages: prev.pages.filter((_, i) => i !== index),
-      }));
-
-      if (selectedPageIndex >= index && selectedPageIndex > 0) {
-        setSelectedPageIndex(selectedPageIndex - 1);
-      }
-
-      setSaveStatus('unsaved');
-
-      analytics.trackEvent('scroll_story_page_deleted', {
-        storyId: story.id,
-        pageIndex: index,
-      });
-    },
-    [story.pages.length, selectedPageIndex, story.id, analytics],
-  );
-
-  // Duplicate page
-  const handleDuplicatePage = useCallback(
-    (index: number) => {
-      const pageToDuplicate = story.pages[index];
-      const duplicatedPage: ScrollStoryPage = {
-        ...pageToDuplicate,
-        id: `page-${Date.now()}`,
-        title: `${pageToDuplicate.title} (Copy)`,
+        pages,
+        updatedAt: new Date().toISOString(),
       };
-
-      setStory((prev) => ({
-        ...prev,
-        pages: [...prev.pages.slice(0, index + 1), duplicatedPage, ...prev.pages.slice(index + 1)],
-      }));
-
-      setSelectedPageIndex(index + 1);
-      setSaveStatus('unsaved');
-
-      analytics.trackEvent('scroll_story_page_duplicated', {
-        storyId: story.id,
-        pageIndex: index,
-      });
-    },
-    [story.pages, story.id, analytics],
-  );
-
-  // Update page
-  const handleUpdatePage = useCallback((index: number, updates: Partial<ScrollStoryPage>) => {
-    setStory((prev) => ({
-      ...prev,
-      pages: prev.pages.map((page, i) => (i === index ? { ...page, ...updates } : page)),
-    }));
-
+    });
+    setSelectedPageIndex(index + 1);
     setSaveStatus('unsaved');
-  }, []);
+  };
 
-  // Save story
-  const handleSave = useCallback(async () => {
+  const deletePage = (index: number): void => {
+    if (story.pages.length <= 1) {
+      return;
+    }
+
+    setStory((prev) => {
+      const pages = prev.pages
+        .filter((_, pageIndex) => pageIndex !== index)
+        .map((page, pageIndex) => ({ ...page, order: pageIndex }));
+      return {
+        ...prev,
+        pages,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    setSelectedPageIndex((prev) => Math.max(0, Math.min(prev, story.pages.length - 2)));
+    setSaveStatus('unsaved');
+  };
+
+  const handleMediaSelected = (items: StoryMediaItem[]): void => {
+    if (!selectedPage) {
+      return;
+    }
+
+    updatePage(selectedPageIndex, {
+      media: [...selectedPage.media, ...items],
+    });
+    setShowMediaPicker(false);
+  };
+
+  const removeMedia = (mediaIndex: number): void => {
+    if (!selectedPage) {
+      return;
+    }
+
+    updatePage(selectedPageIndex, {
+      media: selectedPage.media.filter((_, index) => index !== mediaIndex),
+    });
+  };
+
+  const handleSave = async (): Promise<void> => {
     setIsSaving(true);
     setSaveStatus('saving');
-
     try {
-      // TODO: Call server API to save to Google Drive
-      await new Promise((resolve) => setTimeout(resolve, 1000); // Simulate API call
-
       onSave?.(story);
       setSaveStatus('saved');
-
-      analytics.trackEvent('scroll_story_saved', {
-        storyId: story.id,
-        pageCount: story.pages.length,
-        animationCount: story.animations.length,
-      });
-
-      alert('Story saved successfully!');
-    } catch (error) {
-      console.error('Failed to save story: ', error);
-      setSaveStatus('unsaved');
-      alert('Failed to save story. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [story, onSave, analytics]);
+  };
 
-  // Publish story
-  const handlePublish = useCallback(async () => {
-    const embedCode = `<iframe src="${window.location.origin}/stories/${story.id}," width="100%" height="800" frameborder="0"></iframe>`;
-
+  const handlePublish = (): void => {
+    const embedCode = generateEmbedCode(story.id);
     onPublish?.(story, embedCode);
     setShowPublishDialog(true);
+  };
 
-    analytics.trackEvent('scroll_story_published', {
-      storyId: story.id,
-      pageCount: story.pages.length,
+  const loadTemplate = (template: ScrollStory): void => {
+    const now = new Date().toISOString();
+    const clone: ScrollStory = {
+      ...template,
+      id: `story-${Date.now()}`,
+      name: `${template.name} (Copy)`,
+      pages: template.pages.map((page, index) => ({
+        ...page,
+        id: `page-${Date.now()}-${index}`,
+        order: index,
+      })),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    setStory(clone);
+    setSelectedPageIndex(0);
+    setSaveStatus('unsaved');
+    setShowTemplateDialog(false);
+  };
+
+  const layoutFromPage = (page: ScrollStoryPage): StoryPageLayout => {
+    const value = page.data?.layout;
+    return value === 'split' || value === 'full-bleed' ? value : 'centered';
+  };
+
+  const setLayoutForPage = (index: number, layout: StoryPageLayout): void => {
+    const page = story.pages[index];
+    if (!page) {
+      return;
+    }
+    updatePage(index, {
+      data: {
+        ...(page.data ?? {}),
+        layout,
+      },
     });
-  }, [story, onPublish, analytics]);
-
-  // Load template
-  const handleLoadTemplate = useCallback(
-    (template: ScrollStory) => {
-      setStory({
-        ...template,
-        id: `story-${Date.now()}`,
-        name: `${template.name} (Copy)`,
-      });
-
-      setShowTemplateDialog(false);
-      setSaveStatus('unsaved');
-
-      analytics.trackEvent('scroll_story_template_loaded', {
-        templateName: template.name,
-      });
-    },
-    [analytics],
-  );
-
-  // Selected page
-  const selectedPage = story.pages[selectedPageIndex];
+  };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
-      {/* Top AppBar */}
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <AppBar position="static" elevation={1}>
         <Toolbar>
-          {onClose && (
-            <IconButton edge="start" color="inherit" onClick={onClose} sx={{ mr: 2 }}>
+          {onClose ? (
+            <IconButton edge="start" color="inherit" onClick={onClose} sx={{ mr: 1 }}>
               <ArrowBack />
             </IconButton>
-          )}
+          ) : null}
 
           <Typography variant="h6" sx={{ flexGrow: 1 }}>
             {story.name}
             <Chip
-              label={
-                saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved'
-              }
+              label={saveStatus === 'saved' ? 'Saved' : saveStatus === 'saving' ? 'Saving...' : 'Unsaved'}
               size="small"
               color={saveStatus === 'saved' ? 'success' : 'warning'}
-              sx={{ ml: 2 }} />
+              sx={{ ml: 1 }}
+            />
           </Typography>
 
           <Stack direction="row" spacing={1}>
@@ -323,414 +401,448 @@ export default function ScrollStoryEditor({
             >
               Templates
             </Button>
-
             <Button
               variant="outlined"
               color="inherit"
               startIcon={<Save />}
-              onClick={handleSave}
-              disabled={isSaving || saveStatus === 'saved'}
+              onClick={() => {
+                void handleSave();
+              }}
+              disabled={isSaving}
             >
               Save
             </Button>
-
-            <Button
-              variant="contained"
-              color="success"
-              startIcon={<Publish />}
-              onClick={handlePublish}
-            >
+            <Button variant="contained" color="secondary" startIcon={<Publish />} onClick={handlePublish}>
               Publish
             </Button>
+
+            <IconButton color="inherit" onClick={(event) => setMenuAnchor(event.currentTarget)}>
+              <MenuIcon />
+            </IconButton>
           </Stack>
         </Toolbar>
       </AppBar>
 
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Sidebar - Page List */}
-        <Drawer
-          variant="persistent"
-          open={sidebarOpen}
-          sx={{
-            width: 280,
-            flexShrink: 0, '& .MuiDrawer-paper': { width: 280,
-              boxSizing: 'border-box',
-              position: 'relative',
-            }}}
-        >
-          <Box
-            sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">Pages ({story.pages.length})</Typography>
-            <IconButton size="small" onClick={() => setSidebarOpen(false)}>
-              <Close />
-            </IconButton>
-          </Box>
-
-          <Divider />
-
-          <List sx={{ flex: 1, overflow: 'auto' }}>
-            {story.pages.map((page, index) => (
-              <ListItem
-                key={page.id}
-                disablePadding
-                secondaryAction={
-                  <IconButton
-                    edge="end"
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setAnchorEl(e.currentTarget);
-                      setSelectedPageIndex(index);
-                    }}
-                  >
-                    <MenuIcon />
-                  </IconButton>
-                }
-              >
-                <ListItemButton
-                  selected={selectedPageIndex === index}
-                  onClick={() => setSelectedPageIndex(index)}
-                >
-                  <ListItemIcon>
-                    <ViewModule />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={page.title || `Page ${index + 1}`}
-                    secondary={`${page.media?.length || 0} media`}
-                  />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
-
-          <Divider />
-
-          <Box sx={{ p: 2 }}>
-            <Button fullWidth variant="contained" startIcon={<Add />} onClick={handleAddPage}>
-              Add Page
-            </Button>
-          </Box>
-        </Drawer>
-
-        {/* Main Content Area */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* View Tabs */}
-          <Paper elevation={1} sx={{ borderRadius: 0 }}>
-            <Tabs value={view} onChange={(_, v) => setView(v)}>
-              <Tab icon={<Edit />} label="Edit Pages" value="pages" />
-              <Tab icon={<Animation />} label="Animations" value="animations" />
-              <Tab icon={<Settings />} label="Settings" value="settings" />
-              <Tab icon={<Preview />} label="Preview" value="preview" />
-            </Tabs>
-          </Paper>
-
-          {/* View Content */}
-          <Box sx={{ flex: 1, overflow: 'auto', p: 3, backgroundColor: '#f5f5f5' }}>
-            {view === 'pages' && selectedPage && (
-              <PageEditor
-                page={selectedPage}
-                pageIndex={selectedPageIndex}
-                onUpdate={(updates) => handleUpdatePage(selectedPageIndex, updates)}
-                onAddMedia={() => setShowMediaPicker(true)}
-              />
-            )}
-
-            {view === 'animations' && <AnimationEditor story={story} onUpdate={setStory} />}
-
-            {view === 'settings' && <SettingsEditor story={story} onUpdate={setStory} />}
-
-            {view === 'preview' && <PreviewPane story={story} />}
-          </Box>
-        </Box>
-      </Box>
-
-      {/* Page Context Menu */}
-      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
         <MenuItem
           onClick={() => {
-            handleDuplicatePage(selectedPageIndex);
-            setAnchorEl(null);
+            setSidebarOpen((prev) => !prev);
+            setMenuAnchor(null);
           }}
         >
           <ListItemIcon>
-            <ContentCopy />
+            <Settings fontSize="small" />
           </ListItemIcon>
-          Duplicate
+          <ListItemText>{sidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {
-            handleDeletePage(selectedPageIndex);
-            setAnchorEl(null);
+            void handleSave();
+            setMenuAnchor(null);
           }}
         >
           <ListItemIcon>
-            <Delete />
+            <CloudUpload fontSize="small" />
           </ListItemIcon>
-          Delete
+          <ListItemText>Save Story</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            setShowPublishDialog(true);
+            setMenuAnchor(null);
+          }}
+        >
+          <ListItemIcon>
+            <Share fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Share Link</ListItemText>
         </MenuItem>
       </Menu>
 
-      {/* Media Picker Dialog */}
+      <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
+        <Drawer
+          variant="persistent"
+          anchor="left"
+          open={sidebarOpen}
+          sx={{
+            width: 300,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': {
+              width: 300,
+              boxSizing: 'border-box',
+              position: 'relative',
+              height: '100%',
+            },
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Story Pages
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button startIcon={<Add />} variant="contained" size="small" onClick={addPage}>
+                Add
+              </Button>
+              <Button
+                startIcon={<ContentCopy />}
+                variant="outlined"
+                size="small"
+                disabled={!selectedPage}
+                onClick={() => {
+                  if (selectedPage) {
+                    duplicatePage(selectedPageIndex);
+                  }
+                }}
+              >
+                Duplicate
+              </Button>
+              <Button
+                startIcon={<Delete />}
+                color="error"
+                variant="outlined"
+                size="small"
+                disabled={story.pages.length <= 1}
+                onClick={() => deletePage(selectedPageIndex)}
+              >
+                Delete
+              </Button>
+            </Stack>
+          </Box>
+          <Divider />
+          <List sx={{ overflow: 'auto' }}>
+            {story.pages.map((page, index) => (
+              <ListItemButton
+                key={page.id}
+                selected={selectedPageIndex === index}
+                onClick={() => setSelectedPageIndex(index)}
+              >
+                <ListItemIcon>
+                  <Chip label={index + 1} size="small" />
+                </ListItemIcon>
+                <ListItemText
+                  primary={page.title}
+                  secondary={`${page.media.length} assets`}
+                  primaryTypographyProps={{ noWrap: true }}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </Drawer>
+
+        <Box sx={{ flexGrow: 1, p: 2, overflow: 'auto' }}>
+          <Tabs value={view} onChange={(_event, nextView: EditorView) => setView(nextView)}>
+            <Tab value="pages" label="Pages" />
+            <Tab value="settings" label="Settings" />
+            <Tab value="preview" label="Preview" icon={<PlayArrow />} iconPosition="end" />
+          </Tabs>
+
+          {view === 'pages' ? (
+            selectedPage ? (
+              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                <Stack spacing={2}>
+                  <TextField
+                    label="Story Name"
+                    value={story.name}
+                    onChange={(event) => updateStory({ name: event.target.value })}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Page Title"
+                    value={selectedPage.title}
+                    onChange={(event) => updatePage(selectedPageIndex, { title: event.target.value })}
+                    fullWidth
+                  />
+                  <TextField
+                    label="Page Content"
+                    value={selectedPage.content}
+                    onChange={(event) => updatePage(selectedPageIndex, { content: event.target.value })}
+                    multiline
+                    rows={6}
+                    fullWidth
+                  />
+
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Typography variant="body2">Layout</Typography>
+                    <Button
+                      size="small"
+                      variant={layoutFromPage(selectedPage) === 'centered' ? 'contained' : 'outlined'}
+                      onClick={() => setLayoutForPage(selectedPageIndex, 'centered')}
+                    >
+                      Centered
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={layoutFromPage(selectedPage) === 'split' ? 'contained' : 'outlined'}
+                      onClick={() => setLayoutForPage(selectedPageIndex, 'split')}
+                    >
+                      Split
+                    </Button>
+                    <Button
+                      size="small"
+                      variant={layoutFromPage(selectedPage) === 'full-bleed' ? 'contained' : 'outlined'}
+                      onClick={() => setLayoutForPage(selectedPageIndex, 'full-bleed')}
+                    >
+                      Full Bleed
+                    </Button>
+                  </Stack>
+
+                  <Divider />
+
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="subtitle1">Media Assets</Typography>
+                    <Button
+                      variant="outlined"
+                      startIcon={<Image />}
+                      onClick={() => setShowMediaPicker(true)}
+                    >
+                      Add from Drive
+                    </Button>
+                  </Stack>
+
+                  {selectedPage.media.length === 0 ? (
+                    <Alert severity="info">No media attached to this page yet.</Alert>
+                  ) : (
+                    <Stack spacing={1.25}>
+                      {selectedPage.media.map((media, mediaIndex) => (
+                        <Paper key={`${media.url}-${mediaIndex}`} variant="outlined" sx={{ p: 1.5 }}>
+                          <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between">
+                            <Stack direction="row" spacing={1} alignItems="center">
+                              {media.type === 'video' ? <VideoLibrary fontSize="small" /> : <Image fontSize="small" />}
+                              <Box>
+                                <Typography variant="body2" noWrap sx={{ maxWidth: 540 }}>
+                                  {media.url}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {media.type}
+                                </Typography>
+                              </Box>
+                            </Stack>
+                            <Button size="small" color="error" onClick={() => removeMedia(mediaIndex)}>
+                              Remove
+                            </Button>
+                          </Stack>
+                        </Paper>
+                      ))}
+                    </Stack>
+                  )}
+                </Stack>
+              </Paper>
+            ) : (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Select a page to edit.
+              </Alert>
+            )
+          ) : null}
+
+          {view === 'settings' ? (
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              <Stack spacing={2}>
+                <Typography variant="h6">Story Settings</Typography>
+                <TextField
+                  label="Description"
+                  value={story.description}
+                  onChange={(event) => updateStory({ description: event.target.value })}
+                  multiline
+                  rows={3}
+                  fullWidth
+                />
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">Theme:</Typography>
+                  {(['light', 'dark', 'auto'] as const).map((theme) => (
+                    <Button
+                      key={theme}
+                      size="small"
+                      variant={story.settings.theme === theme ? 'contained' : 'outlined'}
+                      onClick={() =>
+                        updateStory({
+                          settings: {
+                            ...story.settings,
+                            theme,
+                          },
+                        })
+                      }
+                    >
+                      {theme}
+                    </Button>
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2">Transition:</Typography>
+                  <TextField
+                    type="number"
+                    size="small"
+                    value={story.settings.transitionDuration}
+                    onChange={(event) => {
+                      const parsed = Number(event.target.value);
+                      if (!Number.isNaN(parsed)) {
+                        updateStory({
+                          settings: { ...story.settings, transitionDuration: parsed },
+                        });
+                      }
+                    }}
+                    sx={{ maxWidth: 140 }}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    ms
+                  </Typography>
+                </Stack>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant={story.settings.autoplay ? 'contained' : 'outlined'}
+                    onClick={() =>
+                      updateStory({
+                        settings: { ...story.settings, autoplay: !story.settings.autoplay },
+                      })
+                    }
+                  >
+                    Autoplay {story.settings.autoplay ? 'On' : 'Off'}
+                  </Button>
+                  <Button
+                    variant={story.settings.loop ? 'contained' : 'outlined'}
+                    onClick={() =>
+                      updateStory({ settings: { ...story.settings, loop: !story.settings.loop } })
+                    }
+                  >
+                    Loop {story.settings.loop ? 'On' : 'Off'}
+                  </Button>
+                  <Button
+                    variant={story.settings.showProgress ? 'contained' : 'outlined'}
+                    onClick={() =>
+                      updateStory({
+                        settings: {
+                          ...story.settings,
+                          showProgress: !story.settings.showProgress,
+                        },
+                      })
+                    }
+                  >
+                    Progress {story.settings.showProgress ? 'On' : 'Off'}
+                  </Button>
+                </Stack>
+              </Stack>
+            </Paper>
+          ) : null}
+
+          {view === 'preview' ? (
+            <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+              {story.pages.length === 0 ? (
+                <Alert severity="warning">No pages available for preview.</Alert>
+              ) : (
+                <Stack spacing={2}>
+                  {story.pages.map((page, index) => (
+                    <Paper key={page.id} variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle1">
+                        {index + 1}. {page.title}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 1, whiteSpace: 'pre-wrap' }}>
+                        {page.content || 'No content'}
+                      </Typography>
+                      {page.media.length > 0 ? (
+                        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1.5 }}>
+                          {page.media.map((media, mediaIndex) => (
+                            <Chip
+                              key={`${page.id}-${mediaIndex}`}
+                              icon={media.type === 'video' ? <VideoLibrary /> : <Image />}
+                              label={media.type}
+                              size="small"
+                            />
+                          ))}
+                        </Stack>
+                      ) : null}
+                    </Paper>
+                  ))}
+                </Stack>
+              )}
+            </Paper>
+          ) : null}
+        </Box>
+      </Box>
+
       <GoogleDriveMediaPicker
         open={showMediaPicker}
         onClose={() => setShowMediaPicker(false)}
-        onMediaSelected={(media) => {
-          if (selectedPage) {
-            handleUpdatePage(selectedPageIndex, {
-              media: [...(selectedPage.media || []), ...media],
-            });
-          }
-          setShowMediaPicker(false);
-        }}
-        allowMultiple={true}
-        mediaTypes={['image','video']}
+        onMediaSelected={handleMediaSelected}
+        allowMultiple
+        mediaTypes={['image', 'video', 'audio']}
         projectDriveFolderId={projectDriveFolderId}
       />
 
-      {/* Template Dialog */}
-      <TemplateLibraryDialog
-        open={showTemplateDialog}
-        onClose={() => setShowTemplateDialog(false)}
-        onSelectTemplate={handleLoadTemplate}
-      />
-
-      {/* Publish Dialog */}
-      <PublishDialog
-        open={showPublishDialog}
-        onClose={() => setShowPublishDialog(false)}
-        story={story}
-      />
-
-      {/* Floating Action Button - Toggle Sidebar */}
-      {!sidebarOpen && (
-        <Fab
-          color="primary"
-          sx={{ position: 'fixed', bottom: 16, left: 16 }}
-          onClick={() => setSidebarOpen(true)}
-
-        >
-          <MenuIcon />
-        </Fab>
-      )}
-    </Box>
-  );
-}}
-
-// Page Editor Component
-interface PageEditorProps {
-  page: ScrollStoryPage;
-  pageIndex: number;
-  onUpdate: (updates: Partial<ScrollStoryPage>) => void;
-  onAddMedia: () => void;
-}
-
-function PageEditor({ page, pageIndex, onUpdate, onAddMedia }: PageEditorProps) {
-  return (
-    <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
-      <Typography variant="h5" gutterBottom>
-        Edit Page {pageIndex + 1}
-      </Typography>
-
-      <Stack spacing={3}>
-        <TextField
-          label="Page Title"
-          value={page.title || ', '}
-          onChange={(e) => onUpdate({ title: e.target.value })}}
-          fullWidth
-        />
-
-        <TextField
-          label="Content"
-          value={page.content || ', '}
-          onChange={(e) => onUpdate({ content: e.target.value })}}
-          multiline
-          rows={6}
-          fullWidth
-          placeholder="Enter your story content here..."
-        />
-
-        <Box>
-          <Typography variant="subtitle2" gutterBottom>
-            Media ({page.media?.length || 0})
-          </Typography>
-          <Button variant="outlined" startIcon={<Add />} onClick={onAddMedia}>
-            Add Media from Google Drive
-          </Button>
-        </Box>
-
-        <Box>
-          <Typography variant="subtitle2" gutterBottom>
-            Layout
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            {(['centered', 'left', 'right', 'full'] as const).map((layout) => (
-              <Button
-                key={layout}
-                variant={page.layout === layout ? 'contained' : 'outlined'}
-                onClick={() => onUpdate({ layout })}
-                size="small"
-              >
-                {layout}
-              </Button>
+      <Dialog open={showTemplateDialog} onClose={() => setShowTemplateDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Choose Template</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5}>
+            {templates.map((template) => (
+              <Paper key={template.id} variant="outlined" sx={{ p: 1.5 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+                  <Box>
+                    <Typography variant="subtitle1">{template.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {template.description}
+                    </Typography>
+                  </Box>
+                  <Button variant="contained" onClick={() => loadTemplate(template)}>
+                    Use
+                  </Button>
+                </Stack>
+              </Paper>
             ))}
           </Stack>
-        </Box>
-      </Stack>
-    </Paper>
-  );
-}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTemplateDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
-// Animation Editor Component
-interface AnimationEditorProps {
-  story: ScrollStory;
-  onUpdate: (story: ScrollStory) => void;
-}
-
-function AnimationEditor({ story, onUpdate }: AnimationEditorProps) {
-  return (
-    <Paper elevation={3} sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
-      <Typography variant="h5" gutterBottom>
-        Animation Timeline
-      </Typography>
-      <Alert severity="info" sx={{ mt: 2 }}>
-        Animation timeline editor coming soon! For now, animations can be added via JSON.
-      </Alert>
-    </Paper>
-  );
-}
-
-// Settings Editor Component
-interface SettingsEditorProps {
-  story: ScrollStory;
-  onUpdate: (story: ScrollStory) => void;
-}
-
-function SettingsEditor({ story, onUpdate }: SettingsEditorProps) {
-  return (
-    <Paper elevation={3} sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
-      <Typography variant="h5" gutterBottom>
-        Story Settings
-      </Typography>
-
-      <Stack spacing={3} sx={{ mt: 3 }}>
-        <TextField
-          label="Story Name"
-          value={story.name}
-          onChange={(e) => onUpdate({ ...story, name: e.target.value })}}
-          fullWidth
-        />
-
-        <TextField
-          label="Background Color"
-          type="color"
-          value={story.settings.backgroundColor}
-          onChange={(e) =>
-            onUpdate({
-              ...story,
-              settings: { ...story.settings, backgroundColor: e.target.value },
-            })
-          }}
-          fullWidth
-        />
-
-        <Alert severity="info">More settings coming soon!</Alert>
-      </Stack>
-    </Paper>
-  );
-}
-
-// Preview Pane Component
-interface PreviewPaneProps {
-  story: ScrollStory;
-}
-
-function PreviewPane({ story }: PreviewPaneProps) {
-  if (story.pages.length === 0) {
-    return (
-      <Alert severity="warning" sx={{ maxWidth: 800, mx: 'auto' }}>
-        No pages to preview. Add some pages first!
-      </Alert>
-    );
-  }
-
-  return (
-    <Box sx={{ maxWidth: 1200, mx:'auto' }}>
-      <ScrollStoryWithToasts story={story} enableToasts={false} />
+      <Dialog open={showPublishDialog} onClose={() => setShowPublishDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Story Published</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2}>
+            <Alert severity="success">Story is ready to share.</Alert>
+            <TextField
+              label="Share URL"
+              value={typeof window !== 'undefined' ? `${window.location.origin}/stories/${story.id}` : ''}
+              fullWidth
+              InputProps={{ readOnly: true }}
+            />
+            <TextField
+              label="Embed Code"
+              value={generateEmbedCode(story.id)}
+              fullWidth
+              multiline
+              rows={3}
+              InputProps={{ readOnly: true }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPublishDialog(false)}>Close</Button>
+          <Button
+            startIcon={<Download />}
+            onClick={() => {
+              const content = JSON.stringify(story, null, 2);
+              const blob = new Blob([content], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const anchor = document.createElement('a');
+              anchor.href = url;
+              anchor.download = `${story.name.replace(/\s+/g, '_').toLowerCase()}-story.json`;
+              anchor.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Export JSON
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Share />}
+            onClick={() => {
+              const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/stories/${story.id}` : '';
+              void navigator.clipboard.writeText(shareUrl);
+            }}
+          >
+            Copy URL
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
-  );
-}
-
-// Template Library Dialog
-interface TemplateLibraryDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onSelectTemplate: (template: ScrollStory) => void;
-}
-
-function TemplateLibraryDialog({ open, onClose, onSelectTemplate }: TemplateLibraryDialogProps) {
-  // TODO: Load templates from server
-  const templates: ScrollStory[] = [];
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Choose a Template</DialogTitle>
-      <DialogContent>
-        <Alert severity="info">Template library coming soon!</Alert>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
-
-// Publish Dialog
-interface PublishDialogProps {
-  open: boolean;
-  onClose: () => void;
-  story: ScrollStory;
-}
-
-function PublishDialog({ open, onClose, story }: PublishDialogProps) {
-  const embedCode = `<iframe src="${window.location.origin}/stories/${story.id}" width="100%" height="800" frameborder="0"></iframe>`;
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Story Published! 🎉</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2}>
-          <Alert severity="success">Your story is now live!</Alert>
-
-          <TextField
-            label="Story URL"
-            value={`${window.location.origin}/stories/${story.id}`}
-            fullWidth
-            InputProps={{
-              readOnly: true}} />
-
-          <TextField
-            label="Embed Code"
-            value={embedCode}
-            multiline
-            rows={3}
-            fullWidth
-            InputProps={{
-              readOnly: true}} />
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-        <Button
-          variant="contained"
-          startIcon={<Share />}
-          onClick={() => {
-            navigator.clipboard.writeText(`${window.location.origin}/stories/${story.id}`);
-            alert('URL copied to clipboard!');
-          }}
-        >
-          Copy URL
-        </Button>
-      </DialogActions>
-    </Dialog>
   );
 }

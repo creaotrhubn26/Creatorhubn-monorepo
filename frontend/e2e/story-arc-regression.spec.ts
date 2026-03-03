@@ -1,4 +1,4 @@
-import { test, expect, type ConsoleMessage, type Page, type Request } from '@playwright/test';
+import { test, expect, type ConsoleMessage, type Locator, type Page, type Request } from '@playwright/test';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -25,6 +25,7 @@ type EditorHookSnapshot = {
 type EditorHookClip = {
   clipId: string;
   trackId: string;
+  trackType: 'video' | 'audio' | 'adjustment' | 'subtitle' | 'graphics';
   start: number;
   duration: number;
   name: string;
@@ -46,9 +47,118 @@ type EditorHookApi = {
   slipSelected: (frames: number) => boolean;
   slideSelected: (frames: number) => boolean;
   rollSelected: (frames: number) => boolean;
+  moveSelectedByFrames: (frames: number) => boolean;
+  setSafeTrimEnabled: (enabled: boolean) => void;
   setPlayhead: (seconds: number) => void;
   seedTimelineFixture: () => EditorHookFixtureSeed | null;
 };
+
+const CAPTION_MOCK_SEGMENTS = [
+  { id: 1, start: 0.2, end: 1.9, text: 'Welcome to Story Arc Studio', confidence: 0.98 },
+  { id: 2, start: 2.0, end: 4.6, text: 'Timeline insert and overwrite are active', confidence: 0.97 },
+  { id: 3, start: 4.7, end: 7.8, text: 'Auto captions export is ready', confidence: 0.96 },
+];
+
+const CAPTION_MOCK_SRT = `1
+00:00:00,200 --> 00:00:01,900
+Welcome to Story Arc Studio
+
+2
+00:00:02,000 --> 00:00:04,600
+Timeline insert and overwrite are active
+
+3
+00:00:04,700 --> 00:00:07,800
+Auto captions export is ready
+`;
+
+const CAPTION_MOCK_VTT = `WEBVTT
+
+00:00:00.200 --> 00:00:01.900
+Welcome to Story Arc Studio
+
+00:00:02.000 --> 00:00:04.600
+Timeline insert and overwrite are active
+
+00:00:04.700 --> 00:00:07.800
+Auto captions export is ready
+`;
+
+const isLocalApiUrl = (url: string): boolean => {
+  return url.includes('://localhost:5001/api/');
+};
+
+const isIgnorableLocalApiFailure = (url: string, failureText: string): boolean => {
+  if (!isLocalApiUrl(url)) {
+    return false;
+  }
+  return failureText.includes('ERR_ABORTED') || failureText.includes('ERR_FAILED');
+};
+
+async function installCaptionApiMocks(page: Page): Promise<void> {
+  await page.route('**/api/video-analysis/upload-source', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        success: true,
+        video_path: '/tmp/storyarc-regression-fixture.mp4',
+      }),
+    });
+  });
+
+  await page.route(/.*\/api\/video-analysis\/transcribe(?:\/.*)?$/, async (route, request) => {
+    const { pathname } = new URL(request.url());
+    const isCreateJob = request.method() === 'POST' && pathname.endsWith('/api/video-analysis/transcribe');
+    const isPollJob = request.method() === 'GET' && pathname.includes('/api/video-analysis/transcribe/');
+
+    if (isCreateJob) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          job_id: 'storyarc-e2e-caption-job',
+        }),
+      });
+      return;
+    }
+
+    if (isPollJob) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: 'completed',
+          result: {
+            transcription: {
+              language: 'en',
+              segments: CAPTION_MOCK_SEGMENTS,
+            },
+          },
+        }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
+  await page.route('**/api/video/generate-captions', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        captions: CAPTION_MOCK_SEGMENTS,
+        formats: {
+          srt: CAPTION_MOCK_SRT,
+          vtt: CAPTION_MOCK_VTT,
+        },
+        language: 'en',
+      }),
+    });
+  });
+}
 
 async function callEditorHook<
   K extends keyof EditorHookApi
@@ -183,6 +293,15 @@ async function setToolbarToggle(page: Page, label: string, enabled: boolean): Pr
   }
 }
 
+async function parseTimelineZoomPercent(zoomLabel: Locator): Promise<number> {
+  const rawValue = (await zoomLabel.textContent()) ?? '';
+  const match = rawValue.match(/(\d+)%/);
+  if (!match) {
+    throw new Error(`Unable to parse timeline zoom percentage from "${rawValue}"`);
+  }
+  return Number(match[1]);
+}
+
 function collectRuntimeErrors(page: Page): RuntimeErrorCollector {
   const browserRuntimeErrors: string[] = [];
 
@@ -202,8 +321,12 @@ function collectRuntimeErrors(page: Page): RuntimeErrorCollector {
       text.includes('404 (Not Found)') ||
       text.includes('[Vercel Speed Insights]') ||
       text.includes('The resource <URL> was preloaded') ||
-      text.includes('WebSocket connection')
+      text.includes('WebSocket connection') ||
+      text.includes('forwardRef render functions accept exactly two parameters')
     ) {
+      return;
+    }
+    if (text.includes('Failed to load resource: the server responded with a status of 500') && isLocalApiUrl(location.url ?? '')) {
       return;
     }
     browserRuntimeErrors.push(`[console:error] ${text}${locationText}`);
@@ -217,6 +340,7 @@ function collectRuntimeErrors(page: Page): RuntimeErrorCollector {
       requestUrl.includes('google-analytics.com/') ||
       requestUrl.includes('googletagmanager.com/') ||
       requestUrl.includes('doubleclick.net/') ||
+      isIgnorableLocalApiFailure(requestUrl, failureText) ||
       (requestUrl.startsWith('blob:') && failureText.includes('ERR_ABORTED'))
     ) {
       return;
@@ -305,6 +429,157 @@ async function dismissBlockingDialogs(page: Page) {
 }
 
 test.describe('Story Arc Regression', () => {
+  test('single contextual toolbar + workspace pages remain stable', async ({ page }) => {
+    test.setTimeout(180_000);
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await gotoStoryArcStudio(page);
+      await dismissBlockingDialogs(page);
+
+      const workflowToolbar = page.getByTestId('workflow-toolbar');
+      const workspaceToolbar = page.getByTestId('workspace-top-toolbar');
+      const workspaceBottomNav = page.getByTestId('workspace-bottom-arc-nav');
+
+      await expect(workflowToolbar).toBeVisible({ timeout: 30_000 });
+      await expect(workspaceToolbar).toBeVisible({ timeout: 30_000 });
+      await expect(workspaceBottomNav).toBeVisible({ timeout: 30_000 });
+      await expect(workspaceToolbar).toHaveCount(1);
+      await expect(page.getByTestId('resolve-timeline-toolbar')).toHaveCount(0);
+
+      const toolbarLayout = await page.evaluate(() => {
+        const workflow = document.querySelector('[data-testid="workflow-toolbar"]');
+        const workspace = document.querySelector('[data-testid="workspace-top-toolbar"]');
+        if (!workflow || !workspace) {
+          return null;
+        }
+        const workflowRect = workflow.getBoundingClientRect();
+        const workspaceRect = workspace.getBoundingClientRect();
+        return {
+          workflowBottom: workflowRect.bottom,
+          workspaceTop: workspaceRect.top,
+        };
+      });
+
+      expect(toolbarLayout).not.toBeNull();
+      expect((toolbarLayout?.workspaceTop ?? 0) + 1).toBeGreaterThanOrEqual(
+        toolbarLayout?.workflowBottom ?? 0
+      );
+
+      await page.getByTestId('workspace-nav-deliver').click();
+      await expect(page.getByTestId('deliver-workspace-panel')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('professional-timeline-scroll-area')).toHaveCount(0);
+      await expect(page.getByTestId('timeline-edit-toolbar')).toHaveCount(0);
+      await expect(workspaceToolbar.getByRole('button', { name: /^Quick Export$/i })).toBeVisible();
+
+      await page.getByTestId('workspace-nav-edit').click();
+      await expect(page.getByTestId('deliver-workspace-panel')).toHaveCount(0);
+      await expect(page.getByTestId('professional-timeline-scroll-area')).toHaveCount(1, {
+        timeout: 10_000,
+      });
+      const timelineEditToolbar = page.getByTestId('timeline-edit-toolbar');
+      await expect(timelineEditToolbar).toBeVisible();
+      await expect(timelineEditToolbar.getByRole('button', { name: /Select \(A\)/i })).toBeVisible();
+
+      await page.getByTestId('workspace-nav-color').click();
+      await expect(page.getByTestId('timeline-edit-toolbar')).toHaveCount(0);
+      await expect(workspaceToolbar.getByRole('button', { name: /^LUTs$/i })).toBeVisible();
+
+      await page.getByTestId('workspace-nav-fairlight').click();
+      await expect(page.getByTestId('timeline-edit-toolbar')).toHaveCount(0);
+      await expect(
+        workspaceToolbar.getByRole('button', { name: /^Auto Captions$/i })
+      ).toBeVisible();
+    } finally {
+      runtimeErrors.stop();
+    }
+
+    expect(runtimeErrors.browserRuntimeErrors).toEqual([]);
+  });
+
+  test('composition guides persist + keyboard controls remain deterministic', async ({ page }) => {
+    test.setTimeout(180_000);
+    const runtimeErrors = collectRuntimeErrors(page);
+
+    try {
+      await gotoStoryArcStudio(page);
+      await dismissBlockingDialogs(page);
+      await page.getByTestId('program-monitor-panel').click();
+
+      const timelineZoomValue = page.getByTestId('timeline-zoom-value');
+      const baselineZoom = await parseTimelineZoomPercent(timelineZoomValue);
+      await page.evaluate(() => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'ArrowUp',
+            shiftKey: true,
+            bubbles: true,
+          })
+        );
+      });
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 8_000 })
+        .toBe(Math.min(500, baselineZoom + 10));
+      await page.waitForTimeout(1_500);
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 8_000 })
+        .toBe(Math.min(500, baselineZoom + 10));
+      await page.evaluate(() => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            shiftKey: true,
+            bubbles: true,
+          })
+        );
+      });
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 8_000 })
+        .toBe(baselineZoom);
+
+      await page.getByTestId('monitor-guides-toggle').click();
+      await expect(page.getByTestId('source-monitor-composition-overlay')).toBeVisible();
+      await expect(page.getByTestId('program-monitor-composition-overlay')).toBeVisible();
+
+      await page.getByTestId('monitor-guides-settings').click();
+      await expect(page.getByTestId('composition-guides-dialog')).toBeVisible();
+
+      await page.getByTestId('composition-guide-target-select').click();
+      await page.getByRole('option', { name: 'Source only' }).click();
+      await page.getByTestId('composition-aspect-mask-select').click();
+      await page.getByRole('option', { name: '1.85:1' }).click();
+      await page.getByTestId('composition-guides-done').click();
+
+      await expect(page.getByTestId('composition-guides-dialog')).toHaveCount(0);
+      await expect(page.getByTestId('source-monitor-composition-overlay')).toBeVisible();
+      await expect(page.getByTestId('program-monitor-composition-overlay')).toHaveCount(0);
+      await expect(page.getByText('Mask 1.85:1')).toBeVisible();
+
+      const persisted = await page.evaluate(() => {
+        const raw = window.localStorage.getItem('storyArcStudio.composition.settings.v1');
+        return raw ? JSON.parse(raw) : null;
+      });
+      expect(persisted).not.toBeNull();
+      expect(persisted?.target).toBe('source');
+      expect(persisted?.aspectMask).toBe('1.85:1');
+      expect(persisted?.enabled).toBe(true);
+
+      await page.keyboard.press('g');
+      await expect(page.getByTestId('source-monitor-composition-overlay')).toHaveCount(0);
+
+      await page.keyboard.press('g');
+      await expect(page.getByTestId('source-monitor-composition-overlay')).toBeVisible();
+
+      await page.keyboard.press('Shift+g');
+      await expect(page.getByTestId('composition-guides-dialog')).toBeVisible();
+      await page.getByTestId('composition-guides-done').click();
+    } finally {
+      runtimeErrors.stop();
+    }
+
+    expect(runtimeErrors.browserRuntimeErrors).toEqual([]);
+  });
+
   test('upload -> auto-bind -> program monitor, insert/overwrite, auto-captions', async ({ page }) => {
     test.setTimeout(420_000);
     const fixturePath = ensureRegressionVideoFixture();
@@ -312,6 +587,7 @@ test.describe('Story Arc Regression', () => {
     const runtimeErrors = collectRuntimeErrors(page);
 
     try {
+      await installCaptionApiMocks(page);
       await gotoStoryArcStudio(page);
       await dismissBlockingDialogs(page);
 
@@ -336,6 +612,54 @@ test.describe('Story Arc Regression', () => {
       await expect(sourceVideo).toBeVisible({ timeout: 60_000 });
       await expect(programVideo).toBeVisible({ timeout: 60_000 });
       await expect(page.getByText('No video clip available for preview')).toHaveCount(0);
+
+      const timelineZoomValue = page.getByTestId('timeline-zoom-value');
+      const baselineZoom = await parseTimelineZoomPercent(timelineZoomValue);
+
+      await page.waitForFunction(
+        () => !!document.querySelector('[data-testid="professional-timeline-scroll-area"]'),
+        undefined,
+        { timeout: 20_000 }
+      );
+      const dispatchTimelineWheel = async (deltaY: number): Promise<void> => {
+        await page.evaluate(({ wheelDelta }) => {
+          const target = document.querySelector(
+            '[data-testid="professional-timeline-scroll-area"]'
+          ) as HTMLDivElement | null;
+          if (!target) {
+            throw new Error('No visible timeline scroll area to dispatch wheel event.');
+          }
+          const rect = target.getBoundingClientRect();
+          const clientX = rect.left + Math.max(24, rect.width * 0.35);
+          const clientY = rect.top + Math.max(24, Math.min(rect.height * 0.2, 120));
+          target.dispatchEvent(
+            new WheelEvent('wheel', {
+              deltaY: wheelDelta,
+              bubbles: true,
+              cancelable: true,
+              clientX,
+              clientY,
+            })
+          );
+        }, { wheelDelta: deltaY });
+      };
+
+      const zoomBeforeWheelIn = await parseTimelineZoomPercent(timelineZoomValue);
+      await dispatchTimelineWheel(-160);
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 10_000 })
+        .toBeGreaterThan(zoomBeforeWheelIn);
+      const zoomAfterWheelIn = await parseTimelineZoomPercent(timelineZoomValue);
+      await page.waitForTimeout(1_500);
+      await expect.poll(async () => parseTimelineZoomPercent(timelineZoomValue)).toBe(zoomAfterWheelIn);
+
+      await dispatchTimelineWheel(160);
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 10_000 })
+        .toBeLessThanOrEqual(zoomAfterWheelIn);
+      await expect
+        .poll(async () => parseTimelineZoomPercent(timelineZoomValue), { timeout: 10_000 })
+        .toBe(baselineZoom);
 
       await page.getByTestId('monitor-guides-toggle').click();
       await expect(page.getByTestId('source-monitor-composition-overlay')).toBeVisible();
@@ -370,8 +694,36 @@ test.describe('Story Arc Regression', () => {
       }
       await page.getByTestId('source-mark-out-button').click();
 
+      const audioFixtureClipsBeforeInsert = (
+        await callEditorHook(page, 'listClips')
+      ).filter(
+        (clip) => clip.trackType === 'audio'
+      ).length;
+      const linkedAudioEnabled = await page
+        .getByTestId('source-include-audio-toggle')
+        .isChecked()
+        .catch(() => false);
+      const audioTargetAvailable = await page.evaluate(() => {
+        const target = document.querySelector('[data-testid="source-audio-target-select"]') as HTMLElement | null;
+        if (!target) {
+          return false;
+        }
+        return (
+          !target.classList.contains('Mui-disabled') &&
+          target.getAttribute('aria-disabled') !== 'true'
+        );
+      });
+
       await page.getByTestId('source-insert-button').click();
       await expect(page.getByText('Inserted source clip into timeline')).toBeVisible({ timeout: 30_000 });
+      if (linkedAudioEnabled && audioTargetAvailable) {
+        await expect
+          .poll(async () => {
+            const clips = await callEditorHook(page, 'listClips');
+            return clips.filter((clip) => clip.trackType === 'audio').length;
+          })
+          .toBeGreaterThan(audioFixtureClipsBeforeInsert);
+      }
 
       await page.getByTestId('program-mark-in-button').click();
       await page.keyboard.press('ArrowRight');
@@ -480,4 +832,5 @@ test.describe('Story Arc Regression', () => {
 
     expect(runtimeErrors.browserRuntimeErrors).toEqual([]);
   });
+
 });

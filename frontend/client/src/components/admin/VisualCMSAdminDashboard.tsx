@@ -82,6 +82,7 @@ import {
   Web as WebIcon,
   Lightbulb as LightbulbIcon,
 } from '@mui/icons-material';
+import MonacoEditor from '@monaco-editor/react';
 import { apiRequest } from '@/lib/queryClient';
 
 interface TabPanelProps {
@@ -128,7 +129,7 @@ export default function VisualCMSAdminDashboard() {
   const [testRunning, setTestRunning] = useState(false);
   const [codeGeneratorOpen, setCodeGeneratorOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedLanguage, setSelectedLanguage] = useState('javascript,');
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const [generatedCode, setGeneratedCode] = useState('');
   const [codeQualityScores, setCodeQualityScores] = useState({
     performance:  0,
@@ -332,7 +333,7 @@ export default function VisualCMSAdminDashboard() {
       <TabPanel value={tabValue} index={0}>
         <Grid container spacing={3}>
           {/* Google API Status Card */}
-          <Grid size={{ xs: 12 }} md={6}>
+          <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -376,7 +377,7 @@ export default function VisualCMSAdminDashboard() {
           </Grid>
 
           {/* System Health Card */}
-          <Grid size={{ xs: 12 }} md={6}>
+          <Grid item xs={12} md={6}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -408,7 +409,7 @@ export default function VisualCMSAdminDashboard() {
           </Grid>
 
           {/* Quick Actions */}
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -451,7 +452,7 @@ export default function VisualCMSAdminDashboard() {
       {/* Google APIs Tab */}
       <TabPanel value={tabValue} index={1}>
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Alert severity="success" sx={{ mb:  3 }}>
               <Typography variant="h6" sx={{ color: theming.colors.primary }}>Google API Integration: 100% Operational</Typography>
               All Google services are connected and functioning. OAuth configuration verified with project 256648631702.
@@ -459,13 +460,13 @@ export default function VisualCMSAdminDashboard() {
           </Grid>
 
           {statusLoading ? (
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
                 <CircularProgress />
               </Box>
             </Grid>
           ) : (
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <TableContainer component={Paper} elevation={2}>
                 <Table>
                   <TableHead>
@@ -521,7 +522,7 @@ export default function VisualCMSAdminDashboard() {
       {/* WireMock Testing Tab */}
       <TabPanel value={tabValue} index={2}>
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -568,7 +569,7 @@ export default function VisualCMSAdminDashboard() {
                     { name: 'Creative Software', endpoints:  41, port: 806, status: mockServersActive },
                     { name: 'Music/Audio', endpoints:  41, port: 807, status: mockServersActive }
                   ].map((server, index) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 3 }} key={index}>
+                    <Grid item xs={12} sm={6} md={3} key={index}>
                       <Card variant="outlined" sx={{ ...theming.getThemedCardSx(), p: 2 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  1 }}>
                           <Typography variant="subtitle2">{server.name}</Typography>
@@ -625,7 +626,7 @@ export default function VisualCMSAdminDashboard() {
         
         <Grid container spacing={3}>
           {/* Code Generation Controls */}
-          <Grid size={{ xs: 12 }} md={4}>
+          <Grid item xs={12} md={4}>
             <Card sx={theming.getThemedCardSx()}>
               <CardHeader
                 title="Code Generation"
@@ -798,7 +799,7 @@ export default function VisualCMSAdminDashboard() {
           </Grid>
 
           {/* Live Code Preview */}
-          <Grid size={{ xs: 12 }} md={8}>
+          <Grid item xs={12} md={8}>
             <Card sx={{ ...theming.getThemedCardSx(), height: '600px' }}>
               <CardHeader
                 title="Live Code Preview"
@@ -884,7 +885,7 @@ export default function VisualCMSAdminDashboard() {
             <CardContent>
               <Grid container spacing={2}>
                 {codeCategories.categories.map((category: any) => (
-                  <Grid size={{ xs: 12 }} sm={6} md={3} key={category.name}>
+                  <Grid item xs={12} sm={6} md={3} key={category.name}>
                     <Card
                       variant="outlined"
                       sx={{
@@ -927,7 +928,7 @@ export default function VisualCMSAdminDashboard() {
       {/* Database Status Tab */}
       <TabPanel value={tabValue} index={4}>
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -946,7 +947,7 @@ export default function VisualCMSAdminDashboard() {
       {/* System Monitor Tab */}
       <TabPanel value={tabValue} index={5}>
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
@@ -965,7 +966,7 @@ export default function VisualCMSAdminDashboard() {
       {/* Configuration Tab */}
       <TabPanel value={tabValue} index={6}>
         <Grid container spacing={3}>
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Card elevation={2} sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>

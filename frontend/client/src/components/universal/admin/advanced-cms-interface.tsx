@@ -166,7 +166,7 @@ export default function AdvancedCMSInterface() {
   const createComponentMutation = useMutation({
     mutationFn: async (component: Partial<CMSComponent>) => {
       const response = await fetch('/api/admin/cms/components', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(component),
     });
@@ -211,13 +211,13 @@ export default function AdvancedCMSInterface() {
 
   // Component management functions
   const handleComponentToggle = (id: string, status: string) => {
-    updateComponentMutation.mutate({ , idstatus });
+    updateComponentMutation.mutate({ id, status });
 };
 
   const handleBulkAction = (action: string) => {
     if (action === 'activate') {
       bulkActions.forEach((id) => {
-        updateComponentMutation.mutate({ idstatus: 'active',});
+        updateComponentMutation.mutate({ id, status: 'active' });
     });
   } else if (action === 'deactivate') {
       bulkActions.forEach((id) => {

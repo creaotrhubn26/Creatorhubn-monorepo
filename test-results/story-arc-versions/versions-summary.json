@@ -1,0 +1,35 @@
+{
+  "sourceVideo": "/Users/usmanqazi/github/creatorhub/frontend/client/public/assets/NORWEDFILM_VIGNETT_DEMO2.mov",
+  "outputDir": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions",
+  "generatedAt": "2026-02-28T23:48:41.874Z",
+  "variants": [
+    {
+      "id": "v1_clean_edit",
+      "title": "Clean Edit",
+      "screenshot": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v1_clean_edit.png",
+      "video": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v1_clean_edit.mp4",
+      "timelineClipCount": 3
+    },
+    {
+      "id": "v2_cinematic_color",
+      "title": "Cinematic Grade",
+      "screenshot": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v2_cinematic_color.png",
+      "video": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v2_cinematic_color.mp4",
+      "timelineClipCount": 3
+    },
+    {
+      "id": "v3_captioned_story",
+      "title": "Captioned Story",
+      "timelineClipCount": 3,
+      "screenshot": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v3_captioned_story.png",
+      "video": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v3_captioned_story.mp4"
+    },
+    {
+      "id": "v4_fast_sync",
+      "title": "Fast Sync Cut",
+      "screenshot": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v4_fast_sync.png",
+      "video": "/Users/usmanqazi/github/creatorhub/test-results/story-arc-versions/v4_fast_sync.mp4",
+      "timelineClipCount": 3
+    }
+  ]
+}

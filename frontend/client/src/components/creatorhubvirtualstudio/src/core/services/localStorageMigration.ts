@@ -93,7 +93,7 @@ export async function migrateFavoriteTemplates(): Promise<boolean> {
     await preferencesApi.updateFavorites('templates', favorites);
     
     // Keep localStorage as fallback but mark as migrated
-    localStorage.setItem(`${LOCALSTORAGE_KEYS.FAVORITE_TEMPLATES}_migrated`'true');
+    localStorage.setItem(`${LOCALSTORAGE_KEYS.FAVORITE_TEMPLATES}_migrated`, 'true');
     return true;
   } catch (e) {
     log.warn('Failed to migrate favorite templates: ', e);
@@ -125,7 +125,7 @@ export async function migrateGearPresets(): Promise<boolean> {
       });
     }
     
-    localStorage.setItem(`${LOCALSTORAGE_KEYS.GEAR_PRESETS}_migrated`'true');
+    localStorage.setItem(`${LOCALSTORAGE_KEYS.GEAR_PRESETS}_migrated`, 'true');
     return true;
   } catch (e) {
     log.warn('Failed to migrate gear presets:', e);
@@ -154,7 +154,7 @@ export async function migratePreferences(): Promise<boolean> {
       onboardingCompleted: true,
     });
     
-    localStorage.setItem(`${LOCALSTORAGE_KEYS.PREFERENCES}_migrated`'true');
+    localStorage.setItem(`${LOCALSTORAGE_KEYS.PREFERENCES}_migrated`, 'true');
     return true;
   } catch (e) {
     log.warn('Failed to migrate preferences:', e);
@@ -185,7 +185,7 @@ export async function migrateSnapshots(sceneId: string): Promise<boolean> {
       });
     }
     
-    localStorage.setItem(`${LOCALSTORAGE_KEYS.SNAPSHOTS}_migrated`'true');
+    localStorage.setItem(`${LOCALSTORAGE_KEYS.SNAPSHOTS}_migrated`, 'true');
     return true;
   } catch (e) {
     log.warn('Failed to migrate snapshots:', e);
@@ -333,4 +333,3 @@ export default {
   clearMigratedData,
   getMigrationStatus,
 };
-

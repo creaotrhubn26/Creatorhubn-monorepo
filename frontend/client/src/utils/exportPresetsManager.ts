@@ -44,7 +44,7 @@ export interface ExportPreset {
   updatedAt: number;
   createdBy: string;
   updatedBy: string;
-  status: 'active, ' | 'archived' | 'deleted' | 'pending' | 'processing';
+  status: 'active' | 'archived' | 'deleted' | 'pending' | 'processing';
   usage: ExportUsage;
   config: Record<string, any>;
 }
@@ -90,7 +90,7 @@ export interface ExportFormat {
   animation: boolean;
   vector: boolean;
   raster: boolean;
-  metadata: {
+  metadataInfo: {
     created: number;
     modified: number;
     version: string;
@@ -481,7 +481,32 @@ class ExportPresetsManager {
   private setupEventListeners(): void {
     if (!this.config.enablePresets) return;
     // Implementation depends on event handling strategy
-}
+  }
+
+  private createSystemMetadata(author = 'system'): {
+    created: number;
+    modified: number;
+    version: string;
+    author: string;
+    tags: string[];
+    usageCount: number;
+    lastUsed: number;
+    successCount: number;
+    errorCount: number;
+  } {
+    const now = Date.now();
+    return {
+      created: now,
+      modified: now,
+      version: '1.0.0',
+      author,
+      tags: [],
+      usageCount: 0,
+      lastUsed: 0,
+      successCount: 0,
+      errorCount: 0,
+    };
+  }
 
   /**
    * Load default platforms
@@ -923,7 +948,9 @@ class ExportPresetsManager {
             maxFileSize: 10 * 1024 * 1024,
             maxDimensions: { width: 4096, height: 4096 },
             unsupportedFeatures: ['native-app-features']
-          }
+          },
+          metadata: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         },
         format: {
           id: 'webp',
@@ -956,7 +983,9 @@ class ExportPresetsManager {
           transparency: true,
           animation: true,
           vector: false,
-          raster: true
+          raster: true,
+          metadataInfo: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         },
         settings: {
           quality: 80,
@@ -980,7 +1009,9 @@ class ExportPresetsManager {
           preview: true,
           batch: true,
           parallel: true,
-          cache: true
+          cache: true,
+          metadata: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         },
         compression: {
           enableCompression: true,
@@ -992,7 +1023,9 @@ class ExportPresetsManager {
           memLevel: 8,
           chunkSize: 16384,
           parallel: true,
-          streaming: true
+          streaming: true,
+          metadata: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         },
         validation: {
           enableValidation: true,
@@ -1008,7 +1041,9 @@ class ExportPresetsManager {
               severity: 'error',
               message: 'File size exceeds maximum allowed size',
               fix: 'Reduce file size or use compression',
-              enabled: true
+              enabled: true,
+              metadata: this.createSystemMetadata('Export Presets Manager'),
+              config: {}
             },
             {
               id: 'dimensions',
@@ -1021,12 +1056,16 @@ class ExportPresetsManager {
               severity: 'error',
               message: 'Dimensions exceed maximum allowed size',
               fix: 'Reduce dimensions or use different format',
-              enabled: true
+              enabled: true,
+              metadata: this.createSystemMetadata('Export Presets Manager'),
+              config: {}
             }
           ],
           strict: true,
           warnings: true,
-          errors: true
+          errors: true,
+          metadata: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         },
         metadata: {
           title: 'Web Optimized Export',
@@ -1075,7 +1114,9 @@ class ExportPresetsManager {
           usedInProjects: [],
           popularity: 0,
           rating: 0,
-          reviews: []
+          reviews: [],
+          metadata: this.createSystemMetadata('Export Presets Manager'),
+          config: {}
         }
       }
     ];
@@ -1126,15 +1167,7 @@ class ExportPresetsManager {
         unsupportedFeatures: []
       },
       metadata: {
-        created: Date.now(),
-        modified: Date.now(),
-        version: '1.0.0',
-        author: 'User',
-        tags: [],
-        usageCount: 0,
-        lastUsed: 0,
-        successCount: 0,
-        errorCount: 0
+        ...this.createSystemMetadata('User')
       },
       config: platformData.config || {}
     };
@@ -1189,22 +1222,12 @@ class ExportPresetsManager {
       },
       compression: formatData.compression || false,
       quality: formatData.quality || false,
-      metadata: formatData.metadata || false,
+      metadata: formatData.metadata ?? false,
       transparency: formatData.transparency || false,
       animation: formatData.animation || false,
       vector: formatData.vector || false,
       raster: formatData.raster || false,
-      metadataInfo: {
-        created: Date.now(),
-        modified: Date.now(),
-        version: '1.0.0',
-        author: 'User',
-        tags: [],
-        usageCount: 0,
-        lastUsed: 0,
-        successCount: 0,
-        errorCount: 0
-      },
+      metadataInfo: formatData.metadataInfo || this.createSystemMetadata('User'),
       config: formatData.config || {}
     };
 
@@ -1248,7 +1271,9 @@ class ExportPresetsManager {
         preview: true,
         batch: true,
         parallel: true,
-        cache: true
+        cache: true,
+        metadata: this.createSystemMetadata('User'),
+        config: {}
       },
       compression: presetData.compression || {
         enableCompression: true,
@@ -1260,14 +1285,18 @@ class ExportPresetsManager {
         memLevel: 8,
         chunkSize: 16384,
         parallel: true,
-        streaming: true
+        streaming: true,
+        metadata: this.createSystemMetadata('User'),
+        config: {}
       },
       validation: presetData.validation || {
         enableValidation: true,
         rules: [],
         strict: true,
         warnings: true,
-        errors: true
+        errors: true,
+        metadata: this.createSystemMetadata('User'),
+        config: {}
       },
       metadata: presetData.metadata || {},
       permissions: presetData.permissions || {
@@ -1301,7 +1330,9 @@ class ExportPresetsManager {
         usedInProjects: [],
         popularity: 0,
         rating: 0,
-        reviews: []
+        reviews: [],
+        metadata: this.createSystemMetadata('User'),
+        config: {}
       },
       version: presetData.version || '1.0.0',
       createdAt: presetData.createdAt || Date.now(),
@@ -1454,7 +1485,6 @@ class ExportPresetsManager {
 export const exportPresetsManager = new ExportPresetsManager();
 
 export default exportPresetsManager;
-
 
 
 

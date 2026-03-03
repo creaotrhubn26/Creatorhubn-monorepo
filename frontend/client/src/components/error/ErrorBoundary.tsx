@@ -205,9 +205,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
 // Hook for functional components to handle errors
 export const useErrorHandler = (
-  // Theming system
-  const theming = useTheming('photographer');) => {
-  const handleError = (error: Error, errorInfo?: any) => {
+): { handleError: (error: Error, errorInfo?: unknown) => void } => {
+  const theming = useTheming('photographer');
+
+  const handleError = (error: Error, errorInfo?: unknown) => {
     console.error('Error caught by useErrorHandler: ', error, errorInfo);
 
     // You can add additional error handling logic here
@@ -215,8 +216,9 @@ export const useErrorHandler = (
 
     if (process.env.NODE_ENV === 'production') {
       // Example: sendErrorToService(error, errorInfo);
-  }
-};
+      void theming;
+    }
+  };
 
   return { handleError };
 };

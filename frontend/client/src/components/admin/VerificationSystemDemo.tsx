@@ -425,7 +425,7 @@ export default function VerificationSystemDemo() {
                   StepIconComponent={() => getStepIcon(step)}
                   sx={{
                     '& .MuiStepLabel-label': {
-                      fontWeight: tep.status === 'running' ? 'bold' : 'normal'
+                      fontWeight: step.status === 'running' ? 'bold' : 'normal'
                 }
                 }}
                 >
@@ -542,5 +542,4 @@ export default function VerificationSystemDemo() {
     </Box>
   );
 }
-
 

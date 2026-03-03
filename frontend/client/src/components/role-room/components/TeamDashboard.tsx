@@ -1,58 +1,57 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Paper,
+  Alert,
   Avatar,
-  Chip,
-  IconButton,
-  Tooltip,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Badge,
-  LinearProgress,
-  Divider,
-  Stack,
+  Box,
+  Button,
   Card,
   CardContent,
+  Chip,
+  Collapse,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Button,
-  Tab,
-  Tabs,
-  AvatarGroup,
+  DialogContent,
+  DialogTitle,
+  Drawer,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  LinearProgress,
   List,
   ListItem,
   ListItemAvatar,
   ListItemText,
-  ListItemSecondaryAction,
-  Collapse,
+  MenuItem,
+  Paper,
+  Select,
+  Snackbar,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
   useMediaQuery,
   useTheme,
-  Drawer,
 } from '@mui/material';
 import {
   DndContext,
-  closestCenter,
-  rectIntersection,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
   useDroppable,
-  DragOverEvent,
+  useSensor,
+  useSensors,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
@@ -60,37 +59,56 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  ViewKanban as KanbanIcon,
+  Add as AddIcon,
+  Assignment as TaskIcon,
+  AutoFixHigh as AutoBalanceIcon,
+  CheckCircle as CompleteIcon,
+  Close as CloseIcon,
+  Description as CallSheetIcon,
+  Download as DownloadIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
+  History as HistoryIcon,
+  Hub as DependencyIcon,
+  Lock as LockIcon,
+  Person as PersonIcon,
+  PlayArrow as InProgressIcon,
+  Save as SaveIcon,
+  Search as SearchIcon,
+  Send as SendIcon,
   TableChart as TableIcon,
   Timeline as TimelineIcon,
-  Person as PersonIcon,
-  Assignment as TaskIcon,
+  ViewKanban as KanbanIcon,
   Warning as WarningIcon,
-  CheckCircle as CompleteIcon,
-  Schedule as PendingIcon,
-  PlayArrow as InProgressIcon,
-  FilterList as FilterIcon,
-  Search as SearchIcon,
-  Add as AddIcon,
-  MoreVert as MoreIcon,
-  Notifications as NotificationIcon,
-  History as HistoryIcon,
-  Group as TeamIcon,
-  Flag as FlagIcon,
-  Lock as LockIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Download as DownloadIcon,
-  PictureAsPdf as PdfIcon,
-  TableView as ExcelIcon,
-  Description as CallSheetIcon,
-  Close as CloseIcon,
 } from '@mui/icons-material';
 import { CalendarCustomIcon as CalendarIcon } from './icons/CastingIcons';
-import { ShotList, CastingShot, CrewMember, ShotStatus, ShotPriority, SceneBreakdown, ProductionDay } from '../models/casting';
+import { CallSheetGenerator } from './CallSheetGenerator';
+import {
+  type CastingShot,
+  type CrewMember,
+  type ProductionDay,
+  type SceneBreakdown,
+  type ShotList,
+  type ShotPriority,
+  type ShotStatus,
+} from '../models/casting';
+import { castingService } from '../services/castingService';
+import {
+  TECHNICAL_CREW_SUBGROUP_LABELS,
+  type TechnicalCrewSubgroup,
+  getRoleCapacity,
+  getRoleColor,
+  getRoleLabel,
+  getTechnicalSubgroupForMember,
+  isTechnicalCrewMember as isTechnicalCrewMemberFromShared,
+} from './shared/technicalCrew';
 
-// Lazy load CallSheetGenerator for performance
-const CallSheetGenerator = React.lazy(() => import('./CallSheetGenerator'));
+type ViewMode = 'kanban' | 'table' | 'timeline' | 'calendar' | 'workload';
+export type TeamDashboardCrewSegment = 'all' | 'technical';
+type ShotBlocker = 'none' | 'equipment' | 'location' | 'talent';
+type DashboardFilterPreset = 'custom' | 'technical_day' | 'technical_critical' | 'unassigned';
+
+type ToastSeverity = 'success' | 'error' | 'warning' | 'info';
 
 interface TeamDashboardProps {
   shotLists: ShotList[];
@@ -99,118 +117,173 @@ interface TeamDashboardProps {
   projectId?: string;
   scenes?: SceneBreakdown[];
   productionDay?: ProductionDay;
+  crewSegment?: TeamDashboardCrewSegment;
+  onCrewSegmentChange?: (segment: TeamDashboardCrewSegment) => void;
+  openCallSheetSignal?: number;
   onShotUpdate?: (shotList: ShotList, shot: CastingShot) => Promise<void>;
   onActivityLog?: (action: string, details: object) => void;
 }
 
-type ViewMode = 'kanban' | 'table' | 'timeline' | 'calendar' | 'workload';
+interface TeamDashboardSnapshot {
+  id?: string;
+  projectId: string;
+  name: string;
+  segment: TeamDashboardCrewSegment;
+  subgroup: TechnicalCrewSubgroup;
+  filterAssignee: string;
+  filterPriority: string;
+  blockerFilter: ShotBlocker | 'all';
+  preset: DashboardFilterPreset;
+  rememberSegment: boolean;
+  metrics: {
+    totalShots: number;
+    completedShots: number;
+    blockedShots: number;
+    criticalRiskShots: number;
+    progressPercent: number;
+  };
+  createdAt?: string;
+}
 
 interface ActivityLogEntry {
   id: string;
   userId: string;
   userName: string;
   action: string;
-  targetType: 'shot' | 'shotlist' | 'comment';
+  targetType: 'shot' | 'shotlist' | 'dashboard' | 'comment';
   targetId: string;
   targetName: string;
   timestamp: string;
-  details?: object;
+  details?: Record<string, unknown>;
+}
+
+interface DroppableColumnProps {
+  id: string;
+  children: React.ReactNode;
+}
+
+interface ShotWithList {
+  shot: CastingShot;
+  shotList: ShotList;
+}
+
+interface MemberWorkload {
+  assigned: number;
+  completed: number;
+  inProgress: number;
+  blocked: number;
+  totalTime: number;
+  actualTime: number;
+  capacity: number;
+  utilization: number;
+  severity: 'low' | 'medium' | 'high';
+}
+
+interface KanbanCardProps {
+  shot: CastingShot;
+  shotList: ShotList;
+  crewMembers: CrewMember[];
+  showDependencies: boolean;
+  dependencyCount: number;
+  hasDependencyRisk: boolean;
+  hasSlaRisk: boolean;
 }
 
 const statusColumns: { id: ShotStatus; label: string; color: string; icon: React.ReactNode }[] = [
-  { id: 'not_started', label: 'Venter', color: '#9e9e9e', icon: <PendingIcon /> },
-  { id: 'in_progress', label: 'Pågår', color: '#2196f3', icon: <InProgressIcon /> },
-  { id: 'completed', label: 'Fullført', color: '#4caf50', icon: <CompleteIcon /> },
+  { id: 'not_started', label: 'Venter', color: '#9ca3af', icon: <TaskIcon fontSize="small" /> },
+  { id: 'in_progress', label: 'Pågår', color: '#38bdf8', icon: <InProgressIcon fontSize="small" /> },
+  { id: 'completed', label: 'Fullført', color: '#22c55e', icon: <CompleteIcon fontSize="small" /> },
 ];
 
-const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string }> = {
-  critical: { label: 'Kritisk', color: '#f44336', bgColor: 'rgba(244,67,54,0.15)' },
-  important: { label: 'Viktig', color: '#9333ea', bgColor: 'rgba(147,51,234,0.15)' },
-  nice_to_have: { label: 'Bonus', color: '#4caf50', bgColor: 'rgba(76,175,80,0.15)' },
+const priorityConfig: Record<ShotPriority, { label: string; color: string; bgColor: string; weight: number }> = {
+  critical: { label: 'Kritisk', color: '#ef4444', bgColor: 'rgba(239,68,68,0.15)', weight: 3 },
+  important: { label: 'Viktig', color: '#f59e0b', bgColor: 'rgba(245,158,11,0.15)', weight: 2 },
+  nice_to_have: { label: 'Bonus', color: '#22c55e', bgColor: 'rgba(34,197,94,0.15)', weight: 1 },
 };
 
-interface DroppableColumnProps {
-  id: string;
-  children: React.ReactNode;
+const blockerConfig: Record<ShotBlocker, { label: string; color: string; bgColor: string }> = {
+  none: { label: 'Ingen blokkering', color: '#9ca3af', bgColor: 'rgba(156,163,175,0.14)' },
+  equipment: { label: 'Venter på utstyr', color: '#f59e0b', bgColor: 'rgba(245,158,11,0.16)' },
+  location: { label: 'Venter på location', color: '#06b6d4', bgColor: 'rgba(6,182,212,0.16)' },
+  talent: { label: 'Venter på talent', color: '#a855f7', bgColor: 'rgba(168,85,247,0.16)' },
+};
+
+const presetLabels: Record<DashboardFilterPreset, string> = {
+  custom: 'Egendefinert',
+  technical_day: 'Teknisk dag',
+  technical_critical: 'Tekniske kritiske',
+  unassigned: 'Ufordelte',
+};
+
+const STORAGE_PREFIX = 'team-dashboard';
+
+const getSegmentStorageKey = (projectId?: string): string => `${STORAGE_PREFIX}:segment:${projectId ?? 'global'}`;
+const getRememberSegmentStorageKey = (projectId?: string): string => `${STORAGE_PREFIX}:remember-segment:${projectId ?? 'global'}`;
+const getPresetStorageKey = (projectId?: string): string => `${STORAGE_PREFIX}:preset:${projectId ?? 'global'}`;
+const getSubgroupStorageKey = (projectId?: string): string => `${STORAGE_PREFIX}:subgroup:${projectId ?? 'global'}`;
+
+function getShotBlocker(shot: CastingShot): ShotBlocker {
+  const raw = String(shot.blockerStatus ?? shot.blocker ?? 'none').toLowerCase();
+  if (raw === 'equipment' || raw === 'location' || raw === 'talent') {
+    return raw;
+  }
+  return 'none';
 }
 
-interface DroppableColumnProps {
-  id: string;
-  children: React.ReactNode;
-  isOver?: boolean;
-  columnColor?: string;
+function getShotDependencies(shot: CastingShot): string[] {
+  if (Array.isArray(shot.dependencies)) {
+    return shot.dependencies.filter((dep): dep is string => typeof dep === 'string' && dep.trim().length > 0);
+  }
+  if (Array.isArray(shot.dependsOn)) {
+    return shot.dependsOn.filter((dep): dep is string => typeof dep === 'string' && dep.trim().length > 0);
+  }
+  return [];
 }
 
-const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children, isOver: isOverProp, columnColor }) => {
+function getShotActualTime(shot: CastingShot): number {
+  if (typeof shot.actualTime === 'number' && Number.isFinite(shot.actualTime)) {
+    return shot.actualTime;
+  }
+  return 0;
+}
+
+function getSeverityForUtilization(utilization: number): 'low' | 'medium' | 'high' {
+  if (utilization >= 1.2) return 'high';
+  if (utilization >= 0.9) return 'medium';
+  return 'low';
+}
+
+function safeReadLocalStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
+
+const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children }) => {
   const { setNodeRef, isOver } = useDroppable({ id });
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isOverColumn = isOver || isOverProp;
-  
+
   return (
     <Box
       ref={setNodeRef}
       sx={{
         flex: 1,
+        minHeight: { xs: 160, md: 0 },
         overflowY: 'auto',
-        overflowX: 'hidden',
-        p: { xs: 1.5, sm: 1 },
-        minHeight: { xs: 100, sm: 0 },
-        maxHeight: { xs: 'none', sm: '100%' },
-        bgcolor: isOverColumn ? 'rgba(0,212,255,0.15)' : 'transparent',
-        border: isOverColumn ? '2px dashed rgba(0,212,255,0.5)' : '2px solid transparent',
-        borderRadius: 1,
+        p: 1,
+        borderRadius: 2,
+        border: isOver ? '2px dashed rgba(56,189,248,0.55)' : '2px solid transparent',
+        bgcolor: isOver ? 'rgba(56,189,248,0.08)' : 'transparent',
         transition: 'all 0.15s ease',
-        position: 'relative',
-        WebkitOverflowScrolling: 'touch',
-        '&::before': isOverColumn ? {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          bgcolor: 'rgba(0,212,255,0.05)',
-          borderRadius: 1,
-          pointerEvents: 'none',
-          animation: 'pulse 1.5s ease-in-out infinite',
-          '@keyframes pulse': {
-            '0%, 100%': {
-              opacity: 0.5,
-            },
-            '50%': {
-              opacity: 1,
-            },
-          },
-        } : {},
-        '& > * > *': isOverColumn ? {
-          transform: 'scale(1.02)',
-          transition: 'transform 0.2s ease',
-          filter: 'brightness(1.1)',
-        } : {
-          transition: 'all 0.2s ease',
-        },
-        '& [data-sortable]': isOverColumn ? {
-          bgcolor: 'rgba(0,212,255,0.08) !important',
-          border: '1px solid rgba(0,212,255,0.3) !important',
-          transform: 'scale(1.02)',
-          transition: 'all 0.2s ease',
-          boxShadow: '0 0 12px rgba(0,212,255,0.3)',
-        } : {},
-        '&::-webkit-scrollbar': {
-          width: 8,
-        },
-        '&::-webkit-scrollbar-track': {
-          bgcolor: 'rgba(255,255,255,0.05)',
-          borderRadius: 4,
-        },
-        '&::-webkit-scrollbar-thumb': {
-          bgcolor: 'rgba(255,255,255,0.2)',
-          borderRadius: 4,
-          '&:hover': {
-            bgcolor: 'rgba(255,255,255,0.6)',
-          },
-        },
       }}
     >
       {children}
@@ -218,181 +291,119 @@ const DroppableColumn: React.FC<DroppableColumnProps> = ({ id, children, isOver:
   );
 };
 
-interface KanbanCardProps {
-  shot: CastingShot;
-  shotList: ShotList;
-  crewMembers: CrewMember[];
-  onUpdate: (updates: Partial<CastingShot>) => void;
-  isInDropZone?: boolean;
-}
-
-const KanbanCard: React.FC<KanbanCardProps> = React.memo(({ shot, shotList, crewMembers, onUpdate, isInDropZone }) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: shot.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  // Memoize assignee lookup
-  const assignee = useMemo(() => 
-    crewMembers.find(m => m.id === shot.assigneeId),
-    [crewMembers, shot.assigneeId]
-  );
-  const priority = priorityConfig[shot.priority || 'important'];
+const KanbanCard: React.FC<KanbanCardProps> = ({
+  shot,
+  shotList,
+  crewMembers,
+  showDependencies,
+  dependencyCount,
+  hasDependencyRisk,
+  hasSlaRisk,
+}) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: shot.id });
+  const assignee = useMemo(() => crewMembers.find((member) => member.id === shot.assigneeId), [crewMembers, shot.assigneeId]);
+  const priority = priorityConfig[shot.priority ?? 'important'];
+  const blocker = blockerConfig[getShotBlocker(shot)];
 
   return (
     <Card
       ref={setNodeRef}
-      style={style}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.55 : 1,
+      }}
       {...attributes}
       {...listeners}
       data-sortable
       sx={{
-        mb: { xs: 1.5, sm: 1 },
+        mb: 1,
         cursor: 'grab',
-        bgcolor: '#1a1a2e',
-        border: '1px solid rgba(255,255,255,0.1)',
         borderLeft: `4px solid ${priority.color}`,
-        touchAction: 'none',
-        WebkitTouchCallout: 'none',
-        WebkitUserSelect: 'none',
-        userSelect: 'none',
+        bgcolor: 'rgba(15,23,42,0.9)',
+        border: '1px solid rgba(255,255,255,0.08)',
         '&:hover': {
-          borderColor: 'rgba(255,255,255,0.3)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        },
-        '&:active': { 
-          cursor: 'grabbing',
-          transform: 'scale(1.02)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          borderColor: 'rgba(255,255,255,0.18)',
+          boxShadow: '0 8px 22px rgba(2,6,23,0.45)',
         },
       }}
     >
-      <CardContent sx={{ 
-        p: { xs: 2, sm: 1.5 }, 
-        '&:last-child': { pb: { xs: 2, sm: 1.5 } } 
-      }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: { xs: 1.5, sm: 1 } }}>
-          <Typography variant="body2" sx={{ 
-            color: '#fff', 
-            fontWeight: 600, 
-            flex: 1,
-            fontSize: { xs: '0.9rem', sm: '0.875rem' },
-            lineHeight: 1.4,
-          }}>
+      <CardContent sx={{ p: 1.25, '&:last-child': { pb: 1.25 } }}>
+        <Stack direction="row" justifyContent="space-between" spacing={1} alignItems="flex-start">
+          <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600, lineHeight: 1.35 }}>
             {shot.description || shot.shotType}
           </Typography>
           {shot.reservedBy && (
-            <Tooltip title={`Reservert av ${shot.reservedByName}`}>
-              <LockIcon sx={{ fontSize: { xs: 18, sm: 14 }, color: '#9333ea', ml: 1 }} />
+            <Tooltip title={`Reservert av ${shot.reservedByName ?? 'annen bruker'}`}>
+              <LockIcon sx={{ fontSize: 16, color: '#a78bfa' }} />
             </Tooltip>
           )}
-        </Box>
+        </Stack>
 
-        <Box sx={{ display: 'flex', gap: { xs: 1, sm: 0.5 }, flexWrap: 'wrap', mb: { xs: 1.5, sm: 1 } }}>
+        <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap' }}>
           <Chip
-            label={priority.label}
             size="small"
-            sx={{
-              height: { xs: 24, sm: 18 },
-              fontSize: { xs: '11px', sm: '10px' },
-              bgcolor: priority.bgColor,
-              color: priority.color,
-              border: `1px solid ${priority.color}33`,
-              '& .MuiChip-label': { px: { xs: 1.5, sm: 1 } },
-            }}
+            label={priority.label}
+            sx={{ bgcolor: priority.bgColor, color: priority.color, border: `1px solid ${priority.color}44`, height: 20 }}
           />
-          {shot.colorTag && (
-            <Box
+          {getShotBlocker(shot) !== 'none' && (
+            <Chip
+              size="small"
+              label={blocker.label}
+              icon={<WarningIcon sx={{ color: `${blocker.color} !important` }} />}
+              sx={{ bgcolor: blocker.bgColor, color: blocker.color, border: `1px solid ${blocker.color}44`, height: 20 }}
+            />
+          )}
+          {showDependencies && dependencyCount > 0 && (
+            <Chip
+              size="small"
+              label={`Avh.: ${dependencyCount}`}
+              icon={<DependencyIcon sx={{ color: `${hasDependencyRisk ? '#ef4444' : '#38bdf8'} !important` }} />}
               sx={{
-                width: { xs: 24, sm: 18 },
-                height: { xs: 24, sm: 18 },
-                borderRadius: '50%',
-                bgcolor: {
-                  red: '#f44336',
-                  orange: '#9333ea',
-                  yellow: '#ffeb3b',
-                  green: '#4caf50',
-                  blue: '#2196f3',
-                  purple: '#9c27b0',
-                  gray: '#9e9e9e',
-                }[shot.colorTag],
+                bgcolor: hasDependencyRisk ? 'rgba(239,68,68,0.16)' : 'rgba(56,189,248,0.16)',
+                color: hasDependencyRisk ? '#ef4444' : '#38bdf8',
+                border: `1px solid ${hasDependencyRisk ? '#ef4444' : '#38bdf8'}44`,
+                height: 20,
               }}
             />
           )}
-        </Box>
+          {hasSlaRisk && (
+            <Chip
+              size="small"
+              label="SLA risiko"
+              sx={{ bgcolor: 'rgba(244,63,94,0.18)', color: '#f43f5e', border: '1px solid rgba(244,63,94,0.45)', height: 20 }}
+            />
+          )}
+        </Stack>
 
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="caption" sx={{ 
-            color: 'rgba(255,255,255,0.87)',
-            fontSize: { xs: '0.8rem', sm: '0.75rem' },
-          }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
+          <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.76)' }}>
             {shotList.sceneName || 'Scene'}
           </Typography>
           {assignee ? (
-            <Tooltip title={`Tilordnet: ${assignee.name}`}>
-              <Avatar sx={{ 
-                width: { xs: 32, sm: 24 }, 
-                height: { xs: 32, sm: 24 }, 
-                bgcolor: '#e91e63', 
-                fontSize: { xs: 14, sm: 12 } 
-              }}>
+            <Tooltip title={assignee.name}>
+              <Avatar sx={{ width: 24, height: 24, bgcolor: getRoleColor(String(assignee.role)), fontSize: 12 }}>
                 {assignee.name.charAt(0)}
               </Avatar>
             </Tooltip>
           ) : (
-            <Tooltip title="Ikke tilordnet">
-              <Chip
-                icon={<PersonIcon sx={{ fontSize: { xs: 16, sm: 14 }, color: '#9333ea !important' }} />}
-                label="Ledig"
-                size="small"
-                sx={{ 
-                  height: { xs: 26, sm: 20 },
-                  bgcolor: 'rgba(147,51,234,0.15)',
-                  color: '#9333ea',
-                  fontSize: { xs: '0.7rem', sm: '0.65rem' },
-                  border: '1px dashed rgba(147,51,234,0.4)',
-                  '& .MuiChip-label': { px: { xs: 0.75, sm: 0.5 } },
-                }}
-              />
-            </Tooltip>
+            <Chip
+              size="small"
+              icon={<PersonIcon sx={{ color: '#a855f7 !important' }} />}
+              label="Ledig"
+              sx={{
+                bgcolor: 'rgba(168,85,247,0.15)',
+                color: '#a855f7',
+                border: '1px dashed rgba(168,85,247,0.45)',
+                height: 20,
+              }}
+            />
           )}
-        </Box>
-
-        {shot.estimatedTime && (
-          <Typography variant="caption" sx={{ 
-            color: 'rgba(255,255,255,0.7)', 
-            display: 'block', 
-            mt: { xs: 1, sm: 0.5 },
-            fontSize: { xs: '0.8rem', sm: '0.75rem' },
-          }}>
-            {shot.estimatedTime} min
-          </Typography>
-        )}
+        </Stack>
       </CardContent>
     </Card>
   );
-}, (prevProps, nextProps) => {
-  // Custom comparison for memoization
-  return (
-    prevProps.shot.id === nextProps.shot.id &&
-    prevProps.shot.status === nextProps.shot.status &&
-    prevProps.shot.assigneeId === nextProps.shot.assigneeId &&
-    prevProps.shot.priority === nextProps.shot.priority &&
-    prevProps.shot.description === nextProps.shot.description &&
-    prevProps.shotList.id === nextProps.shotList.id &&
-    prevProps.crewMembers.length === nextProps.crewMembers.length
-  );
-});
+};
 
 export const TeamDashboard: React.FC<TeamDashboardProps> = ({
   shotLists,
@@ -401,790 +412,1233 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
   projectId,
   scenes = [],
   productionDay,
+  crewSegment,
+  onCrewSegmentChange,
+  openCallSheetSignal = 0,
   onShotUpdate,
   onActivityLog,
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
+
   const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterAssignee, setFilterAssignee] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
+  const [blockerFilter, setBlockerFilter] = useState<ShotBlocker | 'all'>('all');
+  const [technicalSubgroup, setTechnicalSubgroup] = useState<TechnicalCrewSubgroup>('all');
+  const [filterPreset, setFilterPreset] = useState<DashboardFilterPreset>('custom');
+  const [rememberSegment, setRememberSegment] = useState(true);
+  const [showDependencies, setShowDependencies] = useState(false);
+
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [showActivityPanel, setShowActivityPanel] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [statsExpanded, setStatsExpanded] = useState(!isMobile && !isTablet);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [selectedMemberForAssign, setSelectedMemberForAssign] = useState<string | null>(null);
+  const [selectedMemberForAssign, setSelectedMemberForAssign] = useState<string>('');
   const [expandedMembers, setExpandedMembers] = useState<Set<string>>(new Set());
   const [showCallSheetDrawer, setShowCallSheetDrawer] = useState(false);
+  const [internalCrewSegment, setInternalCrewSegment] = useState<TeamDashboardCrewSegment>('all');
 
-  // Memoize handleShotUpdate to prevent unnecessary re-renders
-  const handleShotUpdate = useCallback((shotList: ShotList, shot: CastingShot, updates: Partial<CastingShot>) => {
-    if (onShotUpdate) {
-      onShotUpdate(shotList, { ...shot, ...updates });
-    }
-  }, [onShotUpdate]);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastSeverity, setToastSeverity] = useState<ToastSeverity>('info');
+  const [toastOpen, setToastOpen] = useState(false);
 
-  const exportToCSV = useCallback((shots: { shot: CastingShot; shotList: ShotList }[], members: CrewMember[]) => {
-    const statusLabels: Record<string, string> = { not_started: 'Venter', in_progress: 'Pågår', completed: 'Fullført' };
-    const priorityLabels: Record<string, string> = { critical: 'Kritisk', important: 'Viktig', nice_to_have: 'Bonus' };
-    
-    const headers = ['Beskrivelse', 'Scene', 'Status', 'Prioritet', 'Tilordnet', 'Estimert tid (min)'];
-    const rows = shots.map(({ shot, shotList }) => {
-      const assignee = members.find(m => m.id === shot.assigneeId);
-      return [
-        shot.description || shot.shotType,
-        shotList.sceneName || 'Scene',
-        statusLabels[shot.status || 'not_started'] || shot.status || 'not_started',
-        priorityLabels[shot.priority || 'important'],
-        assignee?.name || 'Ledig',
-        shot.estimatedTime?.toString() || '',
-      ];
-    });
-    
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `shots-eksport-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }, []);
-
-  const exportToPDF = useCallback(async (shots: { shot: CastingShot; shotList: ShotList }[], members: CrewMember[]) => {
-    const { jsPDF } = await import('jspdf');
-    const doc = new jsPDF();
-    const statusLabels: Record<string, string> = { not_started: 'Venter', in_progress: 'Pågår', completed: 'Fullført' };
-    const priorityLabels: Record<string, string> = { critical: 'Kritisk', important: 'Viktig', nice_to_have: 'Bonus' };
-    
-    doc.setFontSize(18);
-    doc.text('Shot Liste Eksport', 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Eksportert: ${new Date().toLocaleDateString('nb-NO')}`, 14, 28);
-    doc.text(`Antall shots: ${shots.length}`, 14, 34);
-    
-    let y = 45;
-    const lineHeight = 7;
-    const pageHeight = doc.internal.pageSize.height;
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Beskrivelse', 14, y);
-    doc.text('Scene', 80, y);
-    doc.text('Status', 110, y);
-    doc.text('Prioritet', 140, y);
-    doc.text('Tilordnet', 170, y);
-    y += lineHeight;
-    doc.line(14, y - 2, 196, y - 2);
-    
-    doc.setFont('helvetica', 'normal');
-    shots.forEach(({ shot, shotList }) => {
-      if (y > pageHeight - 20) {
-        doc.addPage();
-        y = 20;
-      }
-      const assignee = members.find(m => m.id === shot.assigneeId);
-      doc.text((shot.description || shot.shotType).slice(0, 30), 14, y);
-      doc.text((shotList.sceneName || 'Scene').slice(0, 15), 80, y);
-      doc.text(statusLabels[shot.status || 'not_started'] || shot.status || 'not_started', 110, y);
-      doc.text(priorityLabels[shot.priority || 'important'], 140, y);
-      doc.text(assignee?.name.slice(0, 12) || 'Ledig', 170, y);
-      y += lineHeight;
-    });
-    
-    doc.save(`shots-eksport-${new Date().toISOString().split('T')[0]}.pdf`);
-  }, []);
+  const [snapshots, setSnapshots] = useState<TeamDashboardSnapshot[]>([]);
+  const [snapshotName, setSnapshotName] = useState('');
+  const [snapshotDialogOpen, setSnapshotDialogOpen] = useState(false);
+  const [snapshotBusy, setSnapshotBusy] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 140, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  const allShots = useMemo(() => {
-    let shots: { shot: CastingShot; shotList: ShotList }[] = [];
-    
-    // Flatten shots with their shotLists
-    for (const sl of shotLists) {
-      for (const shot of sl.shots) {
-        shots.push({ shot, shotList: sl });
+  const lastCallSheetSignalRef = useRef(0);
+  const hydrationProjectRef = useRef<string | null>(null);
+
+  const activeCrewSegment = crewSegment ?? internalCrewSegment;
+
+  const searchAdornment = useMemo(
+    () => (
+      <InputAdornment position="start">
+        <SearchIcon sx={{ color: 'rgba(248,250,252,0.72)' }} />
+      </InputAdornment>
+    ),
+    []
+  );
+
+  const pushToast = useCallback((severity: ToastSeverity, message: string) => {
+    setToastSeverity(severity);
+    setToastMessage(message);
+    setToastOpen(true);
+  }, []);
+
+  const pushAudit = useCallback(
+    (action: string, targetType: ActivityLogEntry['targetType'], targetId: string, targetName: string, details?: Record<string, unknown>) => {
+      const entry: ActivityLogEntry = {
+        id: `${action}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: currentUserId ?? 'unknown',
+        userName: crewMembers.find((member) => member.id === currentUserId)?.name ?? 'Ukjent',
+        action,
+        targetType,
+        targetId,
+        targetName,
+        timestamp: new Date().toISOString(),
+        details,
+      };
+
+      setActivityLog((prev) => [entry, ...prev].slice(0, 160));
+      if (onActivityLog) {
+        onActivityLog(action, {
+          targetType,
+          targetId,
+          targetName,
+          ...(details ?? {}),
+        });
+      }
+    },
+    [currentUserId, crewMembers, onActivityLog]
+  );
+
+  useEffect(() => {
+    if (hydrationProjectRef.current === (projectId ?? null)) {
+      return;
+    }
+    hydrationProjectRef.current = projectId ?? null;
+
+    const rememberValue = safeReadLocalStorage(getRememberSegmentStorageKey(projectId));
+    if (rememberValue !== null) {
+      setRememberSegment(rememberValue === '1');
+    }
+
+    const savedPreset = safeReadLocalStorage(getPresetStorageKey(projectId));
+    if (savedPreset === 'technical_day' || savedPreset === 'technical_critical' || savedPreset === 'unassigned' || savedPreset === 'custom') {
+      setFilterPreset(savedPreset);
+    }
+
+    const subgroupValue = safeReadLocalStorage(getSubgroupStorageKey(projectId));
+    if (
+      subgroupValue === 'all' ||
+      subgroupValue === 'camera' ||
+      subgroupValue === 'lighting' ||
+      subgroupValue === 'sound' ||
+      subgroupValue === 'post'
+    ) {
+      setTechnicalSubgroup(subgroupValue);
+    }
+
+    if (!crewSegment) {
+      const savedSegment = safeReadLocalStorage(getSegmentStorageKey(projectId));
+      if (savedSegment === 'all' || savedSegment === 'technical') {
+        setInternalCrewSegment(savedSegment);
+      }
+    }
+  }, [crewSegment, projectId]);
+
+  useEffect(() => {
+    if (!crewSegment) {
+      safeWriteLocalStorage(getSegmentStorageKey(projectId), activeCrewSegment);
+    }
+  }, [activeCrewSegment, crewSegment, projectId]);
+
+  useEffect(() => {
+    safeWriteLocalStorage(getRememberSegmentStorageKey(projectId), rememberSegment ? '1' : '0');
+  }, [projectId, rememberSegment]);
+
+  useEffect(() => {
+    safeWriteLocalStorage(getPresetStorageKey(projectId), filterPreset);
+  }, [filterPreset, projectId]);
+
+  useEffect(() => {
+    safeWriteLocalStorage(getSubgroupStorageKey(projectId), technicalSubgroup);
+  }, [projectId, technicalSubgroup]);
+
+  useEffect(() => {
+    if (crewSegment) {
+      setInternalCrewSegment(crewSegment);
+    }
+  }, [crewSegment]);
+
+  useEffect(() => {
+    if (openCallSheetSignal > lastCallSheetSignalRef.current) {
+      setShowCallSheetDrawer(true);
+    }
+    lastCallSheetSignalRef.current = openCallSheetSignal;
+  }, [openCallSheetSignal]);
+
+  const handleCrewSegmentChange = useCallback(
+    (segment: TeamDashboardCrewSegment) => {
+      if (segment === activeCrewSegment) return;
+      if (!crewSegment) {
+        setInternalCrewSegment(segment);
+      }
+      onCrewSegmentChange?.(segment);
+      pushAudit('segment_change', 'dashboard', segment, `Segment: ${segment}`, { segment });
+    },
+    [activeCrewSegment, crewSegment, onCrewSegmentChange, pushAudit]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+      if (isTyping) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        handleCrewSegmentChange(activeCrewSegment === 'all' ? 'technical' : 'all');
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeCrewSegment, handleCrewSegmentChange]);
+
+  const applyPreset = useCallback(
+    (preset: DashboardFilterPreset) => {
+      setFilterPreset(preset);
+
+      if (preset === 'technical_day') {
+        handleCrewSegmentChange('technical');
+        setTechnicalSubgroup('all');
+        setFilterAssignee('all');
+        setFilterPriority('all');
+        setBlockerFilter('all');
+      } else if (preset === 'technical_critical') {
+        handleCrewSegmentChange('technical');
+        setFilterPriority('critical');
+        setBlockerFilter('all');
+      } else if (preset === 'unassigned') {
+        setFilterAssignee('unassigned');
+      }
+
+      pushAudit('preset_change', 'dashboard', preset, presetLabels[preset], { preset });
+    },
+    [handleCrewSegmentChange, pushAudit]
+  );
+
+  const scopedCrewMembers = useMemo(() => {
+    if (activeCrewSegment === 'all') {
+      return crewMembers;
+    }
+    return crewMembers.filter((member) => isTechnicalCrewMemberFromShared(member, technicalSubgroup));
+  }, [activeCrewSegment, crewMembers, technicalSubgroup]);
+
+  const scopedCrewMemberIds = useMemo(() => new Set(scopedCrewMembers.map((member) => member.id)), [scopedCrewMembers]);
+
+  const allShots = useMemo<ShotWithList[]>(() => {
+    const flattened: ShotWithList[] = [];
+
+    for (const shotList of shotLists) {
+      for (const shot of shotList.shots ?? []) {
+        flattened.push({ shot, shotList });
       }
     }
 
-    // Apply filters
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      shots = shots.filter(({ shot }) =>
-        shot.description?.toLowerCase().includes(query) ||
-        shot.shotType.toLowerCase().includes(query)
-      );
+    let result = flattened;
+
+    if (activeCrewSegment === 'technical') {
+      result = result.filter(({ shot }) => !shot.assigneeId || scopedCrewMemberIds.has(shot.assigneeId));
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(({ shot, shotList }) => {
+        const shotDesc = String(shot.description ?? shot.shotType ?? '').toLowerCase();
+        const sceneName = String(shotList.sceneName ?? '').toLowerCase();
+        return shotDesc.includes(q) || sceneName.includes(q);
+      });
     }
 
     if (filterAssignee !== 'all') {
-      shots = shots.filter(({ shot }) =>
-        filterAssignee === 'unassigned' ? !shot.assigneeId : shot.assigneeId === filterAssignee
-      );
+      result = result.filter(({ shot }) => {
+        if (filterAssignee === 'unassigned') {
+          return !shot.assigneeId;
+        }
+        return shot.assigneeId === filterAssignee;
+      });
     }
 
     if (filterPriority !== 'all') {
-      shots = shots.filter(({ shot }) => shot.priority === filterPriority);
+      result = result.filter(({ shot }) => shot.priority === filterPriority);
     }
 
-    return shots;
-  }, [shotLists, searchQuery, filterAssignee, filterPriority]);
+    if (blockerFilter !== 'all') {
+      result = result.filter(({ shot }) => getShotBlocker(shot) === blockerFilter);
+    }
 
-  const shotsByStatus = useMemo(() => {
-    const grouped: Record<ShotStatus, { shot: CastingShot; shotList: ShotList }[]> = {
-      not_started: [],
-      in_progress: [],
-      completed: [],
-    };
-    // Use for loop for better performance
-    for (let i = 0; i < allShots.length; i++) {
-      const item = allShots[i];
-      const status = item.shot.status || 'not_started';
-      if (grouped[status]) {
-        grouped[status].push(item);
+    return result;
+  }, [
+    activeCrewSegment,
+    blockerFilter,
+    filterAssignee,
+    filterPriority,
+    scopedCrewMemberIds,
+    searchQuery,
+    shotLists,
+  ]);
+
+  useEffect(() => {
+    if (filterAssignee === 'all' || filterAssignee === 'unassigned') {
+      return;
+    }
+    if (!scopedCrewMemberIds.has(filterAssignee)) {
+      setFilterAssignee('all');
+      if (filterPreset !== 'custom') {
+        setFilterPreset('custom');
       }
     }
-    return grouped;
+  }, [filterAssignee, filterPreset, scopedCrewMemberIds]);
+
+  const shotsByStatus = useMemo<Record<ShotStatus, ShotWithList[]>>(
+    () => ({
+      not_started: allShots.filter((item) => (item.shot.status ?? 'not_started') === 'not_started'),
+      in_progress: allShots.filter((item) => item.shot.status === 'in_progress'),
+      completed: allShots.filter((item) => item.shot.status === 'completed'),
+    }),
+    [allShots]
+  );
+
+  const statusByShotId = useMemo(() => {
+    const map = new Map<string, ShotStatus>();
+    for (const { shot } of allShots) {
+      map.set(shot.id, (shot.status ?? 'not_started') as ShotStatus);
+    }
+    return map;
   }, [allShots]);
 
-  const workloadByMember = useMemo(() => {
-    const workload: Record<string, { assigned: number; completed: number; inProgress: number; totalTime: number }> = {};
-    
-    crewMembers.forEach(member => {
-      workload[member.id] = { assigned: 0, completed: 0, inProgress: 0, totalTime: 0 };
-    });
-    workload['unassigned'] = { assigned: 0, completed: 0, inProgress: 0, totalTime: 0 };
+  const dependencyRows = useMemo(() => {
+    return allShots
+      .map(({ shot, shotList }) => {
+        const dependencies = getShotDependencies(shot);
+        if (dependencies.length === 0) return null;
+        const unresolved = dependencies.filter((depId) => statusByShotId.get(depId) !== 'completed');
+        return {
+          shot,
+          shotList,
+          dependencies,
+          unresolved,
+        };
+      })
+      .filter((row): row is { shot: CastingShot; shotList: ShotList; dependencies: string[]; unresolved: string[] } => row !== null);
+  }, [allShots, statusByShotId]);
 
-    allShots.forEach(({ shot }) => {
-      const memberId = shot.assigneeId || 'unassigned';
-      if (!workload[memberId]) {
-        workload[memberId] = { assigned: 0, completed: 0, inProgress: 0, totalTime: 0 };
+  const criticalRiskShotIds = useMemo(() => {
+    const now = Date.now();
+    const ids = new Set<string>();
+
+    for (const { shot, shotList } of allShots) {
+      if ((shot.priority ?? 'important') !== 'critical') continue;
+      if ((shot.status ?? 'not_started') === 'completed') continue;
+      const deadline = shot.deadline ?? shotList.deadline;
+      if (!deadline) {
+        ids.add(shot.id);
+        continue;
       }
-      workload[memberId].assigned++;
-      workload[memberId].totalTime += shot.estimatedTime || 0;
-      if (shot.status === 'completed') workload[memberId].completed++;
-      if (shot.status === 'in_progress') workload[memberId].inProgress++;
-    });
-
-    return workload;
-  }, [allShots, crewMembers]);
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveId(null);
-
-    if (!over) return;
-
-    const overId = over.id as string;
-    const activeItem = allShots.find(({ shot }) => shot.id === active.id);
-    
-    if (!activeItem) return;
-
-    // Check if dropped on a column directly
-    let newStatus = statusColumns.find(col => col.id === overId)?.id;
-    
-    // If not dropped on a column, check if dropped on another shot and find its column
-    if (!newStatus) {
-      const overShot = allShots.find(({ shot }) => shot.id === overId);
-      if (overShot) {
-        newStatus = overShot.shot.status;
+      const millis = new Date(String(deadline)).getTime() - now;
+      if (Number.isFinite(millis) && millis <= 48 * 60 * 60 * 1000) {
+        ids.add(shot.id);
       }
     }
-    
-    if (newStatus && activeItem.shot.status !== newStatus) {
-      const updatedShot = { ...activeItem.shot, status: newStatus, updatedAt: new Date().toISOString() };
-      
-      // Optimistic update: Update local state immediately
-      const updatedShotList = {
-        ...activeItem.shotList,
-        shots: activeItem.shotList.shots.map(s => 
-          s.id === updatedShot.id ? updatedShot : s
-        ),
-        updatedAt: new Date().toISOString(),
-      };
 
-      // Update local shotLists state optimistically
-      // This will be handled by the parent component's state update
-      
-      // Save to backend asynchronously (non-blocking)
-      if (onShotUpdate) {
-        // Don't await - let it run in background
-        onShotUpdate(updatedShotList, updatedShot).catch((error) => {
-          console.error('Error saving shot update:', error);
-          // Could show error toast here if needed
-        });
+    return ids;
+  }, [allShots]);
+
+  const workloadByMember = useMemo<Record<string, MemberWorkload>>(() => {
+    const load: Record<string, MemberWorkload> = {};
+
+    for (const member of scopedCrewMembers) {
+      load[member.id] = {
+        assigned: 0,
+        completed: 0,
+        inProgress: 0,
+        blocked: 0,
+        totalTime: 0,
+        actualTime: 0,
+        capacity: getRoleCapacity(String(member.role)),
+        utilization: 0,
+        severity: 'low',
+      };
+    }
+
+    load.unassigned = {
+      assigned: 0,
+      completed: 0,
+      inProgress: 0,
+      blocked: 0,
+      totalTime: 0,
+      actualTime: 0,
+      capacity: 0,
+      utilization: 0,
+      severity: 'low',
+    };
+
+    for (const { shot } of allShots) {
+      const memberId = shot.assigneeId ?? 'unassigned';
+      if (!load[memberId]) {
+        load[memberId] = {
+          assigned: 0,
+          completed: 0,
+          inProgress: 0,
+          blocked: 0,
+          totalTime: 0,
+          actualTime: 0,
+          capacity: 10,
+          utilization: 0,
+          severity: 'low',
+        };
       }
 
-      const logEntry: ActivityLogEntry = {
-        id: `log-${Date.now()}`,
-        userId: currentUserId || 'unknown',
-        userName: crewMembers.find(m => m.id === currentUserId)?.name || 'Ukjent',
-        action: 'status_change',
-        targetType: 'shot',
-        targetId: activeItem.shot.id,
-        targetName: activeItem.shot.description || activeItem.shot.shotType,
-        timestamp: new Date().toISOString(),
-        details: { from: activeItem.shot.status, to: newStatus },
-      };
-      setActivityLog(prev => [logEntry, ...prev]);
+      const target = load[memberId];
+      target.assigned += 1;
+      target.totalTime += Number(shot.estimatedTime ?? 0);
+      target.actualTime += getShotActualTime(shot);
+      if ((shot.status ?? 'not_started') === 'completed') target.completed += 1;
+      if ((shot.status ?? 'not_started') === 'in_progress') target.inProgress += 1;
+      if (getShotBlocker(shot) !== 'none') target.blocked += 1;
     }
-  };
 
-  const stats = useMemo(() => ({
-    total: allShots.length,
-    completed: allShots.filter(({ shot }) => shot.status === 'completed').length,
-    inProgress: allShots.filter(({ shot }) => shot.status === 'in_progress').length,
-    critical: allShots.filter(({ shot }) => shot.priority === 'critical').length,
-    unassigned: allShots.filter(({ shot }) => !shot.assigneeId).length,
-  }), [allShots]);
+    for (const [memberId, memberLoad] of Object.entries(load)) {
+      if (memberId === 'unassigned') continue;
+      const utilization = memberLoad.capacity > 0 ? memberLoad.assigned / memberLoad.capacity : 0;
+      memberLoad.utilization = utilization;
+      memberLoad.severity = getSeverityForUtilization(utilization);
+    }
+
+    return load;
+  }, [allShots, scopedCrewMembers]);
+
+  const reassignmentSuggestions = useMemo(() => {
+    const overloaded = scopedCrewMembers.filter((member) => {
+      const load = workloadByMember[member.id];
+      return load?.severity === 'high';
+    });
+
+    if (overloaded.length === 0) {
+      return [] as string[];
+    }
+
+    const underloaded = scopedCrewMembers.filter((member) => {
+      const load = workloadByMember[member.id];
+      return load?.severity === 'low';
+    });
+
+    return overloaded
+      .slice(0, 4)
+      .map((member) => {
+        const memberGroup = getTechnicalSubgroupForMember(member);
+        const fallbackTarget = underloaded.find((candidate) => getTechnicalSubgroupForMember(candidate) === memberGroup) ?? underloaded[0];
+        if (!fallbackTarget) {
+          return `${member.name} er overbooket. Ingen ledig kandidat tilgjengelig nå.`;
+        }
+        return `${member.name} er overbooket. Flytt 1–2 shots til ${fallbackTarget.name}.`;
+      });
+  }, [scopedCrewMembers, workloadByMember]);
+
+  const technicalCrewForReadiness = useMemo(
+    () => crewMembers.filter((member) => isTechnicalCrewMemberFromShared(member)),
+    [crewMembers]
+  );
+
+  const missingContactMembers = useMemo(
+    () =>
+      technicalCrewForReadiness.filter((member) => {
+        const contact = (member.contactInfo ?? member.contact_info ?? {}) as { email?: string; phone?: string };
+        return !contact.email && !contact.phone;
+      }),
+    [technicalCrewForReadiness]
+  );
+
+  const missingAvailabilityMembers = useMemo(
+    () =>
+      technicalCrewForReadiness.filter((member) => {
+        const availability = member.availability;
+        return !availability || Object.keys(availability).length === 0;
+      }),
+    [technicalCrewForReadiness]
+  );
+
+  const readinessScore = useMemo(() => {
+    const total = technicalCrewForReadiness.length;
+    if (total === 0) return 100;
+
+    const withContact = total - missingContactMembers.length;
+    const withAvailability = total - missingAvailabilityMembers.length;
+    const assignedCrew = new Set(
+      allShots
+        .filter(({ shot }) => Boolean(shot.assigneeId))
+        .map(({ shot }) => String(shot.assigneeId))
+    );
+    const assignedTechnical = technicalCrewForReadiness.filter((member) => assignedCrew.has(member.id)).length;
+
+    const contactScore = withContact / total;
+    const availabilityScore = withAvailability / total;
+    const assignedScore = assignedTechnical / total;
+
+    return Math.round((contactScore * 0.4 + availabilityScore * 0.3 + assignedScore * 0.3) * 100);
+  }, [allShots, missingAvailabilityMembers.length, missingContactMembers.length, technicalCrewForReadiness]);
+
+  const stats = useMemo(() => {
+    const total = allShots.length;
+    const completed = allShots.filter(({ shot }) => (shot.status ?? 'not_started') === 'completed').length;
+    const inProgress = allShots.filter(({ shot }) => shot.status === 'in_progress').length;
+    const critical = allShots.filter(({ shot }) => (shot.priority ?? 'important') === 'critical').length;
+    const unassigned = allShots.filter(({ shot }) => !shot.assigneeId).length;
+    const blocked = allShots.filter(({ shot }) => getShotBlocker(shot) !== 'none').length;
+
+    const totalEstimate = allShots.reduce((sum, { shot }) => sum + Number(shot.estimatedTime ?? 0), 0);
+    const totalActual = allShots.reduce((sum, { shot }) => sum + getShotActualTime(shot), 0);
+
+    return {
+      total,
+      completed,
+      inProgress,
+      critical,
+      unassigned,
+      blocked,
+      averageEstimated: total > 0 ? totalEstimate / total : 0,
+      averageActual: total > 0 ? totalActual / total : 0,
+      throughput: total > 0 ? (completed / total) * 100 : 0,
+      criticalRisk: criticalRiskShotIds.size,
+    };
+  }, [allShots, criticalRiskShotIds]);
 
   const progress = stats.total > 0 ? (stats.completed / stats.total) * 100 : 0;
 
+  const roleLegend = useMemo(() => {
+    const roles = new Set<string>();
+    for (const member of scopedCrewMembers) {
+      roles.add(String(member.role));
+    }
+    return Array.from(roles);
+  }, [scopedCrewMembers]);
+
+  const memberById = useMemo<Map<string, CrewMember>>(
+    () => new Map(scopedCrewMembers.map((member): [string, CrewMember] => [member.id, member])),
+    [scopedCrewMembers]
+  );
+
+  const updateShot = useCallback(
+    async (shotList: ShotList, shot: CastingShot, updates: Partial<CastingShot>, auditAction = 'shot_update') => {
+      if (!onShotUpdate) return;
+      const updatedShot: CastingShot = {
+        ...shot,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        await onShotUpdate(shotList, updatedShot);
+        pushAudit(auditAction, 'shot', shot.id, shot.description || shot.shotType, updates as Record<string, unknown>);
+      } catch (error) {
+        console.error('Shot update failed:', error);
+        pushToast('error', 'Kunne ikke lagre endringen. Optimistisk oppdatering ble rullet tilbake.');
+      }
+    },
+    [onShotUpdate, pushAudit, pushToast]
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveId(null);
+      if (!over) return;
+
+      const activeItem = allShots.find((item) => item.shot.id === active.id);
+      if (!activeItem) return;
+
+      let newStatus = statusColumns.find((column) => column.id === over.id)?.id;
+      if (!newStatus) {
+        const overItem = allShots.find((item) => item.shot.id === over.id);
+        if (overItem) {
+          newStatus = (overItem.shot.status ?? 'not_started') as ShotStatus;
+        }
+      }
+
+      if (newStatus && (activeItem.shot.status ?? 'not_started') !== newStatus) {
+        await updateShot(activeItem.shotList, activeItem.shot, { status: newStatus }, 'status_change');
+      }
+    },
+    [allShots, updateShot]
+  );
+
+  const assignUnassignedShotsToTechnical = useCallback(async () => {
+    const eligibleMembers = scopedCrewMembers.filter((member) =>
+      activeCrewSegment === 'technical' ? isTechnicalCrewMemberFromShared(member, technicalSubgroup) : true
+    );
+
+    if (eligibleMembers.length === 0) {
+      pushToast('warning', 'Ingen tilgjengelige crewmedlemmer for bulk-tilordning.');
+      return;
+    }
+
+    const unassignedShots = allShots.filter(({ shot }) => !shot.assigneeId);
+    if (unassignedShots.length === 0) {
+      pushToast('info', 'Det finnes ingen ufordelte shots akkurat nå.');
+      return;
+    }
+
+    const ordered = [...unassignedShots].sort((a, b) => {
+      const wa = priorityConfig[a.shot.priority ?? 'important'].weight;
+      const wb = priorityConfig[b.shot.priority ?? 'important'].weight;
+      return wb - wa;
+    });
+
+    let cursor = 0;
+    for (const { shot, shotList } of ordered) {
+      const target = eligibleMembers[cursor % eligibleMembers.length];
+      cursor += 1;
+      await updateShot(shotList, shot, { assigneeId: target.id }, 'bulk_assign');
+    }
+
+    pushAudit('bulk_assignment', 'dashboard', 'unassigned', 'Bulk assign', {
+      count: ordered.length,
+      segment: activeCrewSegment,
+      subgroup: technicalSubgroup,
+    });
+    pushToast('success', `Tilordnet ${ordered.length} shots til teknisk team.`);
+  }, [
+    activeCrewSegment,
+    allShots,
+    pushAudit,
+    pushToast,
+    scopedCrewMembers,
+    technicalSubgroup,
+    updateShot,
+  ]);
+
+  const autoBalanceAssignments = useCallback(async () => {
+    const members = scopedCrewMembers.filter((member) =>
+      activeCrewSegment === 'technical' ? isTechnicalCrewMemberFromShared(member, technicalSubgroup) : true
+    );
+
+    if (members.length < 2) {
+      pushToast('warning', 'Minst to crewmedlemmer kreves for auto-balansering.');
+      return;
+    }
+
+    const localLoad = new Map<string, number>(members.map((member) => [member.id, 0]));
+    for (const { shot } of allShots) {
+      if (shot.assigneeId && localLoad.has(shot.assigneeId)) {
+        localLoad.set(shot.assigneeId, (localLoad.get(shot.assigneeId) ?? 0) + 1);
+      }
+    }
+
+    const byPriority = [...allShots].sort((a, b) => {
+      const pa = priorityConfig[a.shot.priority ?? 'important'].weight;
+      const pb = priorityConfig[b.shot.priority ?? 'important'].weight;
+      return pb - pa;
+    });
+
+    let changes = 0;
+
+    for (const { shot, shotList } of byPriority) {
+      const candidates = [...members].sort((a, b) => {
+        const loadA = (localLoad.get(a.id) ?? 0) / Math.max(1, getRoleCapacity(String(a.role)));
+        const loadB = (localLoad.get(b.id) ?? 0) / Math.max(1, getRoleCapacity(String(b.role)));
+        return loadA - loadB;
+      });
+
+      const target = candidates[0];
+      if (!target) continue;
+
+      if (shot.assigneeId !== target.id) {
+        if (shot.assigneeId && localLoad.has(shot.assigneeId)) {
+          localLoad.set(shot.assigneeId, Math.max(0, (localLoad.get(shot.assigneeId) ?? 0) - 1));
+        }
+        localLoad.set(target.id, (localLoad.get(target.id) ?? 0) + 1);
+        await updateShot(shotList, shot, { assigneeId: target.id }, 'auto_balance');
+        changes += 1;
+      }
+    }
+
+    pushAudit('auto_balance', 'dashboard', 'assignments', 'Auto-balansering', {
+      changes,
+      memberCount: members.length,
+      segment: activeCrewSegment,
+      subgroup: technicalSubgroup,
+    });
+
+    if (changes > 0) {
+      pushToast('success', `Auto-balansering flyttet ${changes} shot-tilordninger.`);
+    } else {
+      pushToast('info', 'Auto-balansering fant ingen nødvendige endringer.');
+    }
+  }, [
+    activeCrewSegment,
+    allShots,
+    pushAudit,
+    pushToast,
+    scopedCrewMembers,
+    technicalSubgroup,
+    updateShot,
+  ]);
+
+  const perRoleTimeVariance = useMemo(() => {
+    const map = new Map<string, { estimated: number; actual: number; count: number }>();
+
+    for (const { shot } of allShots) {
+      const member = shot.assigneeId ? memberById.get(shot.assigneeId) : undefined;
+      const role = member?.role ? String(member.role) : 'unassigned';
+      const current = map.get(role) ?? { estimated: 0, actual: 0, count: 0 };
+      current.estimated += Number(shot.estimatedTime ?? 0);
+      current.actual += getShotActualTime(shot);
+      current.count += 1;
+      map.set(role, current);
+    }
+
+    return Array.from(map.entries()).map(([role, totals]) => ({
+      role,
+      estimated: totals.estimated,
+      actual: totals.actual,
+      variance: totals.actual - totals.estimated,
+      count: totals.count,
+    }));
+  }, [allShots, memberById]);
+
+  const timelineDays = useMemo(() => {
+    const today = new Date();
+    return Array.from({ length: 14 }, (_, index) => {
+      const date = new Date(today);
+      date.setDate(today.getDate() + index);
+      return date;
+    });
+  }, []);
+
+  const timelineBars = useMemo(() => {
+    const bars = new Map<string, { start: number; length: number }>();
+    const totalDays = timelineDays.length;
+
+    allShots.forEach(({ shot }, index) => {
+      const status = shot.status ?? 'not_started';
+      const base = status === 'completed' ? 0 : status === 'in_progress' ? 3 : 6;
+      const start = Math.max(0, Math.min(totalDays - 1, base + (index % 4)));
+      const length = Math.max(1, Math.min(totalDays - start, Math.ceil(Number(shot.estimatedTime ?? 60) / 30)));
+      bars.set(shot.id, { start, length });
+    });
+
+    return bars;
+  }, [allShots, timelineDays.length]);
+
+  const timelineHeatmap = useMemo(() => {
+    const heat = Array.from({ length: timelineDays.length }, () => 0);
+
+    for (const { shot } of allShots) {
+      const bar = timelineBars.get(shot.id);
+      if (!bar) continue;
+      const weight = priorityConfig[shot.priority ?? 'important'].weight + (getShotBlocker(shot) === 'none' ? 0 : 1);
+      for (let dayIndex = bar.start; dayIndex < bar.start + bar.length && dayIndex < heat.length; dayIndex += 1) {
+        heat[dayIndex] += weight;
+      }
+    }
+
+    return heat;
+  }, [allShots, timelineBars, timelineDays.length]);
+
+  const loadSnapshots = useCallback(async () => {
+    if (!projectId) {
+      setSnapshots([]);
+      return;
+    }
+
+    try {
+      const fetched = await castingService.getTeamDashboardSnapshots<TeamDashboardSnapshot>(projectId);
+      setSnapshots(Array.isArray(fetched) ? fetched : []);
+    } catch (error) {
+      console.error('Failed to load team dashboard snapshots:', error);
+      setSnapshots([]);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    void loadSnapshots();
+  }, [loadSnapshots]);
+
+  const saveSnapshot = useCallback(async () => {
+    if (!projectId) {
+      pushToast('warning', 'Mangler prosjekt-ID for snapshots.');
+      return;
+    }
+
+    const name = snapshotName.trim() || `Snapshot ${new Date().toLocaleString('nb-NO')}`;
+
+    const snapshot: TeamDashboardSnapshot = {
+      projectId,
+      name,
+      segment: activeCrewSegment,
+      subgroup: technicalSubgroup,
+      filterAssignee,
+      filterPriority,
+      blockerFilter,
+      preset: filterPreset,
+      rememberSegment,
+      metrics: {
+        totalShots: stats.total,
+        completedShots: stats.completed,
+        blockedShots: stats.blocked,
+        criticalRiskShots: stats.criticalRisk,
+        progressPercent: progress,
+      },
+    };
+
+    setSnapshotBusy(true);
+    try {
+      await castingService.saveTeamDashboardSnapshot<TeamDashboardSnapshot>(projectId, snapshot);
+      await loadSnapshots();
+      setSnapshotDialogOpen(false);
+      setSnapshotName('');
+      pushAudit('snapshot_saved', 'dashboard', name, name, snapshot.metrics);
+      pushToast('success', `Snapshot "${name}" lagret.`);
+    } catch (error) {
+      console.error('Failed to save snapshot:', error);
+      pushToast('error', 'Kunne ikke lagre snapshot.');
+    } finally {
+      setSnapshotBusy(false);
+    }
+  }, [
+    activeCrewSegment,
+    blockerFilter,
+    filterAssignee,
+    filterPreset,
+    filterPriority,
+    loadSnapshots,
+    progress,
+    projectId,
+    pushAudit,
+    pushToast,
+    rememberSegment,
+    snapshotName,
+    stats,
+    technicalSubgroup,
+  ]);
+
+  const applySnapshot = useCallback(
+    (snapshotId: string) => {
+      const snapshot = snapshots.find((item) => item.id === snapshotId || item.name === snapshotId);
+      if (!snapshot) return;
+
+      handleCrewSegmentChange(snapshot.segment);
+      setTechnicalSubgroup(snapshot.subgroup);
+      setFilterAssignee(snapshot.filterAssignee);
+      setFilterPriority(snapshot.filterPriority);
+      setBlockerFilter(snapshot.blockerFilter);
+      setFilterPreset(snapshot.preset ?? 'custom');
+      setRememberSegment(snapshot.rememberSegment ?? true);
+
+      pushAudit('snapshot_loaded', 'dashboard', snapshot.id ?? snapshot.name, snapshot.name, snapshot.metrics);
+      pushToast('success', `Snapshot "${snapshot.name}" lastet.`);
+    },
+    [handleCrewSegmentChange, pushAudit, pushToast, snapshots]
+  );
+
+  const sendCallSheet = useCallback(() => {
+    const recipients = scopedCrewMembers.filter((member) => {
+      const contact = (member.contactInfo ?? member.contact_info ?? {}) as { email?: string };
+      return Boolean(contact.email);
+    });
+
+    if (recipients.length === 0) {
+      pushToast('warning', 'Ingen tekniske mottakere med e-post funnet.');
+      return;
+    }
+
+    const segmentLabel = activeCrewSegment === 'technical'
+      ? TECHNICAL_CREW_SUBGROUP_LABELS[technicalSubgroup]
+      : 'Alle team';
+
+    pushAudit('callsheet_sent', 'dashboard', segmentLabel, 'Callsheet sendt', {
+      recipients: recipients.length,
+      segment: activeCrewSegment,
+      subgroup: technicalSubgroup,
+    });
+    pushToast('success', `Callsheet sendt til ${recipients.length} mottakere (${segmentLabel}).`);
+  }, [activeCrewSegment, pushAudit, pushToast, scopedCrewMembers, technicalSubgroup]);
+
   return (
-    <Box sx={{ 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column', 
-      bgcolor: '#0a0a0a',
-      minHeight: 0,
-      overflow: 'hidden',
-      width: '100%',
-      maxWidth: '100%',
-      boxSizing: 'border-box',
-    }}>
-      <Box sx={{ 
-        p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }, 
-        borderBottom: '1px solid rgba(255,255,255,0.1)',
-        flexShrink: 0,
-      }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 } }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2, md: 1.5, lg: 2, xl: 3 } }}>
-            <TeamIcon sx={{ color: '#e91e63', fontSize: { xs: 24, sm: 28, md: 26, lg: 30, xl: 36 } }} />
-            <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, fontSize: { xs: '1.1rem', sm: '1.5rem', md: '1.4rem', lg: '1.6rem', xl: '2rem' } }}>
+    <Box
+      sx={{
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: '#020617',
+        minHeight: 0,
+      }}
+    >
+      <Box sx={{ p: { xs: 1.5, md: 2 }, borderBottom: '1px solid rgba(255,255,255,0.09)' }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{ mb: 1.25 }}>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <CalendarIcon sx={{ color: '#38bdf8', fontSize: 24 }} />
+            <Typography variant="h6" sx={{ color: '#f8fafc', fontWeight: 700 }}>
               Team Dashboard
             </Typography>
-          </Box>
-          <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.75, xl: 1 } }}>
+            <Chip
+              size="small"
+              label={activeCrewSegment === 'technical' ? `Teknisk • ${TECHNICAL_CREW_SUBGROUP_LABELS[technicalSubgroup]}` : 'Alle team'}
+              sx={{ bgcolor: 'rgba(56,189,248,0.16)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.35)' }}
+            />
+          </Stack>
+
+          <Stack direction="row" spacing={0.5}>
             <Tooltip title="Aktivitetslogg">
-              <IconButton 
-                onClick={() => setShowActivityPanel(!showActivityPanel)} 
-                sx={{ color: '#fff', p: { xs: 0.75, sm: 1, md: 0.75, lg: 1, xl: 1.5 } }}
-              >
+              <IconButton aria-label="Aktivitetslogg" onClick={() => setShowActivityPanel((prev) => !prev)} sx={{ color: '#f8fafc' }}>
                 <Badge badgeContent={activityLog.length} color="error" max={99}>
-                  <HistoryIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 32 } }} />
+                  <HistoryIcon />
                 </Badge>
               </IconButton>
             </Tooltip>
-            <Tooltip title="Varsler">
-              <IconButton sx={{ color: '#fff', p: { xs: 0.75, sm: 1, md: 0.75, lg: 1, xl: 1.5 } }}>
-                <NotificationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 32 } }} />
+            <Tooltip title="Lagre snapshot">
+              <IconButton aria-label="Lagre snapshot" onClick={() => setSnapshotDialogOpen(true)} sx={{ color: '#f8fafc' }}>
+                <SaveIcon />
               </IconButton>
             </Tooltip>
-          </Box>
-        </Box>
+            <Tooltip title="Callsheet">
+              <IconButton aria-label="Åpne callsheet" onClick={() => setShowCallSheetDrawer(true)} sx={{ color: '#a78bfa' }}>
+                <CallSheetIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
 
-        {/* Collapsible Stats Section */}
-        <Box 
-          onClick={() => setStatsExpanded(!statsExpanded)}
-          sx={{ 
-            display: { xs: 'flex', lg: 'none' }, 
-            alignItems: 'center', 
+        {activeCrewSegment === 'technical' && (
+          <Stack spacing={0.75} sx={{ mb: 1.25 }}>
+            {missingContactMembers.length > 0 && (
+              <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fcd34d' }}>
+                {missingContactMembers.length} tekniske crewmedlemmer mangler kontaktinfo.
+              </Alert>
+            )}
+            {missingAvailabilityMembers.length > 0 && (
+              <Alert severity="info" sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#7dd3fc' }}>
+                {missingAvailabilityMembers.length} tekniske crewmedlemmer mangler tilgjengelighetsdata.
+              </Alert>
+            )}
+          </Stack>
+        )}
+
+        <Box
+          onClick={() => setStatsExpanded((prev) => !prev)}
+          sx={{
+            display: { xs: 'flex', lg: 'none' },
             justifyContent: 'space-between',
+            alignItems: 'center',
             cursor: 'pointer',
-            py: 1,
-            px: 0.5,
             mb: 1,
-            borderRadius: 1,
-            '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
+            py: 0.5,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', fontWeight: 500 }}>
-              Statistikk
-            </Typography>
-            <Chip 
-              label={`${progress.toFixed(0)}% fullført`} 
-              size="small" 
-              sx={{ 
-                bgcolor: 'rgba(76,175,80,0.2)', 
-                color: '#4caf50', 
-                height: 20, 
-                fontSize: '0.65rem' 
-              }} 
-            />
-          </Box>
-          {statsExpanded ? (
-            <ExpandLessIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-          ) : (
-            <ExpandMoreIcon sx={{ color: 'rgba(255,255,255,0.87)', fontSize: 20 }} />
-          )}
+          <Typography sx={{ color: '#cbd5e1', fontSize: 13 }}>Statistikk</Typography>
+          {statsExpanded ? <ExpandLessIcon sx={{ color: '#cbd5e1' }} /> : <ExpandMoreIcon sx={{ color: '#cbd5e1' }} />}
         </Box>
 
-        <Collapse in={statsExpanded || !isMobile && !isTablet}>
-          <Box sx={{ 
-            display: 'grid', 
-            gridTemplateColumns: { 
-              xs: 'repeat(2, 1fr)', 
-              sm: 'repeat(3, 1fr)', 
-              md: 'repeat(4, 1fr)',
-              lg: 'repeat(5, 1fr)',
-              xl: 'repeat(5, 1fr)' 
-            }, 
-                gap: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 },
-            mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 } 
-          }}>
-            <Paper sx={{ 
-              p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(255,255,255,0.05)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 70, sm: 80, md: 75, lg: 85, xl: 110 },
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.72rem', xl: '0.875rem' },
-                mb: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.625, xl: 1 },
-                textAlign: 'center',
-              }}>Totalt</Typography>
-              <Typography sx={{ 
-                color: '#fff', 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}>{stats.total}</Typography>
+        <Collapse in={statsExpanded || (!isMobile && !isTablet)}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(6, 1fr)' },
+              gap: 1,
+              mb: 1.25,
+            }}
+          >
+            <Paper sx={{ p: 1, bgcolor: 'rgba(255,255,255,0.03)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Totalt</Typography>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 700, fontSize: 24 }}>{stats.total}</Typography>
             </Paper>
-            <Paper sx={{ 
-              p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(76,175,80,0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 70, sm: 80, md: 75, lg: 85, xl: 110 },
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.72rem', xl: '0.875rem' },
-                mb: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.625, xl: 1 },
-                textAlign: 'center',
-              }}>Fullført</Typography>
-              <Typography sx={{ 
-                color: '#4caf50', 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}>{stats.completed}</Typography>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(34,197,94,0.14)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Throughput</Typography>
+              <Typography sx={{ color: '#4ade80', fontWeight: 700, fontSize: 24 }}>{stats.throughput.toFixed(0)}%</Typography>
             </Paper>
-            <Paper sx={{ 
-              p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(33,150,243,0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 70, sm: 80, md: 75, lg: 85, xl: 110 },
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.72rem', xl: '0.875rem' },
-                mb: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.625, xl: 1 },
-                textAlign: 'center',
-              }}>Pågår</Typography>
-              <Typography sx={{ 
-                color: '#2196f3', 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}>{stats.inProgress}</Typography>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(245,158,11,0.14)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Blokkerte</Typography>
+              <Typography sx={{ color: '#f59e0b', fontWeight: 700, fontSize: 24 }}>{stats.blocked}</Typography>
             </Paper>
-            <Paper sx={{ 
-              p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(244,67,54,0.1)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 70, sm: 80, md: 75, lg: 85, xl: 110 },
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.72rem', xl: '0.875rem' },
-                mb: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.625, xl: 1 },
-                textAlign: 'center',
-              }}>Kritisk</Typography>
-              <Typography sx={{ 
-                color: '#f44336', 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}>{stats.critical}</Typography>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(244,63,94,0.14)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>SLA risiko</Typography>
+              <Typography sx={{ color: '#fb7185', fontWeight: 700, fontSize: 24 }}>{stats.criticalRisk}</Typography>
             </Paper>
-            <Paper sx={{ 
-              p: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 }, 
-              bgcolor: 'rgba(147,51,234,0.1)',
-              gridColumn: { xs: 'span 2', sm: 'span 1' },
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: { xs: 70, sm: 80, md: 75, lg: 85, xl: 110 },
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.72rem', xl: '0.875rem' },
-                mb: { xs: 0.5, sm: 0.75, md: 0.5, lg: 0.625, xl: 1 },
-                textAlign: 'center',
-              }}>Ikke tilordnet</Typography>
-              <Typography sx={{ 
-                color: '#9333ea', 
-                fontSize: { xs: '1.5rem', sm: '1.75rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' }, 
-                fontWeight: 700,
-                lineHeight: 1.2,
-              }}>{stats.unassigned}</Typography>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(56,189,248,0.14)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Gj.snitt estimat</Typography>
+              <Typography sx={{ color: '#38bdf8', fontWeight: 700, fontSize: 24 }}>{stats.averageEstimated.toFixed(0)}m</Typography>
+            </Paper>
+            <Paper sx={{ p: 1, bgcolor: 'rgba(168,85,247,0.14)' }}>
+              <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>Teknisk readiness</Typography>
+              <Typography sx={{ color: '#c4b5fd', fontWeight: 700, fontSize: 24 }}>{readinessScore}%</Typography>
             </Paper>
           </Box>
 
-          <Box sx={{ mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 } }}>
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              mb: { xs: 0.75, sm: 1, md: 0.75, lg: 1, xl: 1.5 },
-              alignItems: 'center',
-            }}>
-              <Typography variant="caption" sx={{ 
-                color: 'rgba(255,255,255,0.87)',
-                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.75rem', lg: '0.78rem', xl: '0.9rem' },
-                fontWeight: { xs: 500, sm: 400 },
-              }}>
-                Fremdrift
-              </Typography>
-              <Typography variant="caption" sx={{ 
-                color: '#4caf50',
-                fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.8rem', lg: '0.85rem', xl: '1rem' },
-                fontWeight: { xs: 600, sm: 500 },
-              }}>
-                {progress.toFixed(0)}%
-              </Typography>
-            </Box>
+          <Box sx={{ mb: 1.5 }}>
+            <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+              <Typography variant="caption" sx={{ color: '#cbd5e1' }}>Fremdrift</Typography>
+              <Typography variant="caption" sx={{ color: '#4ade80', fontWeight: 700 }}>{progress.toFixed(0)}%</Typography>
+            </Stack>
             <LinearProgress
               variant="determinate"
               value={progress}
               sx={{
-                height: { xs: 6, sm: 8, md: 7, lg: 9, xl: 12 },
-                borderRadius: { xs: 3, sm: 4, md: 3.5, lg: 4.5, xl: 6 },
-                bgcolor: 'rgba(255,255,255,0.1)',
-                '& .MuiLinearProgress-bar': { 
-                  bgcolor: '#4caf50', 
-                  borderRadius: { xs: 3, sm: 4, md: 3.5, lg: 4.5, xl: 6 },
-                  transition: 'transform 0.4s ease',
-                },
+                height: 8,
+                borderRadius: 4,
+                bgcolor: 'rgba(255,255,255,0.12)',
+                '& .MuiLinearProgress-bar': { bgcolor: '#22c55e', borderRadius: 4 },
               }}
             />
           </Box>
         </Collapse>
 
-        <Box sx={{ 
-          display: 'flex', 
-          gap: { xs: 1, sm: 1.5, md: 1.25, lg: 1.75, xl: 2.5 }, 
-          flexWrap: 'wrap', 
-          alignItems: { xs: 'stretch', sm: 'center' },
-          flexDirection: { xs: 'column', sm: 'row' },
-        }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
           <Tabs
             value={viewMode}
-            onChange={(_: React.SyntheticEvent, v: ViewMode) => setViewMode(v)}
+            onChange={(_, value: ViewMode) => setViewMode(value)}
             variant={isMobile ? 'scrollable' : 'standard'}
-            scrollButtons={isMobile ? 'auto' : false}
             allowScrollButtonsMobile
             sx={{
-              minHeight: { xs: 40, sm: 44, md: 42, lg: 46, xl: 56 },
-              width: { xs: '100%', sm: 'auto' },
-              order: { xs: 1, sm: 1 },
-              '& .MuiTab-root': { 
-                minHeight: { xs: 40, sm: 44, md: 42, lg: 46, xl: 56 }, 
-                color: 'rgba(255,255,255,0.87)',
-                minWidth: { xs: 70, sm: 90, md: 85, lg: 100, xl: 130 },
-                maxWidth: { xs: 'none', sm: 160, xl: 200 },
-                px: { xs: 1, sm: 1.5, md: 1.25, lg: 1.75, xl: 2.5 },
-                fontSize: { xs: '0.7rem', sm: '0.8rem', md: '0.75rem', lg: '0.82rem', xl: '1rem' },
-                textTransform: 'none',
-                fontWeight: { xs: 500, sm: 400 },
-                '& .MuiTab-iconWrapper': {
-                  marginRight: { xs: 0.5, sm: 1, md: 0.75, lg: 0.875, xl: 1.5 },
-                },
-              },
-              '& .Mui-selected': { 
-                color: '#e91e63',
-                fontWeight: 600,
-              },
-              '& .MuiTabs-scrollButtons': { 
-                color: 'rgba(255,255,255,0.87)',
-                width: { xs: 32, sm: 40, md: 36, lg: 38, xl: 48 },
-              },
-              '& .MuiTabs-indicator': {
-                height: { xs: 3, sm: 3, md: 3, lg: 3.5, xl: 4 },
-                borderRadius: '3px 3px 0 0',
-              },
+              minHeight: 40,
+              '& .MuiTab-root': { color: 'rgba(248,250,252,0.7)', minHeight: 40, textTransform: 'none' },
+              '& .Mui-selected': { color: '#38bdf8', fontWeight: 600 },
+              '& .MuiTabs-indicator': { bgcolor: '#38bdf8' },
             }}
           >
-            <Tab 
-              icon={<KanbanIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 26 } }} />} 
-              iconPosition={isMobile ? 'top' : 'start'} 
-              label={isMobile ? '' : 'Kanban'} 
-              value="kanban"
-              sx={{
-                '& .MuiTab-iconWrapper': {
-                  marginBottom: { xs: 0.25, sm: 0 },
-                },
-              }}
-            />
-            <Tab 
-              icon={<TableIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 26 } }} />} 
-              iconPosition={isMobile ? 'top' : 'start'} 
-              label={isMobile ? '' : 'Tabell'} 
-              value="table"
-              sx={{
-                '& .MuiTab-iconWrapper': {
-                  marginBottom: { xs: 0.25, sm: 0 },
-                },
-              }}
-            />
-            <Tab 
-              icon={<TimelineIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 26 } }} />} 
-              iconPosition={isMobile ? 'top' : 'start'} 
-              label={isMobile ? '' : 'Tidslinje'} 
-              value="timeline"
-              sx={{
-                '& .MuiTab-iconWrapper': {
-                  marginBottom: { xs: 0.25, sm: 0 },
-                },
-              }}
-            />
-            <Tab 
-              icon={<PersonIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 26 } }} />} 
-              iconPosition={isMobile ? 'top' : 'start'} 
-              label={isMobile ? '' : 'Arbeid'} 
-              value="workload"
-              sx={{
-                '& .MuiTab-iconWrapper': {
-                  marginBottom: { xs: 0.25, sm: 0 },
-                },
-              }}
-            />
+            <Tab icon={<KanbanIcon />} iconPosition="start" label={isMobile ? '' : 'Kanban'} value="kanban" />
+            <Tab icon={<TableIcon />} iconPosition="start" label={isMobile ? '' : 'Tabell'} value="table" />
+            <Tab icon={<TimelineIcon />} iconPosition="start" label={isMobile ? '' : 'Tidslinje'} value="timeline" />
+            <Tab icon={<PersonIcon />} iconPosition="start" label={isMobile ? '' : 'Workload'} value="workload" />
           </Tabs>
 
-          <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' }, order: { xs: 0, sm: 2 } }} />
+          <Box sx={{ flex: 1 }} />
 
-          <Box sx={{ 
-            display: 'flex', 
-            gap: { xs: 0.75, sm: 1 }, 
-            width: { xs: '100%', sm: 'auto' },
-            flexWrap: { xs: 'wrap', sm: 'nowrap' },
-            order: { xs: 2, sm: 3 },
-            alignItems: { xs: 'stretch', sm: 'center' },
-          }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ width: { xs: '100%', md: 'auto' } }}>
             <TextField
               size="small"
-              placeholder="Søk..."
+              placeholder="Søk shots"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              InputProps={{ startAdornment: <SearchIcon sx={{ color: 'rgba(255,255,255,0.87)', mr: 0.5, fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> }}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                if (filterPreset !== 'custom') setFilterPreset('custom');
+              }}
+              InputProps={{ startAdornment: searchAdornment }}
               sx={{
-                flex: { xs: 1, sm: 'none' },
-                width: { xs: '100%', sm: 160, md: 170, lg: 185, xl: 240 },
-                minWidth: { xs: 100 },
+                minWidth: { xs: '100%', sm: 180 },
                 '& .MuiOutlinedInput-root': {
-                  color: '#fff',
-                  fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
-                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                  color: '#f8fafc',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused fieldset': { borderColor: '#e91e63' },
-                },
-                '& .MuiInputBase-input': {
-                  py: { xs: 0.75, sm: 1, md: 0.875, lg: 1.125, xl: 1.5 },
-                  px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.35)' },
+                  '&.Mui-focused fieldset': { borderColor: '#38bdf8' },
                 },
               }}
             />
 
-            <FormControl size="small" sx={{ minWidth: { xs: 90, sm: 120, md: 110, lg: 125, xl: 160 }, flex: { xs: 1, sm: 'none' } }}>
-              <InputLabel sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.8rem', lg: '0.85rem', xl: '1rem' },
-                '&.Mui-focused': { color: '#e91e63' },
-              }}>
-                Tilordnet
-              </InputLabel>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Preset</InputLabel>
+              <Select
+                value={filterPreset}
+                label="Preset"
+                onChange={(event) => applyPreset(event.target.value as DashboardFilterPreset)}
+                sx={{
+                  color: '#f8fafc',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                }}
+              >
+                <MenuItem value="custom">{presetLabels.custom}</MenuItem>
+                <MenuItem value="technical_day">{presetLabels.technical_day}</MenuItem>
+                <MenuItem value="technical_critical">{presetLabels.technical_critical}</MenuItem>
+                <MenuItem value="unassigned">{presetLabels.unassigned}</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Team</InputLabel>
+              <Select
+                value={activeCrewSegment}
+                label="Team"
+                onChange={(event) => {
+                  handleCrewSegmentChange(event.target.value as TeamDashboardCrewSegment);
+                  if (filterPreset !== 'custom') setFilterPreset('custom');
+                }}
+                sx={{
+                  color: '#f8fafc',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                }}
+              >
+                <MenuItem value="all">Alle team</MenuItem>
+                <MenuItem value="technical">Teknisk team</MenuItem>
+              </Select>
+            </FormControl>
+
+            {activeCrewSegment === 'technical' && (
+              <FormControl size="small" sx={{ minWidth: 130 }}>
+                <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Underfilter</InputLabel>
+                <Select
+                  value={technicalSubgroup}
+                  label="Underfilter"
+                  onChange={(event) => {
+                    setTechnicalSubgroup(event.target.value as TechnicalCrewSubgroup);
+                    if (filterPreset !== 'custom') setFilterPreset('custom');
+                  }}
+                  sx={{
+                    color: '#f8fafc',
+                    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                  }}
+                >
+                  {Object.entries(TECHNICAL_CREW_SUBGROUP_LABELS).map(([value, label]) => (
+                    <MenuItem key={value} value={value}>{label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
+            <FormControl size="small" sx={{ minWidth: 130 }}>
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Tilordnet</InputLabel>
               <Select
                 value={filterAssignee}
-                onChange={(e) => setFilterAssignee(e.target.value)}
                 label="Tilordnet"
-                sx={{ 
-                  color: '#fff', 
-                  fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
-                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                onChange={(event) => {
+                  setFilterAssignee(event.target.value);
+                  if (filterPreset !== 'custom') setFilterPreset('custom');
+                }}
+                sx={{
+                  color: '#f8fafc',
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#e91e63' },
-                  '& .MuiSelect-select': { 
-                    py: { xs: 0.75, sm: 1, md: 0.875, lg: 1.125, xl: 1.5 },
-                    px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
-                  },
                 }}
               >
-                <MenuItem value="all" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Alle</MenuItem>
-                <MenuItem value="unassigned" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>Ikke tilordnet</MenuItem>
-                  {crewMembers.map(m => (
-                  <MenuItem key={m.id} value={m.id} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', xl: '1rem' } }}>
-                    {m.name}
-                  </MenuItem>
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="unassigned">Ufordelte</MenuItem>
+                {scopedCrewMembers.map((member) => (
+                  <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
 
-            <FormControl size="small" sx={{ minWidth: { xs: 80, sm: 100, md: 95, lg: 110, xl: 140 }, flex: { xs: 1, sm: 'none' } }}>
-              <InputLabel sx={{ 
-                color: 'rgba(255,255,255,0.87)', 
-                fontSize: { xs: '0.75rem', sm: '0.875rem', md: '0.8rem', lg: '0.85rem', xl: '1rem' },
-                '&.Mui-focused': { color: '#e91e63' },
-              }}>
-                Prioritet
-              </InputLabel>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Prioritet</InputLabel>
               <Select
                 value={filterPriority}
-                onChange={(e) => setFilterPriority(e.target.value)}
                 label="Prioritet"
-                sx={{ 
-                  color: '#fff', 
-                  fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' },
-                  height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
+                onChange={(event) => {
+                  setFilterPriority(event.target.value);
+                  if (filterPreset !== 'custom') setFilterPreset('custom');
+                }}
+                sx={{
+                  color: '#f8fafc',
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#e91e63' },
-                  '& .MuiSelect-select': { 
-                    py: { xs: 0.75, sm: 1, md: 0.875, lg: 1.125, xl: 1.5 },
-                    px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
-                  },
                 }}
               >
-                <MenuItem value="all" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' } }}>Alle</MenuItem>
-                {Object.entries(priorityConfig).map(([key, val]) => (
-                  <MenuItem key={key} value={key} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' } }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: val.color }}>
-                      {val.label}
-                    </Box>
+                <MenuItem value="all">Alle</MenuItem>
+                {Object.entries(priorityConfig).map(([value, config]) => (
+                  <MenuItem key={value} value={value}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: config.color }} />
+                      <span>{config.label}</span>
+                    </Stack>
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
-            <Tooltip title="Eksporter som CSV">
-              <IconButton
-                size="small"
-                onClick={() => exportToCSV(allShots, crewMembers)}
-                sx={{ 
-                  color: 'rgba(255,255,255,0.87)',
-                  display: { xs: 'none', sm: 'flex' },
-                  '&:hover': { color: '#4caf50' },
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Blokkering</InputLabel>
+              <Select
+                value={blockerFilter}
+                label="Blokkering"
+                onChange={(event) => {
+                  setBlockerFilter(event.target.value as ShotBlocker | 'all');
+                  if (filterPreset !== 'custom') setFilterPreset('custom');
+                }}
+                sx={{
+                  color: '#f8fafc',
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                 }}
               >
-                <ExcelIcon sx={{ fontSize: 20 }} />
+                <MenuItem value="all">Alle</MenuItem>
+                {Object.entries(blockerConfig).map(([value, config]) => (
+                  <MenuItem key={value} value={value}>{config.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={rememberSegment}
+                  onChange={(event) => setRememberSegment(event.target.checked)}
+                  color="info"
+                />
+              }
+              label={<Typography sx={{ color: '#cbd5e1', fontSize: 12 }}>Husk segment</Typography>}
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showDependencies}
+                  onChange={(event) => setShowDependencies(event.target.checked)}
+                  color="info"
+                />
+              }
+              label={<Typography sx={{ color: '#cbd5e1', fontSize: 12 }}>Vis avhengigheter</Typography>}
+            />
+
+            <Tooltip title="Eksporter CSV">
+              <IconButton
+                onClick={() => {
+                  const headers = ['Beskrivelse', 'Scene', 'Status', 'Prioritet', 'Blokkering', 'Tilordnet', 'Estimat', 'Faktisk'];
+                  const rows = allShots.map(({ shot, shotList }) => {
+                    const member = shot.assigneeId ? memberById.get(shot.assigneeId) : undefined;
+                    return [
+                      shot.description || shot.shotType,
+                      shotList.sceneName || 'Scene',
+                      statusColumns.find((status) => status.id === (shot.status ?? 'not_started'))?.label ?? 'Venter',
+                      priorityConfig[shot.priority ?? 'important'].label,
+                      blockerConfig[getShotBlocker(shot)].label,
+                      member?.name ?? 'Ledig',
+                      String(shot.estimatedTime ?? ''),
+                      String(getShotActualTime(shot) || ''),
+                    ];
+                  });
+                  const content = [headers, ...rows]
+                    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                    .join('\n');
+                  const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement('a');
+                  anchor.href = url;
+                  anchor.download = `team-dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
+                  anchor.click();
+                  URL.revokeObjectURL(url);
+                }}
+                sx={{ color: '#cbd5e1' }}
+              >
+                <DownloadIcon />
               </IconButton>
             </Tooltip>
+          </Stack>
+        </Stack>
 
-            <Tooltip title="Eksporter som PDF">
-              <IconButton
+        {roleLegend.length > 0 && (
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 1 }}>
+            {roleLegend.map((role) => (
+              <Chip
+                key={role}
                 size="small"
-                onClick={() => exportToPDF(allShots, crewMembers)}
-                sx={{ 
-                  color: 'rgba(255,255,255,0.87)',
-                  display: { xs: 'none', sm: 'flex' },
-                  '&:hover': { color: '#e91e63' },
+                label={getRoleLabel(role)}
+                sx={{
+                  bgcolor: `${getRoleColor(role)}1f`,
+                  color: getRoleColor(role),
+                  border: `1px solid ${getRoleColor(role)}66`,
                 }}
-              >
-                <PdfIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-            </Tooltip>
-
-            <Divider orientation="vertical" flexItem sx={{ mx: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
-
-            <Tooltip title="Generer Call Sheet">
-              <Button
-                size="small"
-                variant="outlined"
-                startIcon={<CallSheetIcon />}
-                onClick={() => setShowCallSheetDrawer(true)}
-                sx={{ 
-                  color: '#8b5cf6',
-                  borderColor: 'rgba(139, 92, 246, 0.5)',
-                  display: { xs: 'none', md: 'flex' },
-                  '&:hover': { 
-                    borderColor: '#8b5cf6',
-                    bgcolor: 'rgba(139, 92, 246, 0.1)',
-                  },
-                }}
-              >
-                Call Sheet
-              </Button>
-            </Tooltip>
-            
-            {/* Mobile Call Sheet button */}
-            <Tooltip title="Call Sheet">
-              <IconButton
-                size="small"
-                onClick={() => setShowCallSheetDrawer(true)}
-                sx={{ 
-                  color: '#8b5cf6',
-                  display: { xs: 'flex', md: 'none' },
-                  '&:hover': { bgcolor: 'rgba(139, 92, 246, 0.1)' },
-                }}
-              >
-                <CallSheetIcon sx={{ fontSize: 20 }} />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </Box>
+              />
+            ))}
+          </Stack>
+        )}
       </Box>
 
-      <Box sx={{ 
-        flex: 1, 
-        overflow: 'hidden', 
-        display: 'flex', 
-        minHeight: 0,
-        position: 'relative',
-        width: '100%',
-        maxWidth: '100%',
-        boxSizing: 'border-box',
-      }}>
-        <Box sx={{ 
-          flex: 1, 
-          overflow: 'hidden', 
-          px: { xs: 1, sm: 1.5, md: 2 },
-          py: { xs: 1, sm: 1.5, md: 2 },
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: 0,
-          height: '100%',
-          width: '100%',
-          maxWidth: '100%',
-          boxSizing: 'border-box',
-        }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, minHeight: 0, p: { xs: 1, md: 1.5 }, overflow: 'auto' }}>
           {viewMode === 'kanban' && (
             <DndContext
               sensors={sensors}
@@ -1192,197 +1646,123 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
             >
-              <Box sx={{ 
-                display: { xs: 'flex', sm: 'grid' },
-                gridTemplateColumns: { xs: 'none', sm: 'repeat(3, minmax(0, 1fr))' },
-                gap: { xs: 1, sm: 1.25, md: 1.5 }, 
-                height: '100%',
-                minHeight: 0,
-                flexDirection: { xs: 'column', sm: 'row' },
-                overflow: 'hidden',
-                pb: { xs: 2, sm: 0 },
-                alignItems: { xs: 'stretch', sm: 'stretch' },
-                width: '100%',
-                maxWidth: '100%',
-                boxSizing: 'border-box',
-                margin: 0,
-              }}>
-                {statusColumns.map(column => (
-                  <Paper
-                    key={column.id}
-                    sx={{
-                      flex: { xs: 'none', sm: 'none' },
-                      minWidth: 0,
-                      maxWidth: { xs: '100%', sm: '100%' },
-                      width: { xs: '100%', sm: '100%' },
-                      bgcolor: 'rgba(255,255,255,0.02)',
-                      borderRadius: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      border: '1px solid rgba(255,255,255,0.05)',
-                      height: { xs: 'auto', sm: '100%' },
-                      maxHeight: { xs: 'none', sm: '100%' },
-                      minHeight: { xs: 'auto', sm: 0 },
-                      overflow: 'hidden',
-                      boxSizing: 'border-box',
-                      margin: 0,
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        p: { xs: 2, sm: 1.5 },
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: { xs: 1.5, sm: 1 },
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Box sx={{ color: column.color, display: 'flex', alignItems: 'center', '& svg': { fontSize: { xs: 24, sm: 20 } } }}>
-                        {column.icon}
-                      </Box>
-                      <Typography variant="subtitle1" sx={{ 
-                        color: '#fff', 
-                        fontWeight: 600,
-                        fontSize: { xs: '1rem', sm: '0.9rem' },
-                      }}>
-                        {column.label}
-                      </Typography>
+              <Box sx={{ display: { xs: 'flex', md: 'grid' }, gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1, minHeight: 0, flexDirection: 'column' }}>
+                {statusColumns.map((column) => (
+                  <Paper key={column.id} sx={{ display: 'flex', flexDirection: 'column', minHeight: { xs: 220, md: 'calc(100vh - 410px)' }, bgcolor: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                      <Box sx={{ color: column.color }}>{column.icon}</Box>
+                      <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: 14 }}>{column.label}</Typography>
                       <Chip
-                        label={shotsByStatus[column.id].length}
                         size="small"
-                        sx={{
-                          ml: 'auto',
-                          height: { xs: 26, sm: 20 },
-                          minWidth: { xs: 32, sm: 24 },
-                          bgcolor: `${column.color}22`,
-                          color: column.color,
-                          fontSize: { xs: '0.85rem', sm: '0.75rem' },
-                        }}
+                        label={shotsByStatus[column.id].length}
+                        sx={{ ml: 'auto', bgcolor: `${column.color}22`, color: column.color, height: 20 }}
                       />
-                    </Box>
+                    </Stack>
                     <DroppableColumn id={column.id}>
-                      <SortableContext
-                        items={shotsByStatus[column.id].map(({ shot }) => shot.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {shotsByStatus[column.id].map(({ shot, shotList }) => (
-                          <KanbanCard
-                            key={shot.id}
-                            shot={shot}
-                            shotList={shotList}
-                            crewMembers={crewMembers}
-                            onUpdate={(updates) => handleShotUpdate(shotList, shot, updates)}
-                            isInDropZone={false}
-                          />
-                        ))}
+                      <SortableContext items={shotsByStatus[column.id].map(({ shot }) => shot.id)} strategy={verticalListSortingStrategy}>
+                        {shotsByStatus[column.id].map(({ shot, shotList }) => {
+                          const dependencies = getShotDependencies(shot);
+                          const unresolved = dependencies.filter((depId) => statusByShotId.get(depId) !== 'completed');
+                          return (
+                            <KanbanCard
+                              key={shot.id}
+                              shot={shot}
+                              shotList={shotList}
+                              crewMembers={scopedCrewMembers}
+                              showDependencies={showDependencies}
+                              dependencyCount={dependencies.length}
+                              hasDependencyRisk={unresolved.length > 0}
+                              hasSlaRisk={criticalRiskShotIds.has(shot.id)}
+                            />
+                          );
+                        })}
                       </SortableContext>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'flex-start',
-                          width: '100%',
-                          gap: { xs: 1, sm: 0.5 },
-                          mt: shotsByStatus[column.id].length > 0 ? { xs: 1, sm: 0.5 } : 0,
-                          p: shotsByStatus[column.id].length === 0 ? { xs: 2, sm: 1.5 } : 0,
-                          flex: shotsByStatus[column.id].length === 0 ? 1 : 'none',
-                        }}
-                      >
-                        {[1, 2, 3, 4].map((i) => (
-                          <Box
-                            key={i}
-                            sx={{
-                              width: '100%',
-                              p: { xs: 2, sm: 1.5 },
-                              textAlign: 'center',
-                              color: 'rgba(255,255,255,0.6)',
-                              border: '2px dashed rgba(255,255,255,0.15)',
-                              borderRadius: 2,
-                              minHeight: { xs: 60, sm: 50 },
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                fontSize: { xs: '0.85rem', sm: '0.75rem' },
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              Dra shots hit
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Box>
+                      {shotsByStatus[column.id].length === 0 && (
+                        <Paper sx={{ p: 1.25, textAlign: 'center', bgcolor: 'rgba(148,163,184,0.08)', border: '1px dashed rgba(148,163,184,0.45)' }}>
+                          <Typography variant="caption" sx={{ color: '#cbd5e1' }}>Dra shots hit</Typography>
+                        </Paper>
+                      )}
                     </DroppableColumn>
                   </Paper>
                 ))}
+              </Box>
+
               <DragOverlay>
                 {activeId ? (() => {
-                  const activeItem = allShots.find(({ shot }) => shot.id === activeId);
+                  const activeItem = allShots.find((item) => item.shot.id === activeId);
                   if (!activeItem) return null;
-                  const priority = priorityConfig[activeItem.shot.priority || 'important'];
+                  const priority = priorityConfig[activeItem.shot.priority ?? 'important'];
                   return (
-                    <Card
-                      sx={{
-                        width: 280,
-                        bgcolor: '#1a1a2e',
-                        border: `2px solid ${priority.color}`,
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-                        transform: 'rotate(3deg)',
-                        opacity: 0.95,
-                        cursor: 'grabbing',
-                      }}
-                    >
-                      <CardContent sx={{ p: 1.5 }}>
-                        <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, mb: 1 }}>
+                    <Card sx={{ width: 280, bgcolor: '#0f172a', border: `1px solid ${priority.color}`, boxShadow: '0 12px 32px rgba(2,6,23,0.55)' }}>
+                      <CardContent sx={{ p: 1.25 }}>
+                        <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600 }}>
                           {activeItem.shot.description || activeItem.shot.shotType}
                         </Typography>
-                        <Chip
-                          label={priority.label}
-                          size="small"
-                          sx={{
-                            bgcolor: priority.bgColor,
-                            color: priority.color,
-                            height: 20,
-                            fontSize: '10px',
-                          }}
-                        />
                       </CardContent>
                     </Card>
                   );
                 })() : null}
               </DragOverlay>
-              </Box>
             </DndContext>
           )}
 
           {viewMode === 'workload' && (
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 },
-              p: { xs: 0.5, sm: 1, md: 0.75, lg: 1.25, xl: 2 },
-            }}>
-              <Box sx={{ 
-                display: 'grid', 
-                gridTemplateColumns: { 
-                  xs: '1fr', 
-                  sm: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  md: 'repeat(auto-fill, minmax(280px, 1fr))',
-                  lg: 'repeat(auto-fill, minmax(340px, 1fr))',
-                  xl: 'repeat(auto-fill, minmax(400px, 1fr))',
-                }, 
-                gap: { xs: 1.5, sm: 2, md: 1.5, lg: 2, xl: 3 } 
-              }}>
-                {crewMembers.map(member => {
-                  const load = workloadByMember[member.id] || { assigned: 0, completed: 0, inProgress: 0, totalTime: 0 };
-                  const completionRate = load.assigned > 0 ? (load.completed / load.assigned) * 100 : 0;
-                  const isOverloaded = load.assigned > 10;
+            <Stack spacing={1.25}>
+              <Paper sx={{ p: 1.25, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+                  <Stack spacing={0.5}>
+                    <Typography sx={{ color: '#f8fafc', fontWeight: 600 }}>Planlegging og kapasitet</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+                      Kapasitet per rolle, overbooking-severity og forslag til reassignment.
+                    </Typography>
+                  </Stack>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AddIcon />}
+                      onClick={assignUnassignedShotsToTechnical}
+                      sx={{ borderColor: 'rgba(56,189,248,0.45)', color: '#7dd3fc' }}
+                    >
+                      Bulk-tilordne
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<AutoBalanceIcon />}
+                      onClick={autoBalanceAssignments}
+                      sx={{ borderColor: 'rgba(168,85,247,0.45)', color: '#c4b5fd' }}
+                    >
+                      Auto-balanser
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+
+              {reassignmentSuggestions.length > 0 && (
+                <Alert severity="warning" sx={{ bgcolor: 'rgba(245,158,11,0.16)', color: '#fcd34d' }}>
+                  <Stack spacing={0.25}>
+                    {reassignmentSuggestions.map((suggestion) => (
+                      <Typography key={suggestion} variant="body2">• {suggestion}</Typography>
+                    ))}
+                  </Stack>
+                </Alert>
+              )}
+
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(auto-fit, minmax(290px, 1fr))' }, gap: 1 }}>
+                {scopedCrewMembers.map((member) => {
+                  const load = workloadByMember[member.id] ?? {
+                    assigned: 0,
+                    completed: 0,
+                    inProgress: 0,
+                    blocked: 0,
+                    totalTime: 0,
+                    actualTime: 0,
+                    capacity: getRoleCapacity(String(member.role)),
+                    utilization: 0,
+                    severity: 'low' as const,
+                  };
+                  const completion = load.assigned > 0 ? (load.completed / load.assigned) * 100 : 0;
                   const isExpanded = expandedMembers.has(member.id);
                   const memberShots = allShots.filter(({ shot }) => shot.assigneeId === member.id);
 
@@ -1390,909 +1770,494 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
                     <Paper
                       key={member.id}
                       sx={{
-                        p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 },
-                        bgcolor: isOverloaded ? 'rgba(244,67,54,0.1)' : 'rgba(255,255,255,0.02)',
-                        border: `1px solid ${isOverloaded ? 'rgba(244,67,54,0.3)' : 'rgba(255,255,255,0.1)'}`,
-                        borderRadius: 2,
+                        p: 1.25,
+                        bgcolor:
+                          load.severity === 'high'
+                            ? 'rgba(239,68,68,0.12)'
+                            : load.severity === 'medium'
+                              ? 'rgba(245,158,11,0.12)'
+                              : 'rgba(255,255,255,0.03)',
+                        border:
+                          load.severity === 'high'
+                            ? '1px solid rgba(239,68,68,0.45)'
+                            : load.severity === 'medium'
+                              ? '1px solid rgba(245,158,11,0.45)'
+                              : '1px solid rgba(255,255,255,0.09)',
                       }}
                     >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 2, md: 1.5, lg: 2, xl: 3 }, mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 } }}>
-                        <Avatar sx={{ 
-                          bgcolor: '#e91e63',
-                          width: { xs: 36, sm: 40, md: 38, lg: 44, xl: 56 },
-                          height: { xs: 36, sm: 40, md: 38, lg: 44, xl: 56 },
-                          fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.1rem', xl: '1.5rem' },
-                        }}>{member.name.charAt(0)}</Avatar>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Avatar sx={{ bgcolor: getRoleColor(String(member.role)), width: isMobile ? 34 : 38, height: isMobile ? 34 : 38, fontSize: 13 }}>
+                          {member.name.charAt(0)}
+                        </Avatar>
                         <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography variant="subtitle1" sx={{ 
-                            color: '#fff', 
-                            fontWeight: 600,
-                            fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.25rem' },
-                          }}>
+                          <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: 14 }} noWrap>
                             {member.name}
                           </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: 'rgba(255,255,255,0.87)',
-                            fontSize: { xs: '0.65rem', sm: '0.75rem', md: '0.7rem', lg: '0.8rem', xl: '1rem' },
-                          }}>
-                            {member.role}
+                          <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+                            {getRoleLabel(String(member.role))}
                           </Typography>
                         </Box>
-                        {isOverloaded && (
-                          <Tooltip title="Overbelastet">
-                            <WarningIcon sx={{ color: '#f44336' }} />
-                          </Tooltip>
-                        )}
-                        <Tooltip title="Tilordne shots">
-                          <IconButton 
-                            size="small" 
-                            onClick={() => {
-                              setSelectedMemberForAssign(member.id);
-                              setAssignDialogOpen(true);
-                            }}
-                            sx={{ color: '#e91e63' }}
-                          >
-                            <AddIcon />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
+                        <Chip
+                          size="small"
+                          label={load.severity === 'high' ? 'Høy risiko' : load.severity === 'medium' ? 'Middels' : 'Lav'}
+                          sx={{
+                            bgcolor:
+                              load.severity === 'high'
+                                ? 'rgba(239,68,68,0.18)'
+                                : load.severity === 'medium'
+                                  ? 'rgba(245,158,11,0.18)'
+                                  : 'rgba(34,197,94,0.18)',
+                            color:
+                              load.severity === 'high' ? '#ef4444' : load.severity === 'medium' ? '#f59e0b' : '#22c55e',
+                            border: `1px solid ${
+                              load.severity === 'high' ? 'rgba(239,68,68,0.45)' : load.severity === 'medium' ? 'rgba(245,158,11,0.45)' : 'rgba(34,197,94,0.45)'
+                            }`,
+                          }}
+                        />
+                      </Stack>
 
-                      <Box sx={{ 
-                        display: 'flex', 
-                        gap: { xs: 0.5, sm: 1 }, 
-                        mb: { xs: 1.5, sm: 2 }, 
-                        flexWrap: 'wrap',
-                      }}>
-                        <Chip 
-                          label={`${load.assigned} tilordnet`} 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: 'rgba(255,255,255,0.1)', 
-                            color: '#fff',
-                            height: { xs: 22, sm: 24, md: 23, lg: 24, xl: 30 },
-                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.76rem', xl: '0.9rem' },
-                            fontWeight: { xs: 500, sm: 400 },
-                          }} 
-                        />
-                        <Chip 
-                          label={`${load.completed} fullført`} 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: 'rgba(76,175,80,0.2)', 
-                            color: '#4caf50',
-                            height: { xs: 22, sm: 24, md: 23, lg: 24, xl: 30 },
-                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.76rem', xl: '0.9rem' },
-                            fontWeight: { xs: 500, sm: 400 },
-                          }} 
-                        />
-                        <Chip 
-                          label={`${load.inProgress} pågår`} 
-                          size="small" 
-                          sx={{ 
-                            bgcolor: 'rgba(33,150,243,0.2)', 
-                            color: '#2196f3',
-                            height: { xs: 22, sm: 24, md: 23, lg: 24, xl: 30 },
-                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.76rem', xl: '0.9rem' },
-                            fontWeight: { xs: 500, sm: 400 },
-                          }} 
-                        />
-                      </Box>
+                      <Stack direction="row" spacing={0.5} sx={{ mt: 1, flexWrap: 'wrap' }}>
+                        <Chip size="small" label={`${load.assigned} tilordnet`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#f8fafc' }} />
+                        <Chip size="small" label={`${load.blocked} blokkert`} sx={{ bgcolor: 'rgba(245,158,11,0.14)', color: '#f59e0b' }} />
+                        <Chip size="small" label={`Kapasitet ${load.capacity}`} sx={{ bgcolor: 'rgba(56,189,248,0.14)', color: '#38bdf8' }} />
+                        <Chip size="small" label={`Utnyttelse ${(load.utilization * 100).toFixed(0)}%`} sx={{ bgcolor: 'rgba(168,85,247,0.14)', color: '#c4b5fd' }} />
+                      </Stack>
 
-                      <Box sx={{ mb: { xs: 1, sm: 1.5, md: 1.25, lg: 1.375, xl: 2 } }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.7, xl: 1 } }}>
-                          <Typography variant="caption" sx={{ 
-                            color: 'rgba(255,255,255,0.87)',
-                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.76rem', xl: '0.9rem' },
-                          }}>
-                            Fullføringsgrad
-                          </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: '#4caf50',
-                            fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.78rem', lg: '0.82rem', xl: '1rem' },
-                          }}>
-                            {completionRate.toFixed(0)}%
-                          </Typography>
-                        </Box>
+                      <Box sx={{ mt: 1 }}>
+                        <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.35 }}>
+                          <Typography variant="caption" sx={{ color: '#cbd5e1' }}>Fullføringsgrad</Typography>
+                          <Typography variant="caption" sx={{ color: '#4ade80', fontWeight: 700 }}>{completion.toFixed(0)}%</Typography>
+                        </Stack>
                         <LinearProgress
                           variant="determinate"
-                          value={completionRate}
+                          value={completion}
                           sx={{
-                            height: { xs: 6, sm: 7, md: 6.5, lg: 7.5, xl: 10 },
-                            borderRadius: { xs: 3, sm: 3.5, md: 3.25, lg: 3.75, xl: 5 },
-                            bgcolor: 'rgba(255,255,255,0.1)',
-                            '& .MuiLinearProgress-bar': { 
-                              bgcolor: '#4caf50',
-                              borderRadius: { xs: 3, sm: 3.5, md: 3.25, lg: 3.75, xl: 5 },
-                              transition: 'transform 0.4s ease',
-                            },
+                            height: 6,
+                            borderRadius: 3,
+                            bgcolor: 'rgba(255,255,255,0.12)',
+                            '& .MuiLinearProgress-bar': { bgcolor: '#22c55e', borderRadius: 3 },
                           }}
                         />
                       </Box>
 
-                      <Box sx={{ 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center', 
-                        mb: memberShots.length > 0 ? { xs: 1.5, sm: 2 } : 0,
-                        flexWrap: 'wrap',
-                        gap: { xs: 0.5, sm: 1 },
-                      }}>
-                        <Typography variant="caption" sx={{ 
-                          color: 'rgba(255,255,255,0.87)',
-                          fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem' },
-                        }}>
-                          Estimert tid: {load.totalTime} min
+                      <Stack direction="row" justifyContent="space-between" sx={{ mt: 1 }}>
+                        <Typography variant="caption" sx={{ color: '#cbd5e1' }}>
+                          Est./faktisk: {load.totalTime}m / {load.actualTime}m
                         </Typography>
-                        {memberShots.length > 3 && (
-                          <Button
-                            size="small"
-                            onClick={() => {
-                              setExpandedMembers(prev => {
-                                const next = new Set(prev);
-                                if (next.has(member.id)) {
-                                  next.delete(member.id);
-                                } else {
-                                  next.add(member.id);
-                                }
-                                return next;
-                              });
-                            }}
-                            endIcon={isExpanded ? <ExpandLessIcon sx={{ fontSize: { xs: 16, sm: 18 } }} /> : <ExpandMoreIcon sx={{ fontSize: { xs: 16, sm: 18 } }} />}
-                            sx={{ 
-                              color: 'rgba(255,255,255,0.87)', 
-                              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.8rem' },
-                              minWidth: 'auto',
-                              py: { xs: 0.5, sm: 0.75 },
-                              px: { xs: 1, sm: 1.5 },
-                            }}
-                          >
-                            {isExpanded ? 'Skjul' : `+${memberShots.length - 3} flere`}
-                          </Button>
-                        )}
-                      </Box>
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            setExpandedMembers((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(member.id)) next.delete(member.id);
+                              else next.add(member.id);
+                              return next;
+                            });
+                          }}
+                          sx={{ minWidth: 'auto', color: '#7dd3fc', p: 0 }}
+                        >
+                          {isExpanded ? 'Skjul' : 'Detaljer'}
+                        </Button>
+                      </Stack>
 
-                      {memberShots.length > 0 && (
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 0.75, sm: 1 } }}>
-                          {(isExpanded ? memberShots : memberShots.slice(0, 3)).map(({ shot, shotList }) => {
-                            const priority = priorityConfig[shot.priority || 'important'];
-                            const statusCol = statusColumns.find(s => s.id === (shot.status || 'not_started'));
+                      {(isExpanded || isMobile) && memberShots.length > 0 && (
+                        <Stack spacing={0.5} sx={{ mt: 1 }}>
+                          {(isExpanded ? memberShots : memberShots.slice(0, isMobile ? 2 : 3)).map(({ shot, shotList }) => {
+                            const priority = priorityConfig[shot.priority ?? 'important'];
+                            const blocker = blockerConfig[getShotBlocker(shot)];
                             return (
-                              <Box
+                              <Paper
                                 key={shot.id}
                                 sx={{
-                                  p: { xs: 1, sm: 1.25, md: 1.5 },
-                                  bgcolor: 'rgba(0,0,0,0.2)',
-                                  borderRadius: 1,
+                                  p: 0.75,
+                                  bgcolor: 'rgba(2,6,23,0.65)',
                                   borderLeft: `3px solid ${priority.color}`,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: { xs: 0.75, sm: 1 },
+                                  border: '1px solid rgba(255,255,255,0.08)',
                                 }}
                               >
-                                <Box sx={{ flex: 1, minWidth: 0 }}>
-                                  <Typography variant="body2" sx={{ 
-                                    color: '#fff', 
-                                    fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.875rem' },
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    fontWeight: { xs: 500, sm: 400 },
-                                  }}>
-                                    {shot.description || shot.shotType}
-                                  </Typography>
-                                  <Box sx={{ display: 'flex', gap: { xs: 0.5, sm: 0.75 }, mt: { xs: 0.5, sm: 0.75 }, flexWrap: 'wrap' }}>
-                                    <Chip 
-                                      label={statusCol?.label} 
-                                      size="small" 
-                                      sx={{ 
-                                        height: { xs: 18, sm: 20, md: 22 }, 
-                                        fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.75rem' },
-                                        bgcolor: `${statusCol?.color}22`,
-                                        color: statusCol?.color,
-                                        fontWeight: { xs: 500, sm: 400 },
-                                      }} 
-                                    />
-                                    <Chip 
-                                      label={priority.label} 
-                                      size="small" 
-                                      sx={{ 
-                                        height: { xs: 18, sm: 20, md: 22 }, 
-                                        fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.75rem' },
-                                        bgcolor: priority.bgColor,
-                                        color: priority.color,
-                                        fontWeight: { xs: 500, sm: 400 },
-                                      }} 
-                                    />
-                                  </Box>
-                                </Box>
-                                <Tooltip title="Fjern tilordning">
-                                  <IconButton
-                                    size="small"
-                                    onClick={async () => {
-                                      if (onShotUpdate) {
-                                        await onShotUpdate(shotList, { ...shot, assigneeId: undefined });
-                                      }
-                                    }}
-                                    sx={{ 
-                                      color: 'rgba(255,255,255,0.7)', 
-                                      '&:hover': { color: '#f44336' },
-                                      p: { xs: 0.5, sm: 0.75, md: 1 },
-                                      minWidth: { xs: 32, sm: 36, md: 40 },
-                                      minHeight: { xs: 32, sm: 36, md: 40 },
-                                    }}
-                                  >
-                                    <PersonIcon sx={{ fontSize: { xs: 16, sm: 18, md: 20 } }} />
-                                  </IconButton>
-                                </Tooltip>
-                              </Box>
+                                <Typography variant="body2" sx={{ color: '#f8fafc', fontSize: 12 }}>
+                                  {shot.description || shot.shotType}
+                                </Typography>
+                                <Stack direction="row" spacing={0.5} sx={{ mt: 0.35 }}>
+                                  <Chip size="small" label={shotList.sceneName || 'Scene'} sx={{ height: 18, bgcolor: 'rgba(148,163,184,0.15)', color: '#cbd5e1' }} />
+                                  <Chip size="small" label={blocker.label} sx={{ height: 18, bgcolor: blocker.bgColor, color: blocker.color }} />
+                                </Stack>
+                              </Paper>
                             );
                           })}
-                        </Box>
+                        </Stack>
                       )}
                     </Paper>
                   );
                 })}
 
-                {workloadByMember['unassigned'] && workloadByMember['unassigned'].assigned > 0 && (
-                  <Paper
-                    sx={{
-                      p: 2,
-                      bgcolor: 'rgba(147,51,234,0.1)',
-                      border: '1px solid rgba(147,51,234,0.3)',
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                      <Avatar sx={{ bgcolor: '#9333ea' }}>
-                        <PersonIcon />
+                {workloadByMember.unassigned?.assigned > 0 && (
+                  <Paper sx={{ p: 1.25, bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.45)' }}>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <Avatar sx={{ bgcolor: '#a855f7', width: 34, height: 34 }}>
+                        <PersonIcon fontSize="small" />
                       </Avatar>
                       <Box sx={{ flex: 1 }}>
-                        <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
-                          Ikke tilordnet
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: '#9333ea' }}>
-                          Trenger tilordning
-                        </Typography>
+                        <Typography sx={{ color: '#f8fafc', fontWeight: 600, fontSize: 14 }}>Ufordelte shots</Typography>
+                        <Typography variant="caption" sx={{ color: '#d8b4fe' }}>{workloadByMember.unassigned.assigned} trenger eier</Typography>
                       </Box>
-                    </Box>
-                    <Chip
-                      label={`${workloadByMember['unassigned'].assigned} shots`}
-                      sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea', mb: 2 }}
-                    />
-                    
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {allShots.filter(({ shot }) => !shot.assigneeId).map(({ shot, shotList }) => {
-                        const priority = priorityConfig[shot.priority || 'important'];
-                        return (
-                          <Box
-                            key={shot.id}
-                            sx={{
-                              p: 1.5,
-                              bgcolor: 'rgba(0,0,0,0.2)',
-                              borderRadius: 1,
-                              borderLeft: `3px solid ${priority.color}`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                            }}
-                          >
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body2" sx={{ color: '#fff', fontSize: '0.8rem' }}>
-                                {shot.description || shot.shotType}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                                {shotList.sceneName || 'Scene'}
-                              </Typography>
-                            </Box>
-                            <FormControl size="small" sx={{ minWidth: 100 }}>
-                              <Select
-                                value=""
-                                displayEmpty
-                                onChange={async (e) => {
-                                  const memberId = e.target.value as string;
-                                  if (memberId && onShotUpdate) {
-                                    await onShotUpdate(shotList, { ...shot, assigneeId: memberId });
-                                  }
-                                }}
-                                sx={{ 
-                                  color: '#fff', 
-                                  fontSize: '0.75rem',
-                                  height: 32,
-                                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(147,51,234,0.4)' },
-                                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#9333ea' },
-                                }}
-                              >
-                                <MenuItem value="" disabled>Tilordne</MenuItem>
-                                {crewMembers.map(m => (
-                                  <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Box>
-                        );
-                      })}
-                    </Box>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                          setSelectedMemberForAssign(scopedCrewMembers[0]?.id ?? '');
+                          setAssignDialogOpen(true);
+                        }}
+                        sx={{ borderColor: 'rgba(168,85,247,0.5)', color: '#e9d5ff' }}
+                      >
+                        Tilordne
+                      </Button>
+                    </Stack>
                   </Paper>
                 )}
               </Box>
 
-              <Dialog
-                open={assignDialogOpen}
-                onClose={() => setAssignDialogOpen(false)}
-                maxWidth="sm"
-                fullWidth
-                PaperProps={{
-                  sx: { bgcolor: '#1a1a2e', color: '#fff' }
-                }}
-              >
-                <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                  Tilordne shots til {crewMembers.find(m => m.id === selectedMemberForAssign)?.name}
-                </DialogTitle>
-                <DialogContent sx={{ mt: 2 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-                    Velg shots å tilordne:
-                  </Typography>
-                  {allShots.filter(({ shot }) => !shot.assigneeId).length === 0 ? (
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', textAlign: 'center', py: 4 }}>
-                      Ingen ledige shots å tilordne
-                    </Typography>
-                  ) : (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {allShots.filter(({ shot }) => !shot.assigneeId).map(({ shot, shotList }) => {
-                        const priority = priorityConfig[shot.priority || 'important'];
-                        return (
-                          <Box
-                            key={shot.id}
-                            sx={{
-                              p: 1.5,
-                              bgcolor: 'rgba(255,255,255,0.05)',
-                              borderRadius: 1,
-                              borderLeft: `3px solid ${priority.color}`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1,
-                              cursor: 'pointer',
-                              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-                            }}
-                            onClick={async () => {
-                              if (selectedMemberForAssign && onShotUpdate) {
-                                await onShotUpdate(shotList, { ...shot, assigneeId: selectedMemberForAssign });
-                              }
-                            }}
-                          >
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body2" sx={{ color: '#fff' }}>
-                                {shot.description || shot.shotType}
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                                {shotList.sceneName || 'Scene'}
+              {perRoleTimeVariance.length > 0 && (
+                <Paper sx={{ p: 1.25, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 600, mb: 0.75 }}>Estimat vs faktisk tid per rolle</Typography>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' }, gap: 0.75 }}>
+                    {perRoleTimeVariance.map((entry) => (
+                      <Paper key={entry.role} sx={{ p: 0.75, bgcolor: 'rgba(2,6,23,0.7)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <Typography variant="caption" sx={{ color: '#cbd5e1' }}>{getRoleLabel(entry.role)}</Typography>
+                        <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600 }}>
+                          {entry.estimated.toFixed(0)}m / {entry.actual.toFixed(0)}m
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: entry.variance > 0 ? '#f59e0b' : '#22c55e' }}>
+                          Avvik: {entry.variance > 0 ? '+' : ''}{entry.variance.toFixed(0)}m
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Box>
+                </Paper>
+              )}
+            </Stack>
+          )}
+
+          {viewMode === 'timeline' && (
+            <Box sx={{ minWidth: 780 }}>
+              <Paper sx={{ mb: 1, p: 1, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <Typography sx={{ color: '#f8fafc', fontWeight: 600, mb: 0.75 }}>Belastnings-heatmap (14 dager)</Typography>
+                <Stack direction="row" spacing={0.4}>
+                  {timelineHeatmap.map((value, index) => {
+                    const max = Math.max(1, ...timelineHeatmap);
+                    const ratio = value / max;
+                    return (
+                      <Tooltip key={`${index}-${value}`} title={`${timelineDays[index].toLocaleDateString('nb-NO')}: ${value} belastningspoeng`}>
+                        <Box
+                          sx={{
+                            flex: 1,
+                            height: 14,
+                            borderRadius: 0.75,
+                            bgcolor: ratio > 0.75 ? 'rgba(239,68,68,0.75)' : ratio > 0.45 ? 'rgba(245,158,11,0.75)' : 'rgba(34,197,94,0.7)',
+                            border: '1px solid rgba(255,255,255,0.16)',
+                          }}
+                        />
+                      </Tooltip>
+                    );
+                  })}
+                </Stack>
+              </Paper>
+
+              <Paper sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <Box sx={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(2,6,23,0.7)' }}>
+                  <Box sx={{ width: 220, p: 1, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Typography variant="caption" sx={{ color: '#cbd5e1', fontWeight: 700 }}>Shot</Typography>
+                  </Box>
+                  {timelineDays.map((day) => (
+                    <Box key={day.toISOString()} sx={{ minWidth: 40, flex: 1, p: 0.5, textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.04)' }}>
+                      <Typography variant="caption" sx={{ color: '#cbd5e1', fontSize: 10 }}>{day.getDate()}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+
+                {allShots.map(({ shot, shotList }) => {
+                  const bar = timelineBars.get(shot.id);
+                  const priority = priorityConfig[shot.priority ?? 'important'];
+                  const assignee = shot.assigneeId ? memberById.get(shot.assigneeId) : null;
+
+                  return (
+                    <Box key={shot.id} sx={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                      <Box sx={{ width: 220, p: 1, borderRight: '1px solid rgba(255,255,255,0.08)' }}>
+                        <Typography variant="caption" sx={{ color: '#f8fafc', fontWeight: 600 }}>
+                          {shot.description || shot.shotType}
+                        </Typography>
+                        <Typography variant="caption" sx={{ display: 'block', color: 'rgba(248,250,252,0.65)' }}>
+                          {shotList.sceneName || 'Scene'} · {assignee?.name ?? 'Ledig'}
+                        </Typography>
+                      </Box>
+
+                      <Box sx={{ flex: 1, display: 'flex', position: 'relative', minHeight: 34 }}>
+                        {timelineDays.map((day) => (
+                          <Box key={`${shot.id}-${day.toISOString()}`} sx={{ minWidth: 40, flex: 1, borderRight: '1px solid rgba(255,255,255,0.03)' }} />
+                        ))}
+                        {bar && (
+                          <Tooltip title={`${shot.description || shot.shotType} (${shot.estimatedTime ?? 0} min)`}>
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: `calc(${bar.start} * (100% / ${timelineDays.length}) + 2px)`,
+                                width: `calc(${bar.length} * (100% / ${timelineDays.length}) - 4px)`,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                height: 18,
+                                borderRadius: 1,
+                                bgcolor: priority.color,
+                                border: '1px solid rgba(255,255,255,0.25)',
+                                px: 0.5,
+                                display: 'flex',
+                                alignItems: 'center',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              <Typography variant="caption" sx={{ color: '#fff', fontSize: 10, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
+                                {shot.shotType}
                               </Typography>
                             </Box>
-                            <AddIcon sx={{ color: '#e91e63' }} />
-                          </Box>
-                        );
-                      })}
+                          </Tooltip>
+                        )}
+                      </Box>
                     </Box>
-                  )}
-                </DialogContent>
-                <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
-                  <Button onClick={() => setAssignDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Lukk
-                  </Button>
-                </DialogActions>
-              </Dialog>
+                  );
+                })}
+              </Paper>
+
+              {showDependencies && dependencyRows.length > 0 && (
+                <Paper sx={{ mt: 1, p: 1.25, bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <Typography sx={{ color: '#f8fafc', fontWeight: 600, mb: 0.5 }}>Avhengigheter mellom shots</Typography>
+                  <Stack spacing={0.5}>
+                    {dependencyRows.map((row) => (
+                      <Stack key={row.shot.id} direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'flex-start', md: 'center' }}>
+                        <Typography variant="caption" sx={{ color: '#f8fafc', minWidth: 220 }}>
+                          {row.shot.description || row.shot.shotType}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          icon={<DependencyIcon sx={{ color: `${row.unresolved.length > 0 ? '#ef4444' : '#22c55e'} !important` }} />}
+                          label={row.unresolved.length > 0 ? `${row.unresolved.length} uløste` : 'Alle løst'}
+                          sx={{
+                            bgcolor: row.unresolved.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+                            color: row.unresolved.length > 0 ? '#ef4444' : '#22c55e',
+                          }}
+                        />
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Paper>
+              )}
             </Box>
           )}
 
-          {viewMode === 'timeline' && (() => {
-            const today = new Date();
-            const daysToShow = 14;
-            const days = Array.from({ length: daysToShow }, (_, i) => {
-              const d = new Date(today);
-              d.setDate(today.getDate() + i);
-              return d;
-            });
-            const dayNames = ['Søn', 'Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør'];
-            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
-            
-            return (
-              <Box sx={{ 
-                p: { xs: 0.5, sm: 1, md: 0.75, lg: 1.5, xl: 2.5 }, 
-                overflow: 'auto',
-                maxWidth: '100%',
-                height: '100%',
-              }}>
-                <Box sx={{ minWidth: { xs: 600, sm: 800, md: 850, lg: 950, xl: 1200 } }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    bgcolor: 'rgba(255,255,255,0.03)',
+          {viewMode === 'table' && (
+            <Box sx={{ overflow: 'auto' }}>
+              <Box
+                component="table"
+                sx={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  minWidth: 980,
+                  '& th, & td': {
+                    p: 1,
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    textAlign: 'left',
+                    verticalAlign: 'middle',
+                  },
+                  '& th': {
+                    bgcolor: 'rgba(255,255,255,0.04)',
+                    color: '#cbd5e1',
+                    fontSize: 12,
+                    fontWeight: 700,
                     position: 'sticky',
                     top: 0,
                     zIndex: 2,
-                  }}>
-                    <Box sx={{ 
-                      width: { xs: 120, sm: 150, md: 160, lg: 180, xl: 240 }, 
-                      minWidth: { xs: 120, sm: 150, md: 160, lg: 180, xl: 240 }, 
-                      p: { xs: 0.75, sm: 1, md: 0.875, lg: 1.25, xl: 2 }, 
-                      borderRight: '1px solid rgba(255,255,255,0.1)',
-                      display: 'flex',
-                      alignItems: 'center',
-                    }}>
-                      <Typography variant="caption" sx={{ 
-                        color: 'rgba(255,255,255,0.87)', 
-                        fontWeight: 600,
-                        fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.7rem', lg: '0.75rem', xl: '0.9rem' },
-                      }}>
-                        Shot / Oppgave
-                      </Typography>
-                    </Box>
-                    {days.map((day, i) => {
-                      const isToday = day.toDateString() === today.toDateString();
-                      const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                      return (
-                        <Box 
-                          key={i} 
-                          sx={{ 
-                            flex: 1, 
-                            minWidth: { xs: 40, sm: 45, md: 42, lg: 50, xl: 65 }, 
-                            p: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 }, 
-                            textAlign: 'center',
-                            borderRight: '1px solid rgba(255,255,255,0.05)',
-                            bgcolor: isToday ? 'rgba(233,30,99,0.1)' : isWeekend ? 'rgba(255,255,255,0.02)' : 'transparent',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <Typography variant="caption" sx={{ 
-                            color: isToday ? '#e91e63' : 'rgba(255,255,255,0.5)', 
-                            display: 'block',
-                            fontWeight: isToday ? 600 : 400,
-                            fontSize: { xs: '0.55rem', sm: '0.6rem', md: '0.58rem', lg: '0.65rem', xl: '0.8rem' },
-                            mb: { xs: 0.25, sm: 0.5, md: 0.375, lg: 0.45, xl: 0.75 },
-                          }}>
-                            {dayNames[day.getDay()]}
-                          </Typography>
-                          <Typography variant="caption" sx={{ 
-                            color: isToday ? '#e91e63' : '#fff', 
-                            fontWeight: isToday ? 700 : 500,
-                            fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.82rem', xl: '1rem' },
-                            lineHeight: 1.2,
-                          }}>
-                            {day.getDate()}
-                          </Typography>
-                          {i === 0 && (
-                            <Typography variant="caption" sx={{ 
-                              color: 'rgba(255,255,255,0.7)', 
-                              display: 'block', 
-                              fontSize: { xs: '0.5rem', sm: '0.55rem', md: '0.55rem', lg: '0.6rem', xl: '0.75rem' },
-                              mt: { xs: 0.25, sm: 0.5, md: 0.375, lg: 0.45, xl: 0.75 },
-                            }}>
-                              {monthNames[day.getMonth()]}
-                            </Typography>
-                          )}
-                        </Box>
-                      );
-                    })}
-                  </Box>
-                  
-                  {allShots.length === 0 ? (
-                    <Box sx={{ p: 3, textAlign: 'center' }}>
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                        Ingen shots å vise i tidslinjen
-                      </Typography>
-                    </Box>
-                  ) : (
-                    allShots.map(({ shot, shotList }, idx) => {
-                      const assignee = crewMembers.find(m => m.id === shot.assigneeId);
-                      const priority = priorityConfig[shot.priority || 'important'];
-                      const statusCol = statusColumns.find(s => s.id === (shot.status || 'not_started'));
-                      const shotStatus = shot.status || 'not_started';
-                      const statusOffset = shotStatus === 'completed' ? 0 : shotStatus === 'in_progress' ? 3 : 7;
-                      const barStart = statusOffset + (idx % 3);
-                      const barLength = Math.max(1, Math.min(shot.estimatedTime ? Math.ceil(shot.estimatedTime / 30) : 2, daysToShow - barStart - 1));
-                      
-                      return (
-                        <Box 
-                          key={shot.id}
-                          sx={{ 
-                            display: 'flex', 
-                            borderBottom: '1px solid rgba(255,255,255,0.05)',
-                            '&:hover': { bgcolor: 'rgba(255,255,255,0.02)' },
-                          }}
-                        >
-                          <Box sx={{ 
-                            width: { xs: 120, sm: 150, md: 160, lg: 180, xl: 240 }, 
-                            minWidth: { xs: 120, sm: 150, md: 160, lg: 180, xl: 240 }, 
-                            p: { xs: 0.75, sm: 1, md: 0.875, lg: 1.25, xl: 2 }, 
-                            borderRight: '1px solid rgba(255,255,255,0.1)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1.125, xl: 1.5 },
-                          }}>
-                            <Box sx={{ 
-                              width: { xs: 7, sm: 8, md: 8, lg: 9, xl: 12 }, 
-                              height: { xs: 7, sm: 8, md: 8, lg: 9, xl: 12 }, 
-                              borderRadius: '50%', 
-                              bgcolor: statusCol?.color,
-                              flexShrink: 0,
-                            }} />
-                            <Box sx={{ flex: 1, minWidth: 0 }}>
-                              <Typography variant="caption" sx={{ 
-                                color: '#fff', 
-                                fontWeight: { xs: 500, sm: 500, md: 400 }, 
-                                display: 'block',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '1rem' },
-                                lineHeight: 1.3,
-                              }}>
-                                {shot.description || shot.shotType}
-                              </Typography>
-                              <Typography variant="caption" sx={{ 
-                                color: 'rgba(255,255,255,0.7)', 
-                                fontSize: { xs: '0.6rem', sm: '0.65rem', md: '0.65rem', lg: '0.7rem', xl: '0.875rem' },
-                                display: { xs: 'none', sm: 'block' },
-                                mt: { xs: 0.25, sm: 0.5, md: 0.375, lg: 0.45, xl: 0.75 },
-                              }}>
-                                {shotList.sceneName || 'Scene'}
-                              </Typography>
-                            </Box>
-                            {assignee ? (
-                              <Tooltip title={assignee.name}>
-                                <Avatar sx={{ 
-                                  width: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 }, 
-                                  height: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 }, 
-                                  bgcolor: '#e91e63', 
-                                  fontSize: { xs: 9, sm: 10, md: 9.5, lg: 11, xl: 14 }, 
-                                  flexShrink: 0 
-                                }}>
-                                  {assignee.name.charAt(0)}
-                                </Avatar>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip title="Ikke tilordnet">
-                                <Chip 
-                                  label="Ledig" 
-                                  size="small" 
-                                  sx={{ 
-                                    height: { xs: 16, sm: 18, md: 17, lg: 20, xl: 26 }, 
-                                    fontSize: { xs: '0.5rem', sm: '0.55rem', md: '0.52rem', lg: '0.6rem', xl: '0.75rem' },
-                                    bgcolor: 'rgba(147,51,234,0.15)',
-                                    color: '#9333ea',
-                                    border: '1px dashed rgba(147,51,234,0.4)',
-                                    '& .MuiChip-label': { px: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 } },
-                                    fontWeight: { xs: 500, sm: 400 },
-                                  }} 
-                                />
-                              </Tooltip>
-                            )}
-                          </Box>
-                          
-                          <Box sx={{ flex: 1, display: 'flex', position: 'relative', minHeight: 36 }}>
-                            {days.map((day, i) => {
-                              const isToday = day.toDateString() === today.toDateString();
-                              const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                              return (
-                                <Box 
-                                  key={i}
-                                  sx={{ 
-                                    flex: 1, 
-                                    minWidth: { xs: 40, sm: 45, md: 42, lg: 50, xl: 65 },
-                                    borderRight: '1px solid rgba(255,255,255,0.03)',
-                                    bgcolor: isToday ? 'rgba(233,30,99,0.05)' : isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent',
-                                  }}
-                                />
-                              );
-                            })}
-                            
-                            <Tooltip title={`${shot.description || shot.shotType} - ${shot.estimatedTime || 60} min`}>
-                              <Box
-                                sx={{
-                                  position: 'absolute',
-                                  left: `calc(${barStart} * (100% / ${daysToShow}) + 4px)`,
-                                  top: '50%',
-                                  transform: 'translateY(-50%)',
-                                  width: `calc(${barLength} * (100% / ${daysToShow}) - 8px)`,
-                                  height: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 },
-                                  bgcolor: priority.color,
-                                  borderRadius: { xs: 0.75, sm: 1, md: 0.875, lg: 1.1, xl: 1.5 },
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  px: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 },
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s ease',
-                                  '&:hover': { 
-                                    transform: 'translateY(-50%) scale(1.05)',
-                                    boxShadow: `0 2px 12px ${priority.color}66`,
-                                    zIndex: 1,
-                                  },
-                                }}
-                              >
-                                <Typography variant="caption" sx={{ 
-                                  color: '#fff', 
-                                  fontSize: { xs: '0.55rem', sm: '0.6rem', md: '0.58rem', lg: '0.65rem', xl: '0.8rem' }, 
-                                  fontWeight: { xs: 600, sm: 500 },
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                }}>
-                                  {shot.shotType}
-                                </Typography>
-                              </Box>
-                            </Tooltip>
-                          </Box>
-                        </Box>
-                      );
-                    })
-                  )}
-                </Box>
-                
-                <Box sx={{ 
-                  mt: { xs: 1, sm: 1.5, md: 2 }, 
-                  p: { xs: 1, sm: 1.25, md: 1.5 }, 
-                  bgcolor: 'rgba(255,255,255,0.02)', 
-                  borderRadius: 1,
-                  display: 'flex',
-                  gap: { xs: 1, sm: 1.5, md: 2 },
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                }}>
-                  <Typography variant="caption" sx={{ color: 'rgba(147,51,234,0.8)', fontStyle: 'italic' }}>
-                    * Estimert visning basert på status
-                  </Typography>
-                  <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Prioritet:
-                  </Typography>
-                  {Object.entries(priorityConfig).map(([key, val]) => (
-                    <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box sx={{ width: 12, height: 12, bgcolor: val.color, borderRadius: 0.5 }} />
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                        {val.label}
-                      </Typography>
-                    </Box>
-                  ))}
-                  <Divider orientation="vertical" flexItem sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                    Status:
-                  </Typography>
-                  {statusColumns.map(col => (
-                    <Box key={col.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Box sx={{ width: 8, height: 8, bgcolor: col.color, borderRadius: '50%' }} />
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                        {col.label}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Box>
-            );
-          })()}
-
-          {viewMode === 'table' && (
-              <Box sx={{ 
-                p: { xs: 0.5, sm: 1, md: 0.75, lg: 1.25, xl: 2 }, 
-                overflow: 'auto',
-                maxWidth: '100%',
-                height: '100%',
-              }}>
-                <Box
-                  component="table"
-                  sx={{
-                    width: '100%',
-                    borderCollapse: 'collapse',
-                    minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 },
-                    '& th, & td': {
-                      p: { xs: 0.75, sm: 1, md: 0.875, lg: 1.25, xl: 2 },
-                      textAlign: 'left',
-                      borderBottom: '1px solid rgba(255,255,255,0.1)',
-                    },
-                    '& th': {
-                      bgcolor: 'rgba(255,255,255,0.05)',
-                      color: 'rgba(255,255,255,0.87)',
-                      fontWeight: { xs: 600, sm: 600, md: 600 },
-                      fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.75rem', lg: '0.82rem', xl: '1rem' },
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 1,
-                      whiteSpace: { xs: 'nowrap', sm: 'normal' },
-                      py: { xs: 1, sm: 1.25, md: 1, lg: 1.25, xl: 2 },
-                    },
-                    '& td': {
-                      color: '#fff',
-                      fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.78rem', lg: '0.85rem', xl: '1rem' },
-                      py: { xs: 0.75, sm: 1, md: 0.875, lg: 1.125, xl: 1.5 },
-                    },
+                  },
+                  '& td': {
+                    color: '#f8fafc',
+                    fontSize: 13,
+                  },
                   '& tbody tr:hover': {
                     bgcolor: 'rgba(255,255,255,0.03)',
-                  },
-                  '& tbody tr': {
-                    transition: 'background-color 0.2s ease',
                   },
                 }}
               >
                 <thead>
                   <tr>
-                    <th style={{ display: 'table-cell' }}>Beskrivelse</th>
-                    <th style={{ display: window.innerWidth < 600 ? 'none' : 'table-cell' }}>Scene</th>
+                    <th>Shot</th>
+                    {!isMobile && <th>Scene</th>}
                     <th>Status</th>
                     <th>Prioritet</th>
+                    <th>Blokkering</th>
                     <th>Tilordnet</th>
-                    <th style={{ display: window.innerWidth < 960 ? 'none' : 'table-cell' }}>Tid</th>
+                    <th>Estimat</th>
+                    <th>Faktisk</th>
+                    {showDependencies && <th>Avhengigheter</th>}
+                    <th>SLA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {allShots.length === 0 ? (
+                  {allShots.length === 0 && (
                     <tr>
-                      <td colSpan={6} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
-                        Ingen shots funnet
+                      <td colSpan={showDependencies ? 10 : 9} style={{ color: 'rgba(248,250,252,0.68)' }}>
+                        Ingen shots matcher filter.
                       </td>
                     </tr>
-                  ) : (
-                    allShots.map(({ shot, shotList }) => {
-                      const assignee = crewMembers.find(m => m.id === shot.assigneeId);
-                      const priority = priorityConfig[shot.priority || 'important'];
-                      const statusCol = statusColumns.find(s => s.id === (shot.status || 'not_started'));
-                      return (
-                        <tr key={shot.id}>
+                  )}
+
+                  {allShots.map(({ shot, shotList }) => {
+                    const status = (shot.status ?? 'not_started') as ShotStatus;
+                    const priority = shot.priority ?? 'important';
+                    const blocker = getShotBlocker(shot);
+                    const dependencies = getShotDependencies(shot);
+                    const unresolved = dependencies.filter((depId) => statusByShotId.get(depId) !== 'completed');
+
+                    return (
+                      <tr key={shot.id}>
+                        <td>
+                          <Typography sx={{ fontSize: 13, fontWeight: 600 }}>{shot.description || shot.shotType}</Typography>
+                        </td>
+                        {!isMobile && (
                           <td>
-                            <Typography variant="body2" sx={{ 
-                              fontWeight: 500,
-                              fontSize: { xs: '0.75rem', sm: '0.8rem', md: '0.78rem', lg: '0.85rem', xl: '1rem' },
-                            }}>
-                              {shot.description || shot.shotType}
-                            </Typography>
-                          </td>
-                          <td style={{ display: window.innerWidth < 600 ? 'none' : 'table-cell' }}>
-                            <Typography variant="caption" sx={{ 
-                              color: 'rgba(255,255,255,0.87)',
-                              fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '1rem' },
-                            }}>
+                            <Typography variant="caption" sx={{ color: 'rgba(248,250,252,0.7)' }}>
                               {shotList.sceneName || 'Scene'}
                             </Typography>
                           </td>
+                        )}
+                        <td>
+                          <Select
+                            size="small"
+                            value={status}
+                            onChange={(event) => {
+                              void updateShot(shotList, shot, { status: event.target.value as ShotStatus }, 'status_change');
+                            }}
+                            sx={{
+                              minWidth: 116,
+                              color: '#f8fafc',
+                              bgcolor: `${statusColumns.find((column) => column.id === status)?.color ?? '#9ca3af'}22`,
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+                            }}
+                          >
+                            {statusColumns.map((column) => (
+                              <MenuItem key={column.id} value={column.id}>{column.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </td>
+                        <td>
+                          <Select
+                            size="small"
+                            value={priority}
+                            onChange={(event) => {
+                              void updateShot(shotList, shot, { priority: event.target.value as ShotPriority }, 'priority_change');
+                            }}
+                            sx={{
+                              minWidth: 112,
+                              color: '#f8fafc',
+                              bgcolor: `${priorityConfig[priority].color}22`,
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+                            }}
+                          >
+                            {Object.entries(priorityConfig).map(([value, config]) => (
+                              <MenuItem key={value} value={value}>{config.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </td>
+                        <td>
+                          <Select
+                            size="small"
+                            value={blocker}
+                            onChange={(event) => {
+                              void updateShot(shotList, shot, { blockerStatus: event.target.value }, 'blocker_change');
+                            }}
+                            sx={{
+                              minWidth: 160,
+                              color: '#f8fafc',
+                              bgcolor: blockerConfig[blocker].bgColor,
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+                            }}
+                          >
+                            {Object.entries(blockerConfig).map(([value, config]) => (
+                              <MenuItem key={value} value={value}>{config.label}</MenuItem>
+                            ))}
+                          </Select>
+                        </td>
+                        <td>
+                          <Select
+                            size="small"
+                            value={shot.assigneeId ?? ''}
+                            displayEmpty
+                            onChange={(event) => {
+                              const nextAssignee = String(event.target.value || '') || undefined;
+                              void updateShot(shotList, shot, { assigneeId: nextAssignee }, 'assignment_change');
+                            }}
+                            sx={{
+                              minWidth: 170,
+                              color: '#f8fafc',
+                              bgcolor: shot.assigneeId ? 'rgba(56,189,248,0.14)' : 'rgba(168,85,247,0.14)',
+                              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+                            }}
+                            renderValue={(value) => {
+                              if (!value) {
+                                return <Typography sx={{ color: '#c4b5fd', fontSize: 12 }}>Ledig</Typography>;
+                              }
+                              const member = memberById.get(String(value));
+                              return member?.name ?? String(value);
+                            }}
+                          >
+                            <MenuItem value="">Ledig</MenuItem>
+                            {scopedCrewMembers.map((member) => (
+                              <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
+                            ))}
+                          </Select>
+                        </td>
+                        <td>{shot.estimatedTime ? `${shot.estimatedTime}m` : '-'}</td>
+                        <td>
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={getShotActualTime(shot) || ''}
+                            placeholder="m"
+                            onChange={(event) => {
+                              const parsed = Number(event.target.value);
+                              if (!Number.isNaN(parsed)) {
+                                void updateShot(shotList, shot, { actualTime: parsed }, 'actual_time_change');
+                              }
+                            }}
+                            sx={{
+                              width: 82,
+                              '& .MuiOutlinedInput-root': {
+                                color: '#f8fafc',
+                                '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                              },
+                            }}
+                          />
+                        </td>
+                        {showDependencies && (
                           <td>
-                            <Select
+                            <Chip
                               size="small"
-                              value={shot.status || 'not_started'}
-                              onChange={async (e) => {
-                                if (onShotUpdate) {
-                                  await onShotUpdate(shotList, { ...shot, status: e.target.value as ShotStatus });
-                                }
-                              }}
+                              icon={<DependencyIcon sx={{ color: `${unresolved.length > 0 ? '#ef4444' : '#22c55e'} !important` }} />}
+                              label={dependencies.length === 0 ? 'Ingen' : `${unresolved.length}/${dependencies.length} uløste`}
                               sx={{
-                                minWidth: { xs: 90, sm: 110, md: 105, lg: 125, xl: 160 },
-                                height: { xs: 32, sm: 36, md: 34, lg: 40, xl: 52 },
-                                bgcolor: `${statusCol?.color}22`,
-                                color: statusCol?.color,
-                                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.82rem', xl: '1rem' },
-                                '& .MuiSelect-select': { 
-                                  py: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 }, 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 1,
-                                  px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
-                                },
-                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
-                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: statusCol?.color },
-                                '& .MuiSvgIcon-root': { color: statusCol?.color, fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 } },
+                                bgcolor: unresolved.length > 0 ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+                                color: unresolved.length > 0 ? '#ef4444' : '#22c55e',
                               }}
-                            >
-                              {statusColumns.map(col => (
-                                <MenuItem key={col.id} value={col.id}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Box sx={{ color: col.color }}>{col.icon}</Box>
-                                    <span>{col.label}</span>
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                            </Select>
+                            />
                           </td>
-                          <td>
-                            <Select
-                              size="small"
-                              value={shot.priority || 'important'}
-                              onChange={async (e) => {
-                                if (onShotUpdate) {
-                                  await onShotUpdate(shotList, { ...shot, priority: e.target.value as ShotPriority });
-                                }
-                              }}
-                              sx={{
-                                minWidth: { xs: 80, sm: 90, md: 85, lg: 110, xl: 140 },
-                                height: { xs: 32, sm: 36, md: 34, lg: 40, xl: 52 },
-                                bgcolor: priority.bgColor,
-                                color: priority.color,
-                                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.82rem', xl: '1rem' },
-                                '& .MuiSelect-select': { 
-                                  py: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 },
-                                  px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
-                                },
-                                '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
-                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: priority.color },
-                                '& .MuiSvgIcon-root': { color: priority.color, fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 } },
-                              }}
-                            >
-                              {Object.entries(priorityConfig).map(([key, val]) => (
-                                <MenuItem key={key} value={key}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: val.color }}>
-                                    {val.label}
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </td>
-                          <td>
-                            <Select
-                              size="small"
-                              value={shot.assigneeId || ''}
-                              displayEmpty
-                              onChange={async (e) => {
-                                if (onShotUpdate) {
-                                  const newAssigneeId = e.target.value || undefined;
-                                  await onShotUpdate(shotList, { ...shot, assigneeId: newAssigneeId });
-                                }
-                              }}
-                              sx={{
-                                minWidth: { xs: 100, sm: 120, md: 115, lg: 135, xl: 170 },
-                                height: { xs: 32, sm: 36, md: 34, lg: 40, xl: 52 },
-                                bgcolor: assignee ? 'rgba(233,30,99,0.1)' : 'rgba(147,51,234,0.1)',
-                                color: assignee ? '#e91e63' : '#9333ea',
-                                fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.82rem', xl: '1rem' },
-                                '& .MuiSelect-select': { 
-                                  py: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.875, xl: 1.25 }, 
-                                  display: 'flex', 
-                                  alignItems: 'center', 
-                                  gap: 1,
-                                  px: { xs: 0.75, sm: 1, md: 0.875, lg: 0.95, xl: 1.25 },
-                                },
-                                '& .MuiOutlinedInput-notchedOutline': { 
-                                  borderColor: 'transparent',
-                                  borderStyle: assignee ? 'solid' : 'dashed',
-                                },
-                                '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: assignee ? '#e91e63' : '#9333ea' },
-                                '& .MuiSvgIcon-root': { color: assignee ? '#e91e63' : '#9333ea', fontSize: { xs: 18, sm: 20, md: 19, lg: 22, xl: 28 } },
-                              }}
-                              renderValue={(selected) => {
-                                if (!selected) return <span style={{ color: '#9333ea' }}>Ledig</span>;
-                                const member = crewMembers.find(m => m.id === selected);
-                                return (
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Avatar sx={{ width: 20, height: 20, bgcolor: '#e91e63', fontSize: 10 }}>
-                                      {member?.name.charAt(0)}
-                                    </Avatar>
-                                    <span>{member?.name}</span>
-                                  </Box>
-                                );
-                              }}
-                            >
-                              <MenuItem value="">
-                                <em style={{ color: '#9333ea' }}>Ledig</em>
-                              </MenuItem>
-                              {crewMembers.map(member => (
-                                <MenuItem key={member.id} value={member.id}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    <Avatar sx={{ width: 20, height: 20, bgcolor: '#e91e63', fontSize: 10 }}>
-                                      {member.name.charAt(0)}
-                                    </Avatar>
-                                    <span>{member.name}</span>
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </td>
-                          <td>
-                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                              {shot.estimatedTime ? `${shot.estimatedTime} min` : '-'}
-                            </Typography>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
+                        )}
+                        <td>
+                          {criticalRiskShotIds.has(shot.id) ? (
+                            <Chip size="small" label="Risiko" sx={{ bgcolor: 'rgba(244,63,94,0.18)', color: '#fb7185' }} />
+                          ) : (
+                            <Chip size="small" label="OK" sx={{ bgcolor: 'rgba(34,197,94,0.14)', color: '#4ade80' }} />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </Box>
             </Box>
@@ -2300,47 +2265,26 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
         </Box>
 
         {showActivityPanel && (
-          <Paper
-            sx={{
-              width: 320,
-              borderLeft: '1px solid rgba(255,255,255,0.1)',
-              bgcolor: 'rgba(255,255,255,0.02)',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-              <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
-                Aktivitetslogg
-              </Typography>
+          <Paper sx={{ width: { xs: 280, md: 340 }, borderLeft: '1px solid rgba(255,255,255,0.08)', bgcolor: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column' }}>
+            <Box sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <Typography sx={{ color: '#f8fafc', fontWeight: 600 }}>Audit logg</Typography>
             </Box>
             <List sx={{ flex: 1, overflow: 'auto' }}>
               {activityLog.length === 0 ? (
                 <ListItem>
-                  <ListItemText
-                    primary="Ingen aktivitet ennå"
-                    sx={{ '& .MuiListItemText-primary': { color: 'rgba(255,255,255,0.87)' } }}
-                  />
+                  <ListItemText primary="Ingen aktivitet ennå" primaryTypographyProps={{ sx: { color: 'rgba(248,250,252,0.66)' } }} />
                 </ListItem>
               ) : (
-                activityLog.map(entry => (
+                activityLog.map((entry) => (
                   <ListItem key={entry.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <ListItemAvatar>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: '#e91e63', fontSize: 14 }}>
-                        {entry.userName.charAt(0)}
-                      </Avatar>
+                      <Avatar sx={{ width: 28, height: 28, bgcolor: '#38bdf8', fontSize: 12 }}>{entry.userName.charAt(0)}</Avatar>
                     </ListItemAvatar>
                     <ListItemText
-                      primary={
-                        <Typography variant="body2" sx={{ color: '#fff' }}>
-                          <strong>{entry.userName}</strong> endret status på "{entry.targetName}"
-                        </Typography>
-                      }
-                      secondary={
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                          {new Date(entry.timestamp).toLocaleString('nb-NO')}
-                        </Typography>
-                      }
+                      primary={`${entry.userName}: ${entry.action}`}
+                      secondary={new Date(entry.timestamp).toLocaleString('nb-NO')}
+                      primaryTypographyProps={{ sx: { color: '#f8fafc', fontSize: 12.5 } }}
+                      secondaryTypographyProps={{ sx: { color: 'rgba(248,250,252,0.56)', fontSize: 11 } }}
                     />
                   </ListItem>
                 ))
@@ -2350,65 +2294,144 @@ export const TeamDashboard: React.FC<TeamDashboardProps> = ({
         )}
       </Box>
 
-      {/* Call Sheet Drawer */}
+      <Dialog open={assignDialogOpen} onClose={() => setAssignDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#0f172a', color: '#f8fafc' }}>Bulk-tilordning av ufordelte shots</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0f172a', color: '#f8fafc' }}>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Typography variant="body2" sx={{ color: 'rgba(248,250,252,0.7)' }}>
+              Velg medlem for rask tilordning av alle ufordelte shots.
+            </Typography>
+            <FormControl size="small">
+              <InputLabel sx={{ color: 'rgba(248,250,252,0.7)' }}>Medlem</InputLabel>
+              <Select
+                value={selectedMemberForAssign}
+                label="Medlem"
+                onChange={(event) => setSelectedMemberForAssign(event.target.value)}
+                sx={{ color: '#f8fafc', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+              >
+                {scopedCrewMembers.map((member) => (
+                  <MenuItem key={member.id} value={member.id}>{member.name}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#0f172a' }}>
+          <Button onClick={() => setAssignDialogOpen(false)} sx={{ color: 'rgba(248,250,252,0.72)' }}>Avbryt</Button>
+          <Button
+            variant="contained"
+            disabled={!selectedMemberForAssign}
+            onClick={async () => {
+              const unassigned = allShots.filter(({ shot }) => !shot.assigneeId);
+              const target = scopedCrewMembers.find((member) => member.id === selectedMemberForAssign);
+              if (!target) return;
+              for (const { shot, shotList } of unassigned) {
+                await updateShot(shotList, shot, { assigneeId: target.id }, 'bulk_assign_single');
+              }
+              setAssignDialogOpen(false);
+              pushToast('success', `Tilordnet ${unassigned.length} shots til ${target.name}.`);
+            }}
+          >
+            Tilordne
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={snapshotDialogOpen} onClose={() => setSnapshotDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: '#0f172a', color: '#f8fafc' }}>Dashboard snapshots</DialogTitle>
+        <DialogContent sx={{ bgcolor: '#0f172a', color: '#f8fafc' }}>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <TextField
+              size="small"
+              label="Navn på snapshot"
+              value={snapshotName}
+              onChange={(event) => setSnapshotName(event.target.value)}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: '#f8fafc',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                },
+                '& .MuiInputLabel-root': { color: 'rgba(248,250,252,0.72)' },
+              }}
+            />
+
+            {snapshots.length > 0 && (
+              <FormControl size="small">
+                <InputLabel sx={{ color: 'rgba(248,250,252,0.72)' }}>Last snapshot</InputLabel>
+                <Select
+                  value=""
+                  label="Last snapshot"
+                  onChange={(event) => applySnapshot(String(event.target.value))}
+                  displayEmpty
+                  sx={{ color: '#f8fafc', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                >
+                  <MenuItem value="" disabled>Velg snapshot</MenuItem>
+                  {snapshots.map((snapshot) => (
+                    <MenuItem key={snapshot.id ?? snapshot.name} value={snapshot.id ?? snapshot.name}>
+                      {snapshot.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ bgcolor: '#0f172a' }}>
+          <Button onClick={() => setSnapshotDialogOpen(false)} sx={{ color: 'rgba(248,250,252,0.72)' }}>Lukk</Button>
+          <Button aria-label="Lagre snapshot nå" variant="contained" startIcon={<SaveIcon />} onClick={() => void saveSnapshot()} disabled={snapshotBusy}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Drawer
         anchor="right"
         open={showCallSheetDrawer}
         onClose={() => setShowCallSheetDrawer(false)}
         PaperProps={{
           sx: {
-            width: { xs: '100%', sm: '80%', md: '60%', lg: '50%' },
-            maxWidth: 900,
-            bgcolor: '#1a1f2e',
+            width: { xs: '100%', sm: '88%', md: '66%', lg: '54%' },
+            maxWidth: 980,
+            bgcolor: '#0f172a',
+            color: '#f8fafc',
           },
         }}
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            p: 2,
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-          }}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <CallSheetIcon sx={{ color: '#8b5cf6' }} />
-              <Typography variant="h6" sx={{ color: '#fff' }}>
-                Call Sheet fra Team Dashboard
-              </Typography>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ p: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CallSheetIcon sx={{ color: '#a78bfa' }} />
+              <Typography sx={{ fontWeight: 600 }}>Daglig teknisk callsheet</Typography>
             </Stack>
-            <IconButton onClick={() => setShowCallSheetDrawer(false)} sx={{ color: '#fff' }}>
-              <CloseIcon />
-            </IconButton>
-          </Box>
-          <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-            <React.Suspense fallback={
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
-                <Typography color="text.secondary">Laster Call Sheet Generator...</Typography>
-              </Box>
-            }>
-              {projectId && (
-                <CallSheetGenerator
-                  projectId={projectId}
-                  productionDay={productionDay}
-                  scenes={scenes}
-                  crew={crewMembers}
-                />
-              )}
-              {!projectId && (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
-                  <Typography color="error" variant="body1">
-                    Mangler prosjekt-ID. Call Sheet kan ikke genereres.
-                  </Typography>
-                  <Typography color="text.secondary" variant="body2" sx={{ mt: 1 }}>
-                    Åpne Team Dashboard fra et prosjekt for å bruke Call Sheet.
-                  </Typography>
-                </Box>
-              )}
-            </React.Suspense>
+            <Stack direction="row" spacing={0.5}>
+              <Button size="small" variant="outlined" startIcon={<SendIcon />} onClick={sendCallSheet} sx={{ borderColor: 'rgba(56,189,248,0.5)', color: '#7dd3fc' }}>
+                Send callsheet
+              </Button>
+              <IconButton onClick={() => setShowCallSheetDrawer(false)} sx={{ color: '#f8fafc' }}>
+                <CloseIcon />
+              </IconButton>
+            </Stack>
+          </Stack>
+          <Box sx={{ p: 1.25, flex: 1, overflow: 'auto' }}>
+            {projectId ? (
+              <CallSheetGenerator
+                projectId={projectId}
+                productionDay={productionDay}
+                scenes={scenes}
+                crew={scopedCrewMembers}
+              />
+            ) : (
+              <Alert severity="error">Mangler prosjekt-ID. Callsheet kan ikke genereres.</Alert>
+            )}
           </Box>
         </Box>
       </Drawer>
+
+      <Snackbar open={toastOpen} autoHideDuration={4500} onClose={() => setToastOpen(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+        <Alert onClose={() => setToastOpen(false)} severity={toastSeverity} variant="filled" sx={{ width: '100%' }}>
+          {toastMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

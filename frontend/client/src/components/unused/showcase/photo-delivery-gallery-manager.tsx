@@ -111,7 +111,7 @@ export default function PhotoDeliveryGalleryManager() {
         headers: {
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: () => {

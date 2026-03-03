@@ -141,7 +141,7 @@ export default function UserManagementPanel({
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
 
   // Feature access system
   const { hasFeature, getFeatureList, totalActiveIntegrations } = useIntegrationFeatures();

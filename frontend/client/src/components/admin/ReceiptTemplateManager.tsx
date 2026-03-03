@@ -1,87 +1,70 @@
-/**
- * Receipt Template Manager
- * Manages email receipt templates with EmailDesigner integration
- * Syncs pricing from profession-feature-matrix for marketplace features
- */
-
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Grid,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
   Chip,
-  Alert,
-  Tabs,
-  Tab,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
+  Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
+  TextField,
+  Typography,
   Switch,
   FormControlLabel,
-  Divider,
-  Stack,
 } from '@mui/material';
 import {
-  Email as EmailIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Preview as PreviewIcon,
-  Send as SendIcon,
-  ContentCopy as CopyIcon,
-  Check as CheckIcon,
-  Settings as SettingsIcon,
-  Business as BusinessIcon,
-  AttachMoney as MoneyIcon,
-  Gavel,
-  Policy,
-  Info,
-  Image as ImageIcon,
-  Save as SaveIcon,
-  CardMembership,
+  Add,
+  Delete,
+  Edit,
+  Email,
+  Preview,
+  Save,
+  Send,
+  Settings,
   ShoppingCart,
 } from '@mui/icons-material';
-import { EmailDesigner } from '../EmailDesigner/EmailDesigner';
-import { PROFESSION_FEATURE_MATRIX } from '@/../../shared/profession-feature-matrix';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { PROFESSION_FEATURE_MATRIX, ProfessionFeatureConfig } from '../../../../shared/profession-feature-matrix';
+
+type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
+
+type ReceiptSendTrigger = 'payment-success' | 'subscription-created' | 'addon-purchased' | 'manual';
 
 interface ReceiptTemplate {
-  id: string;
+  id?: string;
   name: string;
-  type: 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
+  type: ReceiptTemplateType;
   category: string;
   subject: string;
   htmlTemplate: string;
   variables: string[];
   isActive: boolean;
-  autoSend: boolean; // Auto-send on payment completion
-  sendTrigger?: 'payment-success' | 'subscription-created' | 'addon-purchased' | 'manual';
+  autoSend: boolean;
+  sendTrigger: ReceiptSendTrigger;
   profession?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface BusinessSettings {
@@ -98,279 +81,501 @@ interface BusinessSettings {
 }
 
 interface MarketplaceFeature {
+  profession: string;
   featureId: string;
   name: string;
-  price: number;
   category: string;
+  price: number;
   description: string;
-  profession: string;
+}
+
+const EMPTY_TEMPLATE: ReceiptTemplate = {
+  name: '',
+  type: 'subscription',
+  category: 'subscription',
+  subject: 'Kvittering for {{planName}}',
+  htmlTemplate:
+    '<h1>Takk for bestillingen, {{customerName}}</h1><p>Transaksjon: {{transactionId}}</p><p>Total: {{totalAmount}} NOK</p>',
+  variables: ['customerName', 'transactionId', 'planName', 'totalAmount'],
+  isActive: true,
+  autoSend: true,
+  sendTrigger: 'payment-success',
+  profession: 'photographer',
+};
+
+const EMPTY_BUSINESS_SETTINGS: BusinessSettings = {
+  companyName: 'CreatorHub AS',
+  orgNumber: '',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  logoUrl: '',
+  primaryColor: '#1976d2',
+  termsUrl: '',
+  privacyUrl: '',
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function normalizeTemplateType(value: unknown): ReceiptTemplateType {
+  const candidate = asString(value);
+  if (
+    candidate === 'subscription' ||
+    candidate === 'marketplace-addon' ||
+    candidate === 'invoice' ||
+    candidate === 'refund'
+  ) {
+    return candidate;
+  }
+
+  return 'subscription';
+}
+
+function normalizeSendTrigger(value: unknown): ReceiptSendTrigger {
+  const candidate = asString(value);
+  if (
+    candidate === 'payment-success' ||
+    candidate === 'subscription-created' ||
+    candidate === 'addon-purchased' ||
+    candidate === 'manual'
+  ) {
+    return candidate;
+  }
+
+  return 'payment-success';
+}
+
+function normalizeTemplates(raw: unknown): ReceiptTemplate[] {
+  const root = asRecord(raw);
+  const candidates = Array.isArray(raw)
+    ? raw
+    : Array.isArray(root.data)
+      ? root.data
+      : Array.isArray(root.items)
+        ? root.items
+        : [];
+
+  return candidates
+    .map((entry): ReceiptTemplate | null => {
+      const record = asRecord(entry);
+      const idRaw = record.id;
+      const id = typeof idRaw === 'string' || typeof idRaw === 'number' ? String(idRaw) : undefined;
+      const name = asString(record.name).trim();
+
+      if (!name) {
+        return null;
+      }
+
+      const variables = Array.isArray(record.variables)
+        ? record.variables.filter((value): value is string => typeof value === 'string')
+        : [];
+
+      return {
+        id,
+        name,
+        type: normalizeTemplateType(record.type),
+        category: asString(record.category, 'general'),
+        subject: asString(record.subject, 'Kvittering'),
+        htmlTemplate: asString(record.htmlTemplate, EMPTY_TEMPLATE.htmlTemplate),
+        variables,
+        isActive: asBoolean(record.isActive, true),
+        autoSend: asBoolean(record.autoSend, false),
+        sendTrigger: normalizeSendTrigger(record.sendTrigger),
+        profession: asString(record.profession, 'photographer'),
+        createdAt: asString(record.createdAt),
+        updatedAt: asString(record.updatedAt),
+      } satisfies ReceiptTemplate;
+    })
+    .filter((template): template is ReceiptTemplate => template !== null);
+}
+
+function normalizeBusinessSettings(raw: unknown): BusinessSettings {
+  const data = asRecord(raw);
+  return {
+    companyName: asString(data.companyName, EMPTY_BUSINESS_SETTINGS.companyName),
+    orgNumber: asString(data.orgNumber),
+    address: asString(data.address),
+    phone: asString(data.phone),
+    email: asString(data.email),
+    website: asString(data.website),
+    logoUrl: asString(data.logoUrl),
+    primaryColor: asString(data.primaryColor, EMPTY_BUSINESS_SETTINGS.primaryColor),
+    termsUrl: asString(data.termsUrl),
+    privacyUrl: asString(data.privacyUrl),
+  };
+}
+
+function startCase(text: string): string {
+  return text
+    .split('-')
+    .filter((token) => token.length > 0)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(' ');
+}
+
+function templateTypeLabel(type: ReceiptTemplateType): string {
+  switch (type) {
+    case 'subscription':
+      return 'Subscription';
+    case 'marketplace-addon':
+      return 'Marketplace Add-on';
+    case 'invoice':
+      return 'Invoice';
+    case 'refund':
+      return 'Refund';
+    default:
+      return type;
+  }
+}
+
+function buildPreviewHtml(template: ReceiptTemplate, business: BusinessSettings): string {
+  const sampleData: Record<string, string> = {
+    customerName: 'Ola Nordmann',
+    transactionId: 'TX-2026-00123',
+    planName: 'Story Arc Pro',
+    totalAmount: '997',
+    profession: template.profession ?? 'photographer',
+    companyName: business.companyName,
+    supportEmail: business.email || 'support@creatorhub.no',
+  };
+
+  const renderedBody = template.htmlTemplate.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
+    return sampleData[key] ?? '';
+  });
+
+  return `
+    <div style="font-family: Inter, Arial, sans-serif; max-width: 760px; margin: 0 auto; border: 1px solid #ddd; border-radius: 10px; overflow: hidden;">
+      <div style="padding: 16px 20px; background: ${business.primaryColor}; color: #fff;">
+        <h2 style="margin: 0; font-size: 20px;">${business.companyName}</h2>
+        <p style="margin: 8px 0 0 0; opacity: .92;">${template.subject}</p>
+      </div>
+      <div style="padding: 20px; line-height: 1.6; color: #1f2937;">${renderedBody}</div>
+      <div style="padding: 14px 20px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #475569;">
+        <div>${business.address || 'Adresse ikke satt'}</div>
+        <div>${business.email || 'E-post ikke satt'}</div>
+      </div>
+    </div>
+  `;
 }
 
 export default function ReceiptTemplateManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
-  const [tabValue, setTabValue] = useState(0);
-  const [showDesigner, setShowDesigner] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<ReceiptTemplate | null>(null);
-  const [showBusinessSettings, setShowBusinessSettings] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewData, setPreviewData] = useState<unknown>(null);
 
-  // Fetch receipt templates
-  const { data: templates = [], isLoading: templatesLoading } = useQuery({
-    queryKey: ['/api/admin/receipt-templates,'],
+  const [tabValue, setTabValue] = useState(0);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [businessOpen, setBusinessOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<ReceiptTemplate | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<ReceiptTemplate>(EMPTY_TEMPLATE);
+  const [businessDraft, setBusinessDraft] = useState<BusinessSettings>(EMPTY_BUSINESS_SETTINGS);
+
+  const templatesQuery = useQuery({
+    queryKey: ['/api/admin/receipt-templates'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/receipt-templates,', { headers });
+      const response = await apiRequest('/api/admin/receipt-templates', { headers });
+      return normalizeTemplates(response);
     },
   });
 
-  // Fetch business settings
-  const { data: businessSettings, isLoading: settingsLoading } = useQuery<BusinessSettings>({
+  const businessSettingsQuery = useQuery({
     queryKey: ['/api/admin/business-settings'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/business-settings, ', { headers });
+      const response = await apiRequest('/api/admin/business-settings', { headers });
+      return normalizeBusinessSettings(response);
     },
   });
 
-  // Extract marketplace features from profession-feature-matrix
-  const marketplaceFeatures: MarketplaceFeature[] = React.useMemo(() => {
-    const features: MarketplaceFeature[] = [];
+  const businessSettings = businessSettingsQuery.data ?? EMPTY_BUSINESS_SETTINGS;
 
-    Object.entries(PROFESSION_FEATURE_MATRIX).forEach(([profession, config]) => {
-      Object.entries(config.availableFeatures).forEach(([featureId, feature]) => {
-        if (feature.plan === 'marketplace' && feature.marketplacePrice) {
-          features.push({
-            featureId,
-            name: featureId
-              .split('-')
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1)
-              .join(''),
-            price: feature.marketplacePrice,
-            category: feature.marketplaceCategory || 'advanced-features',
-            description: feature.description,
-            profession,
-          });
+  const marketplaceFeatures = useMemo<MarketplaceFeature[]>(() => {
+    const rows: MarketplaceFeature[] = [];
+
+    for (const [profession, config] of Object.entries(PROFESSION_FEATURE_MATRIX)) {
+      const typedConfig = config as ProfessionFeatureConfig;
+      const availableFeaturesEntries = Object.entries(typedConfig.availableFeatures) as Array<
+        [string, ProfessionFeatureConfig['availableFeatures'][string]]
+      >;
+
+      for (const [featureId, feature] of availableFeaturesEntries) {
+        if (feature.plan !== 'marketplace') {
+          continue;
         }
-      });
-    });
 
-    return features;
+        if (!feature.marketplacePrice || feature.marketplacePrice <= 0) {
+          continue;
+        }
+
+        rows.push({
+          profession,
+          featureId,
+          name: startCase(featureId),
+          category: feature.marketplaceCategory ?? 'advanced-features',
+          price: feature.marketplacePrice,
+          description: feature.description,
+        });
+      }
+    }
+
+    return rows.sort((left, right) => right.price - left.price);
   }, []);
 
-  // Create/Update template mutation
   const saveTemplateMutation = useMutation({
-    mutationFn: async (template: Partial<ReceiptTemplate>) => {
+    mutationFn: async (payload: ReceiptTemplate) => {
       const headers = await auth.getAuthHeader();
+      if (payload.id) {
+        return apiRequest(`/api/admin/receipt-templates/${payload.id}`, {
+          method: 'PUT',
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json',
+          },
+          body: { ...payload },
+        });
+      }
+
       return apiRequest('/api/admin/receipt-templates', {
-        method: template.id ? 'PUT' : 'POST',
+        method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers,
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify(template),
+        body: { ...payload },
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/receipt-templates'] });
-      setShowDesigner(false);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/receipt-templates'] });
+      setEditorOpen(false);
       setSelectedTemplate(null);
+      setTemplateDraft(EMPTY_TEMPLATE);
     },
   });
 
-  // Update business settings mutation
-  const updateBusinessSettingsMutation = useMutation({
-    mutationFn: async (settings: BusinessSettings) => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/business-settings', {
-        method: 'PUT',
-        headers: {
-          ...headers, , 'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(settings),
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/business-settings'] });
-      setShowBusinessSettings(false);
-    },
-  });
-
-  // Delete template mutation
   const deleteTemplateMutation = useMutation({
     mutationFn: async (templateId: string) => {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/receipt-templates/${templateId}`, {
         method: 'DELETE',
-        headers
+        headers,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/receipt-templates'] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/receipt-templates'] });
     },
   });
 
-  // Send test email mutation
+  const updateBusinessSettingsMutation = useMutation({
+    mutationFn: async (payload: BusinessSettings) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/business-settings', {
+        method: 'PUT',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: { ...payload },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/business-settings'] });
+      setBusinessOpen(false);
+    },
+  });
+
   const sendTestEmailMutation = useMutation({
-    mutationFn: async ({ templateId, testEmail }: { templateId: string; testEmail: string }) => {
+    mutationFn: async (payload: { templateId: string; testEmail: string }) => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/receipt-templates/test-send', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers,
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ templateId, testEmail }),
+        body: payload,
       });
+    },
+    onSuccess: () => {
+      setTestDialogOpen(false);
+      setTestEmail('');
     },
   });
 
-  const handleCreateTemplate = (type: string) => {
-    const newTemplate: Partial<ReceiptTemplate> = {
-      name: `New ${type} Template`,
-      type: type as any,
+  const templates = templatesQuery.data ?? [];
+  const renderedPreview = selectedTemplate ? buildPreviewHtml(selectedTemplate, businessSettings) : '';
+
+  const openCreateDialog = (type: ReceiptTemplateType) => {
+    setSelectedTemplate(null);
+    setTemplateDraft({
+      ...EMPTY_TEMPLATE,
+      type,
       category: type,
-      subject: 'Receipt - {{planName} Subscription',
-      htmlTemplate: '',
-      variables: ['customerName','transactionId','planName','totalAmount'],
-      isActive: false,
-      autoSend: false,
-      sendTrigger: 'payment-success',
-    };
-    setSelectedTemplate(newTemplate as ReceiptTemplate);
-    setShowDesigner(true);
+      name: `${templateTypeLabel(type)} Template`,
+    });
+    setEditorOpen(true);
   };
 
-  const handlePreview = (template: ReceiptTemplate) => {
-    // Generate mock preview data
-    const mockData = {
-      customerName: 'John Doe',
-      businessName: businessSettings?.companyName || 'CreatorHub AS',
-      transactionId: 'TXN-' + Date.now(),
-      planName: 'Pro Plan',
-      planPrice: 299,
-      addons: [
-        { name: 'Nettside-bygger', price: 199 },
-        { name: 'Nettside Hosting', price: 99 },
-      ],
-      totalAmount: 597,
-      currency: 'NOK',
-      subscriptionStartDate: new Date().toISOString(),
-    };
-    setPreviewData(mockData);
+  const openEditDialog = (template: ReceiptTemplate) => {
     setSelectedTemplate(template);
-    setShowPreview(true);
+    setTemplateDraft({ ...template, variables: [...template.variables] });
+    setEditorOpen(true);
   };
+
+  const openPreview = (template: ReceiptTemplate) => {
+    setSelectedTemplate(template);
+    setPreviewOpen(true);
+  };
+
+  const openBusinessDialog = () => {
+    setBusinessDraft(businessSettings);
+    setBusinessOpen(true);
+  };
+
+  const canSaveTemplate = templateDraft.name.trim().length > 0 && templateDraft.subject.trim().length > 0;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ fontWeight: 600}}>
-          <EmailIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h5" fontWeight={700}>
           Receipt Template Manager
         </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="outlined"
-            startIcon={<SettingsIcon />}
-            onClick={() => setShowBusinessSettings(true)}
-          >
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" startIcon={<Settings />} onClick={openBusinessDialog}>
             Business Settings
           </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleCreateTemplate('subscription')}
-          >
-            Create Template
+          <Button variant="contained" startIcon={<Add />} onClick={() => openCreateDialog('subscription')}>
+            Ny template
           </Button>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
 
-      <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}, sx={{ mb: 3 }}>
-        <Tab label="Templates" />
-        <Tab label="Marketplace Pricing" />
-        <Tab label="Template Variables" />
-        <Tab label="Sent Receipts" />
-      </Tabs>
+      <Paper sx={{ mb: 2 }}>
+        <Tabs value={tabValue} onChange={(_, value: number) => setTabValue(value)}>
+          <Tab label="Templates" />
+          <Tab label="Marketplace Features" />
+        </Tabs>
+      </Paper>
 
-      {/* Templates Tab */}
       {tabValue === 0 && (
-        <Grid container spacing={3}>
-          {['subscription','marketplace-addon','invoice','refund'].map((type) => (
-            <Grid item xs={12} md={6} key={type}>
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      mb: 2}}>
-                    <Typography variant="h6" sx={{ textTransform: 'capitalize' }}>
-                      {type.replace('-', ',')} Templates
-                    </Typography>
-                    <Button
-                      size="small"
-                      startIcon={<AddIcon />}
-                      onClick={() => handleCreateTemplate(type)}
-                    >
-                      Create
-                    </Button>
-                  </Box>
+        <>
+          {templatesQuery.isLoading && <Alert severity="info">Laster templates...</Alert>}
+          {templatesQuery.isError && <Alert severity="error">Kunne ikke hente templates.</Alert>}
 
-                  <List>
-                    {templates
-                      .filter((t: ReceiptTemplate) => t.type === type)
-                      .map((template: ReceiptTemplate) => (
-                        <ListItem key={template.id} divider>
-                          <ListItemText
-                            primary={template.name}
-                            secondary={
-                              <Box>
-                                <Typography variant="caption" display="block">
-                                  {template.subject}
-                                </Typography>
-                                <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 flexWrap: 'wrap' }}>
-                                  <Chip
-                                    label={template.isActive ? 'Active' : 'Inactive'}
-                                    size="small"
-                                    color={template.isActive ? 'success' : 'default'}
-                                  />
-                                  {template.autoSend && (
-                                    <Chip
-                                      label="Auto-Send"
-                                      size="small"
-                                      color="primary"
-                                      icon={<SendIcon fontSize="small" />}
-                                    />
-                                  )}
-                                </Box>
-                              </Box>
-                            }
-                          />
-                          <ListItemSecondaryAction>
-                            <IconButton size="small" onClick={() => handlePreview(template)}>
-                              <PreviewIcon />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              onClick={() => {
+          {!templatesQuery.isLoading && !templatesQuery.isError && (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Navn</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Auto Send</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Handlinger</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {templates.map((template) => (
+                    <TableRow key={template.id ?? template.name} hover>
+                      <TableCell>{template.name}</TableCell>
+                      <TableCell>
+                        <Chip size="small" icon={<Email fontSize="small" />} label={templateTypeLabel(template.type)} />
+                      </TableCell>
+                      <TableCell>{template.autoSend ? 'Ja' : 'Nei'}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          color={template.isActive ? 'success' : 'default'}
+                          label={template.isActive ? 'Aktiv' : 'Inaktiv'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1}>
+                          <IconButton size="small" onClick={() => openEditDialog(template)}>
+                            <Edit fontSize="small" />
+                          </IconButton>
+                          <IconButton size="small" onClick={() => openPreview(template)}>
+                            <Preview fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (template.id) {
                                 setSelectedTemplate(template);
-                                setShowDesigner(true);
-                              }}
-                            >
-                              <EditIcon />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              onClick={() => deleteTemplateMutation.mutate(template.id)}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      ))}
-                  </List>
+                                setTestDialogOpen(true);
+                              }
+                            }}
+                            disabled={!template.id}
+                          >
+                            <Send fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              if (template.id) {
+                                deleteTemplateMutation.mutate(template.id);
+                              }
+                            }}
+                            disabled={!template.id || deleteTemplateMutation.isPending}
+                          >
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+          {templates.length === 0 && !templatesQuery.isLoading && !templatesQuery.isError && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Ingen templates funnet. Opprett første template for å aktivere kvitteringsflyt.
+            </Alert>
+          )}
+        </>
+      )}
+
+      {tabValue === 1 && (
+        <Grid container spacing={2}>
+          {marketplaceFeatures.map((feature) => (
+            <Grid item xs={12} md={6} lg={4} key={`${feature.profession}-${feature.featureId}`}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      {feature.name}
+                    </Typography>
+                    <ShoppingCart color="action" fontSize="small" />
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <Chip size="small" label={feature.profession} />
+                    <Chip size="small" color="primary" label={`${feature.price} NOK`} />
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {feature.description}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Kategori: {feature.category}
+                  </Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -378,446 +583,285 @@ export default function ReceiptTemplateManager() {
         </Grid>
       )}
 
-      {/* Marketplace Pricing Tab */}
-      {tabValue === 1 && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Marketplace Features & Pricing
-            </Typography>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Pricing automatically synced from profession-feature-matrix.ts
-            </Alert>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Feature</TableCell>
-                    <TableCell>Profession</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell align="right">Price (NOK/month)</TableCell>
-                    <TableCell>Description</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {marketplaceFeatures.map((feature) => (
-                    <TableRow key={`${feature.profession}-${feature.featureId}`}>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 600}}>
-                          {feature.name}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip label={feature.profession} size="small" />
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          label={feature.category}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                        />
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="body2" sx={{ fontWeight: 600}}>
-                          {feature.price} kr
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="caption" color="text.secondary">
-                          {feature.description}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Template Variables Tab */}
-      {tabValue === 2 && (
-        <Card>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Available Template Variables
-            </Typography>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Use these variables in your email templates with double curly braces:{', '}
-              {`{{variableName}`}
-            </Alert>
-            <Grid container spacing={2}>
-              {[
-                { name: 'customerName', desc: 'Customer full name' },
-                { name: 'businessName', desc: 'Customer business name' },
-                { name: 'transactionId', desc: 'Unique transaction ID' },
-                { name: 'planName', desc: 'Subscription plan name' },
-                { name: 'planPrice', desc: 'Base plan price' },
-                { name: 'totalAmount', desc: 'Total amount including add-ons' },
-                { name: 'currency', desc: 'Currency code (NOK)' },
-                { name: 'subscriptionStartDate', desc: 'Subscription start date' },
-                { name: 'companyName', desc: 'Your company name' },
-                { name: 'companyOrgNumber', desc: 'Organization number' },
-                { name: 'companyPhone', desc: 'Support phone' },
-                { name: 'companyEmail', desc: 'Support email' },
-                { name: 'websiteUrl', desc: 'Company website' },
-              ].map((variable) => (
-                <Grid item xs={12} sm={6} md={4} key={variable.name}>
-                  <Paper sx={{ p: 2 }}>
-                    <Typography
-                      variant="body2"
-                      sx={{ fontFamily: 'monospace', fontWeight: 600, mb: 0.5 }}>
-                      {`{{${variable.name}}`}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {variable.desc}
-                    </Typography>
-                  </Paper>
-                </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Email Designer Dialog */}
-      <Dialog open={showDesigner} onClose={() => setShowDesigner(false)} maxWidth="xl" fullWidth>
-        <DialogTitle>{selectedTemplate?.id ? 'Edit' : 'Create'} Receipt Template</DialogTitle>
+      <Dialog open={editorOpen} onClose={() => setEditorOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>{selectedTemplate ? 'Rediger template' : 'Ny template'}</DialogTitle>
         <DialogContent>
-          {/* Template Settings */}
-          <Paper sx={{ p: 2, mb: 3, bgcolor: 'background.default' }}>
-            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-              Template Settings
-            </Typography>
-            <Grid container spacing={2}, sx={{ mt: 1 }}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Template Name"
-                  value={selectedTemplate?.name || ', '}
-                  onChange={(e) =>
-                    setSelectedTemplate((prev) => (prev ? { ...prev, name: e.target.value } : null))
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Navn"
+                value={templateDraft.name}
+                onChange={(event) => setTemplateDraft((prev) => ({ ...prev, name: event.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="template-type-label">Type</InputLabel>
+                <Select
+                  labelId="template-type-label"
+                  value={templateDraft.type}
+                  label="Type"
+                  onChange={(event) =>
+                    setTemplateDraft((prev) => ({ ...prev, type: normalizeTemplateType(event.target.value) }))
                   }
-                  size="small"
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Email Subject"
-                  value={selectedTemplate?.subject || ', '}
-                  onChange={(e) =>
-                    setSelectedTemplate((prev) =>
-                      prev ? { ...prev, subject: e.target.value } : null,
-                    )
+                >
+                  <MenuItem value="subscription">Subscription</MenuItem>
+                  <MenuItem value="marketplace-addon">Marketplace Add-on</MenuItem>
+                  <MenuItem value="invoice">Invoice</MenuItem>
+                  <MenuItem value="refund">Refund</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Subject"
+                value={templateDraft.subject}
+                onChange={(event) => setTemplateDraft((prev) => ({ ...prev, subject: event.target.value }))}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={8}
+                label="HTML Template"
+                value={templateDraft.htmlTemplate}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, htmlTemplate: event.target.value }))
+                }
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Variabler (komma-separert)"
+                value={templateDraft.variables.join(', ')}
+                onChange={(event) => {
+                  const variables = event.target.value
+                    .split(',')
+                    .map((item) => item.trim())
+                    .filter((item) => item.length > 0);
+                  setTemplateDraft((prev) => ({ ...prev, variables }));
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel id="send-trigger-label">Send Trigger</InputLabel>
+                <Select
+                  labelId="send-trigger-label"
+                  label="Send Trigger"
+                  value={templateDraft.sendTrigger}
+                  onChange={(event) =>
+                    setTemplateDraft((prev) => ({ ...prev, sendTrigger: normalizeSendTrigger(event.target.value) }))
                   }
-                  size="small"
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
+                >
+                  <MenuItem value="payment-success">payment-success</MenuItem>
+                  <MenuItem value="subscription-created">subscription-created</MenuItem>
+                  <MenuItem value="addon-purchased">addon-purchased</MenuItem>
+                  <MenuItem value="manual">manual</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Profession"
+                value={templateDraft.profession ?? ''}
+                onChange={(event) =>
+                  setTemplateDraft((prev) => ({ ...prev, profession: event.target.value || undefined }))
+                }
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Stack direction="row" spacing={2}>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={selectedTemplate?.isActive || false}
-                      onChange={(e) =>
-                        setSelectedTemplate((prev) =>
-                          prev ? { ...prev, isActive: e.target.checked } : null,
-                        )
+                      checked={templateDraft.isActive}
+                      onChange={(event) =>
+                        setTemplateDraft((prev) => ({ ...prev, isActive: event.target.checked }))
                       }
-                      color="success"
                     />
                   }
-                  label="Active Template"
+                  label="Aktiv"
                 />
-              </Grid>
-              <Grid item xs={12} sm={6}>
                 <FormControlLabel
                   control={
                     <Switch
-                      checked={selectedTemplate?.autoSend || false}
-                      onChange={(e) =>
-                        setSelectedTemplate((prev) =>
-                          prev ? { ...prev, autoSend: e.target.checked } : null,
-                        )
+                      checked={templateDraft.autoSend}
+                      onChange={(event) =>
+                        setTemplateDraft((prev) => ({ ...prev, autoSend: event.target.checked }))
                       }
-                      color="primary"
                     />
                   }
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <SendIcon fontSize="small" />
-                      <Typography variant="body2">Auto-Send on Payment</Typography>
-                    </Box>
-                  }
+                  label="Auto Send"
                 />
-              </Grid>
-              {selectedTemplate?.autoSend && (
-                <Grid item xs={12}>
-                  <Alert severity="info" icon={<Info />}>
-                    <Typography variant="body2">
-                      <strong>Auto-Send Enabled:</strong> This template will automatically be sent
-                      when a payment is completed. The receipt will be generated and emailed to the
-                      customer immediately after successful payment.
-                    </Typography>
-                  </Alert>
-                </Grid>
-              )}
-              <Grid item xs={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Send Trigger</InputLabel>
-                  <Select
-                    value={selectedTemplate?.sendTrigger || 'payment-success'}
-                    label="Send Trigger"
-                    onChange={(e) =>
-                      setSelectedTemplate((prev) =>
-                        prev ? { ...prev, sendTrigger: e.target.value as any } : null,
-                      )
-                    }
-                  >
-                    <MenuItem value="payment-success">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Check fontSize="small" />
-                        Payment Success
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="subscription-created">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CardMembership fontSize="small" />
-                        Subscription Created
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="addon-purchased">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <ShoppingCart fontSize="small" />
-                        Add-on Purchased
-                      </Box>
-                    </MenuItem>
-                    <MenuItem value="manual">
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Edit fontSize="small" />
-                        Manual Only
-                      </Box>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </Paper>
-
-          {/* Email Designer */}
-          <EmailDesigner
-            context="general"
-            onSave={(template) => {
-              saveTemplateMutation.mutate({
-                ...selectedTemplate,
-                htmlTemplate: JSON.stringify(template),
-              });
-            }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowDesigner(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            onClick={() => saveTemplateMutation.mutate(selectedTemplate!)}
-          >
-            Save Template
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Business Settings Dialog */}
-      <Dialog
-        open={showBusinessSettings}
-        onClose={() => setShowBusinessSettings(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <BusinessIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Business Settings
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2}, sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Company Name"
-                value={businessSettings?.companyName || ', '}
-                onChange={(e) => {}}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Organization Number"
-                value={businessSettings?.orgNumber || ', '}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField fullWidth label="Phone" value={businessSettings?.phone || ', '} />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Support Email"
-                value={businessSettings?.email || 'support@creatorhubn.com'}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Website"
-                value={businessSettings?.website || 'https://creatorhubn.com'}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Company Logo</InputLabel>
-                <Select
-                  value={businessSettings?.logoUrl || '/creatorhub-logo-amber.svg'}
-                  label="Company Logo"
-                >
-                  <MenuItem value="/creatorhub-logo-amber.svg">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <img
-                        src="/creatorhub-logo-amber.svg"
-                        alt="CreatorHub Logo"
-                        style={{ height: 24, width: 'auto' }} />
-                      <Box>
-                        <Typography variant="body2">CreatorHub Logo (Amber)</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          /creatorhub-logo-amber.svg
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="custom">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ImageIcon fontSize="small" />
-                      Custom Logo URL
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
-              <Alert severity="info" sx={{ mt: 1 } icon={<Info />}>
-                <Typography variant="caption">
-                  Logo will automatically appear in all email receipts and templates
-                </Typography>
-              </Alert>
-            </Grid>
-            <Grid item xs={12}>
-              <Alert severity="info" icon={<Info />}>
-                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                  🔗 Quick Links til dine eksisterende sider: </Typography>
-                <Stack direction="row" spacing={1}, sx={{ mt: 1 }}>
-                  <Chip
-                    label="Vilår (terms-and-conditions)"
-                    size="small"
-                    clickable
-                    onClick={() => window.open('/terms-and-conditions', ','_blank')}
-                    icon={<Gavel />}
-                  />
-                  <Chip
-                    label="Personvern (privacy-policy)"
-                    size="small"
-                    clickable
-                    onClick={() => window.open('/privacy-policy', ', '_blank')}
-                    icon={<Policy />}
-                  />
-                </Stack>
-              </Alert>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Terms & Conditions Page</InputLabel>
-                <Select
-                  value={businessSettings?.termsUrl || '/terms-and-conditions'}
-                  label="Terms & Conditions Page"
-                >
-                  <MenuItem value="/terms-and-conditions">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Gavel fontSize="small" />
-                      <Box>
-                        <Typography variant="body2">Vilår og Betingelser</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          /terms-and-conditions
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="custom">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Edit fontSize="small" />
-                      Custom URL
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Privacy Policy Page</InputLabel>
-                <Select
-                  value={businessSettings?.privacyUrl || '/privacy-policy'}
-                  label="Privacy Policy Page"
-                >
-                  <MenuItem value="/privacy-policy">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Policy fontSize="small" />
-                      <Box>
-                        <Typography variant="body2">Personvernerklæring</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          /privacy-policy
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </MenuItem>
-                  <MenuItem value="custom">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Edit fontSize="small" />
-                      Custom URL
-                    </Box>
-                  </MenuItem>
-                </Select>
-              </FormControl>
+              </Stack>
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowBusinessSettings(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {}>
-            Save Settings
+          <Button onClick={() => setEditorOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            startIcon={<Save />}
+            disabled={!canSaveTemplate || saveTemplateMutation.isPending}
+            onClick={() =>
+              saveTemplateMutation.mutate({
+                ...templateDraft,
+                id: selectedTemplate?.id,
+              })
+            }
+          >
+            Lagre
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Preview Dialog */}
-      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <PreviewIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Template Preview
-        </DialogTitle>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Preview</DialogTitle>
         <DialogContent>
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Preview with sample data
-          </Alert>
-          {/* Render preview HTML here */}
-          <Box
-            sx={{ border: '1px solid #ddd', borderRadius: 1, p: 2, bgcolor: '#f5f5f5' }
-            dangerouslySetInnerHTML={{
-              __html: selectedTemplate?.htmlTemplate ||'<p>No template content</p>'}} />
+          {selectedTemplate && (
+            <Box
+              sx={{
+                p: 2,
+                backgroundColor: '#fff',
+                borderRadius: 1,
+                border: '1px solid #e5e7eb',
+              }}
+              dangerouslySetInnerHTML={{ __html: renderedPreview }}
+            />
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>Close</Button>
-          <Button variant="outlined" startIcon={<SendIcon />}>
-            Send Test Email
+          <Button onClick={() => setPreviewOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Send testmail</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Test e-post"
+            type="email"
+            value={testEmail}
+            onChange={(event) => setTestEmail(event.target.value)}
+            sx={{ mt: 1 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTestDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            startIcon={<Send />}
+            disabled={!selectedTemplate?.id || !testEmail || sendTestEmailMutation.isPending}
+            onClick={() => {
+              if (!selectedTemplate?.id) {
+                return;
+              }
+
+              sendTestEmailMutation.mutate({
+                templateId: selectedTemplate.id,
+                testEmail,
+              });
+            }}
+          >
+            Send
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={businessOpen} onClose={() => setBusinessOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Business Settings</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Company name"
+                value={businessDraft.companyName}
+                onChange={(event) =>
+                  setBusinessDraft((prev) => ({ ...prev, companyName: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Org number"
+                value={businessDraft.orgNumber}
+                onChange={(event) =>
+                  setBusinessDraft((prev) => ({ ...prev, orgNumber: event.target.value }))
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Address"
+                value={businessDraft.address}
+                onChange={(event) => setBusinessDraft((prev) => ({ ...prev, address: event.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Phone"
+                value={businessDraft.phone}
+                onChange={(event) => setBusinessDraft((prev) => ({ ...prev, phone: event.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                value={businessDraft.email}
+                onChange={(event) => setBusinessDraft((prev) => ({ ...prev, email: event.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Website"
+                value={businessDraft.website}
+                onChange={(event) => setBusinessDraft((prev) => ({ ...prev, website: event.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                type="color"
+                label="Primary color"
+                value={businessDraft.primaryColor}
+                InputLabelProps={{ shrink: true }}
+                onChange={(event) =>
+                  setBusinessDraft((prev) => ({ ...prev, primaryColor: event.target.value }))
+                }
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBusinessOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            startIcon={<Save />}
+            disabled={updateBusinessSettingsMutation.isPending}
+            onClick={() => updateBusinessSettingsMutation.mutate(businessDraft)}
+          >
+            Lagre
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
-}}
+}

@@ -24,6 +24,17 @@ export interface SubscriptionPlan {
   };
   color: string; // Brand color for this plan
   popular?: boolean;
+  perUserPricing?: {
+    basePrice: number;
+    includedUsers: number;
+    pricePerAdditionalUser: number;
+    pricePerAdditionalUserAnnual: number;
+    maxUsers: number;
+    volumeDiscounts: Array<{
+      minUsers: number;
+      discount: number;
+    }>;
+  };
   trial?: {
     enabled: boolean;
     duration: number; // days

@@ -3,24 +3,35 @@
  * UI for configuring automated quote reminders and follow-ups
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
   Dialog,
+  DialogActions,
   DialogContent,
-  DialogDescription,
-  DialogHeader,
   DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Bell, Clock, Mail, AlertCircle, CheckCircle, Info } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+  FormControlLabel,
+  Snackbar,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+} from '@mui/material';
+import {
+  AccessTime as ClockIcon,
+  CheckCircle as CheckCircleIcon,
+  ErrorOutline as ErrorIcon,
+  InfoOutlined as InfoIcon,
+  Mail as MailIcon,
+  Notifications as BellIcon,
+} from '@mui/icons-material';
 
 interface ReminderConfig {
   expiryReminders: {
@@ -41,17 +52,24 @@ interface QuoteReminderSettingsProps {
   userId?: string;
 }
 
-const QuoteReminderSettings: React.FC<QuoteReminderSettingsProps> = ({
-  open,
-  onClose,
-  userId = 'user-1',
-}) => {
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [serviceStatus, setServiceStatus] = useState<unknown>(null);
+interface ReminderServiceStatus {
+  isRunning: boolean;
+  lastCheck?: string;
+}
 
-  const [config, setConfig] = useState<ReminderConfig>({
+interface ReminderConfigResponse {
+  success: boolean;
+  config?: ReminderConfig;
+  error?: string;
+}
+
+interface ReminderStatusResponse {
+  success: boolean;
+  status?: ReminderServiceStatus;
+}
+
+function createDefaultConfig(): ReminderConfig {
+  return {
     expiryReminders: {
       enabled: true,
       daysBeforeExpiry: [7, 3, 1],
@@ -62,31 +80,47 @@ const QuoteReminderSettings: React.FC<QuoteReminderSettingsProps> = ({
     },
     emailSubjectPrefix: '[Påminnelse]',
     defaultEmailFrom: 'noreply@creatorhub.no',
-  });
+  };
+}
 
-  // Fetch current configuration
+export default function QuoteReminderSettings({
+  open,
+  onClose,
+  userId = 'user-1',
+}: QuoteReminderSettingsProps) {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
+  const [serviceStatus, setServiceStatus] = useState<ReminderServiceStatus | null>(null);
+  const [config, setConfig] = useState<ReminderConfig>(createDefaultConfig);
+  const [toast, setToast] = useState<{
+    open: boolean;
+    severity: 'success' | 'error' | 'info';
+    message: string;
+  }>({ open: false, severity: 'info', message: '' });
+
   useEffect(() => {
     if (open) {
-      fetchConfig();
-      fetchServiceStatus();
+      void fetchConfig();
+      void fetchServiceStatus();
     }
-  }, [open]);
+  }, [open, userId]);
 
   const fetchConfig = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/quotes/reminders/config?userId=${userId}`);
-      const data = await response.json();
+      const response = await fetch(`/api/quotes/reminders/config?userId=${encodeURIComponent(userId)}`);
+      const data = (await response.json()) as ReminderConfigResponse;
 
       if (data.success && data.config) {
         setConfig(data.config);
       }
     } catch (error) {
-      console.error('Failed to fetch reminder config: ', error);
-      toast({
-        title: 'Error,',
-        description: 'Failed to load reminder settings',
-        variant: 'destructive',
+      console.error('Failed to fetch reminder config:', error);
+      setToast({
+        open: true,
+        severity: 'error',
+        message: 'Failed to load reminder settings',
       });
     } finally {
       setLoading(false);
@@ -95,14 +129,13 @@ const QuoteReminderSettings: React.FC<QuoteReminderSettingsProps> = ({
 
   const fetchServiceStatus = async () => {
     try {
-      const response = await fetch('/api/quotes/reminders/status, ');
-      const data = await response.json();
-
-      if (data.success) {
+      const response = await fetch('/api/quotes/reminders/status');
+      const data = (await response.json()) as ReminderStatusResponse;
+      if (data.success && data.status) {
         setServiceStatus(data.status);
       }
     } catch (error) {
-      console.error('Failed to fetch service status: ', error);
+      console.error('Failed to fetch service status:', error);
     }
   };
 
@@ -111,32 +144,28 @@ const QuoteReminderSettings: React.FC<QuoteReminderSettingsProps> = ({
     try {
       const response = await fetch('/api/quotes/reminders/config', {
         method: 'PUT',
-        headers: {
-          'Content-Type' : 'application/json',
-        },
-        body: JSON.stringify({
-          userId,
-          config,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, config }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as ReminderConfigResponse;
 
-      if (data.success) {
-        toast({
-          title: 'Settings saved',
-          description: 'Quote reminder settings updated successfully',
-        });
-        onClose();
-      } else {
-        throw new Error(data.error || 'Failed to save settings');
+      if (!data.success) {
+        throw new Error(data.error ?? 'Failed to save settings');
       }
-    } catch (error: unknown) {
+
+      setToast({
+        open: true,
+        severity: 'success',
+        message: 'Quote reminder settings updated successfully',
+      });
+      onClose();
+    } catch (error) {
       console.error('Failed to save reminder config:', error);
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to save settings',
-        variant: 'destructive',
+      setToast({
+        open: true,
+        severity: 'error',
+        message: error instanceof Error ? error.message : 'Failed to save settings',
       });
     } finally {
       setSaving(false);
@@ -147,280 +176,275 @@ const QuoteReminderSettings: React.FC<QuoteReminderSettingsProps> = ({
     try {
       const response = await fetch('/api/quotes/reminders/trigger', {
         method: 'POST',
-        headers: {
-          'Content-Type' : 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
-
-      const data = await response.json();
+      const data = (await response.json()) as { success: boolean };
 
       if (data.success) {
-        toast({
-          title: 'Test triggered',
-          description: 'Reminder check executed. Check your email for any reminders.',
+        setToast({
+          open: true,
+          severity: 'success',
+          message: 'Reminder check executed. Check your email for any reminders.',
         });
       }
     } catch (error) {
-      console.error('Failed to trigger test:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to trigger test reminders',
-        variant: 'destructive',
+      console.error('Failed to trigger test reminders:', error);
+      setToast({
+        open: true,
+        severity: 'error',
+        message: 'Failed to trigger test reminders',
       });
     }
   };
 
   const updateExpiryDays = (index: number, value: string) => {
-    const newDays = [...config.expiryReminders.daysBeforeExpiry];
-    newDays[index] = parseInt(value) || 0;
-    setConfig({
-      ...config,
-      expiryReminders: {
-        ...config.expiryReminders,
-        daysBeforeExpiry: newDays,
-      },
+    const days = Number.parseInt(value, 10);
+    setConfig((prev) => {
+      const nextDays = [...prev.expiryReminders.daysBeforeExpiry];
+      nextDays[index] = Number.isFinite(days) ? days : 0;
+      return {
+        ...prev,
+        expiryReminders: {
+          ...prev.expiryReminders,
+          daysBeforeExpiry: nextDays,
+        },
+      };
     });
   };
 
   const updateFollowUpDays = (index: number, value: string) => {
-    const newDays = [...config.followUpReminders.daysAfterSent];
-    newDays[index] = parseInt(value) || 0;
-    setConfig({
-      ...config,
-      followUpReminders: {
-        ...config.followUpReminders,
-        daysAfterSent: newDays,
-      },
+    const days = Number.parseInt(value, 10);
+    setConfig((prev) => {
+      const nextDays = [...prev.followUpReminders.daysAfterSent];
+      nextDays[index] = Number.isFinite(days) ? days : 0;
+      return {
+        ...prev,
+        followUpReminders: {
+          ...prev.followUpReminders,
+          daysAfterSent: nextDays,
+        },
+      };
     });
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Quote Reminder Settings
-          </DialogTitle>
-          <DialogDescription>
-            Configure automated reminders for expiring quotes and follow-ups on pending quotes
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <BellIcon fontSize="small" />
+            <Typography variant="h6">Quote Reminder Settings</Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Configure automated reminders for expiring quotes and pending follow-ups
+          </Typography>
+        </DialogTitle>
 
-        {serviceStatus && (
-          <Alert className={serviceStatus.isRunning ? 'border-green-500' : 'border-yellow-500'}>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between">
-              <span>Service Status: {serviceStatus.isRunning ? 'Running' : 'Stopped'}</span>
+        <DialogContent dividers>
+          {serviceStatus && (
+            <Alert
+              severity={serviceStatus.isRunning ? 'success' : 'warning'}
+              icon={serviceStatus.isRunning ? <CheckCircleIcon /> : <ErrorIcon />}
+              sx={{ mb: 2 }}
+            >
+              <Typography variant="body2">
+                Service Status: {serviceStatus.isRunning ? 'Running' : 'Stopped'}
+              </Typography>
               {serviceStatus.lastCheck && (
-                <span className="text-xs text-muted-foreground">
+                <Typography variant="caption" display="block">
                   Last check: {new Date(serviceStatus.lastCheck).toLocaleString()}
-                </span>
+                </Typography>
               )}
-            </AlertDescription>
-          </Alert>
-        )}
+            </Alert>
+          )}
 
-        <Tabs defaultValue="expiry" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="expiry">Expiry Reminders</TabsTrigger>
-            <TabsTrigger value="followup">Follow-ups</TabsTrigger>
-            <TabsTrigger value="email">Email Settings</TabsTrigger>
-          </TabsList>
+          <Tabs value={activeTab} onChange={(_event, value: number) => setActiveTab(value)}>
+            <Tab label="Expiry Reminders" />
+            <Tab label="Follow-ups" />
+            <Tab label="Email Settings" />
+          </Tabs>
 
-          <TabsContent value="expiry" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Expiry Reminders
-                </CardTitle>
-                <CardDescription>Send reminder emails before quotes expire</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="expiry-enabled" className="flex flex-col gap-1">
-                    <span>Enable expiry reminders</span>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      Automatically remind clients before quote expiration
-                    </span>
-                  </Label>
-                  <Switch
-                    id="expiry-enabled"
-                    checked={config.expiryReminders.enabled}
-                    onCheckedChange={(checked) =>
-                      setConfig({
-                        ...config,
-                        expiryReminders: {
-                          ...config.expiryReminders,
-                          enabled: checked,
-                        },
-                      })
+          {activeTab === 0 && (
+            <Card sx={{ mt: 2 }}>
+              <CardHeader
+                title={
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <ClockIcon fontSize="small" />
+                    <Typography variant="subtitle1">Expiry Reminders</Typography>
+                  </Stack>
+                }
+                subheader="Send reminder emails before quotes expire"
+              />
+              <CardContent>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.expiryReminders.enabled}
+                        onChange={(event) =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            expiryReminders: {
+                              ...prev.expiryReminders,
+                              enabled: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
                     }
+                    label="Enable expiry reminders"
                   />
-                </div>
 
-                {config.expiryReminders.enabled && (
-                  <div className="space-y-3">
-                    <Label>Days before expiry to send reminders</Label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {config.expiryReminders.daysBeforeExpiry.map((days, index) => (
-                        <div key={index} className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">
-                            Reminder {index + 1}
-                          </Label>
-                          <Input
+                  {config.expiryReminders.enabled && (
+                    <>
+                      <Typography variant="body2" color="text.secondary">
+                        Days before expiry to send reminders
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        {config.expiryReminders.daysBeforeExpiry.map((days, index) => (
+                          <TextField
+                            key={`expiry-${index}`}
                             type="number"
-                            min="1"
+                            size="small"
+                            label={`Reminder ${index + 1}`}
                             value={days}
-                            onChange={(e) => updateExpiryDays(index, e.target.value)}
-                            className="w-full"
+                            onChange={(event) => updateExpiryDays(index, event.target.value)}
+                            inputProps={{ min: 1 }}
                           />
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <Info className="inline h-3 w-3 mr-1" />
-                      Reminders will be sent {config.expiryReminders.daysBeforeExpiry.join(
-                        '',
-                      )}{', '}
-                      days before expiration
-                    </p>
-                  </div>
-                )}
+                        ))}
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        <InfoIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                        Reminders sendes {config.expiryReminders.daysBeforeExpiry.join(', ')} dager
+                        før utløp.
+                      </Typography>
+                    </>
+                  )}
+                </Stack>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="followup" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  Follow-up Reminders
-                </CardTitle>
-                <CardDescription>Send follow-up emails for pending quotes</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="followup-enabled" className="flex flex-col gap-1">
-                    <span>Enable follow-up reminders</span>
-                    <span className="text-xs text-muted-foreground font-normal">
-                      Follow up with clients who haven't responded
-                    </span>
-                  </Label>
-                  <Switch
-                    id="followup-enabled"
-                    checked={config.followUpReminders.enabled}
-                    onCheckedChange={(checked) =>
-                      setConfig({
-                        ...config,
-                        followUpReminders: {
-                          ...config.followUpReminders,
-                          enabled: checked,
-                        },
-                      })
+          {activeTab === 1 && (
+            <Card sx={{ mt: 2 }}>
+              <CardHeader
+                title={
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <MailIcon fontSize="small" />
+                    <Typography variant="subtitle1">Follow-up Reminders</Typography>
+                  </Stack>
+                }
+                subheader="Send follow-up emails for pending quotes"
+              />
+              <CardContent>
+                <Stack spacing={2}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.followUpReminders.enabled}
+                        onChange={(event) =>
+                          setConfig((prev) => ({
+                            ...prev,
+                            followUpReminders: {
+                              ...prev.followUpReminders,
+                              enabled: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
                     }
+                    label="Enable follow-up reminders"
                   />
-                </div>
 
-                {config.followUpReminders.enabled && (
-                  <div className="space-y-3">
-                    <Label>Days after sending to follow up</Label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {config.followUpReminders.daysAfterSent.map((days, index) => (
-                        <div key={index} className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">
-                            Follow-up {index + 1}
-                          </Label>
-                          <Input
+                  {config.followUpReminders.enabled && (
+                    <>
+                      <Typography variant="body2" color="text.secondary">
+                        Days after sending to follow up
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        {config.followUpReminders.daysAfterSent.map((days, index) => (
+                          <TextField
+                            key={`follow-up-${index}`}
                             type="number"
-                            min="1"
+                            size="small"
+                            label={`Follow-up ${index + 1}`}
                             value={days}
-                            onChange={(e) => updateFollowUpDays(index, e.target.value)}
-                            className="w-full"
+                            onChange={(event) => updateFollowUpDays(index, event.target.value)}
+                            inputProps={{ min: 1 }}
                           />
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <Info className="inline h-3 w-3 mr-1" />
-                      Follow-ups will be sent {config.followUpReminders.daysAfterSent.join(
-                        '',
-                      )}{''}
-                      days after quote sent
-                    </p>
-                  </div>
-                )}
+                        ))}
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        <InfoIcon sx={{ fontSize: 14, mr: 0.5, verticalAlign: 'middle' }} />
+                        Follow-ups sendes {config.followUpReminders.daysAfterSent.join(', ')} dager
+                        etter at tilbudet ble sendt.
+                      </Typography>
+                    </>
+                  )}
+                </Stack>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
-          <TabsContent value="email" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Email Configuration</CardTitle>
-                <CardDescription>Customize email settings for reminders</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="subject-prefix">Email Subject Prefix</Label>
-                  <Input
-                    id="subject-prefix"
+          {activeTab === 2 && (
+            <Card sx={{ mt: 2 }}>
+              <CardHeader
+                title={<Typography variant="subtitle1">Email Configuration</Typography>}
+                subheader="Customize email settings for reminders"
+              />
+              <CardContent>
+                <Stack spacing={2}>
+                  <TextField
+                    label="Email Subject Prefix"
                     value={config.emailSubjectPrefix}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        emailSubjectPrefix: e.target.value,
-                      })
+                    onChange={(event) =>
+                      setConfig((prev) => ({ ...prev, emailSubjectPrefix: event.target.value }))
                     }
-                    placeholder="[Reminder]"
+                    fullWidth
                   />
-                  <p className="text-xs text-muted-foreground">
-                    This prefix will be added to all reminder email subjects
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email-from">Default"From" Email</Label>
-                  <Input
-                    id="email-from"
+                  <TextField
+                    label='Default "From" Email'
                     type="email"
                     value={config.defaultEmailFrom}
-                    onChange={(e) =>
-                      setConfig({
-                        ...config,
-                        defaultEmailFrom: e.target.value,
-                      })
+                    onChange={(event) =>
+                      setConfig((prev) => ({ ...prev, defaultEmailFrom: event.target.value }))
                     }
-                    placeholder="noreply@creatorhub.no"
+                    fullWidth
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Sender email address for reminder emails
-                  </p>
-                </div>
+                </Stack>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </DialogContent>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <Button variant="outline" onClick={handleTestReminders} disabled={saving}>
-            <CheckCircle className="mr-2 h-4 w-4" />
+        <DialogActions>
+          <Button variant="outlined" onClick={handleTestReminders} disabled={saving}>
+            <CheckCircleIcon sx={{ mr: 1 }} fontSize="small" />
             Test Now
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={saving || loading}>
-              {saving ? 'Saving...': 'Save Settings'}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-};
+          <Box sx={{ flex: 1 }} />
+          <Button variant="outlined" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving || loading} variant="contained">
+            {saving ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-export default QuoteReminderSettings;
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3500}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          severity={toast.severity}
+          onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+          variant="filled"
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
+    </>
+  );
+}

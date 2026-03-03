@@ -109,7 +109,8 @@ class BlenderKitService {
    */
   private getHeaders(): HeadersInit {
     return {
-      'Authorization': `Bearer ${this.apiKey}`'Content-Type' : 'application/json',
+      Authorization: `Bearer ${this.apiKey}`,
+      'Content-Type': 'application/json',
     };
   }
 
@@ -289,4 +290,3 @@ class BlenderKitService {
 export const blenderkitService = new BlenderKitService();
 
 export default blenderkitService;
-

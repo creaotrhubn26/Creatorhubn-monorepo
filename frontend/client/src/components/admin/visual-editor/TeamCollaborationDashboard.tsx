@@ -1,6 +1,6 @@
 // Team Collaboration Dashboard
 import { useTheming } from '../../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
 import {
   Box,
@@ -49,6 +49,87 @@ interface TeamCollaborationDashboardProps {
   onAnalyticsClick: () => void
 }
 
+type TeamRole = 'photographer' | 'videographer' | 'editor' | 'assistant' | 'admin';
+type TaskType = 'shooting' | 'editing' | 'client_meeting' | 'delivery' | 'admin';
+type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+type TaskStatus = 'pending' | 'in_progress' | 'completed';
+type SessionType = 'editing' | 'review' | 'planning' | 'client_meeting';
+type SessionStatus = 'active' | 'ended' | 'scheduled';
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: TeamRole;
+  currentWorkload: number;
+  skills: string[];
+}
+
+interface WorkloadAssignment {
+  id: string;
+  projectId: string;
+  memberId: string;
+  taskType: TaskType;
+  estimatedHours: number;
+  priority: TaskPriority;
+  status: TaskStatus;
+  dueDate: string;
+}
+
+interface CollaborationSession {
+  id: string;
+  projectId: string;
+  participants: string[];
+  sessionType: SessionType;
+  status: SessionStatus;
+  startedAt: string;
+}
+
+interface NewMemberForm {
+  name: string;
+  email: string;
+  role: TeamRole;
+  skills: string[];
+}
+
+interface NewWorkloadForm {
+  projectId: string;
+  memberId: string;
+  taskType: TaskType;
+  estimatedHours: number;
+  priority: TaskPriority;
+  dueDate: string;
+}
+
+interface NewSessionForm {
+  projectId: string;
+  participants: string[];
+  sessionType: SessionType;
+}
+
+const toString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const toNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+const clampWorkload = (value: number): number => Math.max(0, Math.min(100, value));
+
+const isTeamRole = (value: string): value is TeamRole =>
+  ['photographer', 'videographer', 'editor', 'assistant', 'admin'].includes(value);
+
+const isTaskType = (value: string): value is TaskType =>
+  ['shooting', 'editing', 'client_meeting', 'delivery', 'admin'].includes(value);
+
+const isTaskPriority = (value: string): value is TaskPriority =>
+  ['low', 'medium', 'high', 'urgent'].includes(value);
+
+const isSessionType = (value: string): value is SessionType =>
+  ['editing', 'review', 'planning', 'client_meeting'].includes(value);
+
 const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
   onSettingsClick,
   onMembersClick,
@@ -82,25 +163,88 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
   const [workloadDialogOpen, setWorkloadDialogOpen] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
-  const [newMember, setNewMember] = useState({
+  const [newMember, setNewMember] = useState<NewMemberForm>({
     name: '',
     email: '',
     role: 'photographer',
-    skills: []
-});
-  const [newWorkload, setNewWorkload] = useState({
+    skills: [],
+  });
+  const [newWorkload, setNewWorkload] = useState<NewWorkloadForm>({
     projectId: '',
     memberId: '',
     taskType: 'shooting',
-    estimatedHours:  8,
+    estimatedHours: 8,
     priority: 'medium',
-    dueDate: new Date().toISOString().split('T')[0]
-});
-  const [newSession, setNewSession] = useState({
+    dueDate: new Date().toISOString().split('T')[0],
+  });
+  const [newSession, setNewSession] = useState<NewSessionForm>({
     projectId: '',
-    participants:  [],
-    sessionType: 'editing'
-});
+    participants: [],
+    sessionType: 'editing',
+  });
+
+  const normalizedTeamMembers = useMemo<TeamMember[]>(
+    () =>
+      teamMembers.map((member: unknown, index: number) => {
+        const candidate = member as Record<string, unknown>;
+        const roleValue = toString(candidate.role, 'assistant');
+        return {
+          id: toString(candidate.id, `member-${index}`),
+          name: toString(candidate.name, 'Unknown member'),
+          email: toString(candidate.email),
+          role: isTeamRole(roleValue) ? roleValue : 'assistant',
+          currentWorkload: clampWorkload(toNumber(candidate.currentWorkload)),
+          skills: toStringArray(candidate.skills),
+        };
+      }),
+    [teamMembers],
+  );
+
+  const normalizedAssignments = useMemo<WorkloadAssignment[]>(
+    () =>
+      workloadAssignments.map((assignment: unknown, index: number) => {
+        const candidate = assignment as Record<string, unknown>;
+        const taskTypeValue = toString(candidate.taskType, 'shooting');
+        const priorityValue = toString(candidate.priority, 'medium');
+        const statusValue = toString(candidate.status, 'pending');
+
+        return {
+          id: toString(candidate.id, `assignment-${index}`),
+          projectId: toString(candidate.projectId),
+          memberId: toString(candidate.memberId),
+          taskType: isTaskType(taskTypeValue) ? taskTypeValue : 'shooting',
+          estimatedHours: toNumber(candidate.estimatedHours, 0),
+          priority: isTaskPriority(priorityValue) ? priorityValue : 'medium',
+          status:
+            statusValue === 'in_progress' || statusValue === 'completed' || statusValue === 'pending'
+              ? statusValue
+              : 'pending',
+          dueDate: toString(candidate.dueDate, new Date().toISOString().split('T')[0]),
+        };
+      }),
+    [workloadAssignments],
+  );
+
+  const normalizedSessions = useMemo<CollaborationSession[]>(
+    () =>
+      collaborativeSessions.map((session: unknown, index: number) => {
+        const candidate = session as Record<string, unknown>;
+        const sessionTypeValue = toString(candidate.sessionType, 'editing');
+        const statusValue = toString(candidate.status, 'active');
+        return {
+          id: toString(candidate.id, `session-${index}`),
+          projectId: toString(candidate.projectId),
+          participants: toStringArray(candidate.participants),
+          sessionType: isSessionType(sessionTypeValue) ? sessionTypeValue : 'editing',
+          status:
+            statusValue === 'active' || statusValue === 'ended' || statusValue === 'scheduled'
+              ? statusValue
+              : 'active',
+          startedAt: toString(candidate.startedAt, new Date().toISOString()),
+        };
+      }),
+    [collaborativeSessions],
+  );
 
   const handleAddMember = () => {
     addTeamMember(newMember);
@@ -115,9 +259,9 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       projectId: '',
       memberId: '',
       taskType: 'shooting',
-      estimatedHours:  8,
+      estimatedHours: 8,
       priority: 'medium',
-      dueDate: new Date().toISOString().split('T')[0]
+      dueDate: new Date().toISOString().split('T')[0],
 });
 };
 
@@ -143,7 +287,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Typography>
             </Box>
             <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-              {teamMembers.length}
+              {normalizedTeamMembers.length}
             </Typography>
             <Typography variant="body2" color="textSecondary">
               Active members
@@ -162,7 +306,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Typography>
             </Box>
             <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
-              {workloadAssignments.filter(a => a.status === 'in_progress').length}
+              {normalizedAssignments.filter((a) => a.status === 'in_progress').length}
             </Typography>
             <Typography variant="body2" color="textSecondary">
               In progress
@@ -181,7 +325,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Typography>
             </Box>
             <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
-              {collaborativeSessions.filter(s => s.status === 'active').length}
+              {normalizedSessions.filter((s) => s.status === 'active').length}
             </Typography>
             <Typography variant="body2" color="textSecondary">
               Collaborative
@@ -224,9 +368,9 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Button>
             </Box>
             <List>
-              {teamMembers.map((member: Record<string, unknown>) => (
+              {normalizedTeamMembers.map((member) => (
                 <ListItem key={member.id}>
-                  <Avatar sx={{ mr:  2 }}>
+                  <Avatar sx={{ mr: 2 }}>
                     {member.name.charAt(0)}
                   </Avatar>
                   <ListItemText
@@ -260,7 +404,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
               </Button>
             </Box>
             <List>
-              {workloadAssignments.slice(0, 5).map((assignment: Record<string, unknown>) => (
+              {normalizedAssignments.slice(0, 5).map((assignment) => (
                 <ListItem key={assignment.id}>
                   <ListItemText
                     primary={assignment.taskType}
@@ -294,7 +438,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {teamMembers.map((member: Record<string, unknown>) => (
+        {normalizedTeamMembers.map((member) => (
           <Grid item xs={2} md={6} lg={4} key={member.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -355,7 +499,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {workloadAssignments.map((assignment: Record<string, unknown>) => (
+        {normalizedAssignments.map((assignment) => (
           <Grid item xs={2} md={6} lg={4} key={assignment.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -404,7 +548,7 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
       </Box>
 
       <Grid container spacing={3}>
-        {collaborativeSessions.map((session: Record<string, unknown>) => (
+        {normalizedSessions.map((session) => (
           <Grid item xs={2} md={6} lg={4} key={session.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -537,7 +681,13 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <InputLabel>Role</InputLabel>
                 <Select
                   value={newMember.role}
-                  onChange={(e) => setNewMember(prev => ({ ...prev, role: e.target.value }))}
+                  onChange={(e) => {
+                    const roleValue = String(e.target.value);
+                    setNewMember((prev) => ({
+                      ...prev,
+                      role: isTeamRole(roleValue) ? roleValue : 'assistant',
+                    }));
+                  }}
                 >
                   <MenuItem value="photographer">Photographer</MenuItem>
                   <MenuItem value="videographer">Videographer</MenuItem>
@@ -575,9 +725,11 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <InputLabel>Member</InputLabel>
                 <Select
                   value={newWorkload.memberId}
-                  onChange={(e) => setNewWorkload(prev => ({ ...prev, memberId: e.target.value }))}
+                  onChange={(e) =>
+                    setNewWorkload((prev) => ({ ...prev, memberId: String(e.target.value) }))
+                  }
                 >
-                  {teamMembers.map((member: Record<string, unknown>) => (
+                  {normalizedTeamMembers.map((member) => (
                     <MenuItem key={member.id} value={member.id}>
                       {member.name}
                     </MenuItem>
@@ -590,7 +742,13 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <InputLabel>Task Type</InputLabel>
                 <Select
                   value={newWorkload.taskType}
-                  onChange={(e) => setNewWorkload(prev => ({ ...prev, taskType: e.target.value }))}
+                  onChange={(e) => {
+                    const taskTypeValue = String(e.target.value);
+                    setNewWorkload((prev) => ({
+                      ...prev,
+                      taskType: isTaskType(taskTypeValue) ? taskTypeValue : 'shooting',
+                    }));
+                  }}
                 >
                   <MenuItem value="shooting">Shooting</MenuItem>
                   <MenuItem value="editing">Editing</MenuItem>
@@ -614,7 +772,13 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <InputLabel>Priority</InputLabel>
                 <Select
                   value={newWorkload.priority}
-                  onChange={(e) => setNewWorkload(prev => ({ ...prev, priority: e.target.value }))}
+                  onChange={(e) => {
+                    const priorityValue = String(e.target.value);
+                    setNewWorkload((prev) => ({
+                      ...prev,
+                      priority: isTaskPriority(priorityValue) ? priorityValue : 'medium',
+                    }));
+                  }}
                 >
                   <MenuItem value="low">Low</MenuItem>
                   <MenuItem value="medium">Medium</MenuItem>
@@ -661,7 +825,13 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <InputLabel>Session Type</InputLabel>
                 <Select
                   value={newSession.sessionType}
-                  onChange={(e) => setNewSession(prev => ({ ...prev, sessionType: e.target.value }))}
+                  onChange={(e) => {
+                    const sessionTypeValue = String(e.target.value);
+                    setNewSession((prev) => ({
+                      ...prev,
+                      sessionType: isSessionType(sessionTypeValue) ? sessionTypeValue : 'editing',
+                    }));
+                  }}
                 >
                   <MenuItem value="editing">Editing</MenuItem>
                   <MenuItem value="review">Review</MenuItem>
@@ -676,9 +846,13 @@ const TeamCollaborationDashboard: React.FC<TeamCollaborationDashboardProps> = ({
                 <Select
                   multiple
                   value={newSession.participants}
-                  onChange={(e) => setNewSession(prev => ({ ...prev, participants: e.target.value as string[] }))}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const participants = Array.isArray(value) ? value.map(String) : [String(value)];
+                    setNewSession((prev) => ({ ...prev, participants }));
+                  }}
                 >
-                  {teamMembers.map((member: Record<string, unknown>) => (
+                  {normalizedTeamMembers.map((member) => (
                     <MenuItem key={member.id} value={member.id}>
                       {member.name}
                     </MenuItem>

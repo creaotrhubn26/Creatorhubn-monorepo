@@ -169,6 +169,35 @@ interface SEODashboardProps {
   onSettingsClick?: () => void;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  return fallback;
+};
+
+const toStringValue = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
+const toCompetition = (value: unknown): KeywordData['competition'] => {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return 'low';
+};
+
 const SEODashboard: React.FC<SEODashboardProps> = ({
   onCrawlClick,
   onAnalyzeClick,
@@ -240,20 +269,27 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
         })
       });
 
-      if (response.success && response.keywords) {
-        setKeywords(response.keywords.map((kw: Record<string, unknown>) => ({
-          keyword: kw.keyword,
-          volume: kw.searchVolume || kw.volume,
-          difficulty: kw.difficulty,
-          cpc: kw.cpc,
-          competition: kw.competition,
-          trends: kw.trends?.map((v: number, i: number) => ({
-            month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][i % 12],
-            volume: v
-          })) || [],
-          relatedKeywords: kw.relatedKeywords || [],
-          serpFeatures: kw.serpFeatures || []
-        })));
+      if (response.success && Array.isArray(response.keywords)) {
+        const mappedKeywords = response.keywords
+          .filter(isRecord)
+          .map((kw: Record<string, unknown>): KeywordData => {
+            const trendValues: unknown[] = Array.isArray(kw.trends) ? kw.trends : [];
+            return {
+              keyword: toStringValue(kw.keyword),
+              volume: toNumber(kw.searchVolume ?? kw.volume),
+              difficulty: toNumber(kw.difficulty),
+              cpc: toNumber(kw.cpc),
+              competition: toCompetition(kw.competition),
+              trends: trendValues.map((value: unknown, index: number) => ({
+                month: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][index % 12],
+                volume: toNumber(value)
+              })),
+              relatedKeywords: toStringArray(kw.relatedKeywords),
+              serpFeatures: toStringArray(kw.serpFeatures)
+            };
+          })
+          .filter((kw: KeywordData) => kw.keyword.length > 0);
+        setKeywords(mappedKeywords);
         onKeywordsClick?.();
       }
     } catch (err) {
@@ -950,5 +986,3 @@ const SEODashboard: React.FC<SEODashboardProps> = ({
 };
 
 export default SEODashboard;
-
-

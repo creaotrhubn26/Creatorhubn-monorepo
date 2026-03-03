@@ -1,11 +1,12 @@
 /**
  * Unified Code Studio - Bridges Visual Editor with Code Generation Studio
- * Integrates: * - CodeEditorPanel (Monaco Editor)
+ * Integrates:
+ * - CodeEditorPanel (Monaco Editor)
  * - LivePreviewPanel (Device simulation)
  * - CodeGenerationStudio (Backend code generation)
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Box,
   Tabs,
@@ -38,12 +39,14 @@ import {
   Computer,
   BugReport,
   Folder,
+  PhotoCamera,
 } from '@mui/icons-material';
 
 // Visual Editor Components
 import { CodeEditorPanel } from './CodeEditorPanel';
 import { LivePreviewPanel } from './LivePreviewPanel';
 import { useVisualEditor } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
 import { parseCode, ParseResult } from './CodeToCanvasParser';
 import { useHotReload, HotReloadIndicator } from './HotReloadSystem';
 
@@ -52,17 +55,17 @@ import CodeGenerationStudio from '@/components/CodeGenerationStudio';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 
 // AI Code Completion
-import { useAICodeCompletion, AIContext } from './AICodeCompletionSystem';
+import { useAICodeCompletion, AIContext, AICompletionConfig } from './AICodeCompletionSystem';
 import AISettingsDialog from './AISettingsDialog';
 import AICompletionPanel from './AICompletionPanel';
 
 // ✨ NEW: AI Enhancement Components
 import AIModelComparison from './AIModelComparison';
-import AIPromptTemplates from './AIPromptTemplates';
+import AIPromptTemplates, { PromptTemplate } from './AIPromptTemplates';
 import AIUsageAnalytics from './AIUsageAnalytics';
-import AILocalModelProvider from './AILocalModelProvider';
+import AILocalModelProvider, { LocalProviderConfig } from './AILocalModelProvider';
 import AIDebugAssistant from './AIDebugAssistant';
-import AIMultiFileContext from './AIMultiFileContext';
+import AIMultiFileContext, { ProjectContext } from './AIMultiFileContext';
 import AIVisionCodeGenerator from './AIVisionCodeGenerator';
 
 interface TabPanelProps {
@@ -91,6 +94,74 @@ interface UnifiedCodeStudioProps {
   };
 }
 
+interface GeneratedCode {
+  html: string;
+  react: string;
+  css: string;
+  javascript: string;
+}
+
+interface BackendCodePayload {
+  service?: string;
+  environment?: string;
+  [key: string]: unknown;
+}
+
+interface CodeGenerationCompletedMessage {
+  type: 'code-generation:completed';
+  data: BackendCodePayload;
+}
+
+const DEFAULT_GENERATED_CODE: GeneratedCode = {
+  html: '',
+  react: '',
+  css: '',
+  javascript: '',
+};
+
+const DEFAULT_AI_SETTINGS_CONFIG: AICompletionConfig = {
+  provider: 'auto',
+  model: 'claude-4.5-sonnet',
+  temperature: 0.7,
+  maxTokens: 1000,
+  enabled: true,
+  autoSuggest: true,
+  debounceMs: 1000,
+  framework: 'auto',
+  useProjectContext: false,
+  maxContextFiles: 10,
+  useTeamKey: false,
+};
+
+const CODE_LANGUAGES = ['html', 'react', 'css', 'javascript'] as const;
+type CodeLanguage = (typeof CODE_LANGUAGES)[number];
+
+const isCodeLanguage = (value: string): value is CodeLanguage =>
+  CODE_LANGUAGES.includes(value as CodeLanguage);
+
+const isCodeGenerationCompletedMessage = (
+  message: unknown,
+): message is CodeGenerationCompletedMessage => {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  const candidate = message as { type?: unknown; data?: unknown };
+  return candidate.type === 'code-generation:completed' && !!candidate.data;
+};
+
+const getStringProp = (props: Record<string, unknown>, key: string, fallback: string): string => {
+  const value = props[key];
+  return typeof value === 'string' ? value : fallback;
+};
+
+const toBackendCodePayload = (value: unknown): BackendCodePayload => {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+  return value as BackendCodePayload;
+};
+
 export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
   open,
   onClose,
@@ -111,17 +182,13 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
 
   const [activeTab, setActiveTab] = useState(0);
   const [viewMode, setViewMode] = useState<'split' | 'editor' | 'preview'>('split');
-  const [generatedCode, setGeneratedCode] = useState(
-    initialCode || {
-      html: '',
-      react: '',
-      css: '',
-      javascript: '',
-    },
-  );
-  const [backendCode, setBackendCode] = useState<unknown>(null);
+  const [generatedCode, setGeneratedCode] = useState<GeneratedCode>({
+    ...DEFAULT_GENERATED_CODE,
+    ...initialCode,
+  });
+  const [backendCode, setBackendCode] = useState<BackendCodePayload | null>(null);
   const [isSync, setIsSync] = useState(true);
-  const [exportFormat, setExportFormat] = useState<'html' | 'react' | 'vue'>('react');
+  const [exportFormat] = useState<'html' | 'react'>('react');
   const [isBidirectionalSync, setIsBidirectionalSync] = useState(false);
   const [parseErrors, setParseErrors] = useState<ParseResult['errors']>([]);
   const [parseWarnings, setParseWarnings] = useState<ParseResult['warnings']>([]);
@@ -142,13 +209,23 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
   const [showDebugAssistant, setShowDebugAssistant] = useState(false);
   const [showMultiFileContext, setShowMultiFileContext] = useState(false);
   const [showVisionCodeGen, setShowVisionCodeGen] = useState(false);
+  const [aiSettingsConfig, setAISettingsConfig] = useState<AICompletionConfig>(
+    DEFAULT_AI_SETTINGS_CONFIG,
+  );
+  const [localModelConfig, setLocalModelConfig] = useState<LocalProviderConfig | undefined>(
+    undefined,
+  );
+  const [activeApiKey, setActiveApiKey] = useState<string | undefined>(() => {
+    const stored = localStorage.getItem('ai_api_key');
+    return stored || undefined;
+  });
 
   // Set iframe ref for hot reload
   useEffect(() => {
     if (iframeRef.current) {
       hotReload.setIframeRef(iframeRef);
     }
-  }, [iframeRef.current, hotReload]);
+  }, [hotReload]);
 
   // Sync code when elements change + Hot Reload
   useEffect(() => {
@@ -166,15 +243,15 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
   // Listen for code generation from CodeGenerationStudio
   useEffect(() => {
     const unsubscribe = communication.onMessage((message: unknown) => {
-      if (message.type === 'code-generation:completed' && message.data) {
-        console.log('🎉 Backend code generated: ', message.data);
-        setBackendCode(message.data);
+      if (isCodeGenerationCompletedMessage(message)) {
+        console.log('Backend code generated', message.data);
+        const payload = toBackendCodePayload(message.data);
+        setBackendCode(payload);
 
         // Optionally switch to backend tab
         if (activeTab === 0) {
-          // Show notification
-            analytics.trackEvent('backend_code_received', {
-            service: message.data.service,
+          analytics.trackEvent('backend_code_received', {
+            service: payload.service || 'unknown',
           });
         }
       }
@@ -183,29 +260,36 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
     return unsubscribe;
   }, [communication, analytics, activeTab]);
 
-  const generateCodeFromElements = (elements: unknown[]) => {
+  const generateCodeFromElements = (elements: EditorElement[]): GeneratedCode => {
     // Generate React code
-    let react = `import React, { useState } from 'react';\nimport'./styles.css';\n\n`;
+    let react = `import React, { useState } from 'react';\nimport './styles.css';\n\n`;
     react += `export default function GeneratedComponent() {\n`;
-    react += `  const [state, setState] = useState({});\n\n`;
+    react += `  const [componentState, setComponentState] = useState({});\n\n`;
     react += `  return (\n`;
     react += `    <div className="container" style={{ position: 'relative', width: '100%', minHeight: '100vh' }}>\n`;
 
     elements.forEach((element) => {
-      const style = `{{ position: 'absolute', left: ${element.x}px, top: ${element.y}px, width: ${element.width}px, height: ${element.height}px }`;
+      const style = `{{ position: 'absolute', left: ${element.x}px, top: ${element.y}px, width: ${element.width}px, height: ${element.height}px }}`;
+      const text = getStringProp(element.props, 'text', element.type === 'button' ? 'Button' : 'Text');
+      const src = getStringProp(element.props, 'src', 'placeholder.jpg');
+      const alt = getStringProp(element.props, 'alt', 'Image');
 
       switch (element.type) {
-        case 'button': react += `      <button style=${style} className="btn-${element.id},">\n`;
-          react += `        ${element.props?.text || 'Button'}\n`;
+        case 'button':
+          react += `      <button style=${style} className="btn-${element.id}">\n`;
+          react += `        ${text}\n`;
           react += `      </button>\n`;
           break;
-        case 'text': react += `      <p style=${style} className="text-${element.id}">\n`;
-          react += `        ${element.props?.text || 'Text'}\n`;
+        case 'text':
+          react += `      <p style=${style} className="text-${element.id}">\n`;
+          react += `        ${text}\n`;
           react += `      </p>\n`;
           break;
-        case 'image': react += `      <img style=${style} src="${element.props?.src || 'placeholder.jpg'}" alt="${element.props?.alt || 'Image'}" />\n`;
+        case 'image':
+          react += `      <img style=${style} src="${src}" alt="${alt}" />\n`;
           break;
-        default: react += `      <div style=${style} className="${element.type}-${element.id}"></div>\n`;
+        default:
+          react += `      <div style=${style} className="${element.type}-${element.id}"></div>\n`;
       }
     });
 
@@ -215,7 +299,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
 
     // Generate CSS
     let css = `/* Generated Styles */\n\n`;
-    css += `.container {\n  width: 100%;\n  min-height: 100vh;\n  position: relative;\n , background: #f5f5f5;\n}\n\n`;
+    css += `.container {\n  width: 100%;\n  min-height: 100vh;\n  position: relative;\n  background: #f5f5f5;\n}\n\n`;
 
     elements.forEach((element) => {
       css += `.${element.type}-${element.id} {\n`;
@@ -228,15 +312,14 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       css += `}\n\n`;
     });
 
-    return {
-      html: '', // HTML generation can be added
-      react,
-      css,
-      javascript: '',
-    };
+    return { ...DEFAULT_GENERATED_CODE, react, css };
   };
 
   const handleCodeChange = (newCode: string, language: string) => {
+    if (!isCodeLanguage(language)) {
+      return;
+    }
+
     setGeneratedCode((prev) => ({
       ...prev,
       [language]: newCode,
@@ -280,7 +363,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
             });
           }
         } catch (error) {
-          console.error('Code parsing failed: ', error);
+          console.error('Code parsing failed', error);
           setParseErrors([
             {
               line: 0,
@@ -313,10 +396,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
   // 🤖 AI Code Completion Handlers
   const handleAIApplyCode = useCallback(
     (code: string) => {
-      setGeneratedCode((prev) => ({
-        ...prev,
-        react: code,
-      }));
+      handleCodeChange(code, 'react');
 
       // Trigger hot reload
       hotReload.reload(code);
@@ -327,6 +407,25 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       });
     },
     [hotReload, analytics],
+  );
+
+  const modelComparisonContext = useMemo<AIContext>(
+    () => ({
+      currentCode: generatedCode.react || '',
+      language: 'typescript',
+      cursor: currentCursor,
+      selectedText: currentSelectedText,
+      elements: state.elements,
+    }),
+    [generatedCode.react, currentCursor, currentSelectedText, state.elements],
+  );
+
+  const modelComparisonApiKeys = useMemo(
+    () => ({
+      openai: activeApiKey,
+      anthropic: activeApiKey,
+    }),
+    [activeApiKey],
   );
 
   if (!open) return null;
@@ -556,7 +655,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
             {backendCode ? (
               <Box>
                 <Alert severity="success" sx={{ mb: 2 }}>
-                  Backend code generated successfully for {backendCode.service}
+                  Backend code generated successfully for {backendCode.service || 'unknown service'}
                 </Alert>
 
                 <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
@@ -564,10 +663,10 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
                     Backend Service
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Service: {backendCode.service}
+                    Service: {backendCode.service || 'N/A'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Environment: {backendCode.environment}
+                    Environment: {backendCode.environment || 'N/A'}
                   </Typography>
                 </Paper>
 
@@ -656,14 +755,14 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AISettingsDialog
         open={showAISettings}
         onClose={() => setShowAISettings(false)}
-        config={aiCompletion.updateConfig ? ({} as Record<string, unknown>) : ({} as Record<string, unknown>)}
+        config={aiSettingsConfig}
         onSave={(config, apiKey) => {
+          setAISettingsConfig(config);
           if (apiKey) {
             aiCompletion.setApiKey(apiKey);
+            setActiveApiKey(apiKey);
           }
-          if (aiCompletion.updateConfig) {
-            aiCompletion.updateConfig(config);
-          }
+          aiCompletion.updateConfig(config);
           analytics.trackEvent('ai_settings_saved', { provider: config.provider });
         }}
         isConfigured={aiCompletion.isConfigured}
@@ -691,10 +790,11 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AIModelComparison
         open={showModelComparison}
         onClose={() => setShowModelComparison(false)}
-        currentCode={generatedCode.react || ''}
-        operation="code_completion"
-        onApplyResult={(code) => {
+        context={modelComparisonContext}
+        apiKeys={modelComparisonApiKeys}
+        onApplyCode={(code: string, model: string) => {
           handleCodeChange(code, 'react');
+          analytics.trackEvent('model_comparison_applied', { model });
           setShowModelComparison(false);
         }}
       />
@@ -702,9 +802,15 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AIPromptTemplates
         open={showPromptTemplates}
         onClose={() => setShowPromptTemplates(false)}
-        onApplyTemplate={(template) => {
-          // Template applied - could trigger AI with the template
+        onUseTemplate={(template: PromptTemplate, variables: Record<string, string>) => {
+          const resolvedPrompt = template.template.replace(
+            /\{\{(\w+)\}/g,
+            (_, variableName: string) => variables[variableName] ?? `{{${variableName}}}`,
+          );
+          setCurrentSelectedText(resolvedPrompt);
+          setShowAIPanel(true);
           analytics.trackEvent('prompt_template_used', { template: template.name });
+          setShowPromptTemplates(false);
         }}
       />
 
@@ -713,7 +819,9 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AILocalModelProvider
         open={showLocalModels}
         onClose={() => setShowLocalModels(false)}
-        onModelActivated={(config) => {
+        currentConfig={localModelConfig}
+        onConfigSaved={(config: LocalProviderConfig) => {
+          setLocalModelConfig(config);
           analytics.trackEvent('local_model_activated', { provider: config.provider });
         }}
       />
@@ -721,21 +829,32 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
       <AIDebugAssistant
         open={showDebugAssistant}
         onClose={() => setShowDebugAssistant(false)}
-        code={generatedCode.react || ''}
+        currentCode={generatedCode.react || ''}
         language="typescript"
-        framework="react"
+        errors={parseErrors.map((error) => ({
+          message: error.message,
+          line: error.line,
+          column: error.column,
+        }))}
         onApplyFix={(fixedCode) => {
           handleCodeChange(fixedCode, 'react');
-          analytics.trackEvent('debug_fix_applied');
+          analytics.trackEvent('debug_fix_applied', { source: 'ai-debug-assistant' });
+        }}
+        onGetAIAnalysis={async (context: AIContext) => {
+          const analysis = await aiCompletion.explainCode(context);
+          if (analysis && typeof analysis === 'object') {
+            return analysis;
+          }
+          return {};
         }}
       />
 
       <AIMultiFileContext
         open={showMultiFileContext}
         onClose={() => setShowMultiFileContext(false)}
-        projectId="visual-editor-project"
-        onContextSaved={(context) => {
-          analytics.trackEvent('multi_file_context_saved', { fileCount: context.files?.length });
+        projectRoot="/Users/usmanqazi/github/creatorhub/frontend/client/src"
+        onContextUpdated={(context: ProjectContext) => {
+          analytics.trackEvent('multi_file_context_saved', { fileCount: context.files.length });
         }}
       />
 
@@ -745,7 +864,7 @@ export const UnifiedCodeStudio: React.FC<UnifiedCodeStudioProps> = ({
         onClose={() => setShowVisionCodeGen(false)}
         onCodeGenerated={(code) => {
           handleCodeChange(code, 'react');
-          analytics.trackEvent('vision_code_generated');
+          analytics.trackEvent('vision_code_generated', { source: 'vision-generator' });
           setShowVisionCodeGen(false);
         }}
       />

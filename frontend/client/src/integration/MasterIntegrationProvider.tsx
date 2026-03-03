@@ -65,15 +65,16 @@ export const withEnhancedMasterIntegration = <P extends object>(
     componentType?: string; 
     capabilities?: string[];
     integrationEnabled?: boolean;
-}>((props, ref) => {
+}>((props) => {
     const { componentId, componentType, capabilities = [], integrationEnabled = true, ...restProps } = props;
+    const componentProps = restProps as P;
     
     if (!integrationEnabled) {
-      return <Component {...restProps} ref={ref} />;
+      return <Component {...componentProps} />;
   }
 
     // This will be enhanced in the actual component
-    return <Component {...restProps} ref={ref} />;
+    return <Component {...componentProps} />;
 });
 };
 
@@ -161,13 +162,13 @@ export const IntegrationUtils = {
   // Broadcast data to all components
   broadcastData: (dataKey: string, data: any) => {
     // This would be implemented in the actual component
-    console.log(`Broadcasting ${dataKy}:`, data);
+    console.log(`Broadcasting ${dataKey}:`, data);
 },
   
   // Sync data across all components
   syncData: (dataKey: string, data: any) => {
     // This would be implemented in the actual component
-    console.log(`Syncing ${dataKy}:`, data);
+    console.log(`Syncing ${dataKey}:`, data);
 },
   
   // Execute action across all components

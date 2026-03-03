@@ -160,10 +160,30 @@ class LightingMLService {
 
   private getPatternMap(): Record<string, number> {
     return {
-     'three-point-lighting': 0'rembrandt-lighting': 1'butterfly-lighting': 2'loop-lighting': 3'split-lighting': 4'broad-lighting': 5'short-lighting': 6'rim-lighting': 7'high-key-lighting': 8'low-key-lighting': 9'chiaroscuro': 10'flat-lighting': 11'side-lighting': 12'top-lighting': 13'bottom-lighting': 14'cross-lighting': 15'motivated-lighting': 16'practical-lighting': 17'natural-window-light': 18'golden-hour': 19'blue-hour': 20'noir-lighting': 21,
+      'three-point-lighting': 0,
+      'rembrandt-lighting': 1,
+      'butterfly-lighting': 2,
+      'loop-lighting': 3,
+      'split-lighting': 4,
+      'broad-lighting': 5,
+      'short-lighting': 6,
+      'rim-lighting': 7,
+      'high-key-lighting': 8,
+      'low-key-lighting': 9,
+      chiaroscuro: 10,
+      'flat-lighting': 11,
+      'side-lighting': 12,
+      'top-lighting': 13,
+      'bottom-lighting': 14,
+      'cross-lighting': 15,
+      'motivated-lighting': 16,
+      'practical-lighting': 17,
+      'natural-window-light': 18,
+      'golden-hour': 19,
+      'blue-hour': 20,
+      'noir-lighting': 21,
     };
   }
 }
 
 export const lightingMLService = new LightingMLService();
-

@@ -63,7 +63,7 @@ export interface UseDragDropReturn {
  */
 export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onDragItemRegistered,
     onDropZoneRegistered,
     onDragStarted,
@@ -106,8 +106,8 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
   // Initialize drag drop manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      dragDropManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      dragDropManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -205,7 +205,7 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onDragItemRegistered, onDropZoneRegistered, onDragStarted, onDragEnded, onDragOver, onDropSuccessful, onDropRejected, onDropFailed, onError, onInitialized]);
+}, [optionConfig, onDragItemRegistered, onDropZoneRegistered, onDragStarted, onDragEnded, onDragOver, onDropSuccessful, onDropRejected, onDropFailed, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -233,7 +233,7 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
 
   // Start drag
   const startDrag = useCallback(async (itemId: string, event: DragEvent | TouchEvent) => {
-    await dragDropManager.startDrag(itemd, event);
+    await dragDropManager.startDrag(itemId, event);
 }, []);
 
   // End drag
@@ -247,7 +247,7 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return dragDropManager.getConfig();
 }, []);
 
@@ -268,7 +268,7 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
     startDrag,
     endDrag,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -298,7 +298,7 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
     startDrag,
     endDrag,
     state,
-    config,
+    currentConfig,
     updateConfig,
     getDragItems,
     getDropZones
@@ -308,7 +308,6 @@ export const useDragDrop = (options: UseDragDropOptions = {}): UseDragDropReturn
 };
 
 export default useDragDrop;
-
 
 
 

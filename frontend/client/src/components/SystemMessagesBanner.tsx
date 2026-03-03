@@ -174,7 +174,8 @@ const SystemMessagesBanner: React.FC<SystemMessagesBannerProps> = ({ userProfess
                     : undefined,
                   border: message.priority === 'critical' 
                     ? '1px solid rgba(24, 67, 54, 0.3)' 
-                    : undefined'& .MuiAlert-message': {
+                    : undefined,
+                  '& .MuiAlert-message': {
                     width: '100%'
               }
               }}

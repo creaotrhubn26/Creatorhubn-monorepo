@@ -57,7 +57,7 @@ export interface UseLayoutReturn {
  */
 export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onElementRegistered,
     onRuleCreated,
     onLayoutApplied,
@@ -95,8 +95,8 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
   // Initialize layout manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      layoutManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      layoutManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -170,7 +170,7 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onElementRegistered, onRuleCreated, onLayoutApplied, onLayoutApplyFailed, onRuleExecutionFailed, onError, onInitialized]);
+}, [optionConfig, onElementRegistered, onRuleCreated, onLayoutApplied, onLayoutApplyFailed, onRuleExecutionFailed, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -207,7 +207,7 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return layoutManager.getConfig();
 }, []);
 
@@ -227,7 +227,7 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
     createRule,
     applyLayout,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -254,7 +254,7 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
     createRule,
     applyLayout,
     state,
-    config,
+    currentConfig,
     updateConfig,
     getElements,
     getRules
@@ -264,7 +264,6 @@ export const useLayout = (options: UseLayoutOptions = {}): UseLayoutReturn => {
 };
 
 export default useLayout;
-
 
 
 

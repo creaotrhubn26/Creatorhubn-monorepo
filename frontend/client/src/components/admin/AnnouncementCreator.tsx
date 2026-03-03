@@ -28,6 +28,10 @@ import {
   FormControlLabel,
   OutlinedInput,
   Snackbar,
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material/Select';
 import {
@@ -38,6 +42,7 @@ import {
   CloudUpload as UploadIcon,
   YouTube as YouTubeIcon,
   CheckCircle as CheckIcon,
+  Campaign as CampaignIcon,
 } from '@mui/icons-material';
 import WhatsNewModal from '../WhatsNewModal';
 import MarketingWorkflowIntegration from './MarketingWorkflowIntegration';
@@ -68,6 +73,15 @@ interface AnnouncementForm {
   callToAction?: string;
 }
 
+type PreviewAnnouncement = NonNullable<React.ComponentProps<typeof WhatsNewModal>['previewAnnouncement']>;
+type EmailTemplatePayload = Parameters<NonNullable<React.ComponentProps<typeof EmailDesigner>['onSave']>>[0];
+type AnnouncementCreatePayload = AnnouncementForm & { emailTemplate?: EmailTemplatePayload };
+
+interface SnackbarState {
+  open: boolean;
+  message: string;
+}
+
 const professionOptions = ['photographer','videographer','designer','model','mua','stylist'];
 
 const categoryOptions = [
@@ -85,6 +99,10 @@ const importanceOptions = [
 ];
 
 export default function AnnouncementCreator() {
+  const { professionConfigs: apiProfessionConfigs, hasData: hasApiProfessionConfigs } = useProfessionConfigs();
+  const professionAdapter = useProfessionAdapter();
+  const { getAllProfessionTypes, getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
+
   const [form, setForm] = useState<AnnouncementForm>({
     title: '',
     content: '',
@@ -96,13 +114,13 @@ export default function AnnouncementCreator() {
     actionLabel: '',
     actionUrl: '',
     version: '',
-    releaseDate: new Date().toISOString().split('T,')[0],
-    featureKey: '',
+    releaseDate: new Date().toISOString().split('T')[0],
+    featureKey: ', ',
     tutorialVideoUrl: '',
     tutorialTitle: '',
     tutorialDescription: '',
     sendEmail: false,
-    publishedAt: new Date().toISOString().split('T,')[0],
+    publishedAt: new Date().toISOString().split('T')[0],
     expiresAt: '',
     marketingPurpose: 'education',
     targetAudience: [],
@@ -110,14 +128,40 @@ export default function AnnouncementCreator() {
   });
 
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewData, setPreviewData] = useState<unknown>(null);
+  const [previewData, setPreviewData] = useState<PreviewAnnouncement | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState('');
   const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false);
   const [emailDesignerOpen, setEmailDesignerOpen] = useState(false);
-  const [emailTemplate, setEmailTemplate] = useState<any>(null);
+  const [emailTemplate, setEmailTemplate] = useState<EmailTemplatePayload | null>(null);
+  const [errorSnackbar, setErrorSnackbar] = useState<SnackbarState>({ open: false, message: '' });
+
+  const activeProfession = professionAdapter.profession || 'photographer';
+
+  const availableProfessions = React.useMemo(() => {
+    const dynamicProfessionIds = getAllProfessionTypes();
+    const selectedProfessionIds = dynamicProfessionIds.length > 0 ? dynamicProfessionIds : professionOptions;
+
+    return selectedProfessionIds.map((professionId) => {
+      const apiConfig = apiProfessionConfigs[professionId];
+
+      return {
+        id: professionId,
+        displayName: getProfessionDisplayName(professionId) || apiConfig?.displayName || professionId,
+        color: getUserProfessionColor(professionId) || apiConfig?.iconColor || '#ff8c00',
+        icon: getProfessionIcon(professionId),
+      };
+    });
+  }, [
+    apiProfessionConfigs,
+    getAllProfessionTypes,
+    getProfessionDisplayName,
+    getUserProfessionColor,
+  ]);
+
+  const professionDataSourceLabel = hasApiProfessionConfigs ? 'API-profesjoner' : 'Fallback-profesjoner';
 
   // Preview mutation
   const previewMutation = useMutation({
@@ -138,7 +182,7 @@ export default function AnnouncementCreator() {
 
   // Create announcement mutation
   const createMutation = useMutation({
-    mutationFn: async (data: AnnouncementForm) => {
+    mutationFn: async (data: AnnouncementCreatePayload) => {
       const response = await fetch('/api/admin/announcements', {
         method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
@@ -185,7 +229,8 @@ export default function AnnouncementCreator() {
   };
 
   const handleCreate = async () => {
-    const result = await createMutation.mutateAsync(form);
+    const payload: AnnouncementCreatePayload = emailTemplate ? { ...form, emailTemplate } : form;
+    const result = await createMutation.mutateAsync(payload);
 
     // Optionally send email if enabled
     if (form.sendEmail && result.announcement?.id) {
@@ -206,7 +251,7 @@ export default function AnnouncementCreator() {
       actionUrl: '',
       version: '',
       releaseDate: new Date().toISOString().split('T')[0],
-      featureKey: '',
+      featureKey: ', ',
       tutorialVideoUrl: '',
       tutorialTitle: '',
       tutorialDescription: '',
@@ -219,6 +264,7 @@ export default function AnnouncementCreator() {
     });
     setUploadedVideoUrl('');
     setUploadProgress(0);
+    setEmailTemplate(null);
   };
 
   // Handle video file upload to YouTube
@@ -387,18 +433,33 @@ export default function AnnouncementCreator() {
                   renderValue={(selected) => (
                     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                       {selected.map((value) => (
-                        <Chip key={value} label={value} size="small" />
+                        <Chip
+                          key={value}
+                          label={
+                            availableProfessions.find((profession) => profession.id === value)?.displayName ||
+                            value
+                          }
+                          size="small"
+                        />
                       ))}
                     </Box>
                   )}
                 >
-                  {professionOptions.map((profession) => (
-                    <MenuItem key={profession} value={profession}>
-                      {profession}
+                  {availableProfessions.map((profession) => (
+                    <MenuItem key={profession.id} value={profession.id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{ color: profession.color, display: 'inline-flex' }}>
+                          {profession.icon}
+                        </Box>
+                        <Typography variant="body2">{profession.displayName}</Typography>
+                      </Box>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+                Aktiv profesjon: {getProfessionDisplayName(activeProfession)} ({professionDataSourceLabel})
+              </Typography>
             </Grid>
 
             {/* Feature Key */}
@@ -690,7 +751,7 @@ export default function AnnouncementCreator() {
 
             {/* Action Buttons */}
             <Grid item xs={12}>
-              <Box display="flex" gap={2} justifyContent="space-between">
+                <Box display="flex" gap={2} justifyContent="space-between">
                 <Button
                   variant="outlined"
                   startIcon={<CampaignIcon />}
@@ -700,6 +761,14 @@ export default function AnnouncementCreator() {
                   Marketing Workflow
                 </Button>
                 <Box display="flex" gap={2}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<SendIcon />}
+                    onClick={() => setEmailDesignerOpen(true)}
+                    disabled={!form.sendEmail}
+                  >
+                    Design E-post
+                  </Button>
                   <Button
                     startIcon={<ClearIcon />}
                     onClick={handleClear}
@@ -738,7 +807,7 @@ export default function AnnouncementCreator() {
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         previewMode={true}
-        previewAnnouncement={previewData}
+        previewAnnouncement={previewData ?? undefined}
         userProfession={form.targetProfessions[0] || 'photographer'}
       />
 
@@ -749,12 +818,39 @@ export default function AnnouncementCreator() {
         initialData={{
           type:'announcement',
           data: form}}
-        onComplete={(result) => {
+        onComplete={(result: unknown) => {
+          if (result && typeof result === 'object' && 'emailTemplate' in result) {
+            const workflowTemplate = (result as { emailTemplate?: EmailTemplatePayload }).emailTemplate;
+            if (workflowTemplate) {
+              setEmailTemplate(workflowTemplate);
+            }
+          }
           setWorkflowDialogOpen(false);
           setSuccessMessage('Marketing workflow opprettet!');
           setTimeout(() => setSuccessMessage(''), 3000);
         }}
       />
+
+      <Dialog
+        open={emailDesignerOpen}
+        onClose={() => setEmailDesignerOpen(false)}
+        fullWidth
+        maxWidth="xl"
+      >
+        <DialogTitle>E-postdesigner for kunngjøring</DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <EmailDesigner
+            context="general"
+            profession={activeProfession}
+            onSave={(template) => {
+              setEmailTemplate(template);
+              setEmailDesignerOpen(false);
+              setSuccessMessage('E-postmal lagret og koblet til kunngjøringen.');
+              setTimeout(() => setSuccessMessage(''), 3000);
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Error Snackbar */}
       <Snackbar

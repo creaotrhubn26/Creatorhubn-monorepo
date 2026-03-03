@@ -66,7 +66,7 @@ export const AITodoTracker: React.FC = () => {
   // Register component
   useEffect(() => {
     componentRegistry.registerComponent({
-      id: 'ai-todo-tracker,',
+      id: 'ai-todo-tracker',
       name: 'AI Todo Tracker',
       type: 'admin',
       category: 'task-management',

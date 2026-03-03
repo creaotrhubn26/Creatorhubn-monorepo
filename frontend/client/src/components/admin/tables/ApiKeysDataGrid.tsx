@@ -1,47 +1,51 @@
 /**
- * CreatorHub Norge - API Keys DataGrid
- * Enhanced table with search, sorting, filters, and actions
+ * CreatorHub Norge - API Keys table
+ * Searchable, selectable and actionable API keys list without external DataGrid dependency.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  DataGrid,
-  GridColDef,
-  GridActionsCellItem,
-  GridRowSelectionModel,
-  GridToolbar,
-  GridValueGetterParams
-} from '@mui/x-data-grid';
-import {
+  Alert,
   Box,
+  Button,
+  Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
-  Tooltip,
+  InputAdornment,
   Menu,
   MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Tooltip,
   Typography,
-  Alert,
 } from '@mui/material';
 import {
-  MoreVert as MoreIcon,
-  Key as KeyIcon,
-  Refresh as RotateIcon,
-  Delete as DeleteIcon,
-  Visibility as ViewIcon,
-  VisibilityOff as HideIcon,
-  ContentCopy as CopyIcon,
   CheckCircle as ActiveIcon,
+  ContentCopy as CopyIcon,
+  Delete as DeleteIcon,
   Error as ErrorIcon,
+  Key as KeyIcon,
+  MoreVert as MoreIcon,
+  Refresh as RotateIcon,
   Schedule as PendingIcon,
+  Search as SearchIcon,
+  Visibility as ViewIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { nb } from 'date-fns/locale';
+import { useTheming } from '../../../utils/theming-helper';
 import type { ApiKey } from '@/types/integrations';
 
 interface ApiKeysDataGridProps {
@@ -53,326 +57,381 @@ interface ApiKeysDataGridProps {
   onCopyKey: (key: string) => void;
 }
 
+function getStatusColor(status: string): 'success' | 'warning' | 'error' | 'default' {
+  if (status === 'active') return 'success';
+  if (status === 'inactive') return 'warning';
+  if (status === 'expired' || status === 'revoked') return 'error';
+  return 'default';
+}
+
+function getStatusIcon(status: string) {
+  if (status === 'active') return <ActiveIcon color="success" fontSize="small" />;
+  if (status === 'inactive') return <PendingIcon color="warning" fontSize="small" />;
+  if (status === 'expired' || status === 'revoked') return <ErrorIcon color="error" fontSize="small" />;
+  return <PendingIcon color="disabled" fontSize="small" />;
+}
+
+function formatDate(value: string | null | undefined, withTime = false): string {
+  if (!value) return 'Aldri';
+  try {
+    return format(new Date(value), withTime ? 'dd.MM.yyyy HH:mm' : 'dd.MM.yyyy', { locale: nb });
+  } catch {
+    return 'Ukjent';
+  }
+}
+
 export default function ApiKeysDataGrid({
   apiKeys,
   loading = false,
   onRotateKey,
   onDeleteKey,
   onViewKey,
-  onCopyKey
+  onCopyKey,
 }: ApiKeysDataGridProps) {
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedKey, setSelectedKey] = useState<ApiKey | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  
-  // Theming system
   const theming = useTheming('prototype_tester');
+
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+  const [activeRow, setActiveRow] = useState<ApiKey | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [keyToDelete, setKeyToDelete] = useState<ApiKey | null>(null);
-  const [rowSelectionModel, setRowSelectionModel] = useState<GridRowSelectionModel>([]);
 
-  const handleMenuClick = useCallback((event: React.MouseEvent<HTMLElement>, key: ApiKey) => {
-    setAnchorEl(event.currentTarget);
-    setSelectedKey(key);
-}, []);
+  const filteredKeys = useMemo(() => {
+    if (!query.trim()) return apiKeys;
+    const normalized = query.trim().toLowerCase();
+    return apiKeys.filter((key) => {
+      const haystack = [
+        key.name,
+        key.service,
+        key.status,
+        key.environment ?? '',
+        key.keyType,
+        key.permissions.join(' '),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(normalized);
+    });
+  }, [apiKeys, query]);
 
-  const handleMenuClose = useCallback(() => {
-    setAnchorEl(null);
-    setSelectedKey(null);
-}, []);
+  const pageRows = useMemo(() => {
+    const start = page * rowsPerPage;
+    return filteredKeys.slice(start, start + rowsPerPage);
+  }, [filteredKeys, page, rowsPerPage]);
 
-  const handleDeleteClick = useCallback((key: ApiKey) => {
-    setKeyToDelete(key);
-    setDeleteDialogOpen(true);
-    handleMenuClose();
-}, [handleMenuClose]);
+  const allVisibleSelected = pageRows.length > 0 && pageRows.every((row) => selectedIds.has(row.id));
+  const someVisibleSelected = pageRows.some((row) => selectedIds.has(row.id));
 
-  const handleDeleteConfirm = useCallback(() => {
-    if (keyToDelete) {
-      onDeleteKey(keyToDelete.id);
-      setDeleteDialogOpen(false);
-      setKeyToDelete(null);
-  }
-}, [keyToDelete, onDeleteKey]);
-
-  const getStatusIcon = useCallback((status: string) => {
-    switch (status) {
-      case 'active':
-        return <ActiveIcon color="success" fontSize="small" />;
-      case 'inactive':
-        return <PendingIcon color="warning" fontSize="small" />;
-      case 'expired':
-      case 'revoked':
-        return <ErrorIcon color="error" fontSize="small" />;
-      default:
-        return <PendingIcon color="disabled" fontSize="small" />;
-}
-}, []);
-
-  const getStatusColor = useCallback((status: string): 'success' | 'warning' | 'error' | 'default' => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'inactive':
-        return 'warning';
-      case 'expired':
-      case 'revoked':
-        return 'error';
-      default:
-        return 'default';
-}
-}, []);
-
-  const columns: GridColDef[] = [
-    {
-      field: 'name',
-      headerName: 'Navn',
-      width: 20,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          <KeyIcon fontSize="small" color="primary" />
-          <Typography variant="body2" fontWeight="medium">
-            {params.value}
-          </Typography>
-        </Box>
-      ),
-  },
-    {
-      field: 'service',
-      headerName: 'Tjeneste',
-      width: 10,
-      renderCell: (params) => (
-        <Chip label={params.value} size="small" variant="outlined" />
-      ),
-  },
-    {
-      field: 'status',
-      headerName: 'Status',
-      width: 10,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          {getStatusIcon(params.value)}
-          <Chip 
-            label={params.value}
-            size="small" 
-            color={getStatusColor(params.value)}
-            variant="filled"
-          />
-        </Box>
-      ),
-  },
-    {
-      field: 'environment',
-      headerName: 'Milj, ø',
-      width: 10,
-      renderCell: (params) => (
-        <Chip 
-          label={params.value}
-          size="small" 
-          color={params.value === 'production' ? 'error' : params.value === 'staging' ? 'warning' : 'info'}
-        />
-      ),
-  },
-    {
-      field: 'keyType',
-      headerName: 'Type',
-      width: 10,
-  },
-    {
-      field: 'permissions',
-      headerName: 'Tillatelser',
-      width: 20,
-      renderCell: (params) => (
-        <Box sx={{ display: 'flex', gap: 0,flexWrap: 'wrap' }}>
-          {params.value.slice(0, 2).map((permission: string) => (
-            <Chip key={permission} label={permission} size="small" variant="outlined" />
-          ))}
-          {params.value.length > 2 && (
-            <Chip label={`+${params.value.length - 2}`} size="small" color="default" />
-          )}
-        </Box>
-      ),
-  },
-    {
-      field: 'usageCount',
-      headerName: 'Bruk',
-      width: 10,
-      type: 'number' },
-    {
-      field: 'monthlyQuota',
-      headerName: 'Kvote',
-      width: 10,
-      type: 'number',
-      valueGetter: (params: GridValueGetterParams) => 
-        params.row.monthlyQuota === -1 ? '∞' : params.row.monthlyQuota,
-  },
-    {
-      field: 'lastUsed',
-      headerName: 'Sist brukt',
-      width: 10,
-      renderCell: (params) => (
-        <Typography variant="body2" color="text.secondary">
-          {params.value 
-            ? format(new Date(params.value)'dd.MM.yyyy HH: mm', { locale: nb })
-            : 'Aldri'
+  const handleToggleSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (checked) {
+          pageRows.forEach((row) => next.add(row.id));
+        } else {
+          pageRows.forEach((row) => next.delete(row.id));
         }
-        </Typography>
-      ),
-  },
-    {
-      field: 'rotationDue',
-      headerName: 'Rotasjon',
-      width: 10,
-      renderCell: (params) => {
-        const dueDate = new Date(params.value);
-        const isOverdue = dueDate < new Date();
-        return (
-          <Typography 
-            variant="body2" 
-            color={isOverdue ? 'error' : 'text.secondary'}
-          >
-            {format(dueDate'dd.MM.yyyy', { locale: nb })}
-          </Typography>
-        );
+        return next;
+      });
     },
-  },
-    {
-      field: 'actions',
-      type: 'actions',
-      headerName: 'Handlinger',
-      width: 10,
-      getActions: (params) => [
-        <GridActionsCellItem
-          icon={
-            <Tooltip title="Se detaljer">
-              <ViewIcon />
-            </Tooltip>
+    [pageRows],
+  );
+
+  const handleToggleRow = useCallback((keyId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(keyId);
+      } else {
+        next.delete(keyId);
       }
-          label="Se detaljer"
-          onClick={() => onViewKey(params.row.id)}
-        />,
-        <GridActionsCellItem
-          icon={
-            <Tooltip title="Kopier nøkkel">
-              <CopyIcon />
-            </Tooltip>
-        }
-          label="Kopier nøkkel"
-          onClick={() => onCopyKey(params.row.maskedKey)}
-        />,
-        <GridActionsCellItem
-          icon={
-            <IconButton
-              size="small"
-              onClick={(event) => handleMenuClick(event, params.row)}
-            >
-              <MoreIcon />
-            </IconButton>
-        }
-          label="Flere handlinger"
-          showInMenu={false}
-        />,
-      ],
-  },
-  ];
+      return next;
+    });
+  }, []);
+
+  const handleOpenMenu = useCallback((event: React.MouseEvent<HTMLElement>, row: ApiKey) => {
+    setAnchorEl(event.currentTarget);
+    setActiveRow(row);
+  }, []);
+
+  const handleCloseMenu = useCallback(() => {
+    setAnchorEl(null);
+    setActiveRow(null);
+  }, []);
+
+  const handleRequestDelete = useCallback(
+    (row: ApiKey) => {
+      setKeyToDelete(row);
+      setDeleteDialogOpen(true);
+      handleCloseMenu();
+    },
+    [handleCloseMenu],
+  );
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!keyToDelete) return;
+    onDeleteKey(keyToDelete.id);
+    setDeleteDialogOpen(false);
+    setKeyToDelete(null);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(keyToDelete.id);
+      return next;
+    });
+  }, [keyToDelete, onDeleteKey]);
+
+  const handleRotateSelected = useCallback(() => {
+    selectedIds.forEach((id) => onRotateKey(id));
+  }, [onRotateKey, selectedIds]);
+
+  const handleDeleteSelected = useCallback(() => {
+    selectedIds.forEach((id) => onDeleteKey(id));
+    setSelectedIds(new Set());
+  }, [onDeleteKey, selectedIds]);
 
   return (
-    <Box sx={{ height: 60, width: '100%' }}>
-      <DataGrid
-        rows={apiKeys}
-        columns={columns}
-        loading={loading}
-        checkboxSelection
-        disableRowSelectionOnClick
-        rowSelectionModel={rowSelectionModel}
-        onRowSelectionModelChange={setRowSelectionModel}
-        slots={{ toolbar: GridToolbar }}
-        slotProps={{
-          toolbar: {
-            showQuickFilter: true,
-            quickFilterProps: { debounceMs: 500},
-        }}}
-        initialState={{
-          pagination: {
-            paginationModel: { page: 0, pageSize: 25},
-        },
-          sorting: {
-            sortModel: [{ field: 'createdA', sort: 'desc' }],
-        }}}
-        pageSizeOptions={[102550, 100]}
-        density="compact"
-        sx={{
-          '& .MuiDataGrid-cell: focus': { outline: 'none' }, '& .MuiDataGrid-row: hover': {
-            backgroundColor: 'action.hover' }}}
+    <Stack spacing={2}>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between">
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Søk på navn, tjeneste, status eller tillatelser"
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setPage(0);
+          }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Chip label={`${filteredKeys.length} nøkler`} size="small" />
+          <Chip label={`${selectedIds.size} valgt`} size="small" color={selectedIds.size > 0 ? 'primary' : 'default'} />
+          <Button disabled={selectedIds.size === 0} variant="outlined" onClick={handleRotateSelected} startIcon={<RotateIcon />}>
+            Roter valgte
+          </Button>
+          <Button
+            disabled={selectedIds.size === 0}
+            color="error"
+            variant="outlined"
+            onClick={handleDeleteSelected}
+            startIcon={<DeleteIcon />}
+          >
+            Slett valgte
+          </Button>
+        </Stack>
+      </Stack>
+
+      <TableContainer component={Paper} variant="outlined">
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  indeterminate={someVisibleSelected && !allVisibleSelected}
+                  checked={allVisibleSelected}
+                  onChange={(event) => handleToggleSelectAllVisible(event.target.checked)}
+                />
+              </TableCell>
+              <TableCell>Navn</TableCell>
+              <TableCell>Tjeneste</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Miljø</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell>Tillatelser</TableCell>
+              <TableCell align="right">Bruk</TableCell>
+              <TableCell align="right">Kvote</TableCell>
+              <TableCell>Sist brukt</TableCell>
+              <TableCell>Rotasjon</TableCell>
+              <TableCell align="right">Handlinger</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {pageRows.map((row) => {
+              const isSelected = selectedIds.has(row.id);
+              const isOverdue = row.rotationDue ? new Date(row.rotationDue) < new Date() : false;
+
+              return (
+                <TableRow key={row.id} hover selected={isSelected}>
+                  <TableCell padding="checkbox">
+                    <Checkbox checked={isSelected} onChange={(event) => handleToggleRow(row.id, event.target.checked)} />
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <KeyIcon fontSize="small" color="primary" />
+                      <Typography variant="body2" fontWeight={600}>
+                        {row.name}
+                      </Typography>
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={row.service} size="small" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {getStatusIcon(row.status)}
+                      <Chip label={row.status} size="small" color={getStatusColor(row.status)} />
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={row.environment ?? 'unknown'}
+                      size="small"
+                      color={
+                        row.environment === 'production'
+                          ? 'error'
+                          : row.environment === 'staging'
+                            ? 'warning'
+                            : 'info'
+                      }
+                      variant="outlined"
+                    />
+                  </TableCell>
+                  <TableCell>{row.keyType}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                      {row.permissions.slice(0, 2).map((permission) => (
+                        <Chip key={`${row.id}-${permission}`} label={permission} size="small" variant="outlined" />
+                      ))}
+                      {row.permissions.length > 2 ? (
+                        <Chip label={`+${row.permissions.length - 2}`} size="small" variant="outlined" />
+                      ) : null}
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="right">{row.usageCount}</TableCell>
+                  <TableCell align="right">{row.monthlyQuota === -1 ? '∞' : row.monthlyQuota}</TableCell>
+                  <TableCell>{formatDate(row.lastUsed, true)}</TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color={isOverdue ? 'error' : 'text.secondary'}>
+                      {formatDate(row.rotationDue)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      <Tooltip title="Se detaljer">
+                        <IconButton size="small" onClick={() => onViewKey(row.id)}>
+                          <ViewIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Kopier nøkkel">
+                        <IconButton size="small" onClick={() => onCopyKey(row.maskedKey)}>
+                          <CopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Flere handlinger">
+                        <IconButton size="small" onClick={(event) => handleOpenMenu(event, row)}>
+                          <MoreIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+
+            {pageRows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={12}>
+                  <Typography variant="body2" color="text.secondary" textAlign="center" py={3}>
+                    {loading ? 'Laster API-nøkler...' : 'Ingen API-nøkler matcher filteret.'}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      <TablePagination
+        component="div"
+        count={filteredKeys.length}
+        page={page}
+        rowsPerPage={rowsPerPage}
+        onPageChange={(_event, nextPage) => setPage(nextPage)}
+        onRowsPerPageChange={(event) => {
+          setRowsPerPage(Number(event.target.value));
+          setPage(0);
+        }}
+        rowsPerPageOptions={[10, 25, 50, 100]}
       />
 
-      {/* Actions Menu */}
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={() => selectedKey && onViewKey(selectedKey.id)}>
-          <ViewIcon sx={{ mr:  1 }} fontSize="small" />
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
+        <MenuItem
+          onClick={() => {
+            if (activeRow) {
+              onViewKey(activeRow.id);
+            }
+            handleCloseMenu();
+          }}
+        >
+          <ViewIcon sx={{ mr: 1 }} fontSize="small" />
           Se detaljer
         </MenuItem>
-        <MenuItem onClick={() => selectedKey && onRotateKey(selectedKey.id)}>
-          <RotateIcon sx={{ mr:  1 }} fontSize="small" />
+        <MenuItem
+          onClick={() => {
+            if (activeRow) {
+              onRotateKey(activeRow.id);
+            }
+            handleCloseMenu();
+          }}
+        >
+          <RotateIcon sx={{ mr: 1 }} fontSize="small" />
           Roter nøkkel
         </MenuItem>
-        <MenuItem 
-          onClick={() => selectedKey && handleDeleteClick(selectedKey)}
+        <MenuItem
+          onClick={() => {
+            if (activeRow) {
+              handleRequestDelete(activeRow);
+            }
+          }}
           sx={{ color: 'error.main' }}
         >
-          <DeleteIcon sx={{ mr:  1 }} fontSize="small" />
+          <DeleteIcon sx={{ mr: 1 }} fontSize="small" />
           Slett nøkkel
         </MenuItem>
       </Menu>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Bekreft sletting</DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mb:  2 }}>
+          <Alert severity="warning" sx={{ mb: 2 }}>
             <Typography variant="body1" gutterBottom>
               Er du sikker på at du vil slette API-nøkkelen "{keyToDelete?.name}"?
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Denne handlingen kan ikke angres. Alle applikasjoner som bruker denne nøkkelen vil slutte å fungere.
+              Denne handlingen kan ikke angres. Integrasjoner som bruker nøkkelen vil slutte å fungere.
             </Typography>
           </Alert>
-          
-          {keyToDelete && (
-            <Box sx={{ mt:  2 }}>
+
+          {keyToDelete ? (
+            <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle2" gutterBottom>
-                Nøkkeldetaljer: </Typography>
+                Nøkkeldetaljer
+              </Typography>
               <Typography variant="body2">
-                • Tjeneste: {keyToDelete.service}<br />
-                • Miljø: {keyToDelete.environment}<br />
-                • Sist brukt: {keyToDelete.lastUsed 
-                  ? format(new Date(keyToDelete.lastUsed)'dd.MM.yyyy HH: mm', { locale: nb })
-                  :'Aldri'
-              }
+                • Tjeneste: {keyToDelete.service}
+                <br />• Miljø: {keyToDelete.environment ?? 'unknown'}
+                <br />• Sist brukt: {formatDate(keyToDelete.lastUsed, true)}
               </Typography>
             </Box>
-          )}
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            Avbryt
-          </Button>
-          <Button onClick={handleDeleteConfirm}
-            color="error" 
-            variant="contained"
-           sx={theming.getThemedButtonSx()}>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Avbryt</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained" sx={theming.getThemedButtonSx()}>
             Slett nøkkel
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </Stack>
   );
 }

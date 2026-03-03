@@ -362,7 +362,7 @@ export async function compareSceneWithReference(
   if (currentLights.length < recommendation.lights.length) {
     missingElements.push(`${recommendation.lights.length - currentLights.length} more light(s)`);
     suggestions.push(
-      , `Add ${recommendation.lights.length - currentLights.length} more light(s) to match reference`,
+      `Add ${recommendation.lights.length - currentLights.length} more light(s) to match reference`,
     );
   } else if (currentLights.length > recommendation.lights.length) {
     excessElements.push(`${currentLights.length - recommendation.lights.length} extra light(s)`);

@@ -133,7 +133,7 @@ export const lightPresetsService = {
     return saved ? JSON.parse(saved) : [];
   },
 
-  async create(preset: Omit<LightPreset, 'id' | 'createdAt' | 'updatedAt' | , 'usageCount'>): Promise<LightPreset | null> {
+  async create(preset: Omit<LightPreset, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>): Promise<LightPreset | null> {
     try {
       const response = await apiRequest<{ success: boolean; preset: LightPreset }>('/light-presets', {
         method: 'POST',
@@ -681,4 +681,3 @@ export const userDataService = {
 };
 
 export default userDataService;
-

@@ -294,7 +294,7 @@ export default function ModerationManagement() {
             <ReportsTab
               reports={reports}
               onResolve={handleResolveReport}
-              onIssueWarning={(userId) => {
+              onIssueWarning={(userId: string) => {
                 setActionForm({ ...actionForm, userId });
                 setWarnDialogOpen(true);
               }}

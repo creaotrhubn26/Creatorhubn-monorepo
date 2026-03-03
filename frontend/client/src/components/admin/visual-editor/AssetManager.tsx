@@ -12,7 +12,6 @@ import {
   Box,
   Typography,
   Button,
-  Grid,
   Paper,
   Dialog,
   DialogTitle,
@@ -33,6 +32,7 @@ import {
   ListItemIcon,
   Chip,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Folder,
   FileUpload as UploadIcon,
@@ -40,7 +40,6 @@ import {
   VideoLibrary,
   Image as ImageIcon,
 } from '@mui/icons-material';
-import { FileUpload } from '@/lib/upload';
 
 interface Asset {
   id: string;
@@ -92,7 +91,7 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
 
   // Component registration and performance monitoring
   useEffect(() => {
-    const endTiming = performance.startTiming('asset_manager_render,');
+    const endTiming = performance.startTiming('asset_manager_render');
 
     lifecycle.registerComponent({
       id: 'AssetManager',
@@ -320,16 +319,16 @@ export const AssetManager: React.FC<AssetManagerProps> = ({
         onDrop={handleDrop}
         onClick={() => document.getElementById('file-input')?.click()}
       >
-        <Grid container direction="column" alignItems="center" spacing={2}>
-          <Grid item>
+        <Grid alignItems="center" container direction="column" spacing={2}>
+          <Grid>
             <UploadIcon sx={{ fontSize: 48, color: 'primary.main' }} />
           </Grid>
-          <Grid item>
+          <Grid>
             <Typography variant="h6" sx={{ color: theming.colors.primary }}>
               Drag & drop files here or click to upload
             </Typography>
           </Grid>
-          <Grid item>
+          <Grid>
             <Button
               variant="contained"
               startIcon={theming.getThemedIcon('cloudUpload')}

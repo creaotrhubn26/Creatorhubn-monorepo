@@ -169,7 +169,7 @@ export function CodeGenerationDemo() {
         data 
     });
 
-      dataFlow.syncData('code-generation:backend', data, 'code-generation-studio', 'all');
+      dataFlow.syncData('code-generation:backend', data);
   },
 });
 
@@ -194,7 +194,7 @@ export function CodeGenerationDemo() {
         data 
     });
 
-      dataFlow.syncData('code-generation:frontend', data, 'code-generation-studio', 'all');
+      dataFlow.syncData('code-generation:frontend', data);
   },
 });
 
@@ -244,7 +244,7 @@ export function CodeGenerationDemo() {
         success: true 
     });
 
-      dataFlow.syncData('code-generation:full-integration', data, 'code-generation-studio', 'all');
+      dataFlow.syncData('code-generation:full-integration', data);
 
       communication.sendMessage({
         from: 'code-generation-studio',
@@ -304,7 +304,7 @@ export function CodeGenerationDemo() {
     generateFullMutation.mutate(data);
 
     if (generatedCode) {
-      dataFlow.syncData('code-generation:result', generatedCode, 'code-generation-studio', 'all');
+      dataFlow.syncData('code-generation:result', generatedCode);
   }
 };
 

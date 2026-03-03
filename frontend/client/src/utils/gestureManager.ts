@@ -31,7 +31,7 @@ export interface Gesture {
   id: string;
   name: string;
   description: string;
-  type: 'tap, ' | 'double-tap' | 'long-press' | 'swipe' | 'pinch' | 'rotate' | 'pan' | 'custom';
+  type: 'tap' | 'double-tap' | 'long-press' | 'swipe' | 'pinch' | 'rotate' | 'pan' | 'custom';
   direction?: 'up' | 'down' | 'left' | 'right' | 'diagonal' | 'any';
   fingers: number;
   duration?: number;
@@ -187,7 +187,7 @@ class GestureManager {
       this.loadDefaultGestures();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
 } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
@@ -552,22 +552,24 @@ class GestureManager {
       return false; // Keyboard gestures are handled separately
 }
 
+    const pointerEvent = event instanceof KeyboardEvent ? null : event;
+
     // Check specific gesture types
     switch (gesture.type) {
       case 'tap':
-        return this.isTapGesture(gesture, event);
+        return !!pointerEvent && this.isTapGesture(gesture, pointerEvent);
       case 'double-tap':
-        return this.isDoubleTapGesture(gesture, event);
+        return !!pointerEvent && this.isDoubleTapGesture(gesture, pointerEvent);
       case 'long-press':
-        return this.isLongPressGesture(gesture, event);
+        return !!pointerEvent && this.isLongPressGesture(gesture, pointerEvent);
       case 'swipe':
-        return this.isSwipeGesture(gesture, event);
+        return !!pointerEvent && this.isSwipeGesture(gesture, pointerEvent);
       case 'pinch':
-        return this.isPinchGesture(gesture, event);
+        return pointerEvent instanceof TouchEvent && this.isPinchGesture(gesture, pointerEvent);
       case 'rotate':
-        return this.isRotateGesture(gesture, event);
+        return pointerEvent instanceof TouchEvent && this.isRotateGesture(gesture, pointerEvent);
       case 'pan':
-        return this.isPanGesture(gesture, event);
+        return !!pointerEvent && this.isPanGesture(gesture, pointerEvent);
       default: return false;
 }
 }
@@ -646,18 +648,19 @@ class GestureManager {
   private async executeGesture(gesture: Gesture, event: TouchEvent | MouseEvent | KeyboardEvent): Promise<void> {
     try {
       const startTime = Date.now();
+      const pointerEvent = event instanceof KeyboardEvent ? null : event;
 
       // Create gesture event
       const gestureEvent: GestureEvent = {
         type: gesture.type,
         gesture,
-        touches: event instanceof TouchEvent ? Array.from(event.touches) : [],
-        center: this.calculateCenter(event),
-        distance: this.calculateDistance(event),
-        angle: this.calculateAngle(event),
-        velocity: this.calculateVelocity(event),
-        direction: this.calculateDirection(event),
-        duration: this.calculateDuration(event),
+        touches: pointerEvent instanceof TouchEvent ? Array.from(pointerEvent.touches) : [],
+        center: pointerEvent ? this.calculateCenter(pointerEvent) : { x: 0, y: 0 },
+        distance: pointerEvent ? this.calculateDistance(pointerEvent) : 0,
+        angle: pointerEvent ? this.calculateAngle(pointerEvent) : 0,
+        velocity: pointerEvent ? this.calculateVelocity(pointerEvent) : { x: 0, y: 0 },
+        direction: pointerEvent ? this.calculateDirection(pointerEvent) : 'any',
+        duration: pointerEvent ? this.calculateDuration(pointerEvent) : 0,
         timestamp: Date.now(),
         element: gesture.element,
         originalEvent: event
@@ -987,7 +990,6 @@ class GestureManager {
 export const gestureManager = new GestureManager();
 
 export default gestureManager;
-
 
 
 

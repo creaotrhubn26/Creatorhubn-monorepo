@@ -27,7 +27,7 @@ export interface WorkflowConfig {
   actionTimeout: number;
   validationTimeout: number;
   cacheTimeout: number;
-  logLevel: 'debug, ' | 'info' | 'warn' | 'error';
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
   debug: boolean;
 }
 
@@ -320,11 +320,11 @@ class WorkflowAutomationManager {
       this.setupEventListeners();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
   } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
   }
 }
 
@@ -681,6 +681,30 @@ class WorkflowAutomationManager {
 }
 
   /**
+   * Delete template
+   */
+  async deleteTemplate(templateId: string): Promise<void> {
+    if (!this.state.isEnabled) throw new Error('Workflow automation is not enabled');
+
+    const template = this.state.templates.get(templateId);
+    if (!template) throw new Error(`Template not found: ${templateId}`);
+
+    try {
+      this.state.templates.delete(templateId);
+      this.state.totalTemplates = Math.max(0, this.state.totalTemplates - 1);
+      this.state.lastUpdate = Date.now();
+
+      this.emit('template_deleted', { template });
+  } catch (error) {
+      this.state.totalErrors++;
+      this.state.hasError = true;
+      this.state.error = error instanceof Error ? error.message : 'Unknown error';
+      this.emit('template_delete_failed', { template, error: this.state.error });
+      throw error;
+  }
+}
+
+  /**
    * Execute triggers
    */
   private async executeTriggers(workflow: Workflow, variables?: Record<string, any>): Promise<void> {
@@ -862,7 +886,6 @@ class WorkflowAutomationManager {
 export const workflowAutomationManager = new WorkflowAutomationManager();
 
 export default workflowAutomationManager;
-
 
 
 

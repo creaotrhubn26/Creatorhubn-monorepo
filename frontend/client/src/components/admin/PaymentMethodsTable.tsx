@@ -92,7 +92,9 @@ export default function PaymentMethodsTable() {
           Table: (props) => (
             <Table {...props} sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
           ),
-          TableHead,
+          TableHead: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
+            <TableHead {...props} ref={ref} />
+          )),
           TableRow: ({ item: _item, ...props }) => <TableRow {...props} />,
           TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
             <TableBody {...props} ref={ref} />
@@ -183,4 +185,3 @@ export default function PaymentMethodsTable() {
     </Paper>
   );
 }
-

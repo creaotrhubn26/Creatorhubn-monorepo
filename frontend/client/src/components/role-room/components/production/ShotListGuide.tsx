@@ -48,6 +48,7 @@ import {
   HelpOutline as HelpIcon,
   Videocam as VideoIcon,
 } from '@mui/icons-material';
+import { GuideAnnotatedScreenshot } from '../shared/guide/GuideAnnotationOverlay';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -846,11 +847,12 @@ export function ShotListGuide({ open, onClose, initialStepId }: ShotListGuidePro
                 <Box component="video" src={stepOverride.videoUrl} controls
                   sx={{ width: '100%', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', mt: 1.5, display: 'block' }} />
               ) : stepOverride.screenshotUrl ? (
-                <Box
-                  component="img"
+                <GuideAnnotatedScreenshot
                   src={stepOverride.screenshotUrl}
                   alt={section.screenshotLabel}
-                  sx={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 2, border: '1px solid rgba(255,255,255,0.1)', mt: 1.5 }}
+                  annotations={stepOverride.annotations}
+                  containerSx={{ mt: 1.5, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}
+                  imageSx={{ maxHeight: 320, objectFit: 'cover' }}
                 />
               ) : (
                 <>

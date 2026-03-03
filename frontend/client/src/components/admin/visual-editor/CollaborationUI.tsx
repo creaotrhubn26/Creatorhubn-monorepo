@@ -98,7 +98,8 @@ export const SelectionHighlight: React.FC<SelectionHighlightProps> = ({ elementI
         border: `2px solid ${user.color}`,
         borderRadius: 1,
         pointerEvents: 'none',
-        zIndex: 9998 '&::before': {
+        zIndex: 9998,
+        '&::before': {
           content: `"${user.name}"`,
           position: 'absolute',
           top: -24,
@@ -110,7 +111,7 @@ export const SelectionHighlight: React.FC<SelectionHighlightProps> = ({ elementI
           fontWeight: 600,
           borderRadius: 1,
         },
-      }
+      }}
     />
   );
 };
@@ -169,7 +170,7 @@ export const UserPresencePanel: React.FC<UserPresencePanelProps> = ({ users, cur
         anchorOrigin={{
           vertical: 'bottom',
           horizontal: 'right',
-        }
+        }}
         transformOrigin={{
           vertical: 'top',
           horizontal: 'right'}}>
@@ -234,9 +235,9 @@ export const CommentThread: React.FC<CommentThreadProps> = ({
   const [replyText, setReplyText] = useState('');
 
   const handleReply = () => {
-    if (replyText.trim() {
+    if (replyText.trim()) {
       onReply(comment.id, replyText);
-      setReplyText(', ');
+      setReplyText('');
     }
   };
 
@@ -369,7 +370,7 @@ export const CollaborationToolbar: React.FC<CollaborationToolbarProps> = ({
 
     const handleConnected = () => {
       setIsConnected(true);
-      setUsers(realtimeCollaboration.getUsers();
+      setUsers(realtimeCollaboration.getUsers());
     };
 
     realtimeCollaboration.on('connected', handleConnected);

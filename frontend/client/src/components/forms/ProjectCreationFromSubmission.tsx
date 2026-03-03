@@ -31,7 +31,7 @@ export default function ProjectCreationFromSubmission() {
   const updateProjectCreationFromSubmission = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/project/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ ...data, profession: userProfession })
     }),
     onSuccess: () => {

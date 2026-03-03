@@ -336,7 +336,7 @@ export function drawVignetteOverlay(
     centerX, centerY, maxRadius
   );
   
-  gradient.addColorStop(0'rgba(0, 0, 0, 0)');
+  gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
   gradient.addColorStop(1, `rgba(0, 0, 0, ${params.vignetting})`);
   
   ctx.fillStyle = gradient;
@@ -379,4 +379,3 @@ export function generateVignettePreview(
 
 export const lensEffects = new LensEffectsPass();
 export default lensEffects;
-

@@ -200,12 +200,12 @@ export const CustomDomainSetup: React.FC<CustomDomainSetupProps> = ({
                   value={customDomain}
                   onChange={(e) => setCustomDomain(e.target.value)}
                   placeholder="photos.yourdomain.com"
-                  error={customDomain !== ', ' && !isValidDomain(customDomain)}
+                  error={customDomain !== '' && !isValidDomain(customDomain)}
                   helperText={
-                    customDomain !== ',' && !isValidDomain(customDomain)
+                    customDomain !== '' && !isValidDomain(customDomain)
                       ? 'Please enter a valid domain'
                       : 'Use a subdomain (e.g., photos.yourdomain.com)'
-                  }}
+                  }
                 />
               </Box>
 

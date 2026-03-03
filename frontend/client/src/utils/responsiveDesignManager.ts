@@ -171,7 +171,7 @@ export interface ResponsiveState {
   hasError: boolean;
   error: string | null;
   currentBreakpoint: string;
-  currentOrientation: 'portrait, ' | 'landscape';
+  currentOrientation: 'portrait' | 'landscape';
   currentViewport: {
     width: number;
     height: number;
@@ -904,7 +904,6 @@ class ResponsiveDesignManager {
 export const responsiveDesignManager = new ResponsiveDesignManager();
 
 export default responsiveDesignManager;
-
 
 
 

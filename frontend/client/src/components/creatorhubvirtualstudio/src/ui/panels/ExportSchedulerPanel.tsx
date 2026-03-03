@@ -112,7 +112,10 @@ const STATUS_CONFIG: Record<ExportJobStatus, { color: string; icon: React.ReactN
   cancelled: { color: '#9e9e9e', icon: <Cancel />, label: 'Cancelled' },
 };
 
-const PRIORITY_CONFIG: Record<ExportJobPriority, { color: 'default' | 'primary' | 'secondary' | 'error';, label: string }> = {
+const PRIORITY_CONFIG: Record<
+  ExportJobPriority,
+  { color: 'default' | 'primary' | 'secondary' | 'error'; label: string }
+> = {
   low: { color: 'default', label: 'Low' },
   normal: { color: 'primary', label: 'Normal' },
   high: { color: 'secondary', label: 'High' },
@@ -805,4 +808,3 @@ export function ExportSchedulerPanel({
 }
 
 export default ExportSchedulerPanel;
-

@@ -1,13 +1,9 @@
 /**
- * HDRI Recommendation Service
- * 
- * Maps character types, genres, and professions to recommended HDRI environments.
- * Provides context-aware environment suggestions for optimal photography simulation.
+ * HDRI recommendation service.
+ *
+ * Returns deterministic, context-aware environment recommendations
+ * based on character tags and metadata.
  */
-
-import { logger } from './logger';
-
-const log = logger.module('HDRIRecommendation');
 
 export interface HDRIRecommendation {
   id: string;
@@ -17,149 +13,8 @@ export interface HDRIRecommendation {
   thumbnail: string;
   intensity: number;
   reason: string;
-  matchScore: number; // 0-100
+  matchScore: number;
 }
-
-// Character tags to HDRI mappings
-const PROFESSION_HDRI_MAP: Record<string, string[]> = {
-  // Barbershop & Salon
-  barber: ['studio_small_03','studio_small_01','hotel_room','music_hall'],
-  salon: ['studio_small_02','studio_small_05','entrance_hall','modern_buildings']'makeup-artist': ['studio_small_03','photo_studio_01','studio_small_08']'spa-therapist': ['studio_small_02','hotel_room','small_cathedral'],
-  
-  // Culinary
-  chef: ['empty_warehouse','studio_small_04','modern_buildings','urban_alley'],
-  pastry: ['studio_small_02','studio_small_05','entrance_hall'],
-  sushi: ['studio_small_03','studio_small_07','music_hall'],
-  bbq: ['empty_warehouse','old_depot','kloppenheim_06'],
-  barista: ['urban_alley','hotel_room','modern_buildings','studio_small_01'],
-  baker: ['studio_small_02','empty_warehouse','entrance_hall'],
-  butcher: ['empty_warehouse','old_depot','studio_small_04'],
-  sommelier: ['music_hall','entrance_hall','small_cathedral','dancing_hall'],
-  
-  // Trades & Crafts
-  mechanic: ['empty_warehouse','old_depot','peppermint_powerplant'],
-  carpenter: ['empty_warehouse','old_depot','studio_small_04'],
-  electrician: ['empty_warehouse','old_depot','modern_buildings'],
-  plumber: ['empty_warehouse','old_depot','urban_alley'],
-  welder: ['peppermint_powerplant','empty_warehouse','old_depot']'tattoo-artist': ['urban_alley','studio_small_06','leadenhall_market'],
-  jeweler: ['studio_small_03','studio_small_08','entrance_hall'],
-  blacksmith: ['peppermint_powerplant','old_depot','empty_warehouse'],
-  cobbler: ['old_depot','entrance_hall','studio_small_04'],
-  florist: ['studio_small_02','autumn_forest','sunflowers','meadow'],
-  tailor: ['studio_small_03','entrance_hall','hotel_room'],
-  potter: ['studio_small_04','empty_warehouse','old_depot'],
-  
-  // ============================================================================
-  // SCHOOL PHOTOGRAPHY SPECIALIZATIONS
-  // ============================================================================
-  
-  // School Photography - Individual Portraits
-  'school-portrait': ['studio_small_03','studio_small_09','photo_studio_01','studio_neutral']'yearbook': ['studio_small_03','studio_small_09','photo_studio_01','studio_neutral']'headshot-school': ['studio_small_03','studio_small_01','photo_studio_01'],
-  
-  // School Photography - Group/Class Photos
-  'class-photo': ['school_quad','empty_warehouse_01','studio_small_09','studio_neutral']'group-school': ['school_quad','empty_warehouse_01','studio_small_03','entrance_hall']'team-photo': ['school_quad','empty_warehouse_01','studio_neutral'],
-  
-  // School Photography - Locations
-  'gymnasium': ['school_quad','empty_warehouse_01','studio_neutral']'school-hall': ['entrance_hall','music_hall_01','school_quad']'classroom': ['studio_small_04','entrance_hall','studio_neutral']'school-outdoor': ['school_quad','meadow','autumn_forest','sunflowers'],
-  
-  // School Photography - Events
-  'graduation': ['entrance_hall','music_hall_01','studio_small_09','school_quad']'prom': ['dancing_hall','music_hall_01','entrance_hall']'sports-team': ['school_quad','empty_warehouse_01','studio_small_06']'school-event': ['entrance_hall','music_hall_01','school_quad'],
-  
-  // School Photography - General
-  'school': ['studio_small_09','studio_neutral','school_quad','entrance_hall']'school_photography': ['studio_small_09','studio_neutral','school_quad','entrance_hall'],
-  
-  // General categories
-  professional: ['studio_small_03','studio_small_01','photo_studio_01'],
-  creative: ['studio_small_05','studio_small_02','urban_alley'],
-  industrial: ['empty_warehouse','old_depot','peppermint_powerplant'],
-  elegant: ['entrance_hall','music_hall','dancing_hall','small_cathedral']
-  
-  // ============================================================================
-  // VIDEOGRAPHER SPECIALIZATIONS
-  // ============================================================================
-  
-  // Cinematographer
-  cinematographer: ['empty_warehouse','peppermint_powerplant','urban_alley','studio_small_06']'film-maker': ['empty_warehouse','studio_small_06','urban_alley','old_depot'],
-  
-  // Commercial Video
-  'commercial-video': ['studio_small_03','photo_studio_01','modern_buildings'],
-  advertising: ['studio_small_01','studio_small_03','photo_studio_01'],
-  
-  // Documentary
-  documentary: ['hotel_room','entrance_hall','studio_small_04','urban_alley'],
-  journalism: ['urban_alley','modern_buildings','studio_small_01'],
-  
-  // Music Video
-  'music-video': ['urban_alley','peppermint_powerplant','studio_small_06','night_bridge'],
-  performance: ['urban_alley','studio_small_05','peppermint_powerplant'],
-  concert: ['urban_alley','night_bridge','peppermint_powerplant'],
-  
-  // Corporate Video
-  'corporate-video': ['studio_small_01','studio_small_03','modern_buildings','photo_studio_01'],
-  training: ['studio_small_01','studio_small_03','photo_studio_01'],
-  testimonial: ['studio_small_03','hotel_room','photo_studio_01'],
-  
-  // Social Media / Content Creator
-  youtube: ['studio_small_01','studio_small_02','hotel_room'],
-  tiktok: ['studio_small_05','urban_alley','studio_small_02'],
-  instagram: ['studio_small_02','studio_small_05','hotel_room'],
-  vlogger: ['hotel_room','studio_small_02','urban_alley']'content-creator': ['studio_small_01','studio_small_02','hotel_room'],
-  
-  // Live Streaming / Broadcast
-  broadcast: ['studio_small_01','photo_studio_01','studio_small_03']'live-streaming': ['studio_small_01','studio_small_02','photo_studio_01'],
-  news: ['studio_small_01','photo_studio_01','studio_small_03'],
-  podcast: ['hotel_room','studio_small_04','studio_small_02'],
-  
-  // VFX / Green Screen
-  vfx: ['studio_small_01','photo_studio_01','peppermint_powerplant']'green-screen': ['studio_small_01','photo_studio_01','studio_small_03'],
-  compositing: ['studio_small_01','photo_studio_01','empty_warehouse'],
-  
-  // Interview
-  interview: ['hotel_room','studio_small_03','entrance_hall','studio_small_04']'talking-head': ['studio_small_01','studio_small_03','hotel_room'],
-};
-
-// Genre to HDRI mappings
-const GENRE_HDRI_MAP: Record<string, string[]> = {
-  'film-noir': ['studio_small_06','urban_alley','night_bridge','leadenhall_market']'sci-fi': ['peppermint_powerplant','modern_buildings','studio_small_07']'western': ['kloppenheim_06','wasteland_clouds','rural_asphalt_road','rosendal_plains']'horror': ['moonlit_golf','night_bridge','old_depot','small_cathedral']'cosmic-horror': ['moonlit_golf','dikhololo_night','wasteland_clouds']'fantasy': ['autumn_forest','small_cathedral','meadow','snowy_forest_path']'action': ['empty_warehouse','urban_alley','peppermint_powerplant']'period-drama': ['entrance_hall','music_hall','small_cathedral','dancing_hall']'asian-cinema': ['studio_small_03','autumn_forest','music_hall']'superhero': ['modern_buildings','urban_alley','studio_small_08']'profession': ['studio_small_03','empty_warehouse','hotel_room'],
-};
-
-// Era to HDRI mappings
-const ERA_HDRI_MAP: Record<string, string[]> = {
-  '1940s': ['studio_small_06','old_depot','entrance_hall']'1950s': ['studio_small_01','hotel_room','music_hall']'modern': ['studio_small_03','modern_buildings','urban_alley']'traditional': ['old_depot','entrance_hall','small_cathedral']'futuristic': ['peppermint_powerplant','modern_buildings','studio_small_07']'medieval': ['small_cathedral','autumn_forest']'victorian': ['entrance_hall','music_hall','old_depot']'classic': ['studio_small_01','hotel_room','entrance_hall']'industrial': ['empty_warehouse','old_depot','peppermint_powerplant']'elegant': ['dancing_hall','music_hall','entrance_hall'],
-};
-
-// Mood to HDRI mappings
-const MOOD_HDRI_MAP: Record<string, string[]> = {
-  'gritty': ['urban_alley','empty_warehouse','old_depot']'elegant': ['entrance_hall','music_hall','dancing_hall']'professional': ['studio_small_03','studio_small_01','photo_studio_01']'creative': ['studio_small_05','urban_alley','peppermint_powerplant']'warm': ['studio_small_02','sunflowers','venice_sunset']'cool': ['studio_small_07','snowy_forest_path','moonlit_golf']'dramatic': ['studio_small_04','studio_small_06','night_bridge']'serene': ['meadow','autumn_forest','hotel_room']'intense': ['peppermint_powerplant','empty_warehouse','wasteland_clouds']'mysterious': ['moonlit_golf','night_bridge','old_depot']'authoritative': ['modern_buildings','entrance_hall','studio_small_03'],
-};
-
-// Full HDRI preset data (simplified for recommendations)
-const HDRI_PRESETS: Record<string, { name: string; category: string; url: string; thumbnail: string; intensity: number; description: string }> = {
-  // Studio
-  'studio_small_01': { name: 'Studio Small 01', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_01.png', intensity: 1.0, description: 'Clean studio with even lighting' }, 'studio_small_02': { name: 'Studio Small 02', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_02_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_02.png', intensity: 1.0, description: 'Studio with warm tones' }, 'studio_small_03': { name: 'Studio Small 03', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_03_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_03.png', intensity: 1.0, description: 'Professional studio with soft lighting' }, 'studio_small_04': { name: 'Studio Small 04', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_04_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_04.png', intensity: 1.1, description: 'Studio with dramatic shadows' }, 'studio_small_05': { name: 'Studio Small 05', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_05_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_05.png', intensity: 1.0, description: 'Bright studio setup' }, 'studio_small_06': { name: 'Studio Small 06', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_06_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_06.png', intensity: 0.9, description: 'Moody studio lighting' }, 'studio_small_07': { name: 'Studio Small 07', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_07_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_07.png', intensity: 1.0, description: 'Cool-toned studio' }, 'studio_small_08': { name: 'Studio Small 08', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_08_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/studio_small_08.png', intensity: 1.2, description: 'High-key studio setup' }, 'photo_studio_01': { name: 'Photo Studio 01', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/photo_studio_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/photo_studio_01.png', intensity: 1.0, description: 'Professional photo studio' }, 'peppermint_powerplant': { name: 'Peppermint Powerplant', category: 'studio', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/peppermint_powerplant_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/peppermint_powerplant.png', intensity: 0.8, description: 'Industrial studio vibe' },
-  
-  // Indoor
-  'empty_warehouse': { name: 'Empty Warehouse', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_warehouse_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/empty_warehouse_01.png', intensity: 1.0, description: 'Industrial warehouse space' }, 'urban_alley': { name: 'Urban Alley', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/urban_alley_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/urban_alley_01.png', intensity: 0.9, description: 'City alley with overhead lighting' }'hotel_room': { name: 'Hotel Room', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/hotel_room_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/hotel_room.png', intensity: 0.7, description: 'Cozy hotel interior' }'modern_buildings': { name: 'Modern Buildings', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/modern_buildings_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/modern_buildings.png', intensity: 0.8, description: 'Modern architecture interior' }'music_hall': { name: 'Music Hall', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/music_hall_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/music_hall_01.png', intensity: 0.8, description: 'Concert hall with dramatic lighting' }'entrance_hall': { name: 'Entrance Hall', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/entrance_hall_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/entrance_hall.png', intensity: 0.8, description: 'Grand entrance foyer' }'old_depot': { name: 'Old Depot', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/old_depot_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/old_depot.png', intensity: 0.9, description: 'Historic train depot' }'small_cathedral': { name: 'Small Cathedral', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/small_cathedral_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/small_cathedral.png', intensity: 0.7, description: 'Gothic cathedral interior' }'dancing_hall': { name: 'Dancing Hall', category: 'night', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/dancing_hall_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/dancing_hall.png', intensity: 0.7, description: 'Ballroom dance floor' }'leadenhall_market': { name: 'Leadenhall Market', category: 'indoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/leadenhall_market_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/leadenhall_market.png', intensity: 0.8, description: 'Victorian covered market' },
-  
-  // Outdoor
-  'kloppenheim_06': { name: 'Kloppenheim Outdoor', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloppenheim_06_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/kloppenheim_06.png', intensity: 1.0, description: 'Bright daylight with clear sky' }, 'autumn_forest': { name: 'Autumn Forest', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/autumn_forest_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/autumn_forest.png', intensity: 0.9, description: 'Natural forest lighting with autumn colors' }'meadow': { name: 'Meadow', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/meadow_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/meadow.png', intensity: 1.0, description: 'Open meadow with bright sun' }'rural_asphalt_road': { name: 'Rural Road', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/rural_asphalt_road_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/rural_asphalt_road.png', intensity: 1.0, description: 'Country road in daylight' }'snowy_forest_path': { name: 'Snowy Forest Path', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/snowy_forest_path_01_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/snowy_forest_path_01.png', intensity: 0.9, description: 'Winter forest scene' }'wasteland_clouds': { name: 'Wasteland Clouds', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/wasteland_clouds_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/wasteland_clouds.png', intensity: 0.9, description: 'Dramatic cloudy wasteland' }'rosendal_plains': { name: 'Rosendal Plains', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/rosendal_plains_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/rosendal_plains.png', intensity: 1.1, description: 'Open plains warm light' }'dikhololo_night': { name: 'Dikhololo Night', category: 'outdoor', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/dikhololo_night_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/dikhololo_night.png', intensity: 0.4, description: 'Starry night sky' },
-  
-  // Sunset
-  'sunflowers': { name: 'Sunflowers Sunset', category: 'sunset', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/sunflowers_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/sunflowers.png', intensity: 1.4, description: 'Sunflower field at golden hour' }'venice_sunset': { name: 'Venice Sunset', category: 'sunset', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/venice_sunset_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/venice_sunset.png', intensity: 1.3, description: 'Warm Italian sunset over canals' },
-  
-  // Night
-  'moonlit_golf': { name: 'Moonlit Golf Course', category: 'night', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/moonlit_golf_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/moonlit_golf.png', intensity: 0.5, description: 'Night scene with moonlight' }'night_bridge': { name: 'Night Bridge', category: 'night', url: 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/night_bridge_1k.hdr', thumbnail: 'https://cdn.polyhaven.com/asset_img/thumbs/night_bridge.png', intensity: 0.6, description: 'Urban bridge at night' },
-};
-
-// Reason templates
-const REASON_TEMPLATES = {
-  profession: (profession: string) => `Perfect lighting for ${profession} professional photography`,
-  genre: (genre: string) => `Matches the ${genre} film aesthetic`,
-  era: (era: string) => `Authentic ${era} period atmosphere`,
-  mood: (mood: string) => `Creates a ${mood} mood for the scene`,
-  tags: (tag: string) => `Ideal environment for ${tag} subjects`,
-  default: () => 'Good general-purpose studio lighting',
-};
 
 export interface CharacterMetadata {
   genre?: string;
@@ -168,120 +23,281 @@ export interface CharacterMetadata {
   tags?: string[];
 }
 
-/**
- * Get HDRI recommendations for a character
- */
+interface HDRIPreset {
+  name: string;
+  category: string;
+  url: string;
+  thumbnail: string;
+  intensity: number;
+  description: string;
+  tags: string[];
+}
+
+const PROFESSION_HDRI_MAP: Record<string, string[]> = {
+  barber: ['studio_small_03', 'studio_small_01', 'hotel_room', 'music_hall'],
+  salon: ['studio_small_02', 'studio_small_05', 'entrance_hall', 'modern_buildings'],
+  'makeup-artist': ['studio_small_03', 'photo_studio_01', 'studio_small_08'],
+  'spa-therapist': ['studio_small_02', 'hotel_room', 'small_cathedral'],
+  chef: ['empty_warehouse', 'studio_small_04', 'modern_buildings', 'urban_alley'],
+  pastry: ['studio_small_02', 'studio_small_05', 'entrance_hall'],
+  sushi: ['studio_small_03', 'studio_small_07', 'music_hall'],
+  bbq: ['empty_warehouse', 'old_depot', 'kloppenheim_06'],
+  barista: ['urban_alley', 'hotel_room', 'modern_buildings', 'studio_small_01'],
+  baker: ['studio_small_02', 'empty_warehouse', 'entrance_hall'],
+  mechanic: ['empty_warehouse', 'old_depot', 'peppermint_powerplant'],
+  electrician: ['empty_warehouse', 'old_depot', 'modern_buildings'],
+  welder: ['peppermint_powerplant', 'empty_warehouse', 'old_depot'],
+  'tattoo-artist': ['urban_alley', 'studio_small_06', 'leadenhall_market'],
+  jeweler: ['studio_small_03', 'studio_small_08', 'entrance_hall'],
+  florist: ['studio_small_02', 'autumn_forest', 'sunflowers', 'meadow'],
+  cinematographer: ['empty_warehouse', 'peppermint_powerplant', 'urban_alley', 'studio_small_06'],
+  'film-maker': ['empty_warehouse', 'studio_small_06', 'urban_alley', 'old_depot'],
+  documentary: ['hotel_room', 'entrance_hall', 'studio_small_04', 'urban_alley'],
+  'music-video': ['urban_alley', 'peppermint_powerplant', 'studio_small_06', 'night_bridge'],
+  podcast: ['hotel_room', 'studio_small_04', 'studio_small_02'],
+  interview: ['hotel_room', 'studio_small_03', 'entrance_hall', 'studio_small_04'],
+  'school-portrait': ['studio_small_03', 'studio_small_09', 'photo_studio_01', 'studio_neutral'],
+  yearbook: ['studio_small_03', 'studio_small_09', 'photo_studio_01', 'studio_neutral'],
+  'class-photo': ['school_quad', 'empty_warehouse_01', 'studio_small_09', 'studio_neutral'],
+  graduation: ['entrance_hall', 'music_hall_01', 'studio_small_09', 'school_quad'],
+  'sports-team': ['school_quad', 'empty_warehouse_01', 'studio_small_06'],
+  school: ['studio_small_09', 'studio_neutral', 'school_quad', 'entrance_hall'],
+  professional: ['studio_small_03', 'studio_small_01', 'photo_studio_01'],
+  creative: ['studio_small_05', 'studio_small_02', 'urban_alley'],
+  industrial: ['empty_warehouse', 'old_depot', 'peppermint_powerplant'],
+  elegant: ['entrance_hall', 'music_hall', 'dancing_hall', 'small_cathedral'],
+};
+
+const GENRE_HDRI_MAP: Record<string, string[]> = {
+  'film-noir': ['studio_small_06', 'urban_alley', 'night_bridge', 'leadenhall_market'],
+  'sci-fi': ['peppermint_powerplant', 'modern_buildings', 'studio_small_07'],
+  western: ['kloppenheim_06', 'wasteland_clouds', 'rural_asphalt_road', 'rosendal_plains'],
+  horror: ['moonlit_golf', 'night_bridge', 'old_depot', 'small_cathedral'],
+  fantasy: ['autumn_forest', 'small_cathedral', 'meadow', 'snowy_forest_path'],
+  action: ['empty_warehouse', 'urban_alley', 'peppermint_powerplant'],
+  'period-drama': ['entrance_hall', 'music_hall', 'small_cathedral', 'dancing_hall'],
+  superhero: ['modern_buildings', 'urban_alley', 'studio_small_08'],
+  profession: ['studio_small_03', 'empty_warehouse', 'hotel_room'],
+};
+
+const ERA_HDRI_MAP: Record<string, string[]> = {
+  '1940s': ['studio_small_06', 'old_depot', 'entrance_hall'],
+  '1950s': ['studio_small_01', 'hotel_room', 'music_hall'],
+  modern: ['studio_small_03', 'modern_buildings', 'urban_alley'],
+  traditional: ['old_depot', 'entrance_hall', 'small_cathedral'],
+  futuristic: ['peppermint_powerplant', 'modern_buildings', 'studio_small_07'],
+  medieval: ['small_cathedral', 'autumn_forest'],
+  victorian: ['entrance_hall', 'music_hall', 'old_depot'],
+  classic: ['studio_small_01', 'hotel_room', 'entrance_hall'],
+  industrial: ['empty_warehouse', 'old_depot', 'peppermint_powerplant'],
+  elegant: ['dancing_hall', 'music_hall', 'entrance_hall'],
+};
+
+const MOOD_HDRI_MAP: Record<string, string[]> = {
+  gritty: ['urban_alley', 'empty_warehouse', 'old_depot'],
+  elegant: ['entrance_hall', 'music_hall', 'dancing_hall'],
+  professional: ['studio_small_03', 'studio_small_01', 'photo_studio_01'],
+  creative: ['studio_small_05', 'urban_alley', 'peppermint_powerplant'],
+  warm: ['studio_small_02', 'sunflowers', 'venice_sunset'],
+  cool: ['studio_small_07', 'snowy_forest_path', 'moonlit_golf'],
+  dramatic: ['studio_small_04', 'studio_small_06', 'night_bridge'],
+  serene: ['meadow', 'autumn_forest', 'hotel_room'],
+  intense: ['peppermint_powerplant', 'empty_warehouse', 'wasteland_clouds'],
+  mysterious: ['moonlit_golf', 'night_bridge', 'old_depot'],
+  authoritative: ['modern_buildings', 'entrance_hall', 'studio_small_03'],
+};
+
+const HDRI_PRESETS: Record<string, HDRIPreset> = {
+  studio_small_01: makePreset('Studio Small 01', 'studio', 1.0),
+  studio_small_02: makePreset('Studio Small 02', 'studio', 1.0),
+  studio_small_03: makePreset('Studio Small 03', 'studio', 1.0),
+  studio_small_04: makePreset('Studio Small 04', 'studio', 1.1),
+  studio_small_05: makePreset('Studio Small 05', 'studio', 1.0),
+  studio_small_06: makePreset('Studio Small 06', 'studio', 0.9),
+  studio_small_07: makePreset('Studio Small 07', 'studio', 1.0),
+  studio_small_08: makePreset('Studio Small 08', 'studio', 1.2),
+  studio_small_09: makePreset('Studio Small 09', 'studio', 1.0),
+  studio_neutral: makePreset('Studio Neutral', 'studio', 1.0),
+  photo_studio_01: makePreset('Photo Studio 01', 'studio', 1.0),
+  peppermint_powerplant: makePreset('Peppermint Powerplant', 'industrial', 0.8),
+
+  empty_warehouse: makePreset('Empty Warehouse', 'indoor', 1.0),
+  empty_warehouse_01: makePreset('Empty Warehouse 01', 'indoor', 1.0),
+  urban_alley: makePreset('Urban Alley', 'indoor', 0.9),
+  hotel_room: makePreset('Hotel Room', 'indoor', 0.7),
+  modern_buildings: makePreset('Modern Buildings', 'indoor', 0.8),
+  music_hall: makePreset('Music Hall', 'indoor', 0.8),
+  music_hall_01: makePreset('Music Hall 01', 'indoor', 0.8),
+  entrance_hall: makePreset('Entrance Hall', 'indoor', 0.8),
+  old_depot: makePreset('Old Depot', 'indoor', 0.9),
+  small_cathedral: makePreset('Small Cathedral', 'indoor', 0.7),
+  dancing_hall: makePreset('Dancing Hall', 'night', 0.7),
+  leadenhall_market: makePreset('Leadenhall Market', 'indoor', 0.8),
+
+  school_quad: makePreset('School Quad', 'outdoor', 1.0),
+  kloppenheim_06: makePreset('Kloppenheim 06', 'outdoor', 1.0),
+  autumn_forest: makePreset('Autumn Forest', 'outdoor', 0.9),
+  meadow: makePreset('Meadow', 'outdoor', 1.0),
+  rural_asphalt_road: makePreset('Rural Asphalt Road', 'outdoor', 1.0),
+  snowy_forest_path: makePreset('Snowy Forest Path', 'outdoor', 0.9),
+  wasteland_clouds: makePreset('Wasteland Clouds', 'outdoor', 0.9),
+  rosendal_plains: makePreset('Rosendal Plains', 'outdoor', 1.1),
+  dikhololo_night: makePreset('Dikhololo Night', 'night', 0.4),
+  sunflowers: makePreset('Sunflowers', 'sunset', 1.4),
+  venice_sunset: makePreset('Venice Sunset', 'sunset', 1.3),
+  moonlit_golf: makePreset('Moonlit Golf', 'night', 0.5),
+  night_bridge: makePreset('Night Bridge', 'night', 0.6),
+};
+
+const REASON_TEMPLATES = {
+  profession: (profession: string) => `Optimized for ${profession} style portraits`,
+  genre: (genre: string) => `Matches a ${genre} visual mood`,
+  era: (era: string) => `Supports ${era} atmosphere`,
+  mood: (mood: string) => `Reinforces a ${mood} scene tone`,
+  fallback: () => 'Reliable general-purpose lighting',
+};
+
 export function getHDRIRecommendations(
   characterName: string,
   characterTags: string[] = [],
-  metadata?: CharacterMetadata
+  metadata?: CharacterMetadata,
 ): HDRIRecommendation[] {
-  const recommendations: Map<string, { score: number; reasons: string[] }> = new Map();
-  
-  // Score based on profession tags
-  characterTags.forEach(tag => {
-    const tagLower = tag.toLowerCase();
-    const matchingHDRIs = PROFESSION_HDRI_MAP[tagLower];
-    if (matchingHDRIs) {
-      matchingHDRIs.forEach((hdriId, index) => {
-        const existing = recommendations.get(hdriId) || { score: 0, reasons: [] };
-        existing.score += (10 - index * 2); // Higher score for first matches
-        existing.reasons.push(REASON_TEMPLATES.profession(tag));
-        recommendations.set(hdriId, existing);
-      });
-    }
-  });
-  
-  // Score based on genre
-  if (metadata?.genre) {
-    const genreHDRIs = GENRE_HDRI_MAP[metadata.genre];
-    if (genreHDRIs) {
-      genreHDRIs.forEach((hdriId, index) => {
-        const existing = recommendations.get(hdriId) || { score: 0, reasons: [] };
-        existing.score += (15 - index * 3); // Genre is important
-        existing.reasons.push(REASON_TEMPLATES.genre(metadata.genre!));
-        recommendations.set(hdriId, existing);
-      });
+  const allTags = new Set<string>();
+  for (const tag of characterTags) {
+    const value = tag.trim().toLowerCase();
+    if (value.length > 0) {
+      allTags.add(value);
     }
   }
-  
-  // Score based on era
-  if (metadata?.era) {
-    const eraHDRIs = ERA_HDRI_MAP[metadata.era];
-    if (eraHDRIs) {
-      eraHDRIs.forEach((hdriId, index) => {
-        const existing = recommendations.get(hdriId) || { score: 0, reasons: [] };
-        existing.score += (8 - index * 2);
-        existing.reasons.push(REASON_TEMPLATES.era(metadata.era!));
-        recommendations.set(hdriId, existing);
-      });
+  for (const token of characterName.split(/\s+/)) {
+    const value = token.trim().toLowerCase();
+    if (value.length > 2) {
+      allTags.add(value);
     }
   }
-  
-  // Score based on mood
-  if (metadata?.mood) {
-    const moodHDRIs = MOOD_HDRI_MAP[metadata.mood];
-    if (moodHDRIs) {
-      moodHDRIs.forEach((hdriId, index) => {
-        const existing = recommendations.get(hdriId) || { score: 0, reasons: [] };
-        existing.score += (6 - index);
-        existing.reasons.push(REASON_TEMPLATES.mood(metadata.mood!));
-        recommendations.set(hdriId, existing);
-      });
+  if (metadata?.tags) {
+    for (const tag of metadata.tags) {
+      const value = tag.trim().toLowerCase();
+      if (value.length > 0) {
+        allTags.add(value);
+      }
     }
   }
-  
-  // If no matches, add default studio HDRIs
-  if (recommendations.size === 0) {
-    ['studio_small_03','studio_small_01','photo_studio_01'].forEach((hdriId, index) => {
-      recommendations.set(hdriId, {
-        score: 5 - index,
-        reasons: [REASON_TEMPLATES.default()],
-      });
+
+  const scored: Map<string, { points: number; reasons: string[] }> = new Map();
+
+  const addScore = (hdriId: string, points: number, reason: string): void => {
+    if (!HDRI_PRESETS[hdriId]) {
+      return;
+    }
+    const current = scored.get(hdriId) ?? { points: 0, reasons: [] };
+    current.points += points;
+    if (!current.reasons.includes(reason)) {
+      current.reasons.push(reason);
+    }
+    scored.set(hdriId, current);
+  };
+
+  for (const tag of allTags) {
+    const mapped = PROFESSION_HDRI_MAP[tag];
+    if (!mapped) {
+      continue;
+    }
+    mapped.forEach((hdriId, index) => {
+      addScore(hdriId, Math.max(2, 16 - index * 3), REASON_TEMPLATES.profession(tag));
     });
   }
-  
-  // Convert to array and sort by score
-  const results: HDRIRecommendation[] = [];
-  recommendations.forEach((data, hdriId) => {
-    const preset = HDRI_PRESETS[hdriId];
-    if (preset) {
-      results.push({
-        id: hdriId,
+
+  if (metadata?.genre) {
+    const genre = metadata.genre.toLowerCase();
+    const mapped = GENRE_HDRI_MAP[genre];
+    if (mapped) {
+      mapped.forEach((hdriId, index) => {
+        addScore(hdriId, Math.max(2, 14 - index * 2), REASON_TEMPLATES.genre(genre));
+      });
+    }
+  }
+
+  if (metadata?.era) {
+    const era = metadata.era.toLowerCase();
+    const mapped = ERA_HDRI_MAP[era];
+    if (mapped) {
+      mapped.forEach((hdriId, index) => {
+        addScore(hdriId, Math.max(1, 10 - index * 2), REASON_TEMPLATES.era(era));
+      });
+    }
+  }
+
+  if (metadata?.mood) {
+    const mood = metadata.mood.toLowerCase();
+    const mapped = MOOD_HDRI_MAP[mood];
+    if (mapped) {
+      mapped.forEach((hdriId, index) => {
+        addScore(hdriId, Math.max(1, 8 - index), REASON_TEMPLATES.mood(mood));
+      });
+    }
+  }
+
+  if (scored.size === 0) {
+    ['studio_small_03', 'studio_small_01', 'photo_studio_01'].forEach((hdriId, index) => {
+      addScore(hdriId, 6 - index, REASON_TEMPLATES.fallback());
+    });
+  }
+
+  const maxPoints = Math.max(
+    1,
+    ...Array.from(scored.values(), (entry) => entry.points),
+  );
+
+  return Array.from(scored.entries())
+    .map(([id, data]) => {
+      const preset = HDRI_PRESETS[id];
+      return {
+        id,
         name: preset.name,
         category: preset.category,
         url: preset.url,
         thumbnail: preset.thumbnail,
         intensity: preset.intensity,
-        reason: data.reasons[0], // Use first (most relevant) reason
-        matchScore: Math.min(100, data.score * 5),
-      });
-    }
-  });
-  
-  // Sort by score and take top 6
-  results.sort((a, b) => b.matchScore - a.matchScore);
-  
-  log.debug(`HDRI recommendations for ${characterName}:`, results.slice(0, 6));
-  
-  return results.slice(0, 6);
+        reason: data.reasons[0] ?? REASON_TEMPLATES.fallback(),
+        matchScore: Math.max(1, Math.round((data.points / maxPoints) * 100)),
+      } satisfies HDRIRecommendation;
+    })
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 6);
 }
 
-/**
- * Get all available HDRI presets
- */
-export function getAllHDRIPresets() {
-  return Object.entries(HDRI_PRESETS).map(([id, preset]) => ({
-    id,
-    ...preset,
-  }));
+export function getAllHDRIPresets(): Array<{ id: string } & HDRIPreset> {
+  return Object.entries(HDRI_PRESETS)
+    .map(([id, preset]) => ({
+      id,
+      ...preset,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/**
- * Get HDRI by ID
- */
-export function getHDRIById(id: string) {
+export function getHDRIById(id: string): HDRIPreset | undefined {
   return HDRI_PRESETS[id];
+}
+
+function makePreset(name: string, category: string, intensity: number): HDRIPreset {
+  const slug = toSlug(name);
+  return {
+    name,
+    category,
+    url: `https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/${slug}_1k.hdr`,
+    thumbnail: `https://cdn.polyhaven.com/asset_img/thumbs/${slug}.png`,
+    intensity,
+    description: `${name} lighting preset`,
+    tags: category === 'studio' ? ['studio', 'portrait'] : [category],
+  };
+}
+
+function toSlug(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }
 
 export default {
@@ -289,4 +305,3 @@ export default {
   getAllHDRIPresets,
   getHDRIById,
 };
-

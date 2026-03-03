@@ -1,0 +1,77 @@
+# Crew + Team Dashboard Pro Task List
+
+## Ferdig nå
+- [x] Crew Management har ny handling for å åpne teknisk Team Dashboard direkte.
+- [x] Crew command palette har ny kommando: "Åpne teknisk team dashboard".
+- [x] Casting Planner styrer nå tab-bytte til Shot List ved denne handlingen.
+- [x] Casting Planner sender åpne-signal til Shot List-panel.
+- [x] Shot List kan åpne Team Dashboard med forhåndsvalgt segment.
+- [x] Team Dashboard støtter segmentering: `all` og `technical`.
+- [x] Team Dashboard filtrerer både shots og assignee-lister basert på valgt segment.
+- [x] Team Dashboard eksport (CSV/PDF) følger aktivt segment.
+- [x] Team Dashboard workload-visning følger aktivt segment.
+- [x] Team Dashboard Call Sheet drawer bruker crew fra aktivt segment.
+
+## 30 ekstra forbedringer
+- [x] 1. Legg til lagring av valgt Team Dashboard-segment per prosjekt i localStorage.
+- [x] 2. Legg til "Husk sist brukt segment"-toggle i Team Dashboard.
+- [x] 3. Legg til hurtigfilter for tekniske undergrupper: Kamera, Lys, Lyd, Post.
+- [x] 4. Legg til workload-kapasitet per rolle (f.eks. max shots per dag).
+- [x] 5. Legg til overbooking-varsel med severity (lav/middels/høy).
+- [x] 6. Legg til anbefalt reassignment-forslag ved overbooking.
+- [x] 7. Legg til bulk-tilordning av unassigned shots til valgt teknisk team.
+- [x] 8. Legg til "auto-balanser" fordeling av shots på tekniske roller.
+- [x] 9. Legg til KPI-kort for teknisk team: throughput, blokkerte shots, gj.snitt tid.
+- [x] 10. Legg til SLA-indikator for kritiske shots (deadline-risk).
+- [x] 11. Legg til dependency-visning mellom shots i Team Dashboard.
+- [x] 12. Legg til blokkering/status "venter på utstyr" i shot-statusflyt.
+- [x] 13. Legg til blokkering/status "venter på location" i shot-statusflyt.
+- [x] 14. Legg til blokkering/status "venter på talent" i shot-statusflyt.
+- [x] 15. Legg til estimat vs faktisk tid per teknisk rolle.
+- [x] 16. Legg til varsel når teknisk crew mangler kontaktinfo.
+- [x] 17. Legg til varsel når teknisk crew mangler tilgjengelighetsdata.
+- [x] 18. Legg til daglig teknisk callsheet-forhåndsvisning fra Crew-tab.
+- [x] 19. Legg til én-klikk "send callsheet" for valgt teknisk segment.
+- [x] 20. Legg til timeline-heatmap for teknisk belastning.
+- [x] 21. Legg til sticky filter-presets i Team Dashboard (Teknisk Dag, Tekniske Kritiske, Ufordelte).
+- [x] 22. Legg til tastatursnarvei for å åpne Team Dashboard fra Crew-tab.
+- [x] 23. Legg til tastatursnarvei for å bytte segment (`all`/`technical`).
+- [x] 24. Legg til audit-logg for segment-bytte og bulk-assignment.
+- [x] 25. Legg til optimistic UI rollback-toast ved feil på shot-oppdatering.
+- [x] 26. Legg til per-rolle fargekodet legend som er delt mellom Crew og Team Dashboard.
+- [x] 27. Legg til "teknisk readiness score" per produksjonsdag.
+- [x] 28. Legg til dedikert mobil-layout for teknisk workload-kort.
+- [x] 29. Legg til server-side endpoint for teknisk dashboard snapshots.
+- [x] 30. Legg til E2E-test som verifiserer Crew -> Shot List -> Team Dashboard teknisk flyt.
+
+## Gjennomføringsrekkefølge
+- [x] Fase 1: Datagrunnlag + segmentpersistens (1, 2, 3, 26)
+- [x] Fase 2: Planlegging + kapasitet (4, 5, 6, 7, 8, 20, 27)
+- [x] Fase 3: Drift + callsheet (9, 10, 15, 18, 19, 25)
+- [x] Fase 4: Kvalitet + kontroll (11, 12, 13, 14, 16, 17, 21, 24)
+- [x] Fase 5: UX + levering (22, 23, 28, 29, 30)
+
+## Neste fase (stabilisering)
+- [x] Fase 6: Loop-guard for health-check i EnhancedMasterIntegrationProvider (reduserer risiko for max update depth).
+- [x] Fase 6: Normalisering/signatur-sjekk før `setHealth` for å unngå unødvendige state-oppdateringer.
+- [x] Fase 6: Umiddelbar første health-check ved oppstart + videre periodisk check.
+
+## Fase 7 (hardening + verifisering)
+- [x] Stabiliser HOC-avhengigheter (bruk funksjonsreferanser i stedet for hele context-objekter).
+- [x] Gjør komponentregistrering idempotent for å unngå re-register storms.
+- [x] Legg til E2E-assert mot `Maximum update depth exceeded` i Crew -> Team Dashboard flyten.
+
+## Fase 8 (E2E stabilitet)
+- [x] Gjør Crew -> Team Dashboard-tabvalg robust mot varierende UI-roller (`tab`/`button`) og åpne dialoger.
+- [x] Stabiliser snapshot-flyten i E2E ved å bruke tastatursnarvei for segment-bytte (unngår flaky Select-option steg).
+- [x] Bytt snapshot-load-lokator til dialog-scopet combobox + eksakt snapshot-navn.
+- [x] Verifiser komplett suite for `crew-team-dashboard-flow.spec.ts` uten global-timeout hang.
+
+## Fase 9 (Budsjett i kalkulator)
+- [x] Integrer budsjett-intelligens direkte i kostnadskalkulatoren (periodebudsjett, prognose, avvik, risikonivå).
+- [x] Legg til anbefalinger i kalkulator basert på overtidsrisiko, valgt crew-utvalg og budsjettutnyttelse.
+
+## Fase 10 (Dagplanlegger pro)
+- [x] Oppgrader drag-and-drop dagplanlegger med tydelig dagstatus og antall crew per dag.
+- [x] Vis hvem som er lagt inn per dag (rolle, call time, unit og statuskode).
+- [x] Legg til hurtigfjerning av dagtilordning direkte fra dagkortet.

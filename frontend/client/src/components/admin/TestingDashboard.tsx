@@ -4,7 +4,7 @@
  */
 
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Card,
@@ -48,6 +48,7 @@ import {
   StepLabel,
   StepContent,
 } from '@mui/material';
+import type { ChipProps } from '@mui/material/Chip';
 import {
   PlayArrow as PlayIcon,
   Stop as StopIcon,
@@ -68,6 +69,7 @@ import {
   CloudUpload as DeployIcon,
   Backup as BackupIcon,
   Monitor as MonitorIcon,
+  Science as ScienceIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -121,11 +123,21 @@ interface DeploymentEnvironment {
   mockMode: boolean;
 }
 
+interface TestSuitesResponse {
+  testSuites: TestSuite[];
+}
+
+interface EnvironmentsResponse {
+  environments: DeploymentEnvironment[];
+}
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
 }
+
+type StatusChipColor = NonNullable<ChipProps['color']>;
 
 const TabPanel = (props: TabPanelProps) => {
   const { children, value, index, ...other } = props;
@@ -152,7 +164,7 @@ export default function TestingDashboard() {
 
   // State management
   const [tabValue, setTabValue] = useState(0);
-  const [selectedEnvironment, setSelectedEnvironment] = useState('staging,');
+  const [selectedEnvironment, setSelectedEnvironment] = useState('staging');
   const [runningTests, setRunningTests] = useState<Set<string>>(new Set());
   const [deploymentDialogOpen, setDeploymentDialogOpen] = useState(false);
   const [selectedTestSuite, setSelectedTestSuite] = useState<string | null>(null);
@@ -162,21 +174,21 @@ export default function TestingDashboard() {
     const response = await fetch(url, {
       headers: { 'x-user-email' : 'daniel@creatorhubn.com' },
     });
-    if (!response.ok) throw new Error('Failed to fetch, ');
+    if (!response.ok) throw new Error('Failed to fetch');
     return response.json();
   };
 
   // Fetch test suites
-  const { data: testSuitesData, isLoading: testSuitesLoading } = useQuery({
+  const { data: testSuitesData, isLoading: testSuitesLoading } = useQuery<TestSuitesResponse>({
     queryKey: ['/api/admin/testing/suites'],
-    queryFn: () => fetchWithAuth('/api/admin/testing/suites'),
+    queryFn: () => fetchWithAuth('/api/admin/testing/suites') as Promise<TestSuitesResponse>,
     staleTime: 30000,
   });
 
   // Fetch deployment environments
-  const { data: environmentsData, isLoading: environmentsLoading } = useQuery({
+  const { data: environmentsData, isLoading: environmentsLoading } = useQuery<EnvironmentsResponse>({
     queryKey: ['/api/admin/testing/environments'],
-    queryFn: () => fetchWithAuth('/api/admin/testing/environments'),
+    queryFn: () => fetchWithAuth('/api/admin/testing/environments') as Promise<EnvironmentsResponse>,
     staleTime: 30000,
   });
 
@@ -197,7 +209,11 @@ export default function TestingDashboard() {
       return response.json();
     },
     onMutate: (suiteId) => {
-      setRunningTests((prev) => new Set(prev.add(suiteId)));
+      setRunningTests((prev) => {
+        const next = new Set(prev);
+        next.add(suiteId);
+        return next;
+      });
 },
     onSuccess: (data, suiteId) => {
       setRunningTests((prev) => {
@@ -230,8 +246,8 @@ export default function TestingDashboard() {
   // Deploy to environment mutation
   const deployMutation = useMutation({
     mutationFn: async (environmentId: string) => {
-      const response = await fetch(`/api/admin/deployment/deploy/${environmentd}`, {
-        method: 'POS',
+      const response = await fetch(`/api/admin/deployment/deploy/${environmentId}`, {
+        method: 'POST',
         headers: { 'x-user-email' : 'daniel@creatorhubn.com'},
     });
       if (!response.ok) throw new Error('Failed to deploy');
@@ -263,7 +279,7 @@ export default function TestingDashboard() {
       case 'internal apis':
         return <ApiIcon color="primary" />;
       case 'database':
-        return <DatabaseIcon />;
+        return <StorageIcon />;
       case 'performance':
         return <PerformanceIcon />;
       case 'security':
@@ -273,11 +289,11 @@ export default function TestingDashboard() {
       case 'localization':
         return <LocalizationIcon />;
       default:
-        return <Science />;
+        return <ScienceIcon />;
 }
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): StatusChipColor => {
     switch (status) {
       case 'passed':
         return 'success';
@@ -292,7 +308,7 @@ export default function TestingDashboard() {
 }
 };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: string): StatusChipColor => {
     switch (priority) {
       case 'critical':
         return 'error';
@@ -307,7 +323,7 @@ export default function TestingDashboard() {
 }
 };
 
-  const getEnvironmentStatusColor = (status: string) => {
+  const getEnvironmentStatusColor = (status: string): StatusChipColor => {
     switch (status) {
       case 'healthy':
         return 'success';
@@ -326,6 +342,9 @@ export default function TestingDashboard() {
     const criticalSuites = testSuites.filter((suite) =>
       suite.tests.some((test) => test.priority === 'critical' && test.requiredForDeployment),
     );
+    if (criticalSuites.length === 0) {
+      return 100;
+    }
     const passedCritical = criticalSuites.filter((suite) => suite.status === 'passed');
     return Math.round((passedCritical.length / criticalSuites.length) * 100);
 };
@@ -366,9 +385,11 @@ export default function TestingDashboard() {
         {/* Overall readiness indicator */}
         <Card
           sx={{
-            mb:  3,
-            background: 'linear-gradient(135deg, #ff8c00, #ffa726)'}}
-         sx={theming.getThemedCardSx()}>
+            ...theming.getThemedCardSx(),
+            mb: 3,
+            background: 'linear-gradient(135deg, #ff8c00, #ffa726)',
+          }}
+        >
           <CardContent sx={theming.getThemedCardSx()}>
             <Box
               sx={{
@@ -387,11 +408,13 @@ export default function TestingDashboard() {
                   variant="determinate"
                   value={calculateOverallReadiness()}
                   sx={{
-                    height:  8,
-                    borderRadius:  4,
-                    backgroundColor: 'rgba(25,255,255,0.3)','& .MuiLinearProgress-bar': {
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                    '& .MuiLinearProgress-bar': {
                       backgroundColor: calculateOverallReadiness() >= 95 ? '#4caf50' : '#f44330',
-                  }}}
+                    },
+                  }}
                 />
               </Box>
               <Box sx={{ textAlign: 'center', ml:  3 }}>
@@ -418,7 +441,7 @@ export default function TestingDashboard() {
           <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                <Science />
+                <ScienceIcon />
                 Test Suites
               </Box>
           }
@@ -464,7 +487,7 @@ export default function TestingDashboard() {
                     </Typography>
                     <Chip
                       label={suite.status}
-                      color={getStatusColor(suite.status) as any}
+                      color={getStatusColor(suite.status)}
                       size="small"
                     />
                   </Box>
@@ -489,10 +512,12 @@ export default function TestingDashboard() {
                       variant="determinate"
                       value={suite.passRate}
                       sx={{
-                        height:  6,
-                        backgroundColor: '#f0f0f0','& .MuiLinearProgress-bar': {
+                        height: 6,
+                        backgroundColor: '#f0f0f0',
+                        '& .MuiLinearProgress-bar': {
                           backgroundColor: suite.passRate >= suite.requiredPassRate ? '#4caf50' : '#f44330',
-                      }}}
+                        },
+                      }}
                     />
                   </Box>
 
@@ -515,13 +540,15 @@ export default function TestingDashboard() {
 
                   <Button fullWidth
                     variant="contained"
-                    startIcon={runningTests.has(suite.id) ? <StopIcon sx={theming.getThemedButtonSx()}> : <PlayIcon />}
+                    startIcon={runningTests.has(suite.id) ? <StopIcon /> : <PlayIcon />}
                     onClick={() => runTestSuiteMutation.mutate(suite.id)}
                     disabled={runningTests.has(suite.id)}
                     sx={{
-                      bgcolor: runningTests.has(suite.id) ? '#f44336' : '#ff8c00','&:hover': {
+                      bgcolor: runningTests.has(suite.id) ? '#f44336' : '#ff8c00',
+                      '&:hover': {
                         bgcolor: runningTests.has(suite.id) ? '#d32f2f' : '#e67e00',
-                    }}}
+                      },
+                    }}
                   >
                     {runningTests.has(suite.id) ? 'Stopp Test' : 'Kjør Test Suite'}
                   </Button>
@@ -534,12 +561,12 @@ export default function TestingDashboard() {
                     <AccordionDetails>
                       <List dense>
                         {suite.tests.map((test) => (
-                          <ListItem key={test.id}, sx={{ px:  0 }}>
+                          <ListItem key={test.id} sx={{ px:  0 }}>
                             <ListItemIcon>
                               {test.status === 'passed' && <CheckIcon color="success" />}
                               {test.status === 'failed' && <ErrorIcon color="error" />}
                               {test.status === 'running' && <WarningIcon color="warning" />}
-                              {test.status === 'pending' && <Science color="disabled" />}
+                              {test.status === 'pending' && <ScienceIcon color="disabled" />}
                             </ListItemIcon>
                             <ListItemText
                               primary={test.name}
@@ -552,7 +579,7 @@ export default function TestingDashboard() {
                                     <Chip
                                       label={test.priority}
                                       size="small"
-                                      color={getPriorityColor(test.priority) as any}
+                                      color={getPriorityColor(test.priority)}
                                     />
                                     <Chip
                                       label={test.automationLevel}
@@ -697,7 +724,7 @@ export default function TestingDashboard() {
                     </Typography>
                     <Chip
                       label={env.status}
-                      color={getEnvironmentStatusColor(env.status) as any}
+                      color={getEnvironmentStatusColor(env.status)}
                       size="small"
                     />
                   </Box>
@@ -730,7 +757,9 @@ export default function TestingDashboard() {
                         setDeploymentDialogOpen(true);
                     }}
                       sx={{
-                        bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67e00'}}}
+                        bgcolor: '#ff8c00',
+                        '&:hover': { bgcolor: '#e67e00' },
+                      }}
                     >
                       Deploy til {env.name}
                     </Button>

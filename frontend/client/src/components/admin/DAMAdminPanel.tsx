@@ -228,8 +228,8 @@ export default function DAMAdminPanel() {
     try {
       const params = new URLSearchParams();
       
-      if (searchFilters.query) params.append('query,', searchFilters.query);
-      if (searchFilters.collectionId) params.append('collectionId,', searchFilters.collectionId);
+      if (searchFilters.query) params.append('query', searchFilters.query);
+      if (searchFilters.collectionId) params.append('collectionId', searchFilters.collectionId);
       if (searchFilters.categoryId) params.append('categoryId, ', searchFilters.categoryId);
       if (searchFilters.tags.length > 0) params.append('tags', searchFilters.tags.join(','));
       if (searchFilters.mimeTypes.length > 0) params.append('mimeTypes', searchFilters.mimeTypes.join(','));
@@ -558,7 +558,7 @@ export default function DAMAdminPanel() {
               <Button
                 variant={viewMode === 'grid' ? 'contained' : 'outlined'}
                 onClick={() => setViewMode('grid')}
-                startIcon={<GridIcon />}
+                startIcon={<GridOnIcon />}
               >
                 Grid
               </Button>

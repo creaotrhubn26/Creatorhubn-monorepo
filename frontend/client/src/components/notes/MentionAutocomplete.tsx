@@ -373,7 +373,7 @@ export default function MentionAutocomplete({
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.open(resource.path', '_blank');
+                            window.open(resource.path, '_blank');
                         }}
                         >
                           <OpenInNew fontSize="small" />

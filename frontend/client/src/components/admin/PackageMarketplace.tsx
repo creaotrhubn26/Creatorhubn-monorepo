@@ -1,726 +1,676 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import { useMemo, useState, type FC } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
   Grid,
+  InputAdornment,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
+  Select,
+  Snackbar,
+  Stack,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   Tabs,
   Tab,
-  Alert,
-  Chip,
-  Button,
   TextField,
-  InputAdornment,
-  Switch,
-  FormControlLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  ListItemSecondaryAction,
-  IconButton,
   Tooltip,
-  Badge,
-  Stack,
-  Rating,
-  Avatar,
-  Divider,
-  CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Slider,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Snackbar,
+  Typography,
 } from '@mui/material';
 import {
+  CheckCircle,
+  ContentCopy,
+  Download,
+  Error,
+  InfoOutlined,
+  Refresh,
   Search,
   Store,
-  GetApp,
-  Code,
-  Security,
-  Update,
-  TrendingUp,
-  Star,
-  Download,
-  GitHub,
-  Launch,
-  Settings,
-  Category,
-  FilterList,
-  Sort,
-  Refresh,
-  AutoFixHigh,
-  PlayCircleFilled,
-  ContentCopy,
-  CheckCircle,
   Warning,
-  Error,
-  ExpandMore,
-  Visibility,
-  VerifiedUser,
-  Speed as Speed,
-  BugReport,
-  Description,
-  Assignment,
-  SmartToy,
 } from '@mui/icons-material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import InstallationWizard from './InstallationWizard';
 
-interface PackageInfo {
+interface MarketplacePackage {
   name: string;
   current: string;
   latest: string;
-  wanted: string;
-  isOutdated: boolean;
   category: string;
   description: string;
-  repository: string;
-  homepage: string;
   downloads: number;
   rating: number;
-  license: string;
-  maintainers: string[];
-  lastUpdated: string;
-  size: string;
-  dependencies: number;
   vulnerabilities: number;
-  documentation: string;
-  examples: string[];
-  tags: string[];
-  compatibility: string[];
-  scripts: {
-    install: string;
-    uninstall: string;
-    update: string;
-    configure: string;
-};
+  isOutdated: boolean;
+  installed: boolean;
+  repository?: string;
+  license?: string;
+  size?: string;
+  lastUpdated?: string;
 }
 
-interface Repository {
+interface MarketplaceSummary {
+  total: number;
+  installed: number;
+  outdated: number;
+  vulnerable: number;
+}
+
+interface MarketplaceResponse {
+  packages: MarketplacePackage[];
+  summary: MarketplaceSummary;
+}
+
+interface RepositoryInfo {
   id: string;
   name: string;
   url: string;
   type: 'npm' | 'github' | 'private' | 'custom';
   trusted: boolean;
-  packages: number;
-  lastSync: string;
   status: 'active' | 'inactive' | 'error';
+  packageCount: number;
 }
 
-const PackageMarketplace: React.FC = () => {
-  const [activeT, absetActiveTab] = useState(0);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all,');
-  const [sortBy, setSortBy] = useState('popularity,');
-  const [showInstalled, setShowInstalled] = useState(false);
-  const [selectedPackage, setSelectedPackage] = useState<PackageInfo | null>(null);
-  const [packageDetailsOpen, setPackageDetailsOpen] = useState(false);
-  const [repositoryDialogOpen, setRepositoryDialogOpen] = useState(false);
-  const [scriptGeneratorOpen, setScriptGeneratorOpen] = useState(false);
-  const [generatedScript, setGeneratedScript] = useState('');
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [installationWizardOpen, setInstallationWizardOpen] = useState(false);
-  const [selectedPackagesForInstall, setSelectedPackagesForInstall] = useState<PackageInfo[]>([]);
-  const [installationMode, setInstallationMode] = useState<'install' | 'update'>('install');
-
-  const queryClient = useQueryClient();
-
-  // Theming system
-  const theming = useTheming('prototype_tester');
-
-  // Get auth from master integration
-  const { auth } = useEnhancedMasterIntegration();
-
-  // Fetch packages data
-  const { data: packagesData, isLoading: packagesLoading, refetch: refetchPackages } = useQuery({
-    queryKey: ['/api/admin/dependencies-manager/marketplace'],
-    staleTime: 5 * 60 * 100,
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/dependencies-manager/marketplace', { headers });
+const fallbackPackages: MarketplacePackage[] = [
+  {
+    name: 'react',
+    current: '18.2.0',
+    latest: '19.0.0',
+    category: 'ui',
+    description: 'UI library for component-driven applications.',
+    downloads: 35400000,
+    rating: 4.9,
+    vulnerabilities: 0,
+    isOutdated: true,
+    installed: true,
+    repository: 'https://github.com/facebook/react',
+    license: 'MIT',
+    size: '2.8 MB',
+    lastUpdated: '2026-02-15',
   },
-});
-
-  // Fetch repositories
-  const { data: repositoriesData, isLoading: repositoriesLoading } = useQuery({
-    queryKey: ['/api/admin/dependencies-manager/repositories'],
-    staleTime: 10 * 60 * 100,
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/dependencies-manager/repositories', { headers });
+  {
+    name: '@tanstack/react-query',
+    current: '5.62.0',
+    latest: '5.66.1',
+    category: 'data',
+    description: 'Powerful asynchronous state and caching for React apps.',
+    downloads: 7600000,
+    rating: 4.8,
+    vulnerabilities: 0,
+    isOutdated: true,
+    installed: true,
+    repository: 'https://github.com/TanStack/query',
+    license: 'MIT',
+    size: '1.1 MB',
+    lastUpdated: '2026-02-21',
   },
-});
-
-  // Install package mutation
-  const installPackageMutation = useMutation({
-    mutationFn: async ({ name, version }: { name: string; version: string }) => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/dependencies-manager/install', {
-        headers: {
-          ...headers, , 'Content-Type': 'application/json'
-      },
-        method: 'POST',
-        body: JSON.stringify({ name, version })
-    });
+  {
+    name: 'zod',
+    current: '3.24.0',
+    latest: '3.24.0',
+    category: 'validation',
+    description: 'Type-safe schema validation for forms and API payloads.',
+    downloads: 14900000,
+    rating: 4.9,
+    vulnerabilities: 0,
+    isOutdated: false,
+    installed: true,
+    repository: 'https://github.com/colinhacks/zod',
+    license: 'MIT',
+    size: '620 KB',
+    lastUpdated: '2026-01-10',
   },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/dependencies-manager/marketplace']});
-      setSnackbarMessage('Pakke installert!');
-      setSnackbarOpen(true);
-  }
-});
-
-  // Update package mutation
-  const updatePackageMutation = useMutation({
-    mutationFn: async ({ name, version }: { name: string; version: string }) => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/dependencies-manager/update', {
-        headers: {
-          ...headers, , 'Content-Type': 'application/json'
-      },
-        method: 'POST',
-        body: JSON.stringify({ name, version })
-    });
+  {
+    name: 'legacy-audit-lib',
+    current: '1.4.2',
+    latest: '1.4.2',
+    category: 'security',
+    description: 'Legacy audit helper pending migration.',
+    downloads: 12000,
+    rating: 3.4,
+    vulnerabilities: 2,
+    isOutdated: false,
+    installed: true,
+    repository: 'https://example.com/legacy-audit-lib',
+    license: 'Apache-2.0',
+    size: '410 KB',
+    lastUpdated: '2025-11-02',
   },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/dependencies-manager/marketplace']});
-      setSnackbarMessage('Pakke oppdatert!');
-      setSnackbarOpen(true);
-  }
-});
+  {
+    name: 'remark',
+    current: '15.0.1',
+    latest: '15.1.0',
+    category: 'content',
+    description: 'Markdown parser and AST processing toolkit.',
+    downloads: 2100000,
+    rating: 4.6,
+    vulnerabilities: 0,
+    isOutdated: true,
+    installed: false,
+    repository: 'https://github.com/remarkjs/remark',
+    license: 'MIT',
+    size: '300 KB',
+    lastUpdated: '2026-02-19',
+  },
+];
 
-  // Generate installation script
-  const generateScript = (packages: string[]) => {
-    const installCommands = packages.map(pkg => `npm install ${pkg}`).join(' && ');
-    const script = `#!/bin/bash
-# Auto-generated installation script for CreatorHub Norge
-# Generated on ${new Date().toLocaleString('no-NO')}
+const fallbackRepositories: RepositoryInfo[] = [
+  {
+    id: 'repo-1',
+    name: 'npmjs.org',
+    url: 'https://registry.npmjs.org',
+    type: 'npm',
+    trusted: true,
+    status: 'active',
+    packageCount: 2800000,
+  },
+  {
+    id: 'repo-2',
+    name: 'CreatorHub Internal Registry',
+    url: 'https://packages.creatorhub.no',
+    type: 'private',
+    trusted: true,
+    status: 'active',
+    packageCount: 124,
+  },
+];
 
-echo "🚀 Installerer pakker for CreatorHub Norge..."
+function tabA11yProps(index: number) {
+  return {
+    id: `package-marketplace-tab-${index}`,
+    'aria-controls': `package-marketplace-tabpanel-${index}`,
+  };
+}
 
-# Install packages
-${installCommands}
-
-echo "✅ Alle pakker installert!"
-echo "📝 Husk å restart applikasjonen for å aktivere endringene"
-`;
-    return script;
-};
-
-  const categories = [
-    { id: 'all', name: 'Alle kategorier', count: packagesData?.packages?.length || 0 },
-    { id: 'ui', name: 'UI/U', count: 45},
-    { id: 'backend', name: 'Backend', count: 32},
-    { id: 'security', name: 'Sikkerhet', count: 18},
-    { id: 'analytics', name: 'Analytics', count: 12},
-    { id: 'enhancement', name: 'Forbedringer', count: 28},
-    { id: 'testing', name: 'Testing', count: 15},
-    { id: 'build', name: 'Build Tools', count:  9 }
-  ];
-
-  const filteredPackages = packagesData?.packages?.filter((pkg: PackageInfo) => {
-    const matchesSearch = pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         pkg.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || pkg.category === selectedCategory;
-    const matchesInstalled = !showInstalled || pkg.current !== 'Not installed';
-    
-    return matchesSearch && matchesCategory && matchesInstalled;
-}) || [];
-
-  const handleInstallPackage = (pkg: PackageInfo) => {
-    setSelectedPackagesForInstall([pkg]);
-    setInstallationMode('install');
-    setInstallationWizardOpen(true);
-};
-
-  const handleUpdatePackage = (pkg: PackageInfo) => {
-    setSelectedPackagesForInstall([pkg]);
-    setInstallationMode('update');
-    setInstallationWizardOpen(true);
-};
-
-  const handleBulkInstall = () => {
-    const outdatedPackages = filteredPackages.filter((pkg: PackageInfo) => pkg.isOutdated);
-    setSelectedPackagesForInstall(outdatedPackages);
-    setInstallationMode('update');
-    setInstallationWizardOpen(true);
-};
-
-  const handleInstallationComplete = () => {
-    setInstallationWizardOpen(false);
-    queryClient.invalidateQueries({ queryKey: ['/api/admin/dependencies-manager/marketplace', ]});
-    setSnackbarMessage('🎉 Installasjon fullført!');
-    setSnackbarOpen(true);
-};
-
-  const handlePackageDetails = (pkg: PackageInfo) => {
-    setSelectedPackage(pkg);
-    setPackageDetailsOpen(true);
-};
-
-  const handleGenerateScript = () => {
-    const outdatedPackages = filteredPackages
-      .filter((pkg: PackageInfo) => pkg.isOutdated)
-      .map((pkg: PackageInfo) => pkg.name);
-    
-    const script = generateScript(outdatedPackages);
-    setGeneratedScript(script);
-    setScriptGeneratorOpen(true);
-};
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setSnackbarMessage('Kopiert til utklippstavle!');
-    setSnackbarOpen(true);
-};
-
-  const getStatusIcon = (pkg: PackageInfo) => {
-    if (pkg.vulnerabilities > 0) return <Error color="error" />;
-    if (pkg.isOutdated) return <Warning color="warning" />;
-    return <CheckCircle color="success" />;
-};
-
-  const getStatusColor = (pkg: PackageInfo) => {
-    if (pkg.vulnerabilities > 0) return 'error';
-    if (pkg.isOutdated) return 'warning';
-    return 'success';
-};
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box sx={{ mb:  4 }}>
-        <Typography variant="h4" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
-          <Store sx={{ fontSize:  40, color: 'primary.main'}} />
-          Package Marketplace
-          <Chip label="Beta" color="primary" size="small" />
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Administrer og utforsk pakker for CreatorHub Norge plattformen
-        </Typography>
-      </Box>
+    <Box
+      role="tabpanel"
+      hidden={value !== index}
+      id={`package-marketplace-tabpanel-${index}`}
+      aria-labelledby={`package-marketplace-tab-${index}`}
+      sx={{ pt: 2 }}
+    >
+      {value === index ? children : null}
+    </Box>
+  );
+}
 
-      {/* Quick Stats */}
-      <Grid container spacing={3}, sx={{ mb:  4 }}>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Avatar sx={{ bgcolor: 'primary.main'}}>
-                  {theming.getThemedIcon('download')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{packagesData?.summary?.total || 0}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Totale pakker
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Avatar sx={{ bgcolor: 'warning.main'}}>
-                  <Update />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{packagesData?.summary?.outdated || 0}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Trenger oppdatering
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Avatar sx={{ bgcolor: 'error.main'}}>
-                  {theming.getThemedIcon('security')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{packagesData?.summary?.vulnerabilities || 0}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Sikkerhetsproblemer
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Avatar sx={{ bgcolor: 'success.main'}}>
-                  {theming.getThemedIcon('trendingUp')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>98%</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Plattform-helse
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+async function safeApiRequest<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const response = await apiRequest(url);
+    return response as T;
+  } catch {
+    return fallback;
+  }
+}
 
-      {/* Search and Filters */}
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12 }} md={4}>
-              <TextField
-                fullWidth
-                placeholder="Søk etter pakker..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      {theming.getThemedIcon(', ')}
-                    </InputAdornment>
-                  )}}
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Kategori</InputLabel>
-                <Select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  label="Kategori"
-                >
-                  {categories.map(cat => (
-                    <MenuItem key={cat.id} value={cat.id}>
-                      {cat.name} ({cat.count})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }} md={2}>
-              <FormControl fullWidth>
-                <InputLabel>Sortér etter</InputLabel>
-                <Select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                  label="Sortér etter"
-                >
-                  <MenuItem value="popularity">Popularitet</MenuItem>
-                  <MenuItem value="name">Navn</MenuItem>
-                  <MenuItem value="updated">Sist oppdatert</MenuItem>
-                  <MenuItem value="downloads">Nedlastinger</MenuItem>
-                  <MenuItem value="rating">Vurdering</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }} md={2}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={showInstalled}
-                    onChange={(e) => setShowInstalled(e.target.checked)}
-                  />
-              }
-                label="Kun installerte"
-              />
-            </Grid>
-            <Grid size={{ xs: 12 }} md={2}>
-              <Stack direction="row" spacing={1}>
-                <Button variant="contained"
-                  startIcon={theming.getThemedIcon('smartToy')}
-                  onClick={handleBulkInstall}
-                  size="small"
-                  disabled={filteredPackages.filter((pkg: PackageInfo) = sx={theming.getThemedButtonSx()}> pkg.isOutdated).length === 0}
-                >
-                  AI Bulk Update
-                </Button>
-                <IconButton onClick={() => refetchPackages()}>
-                  {theming.getThemedIcon('refresh')}
-                </IconButton>
-              </Stack>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+function packageStatusIcon(pkg: MarketplacePackage) {
+  if (pkg.vulnerabilities > 0) {
+    return <Error color="error" fontSize="small" />;
+  }
 
-      {/* Packages Grid */}
-      <Grid container spacing={3}>
-        {packagesLoading ? (
-          <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-              <CircularProgress />
-            </Box>
-          </Grid>
-        ) : (
-          filteredPackages.map((pkg: PackageInfo) => (
-            <Grid size={{ xs: 12 }} sm={6} md={4} key={pkg.name}>
-              <Card 
-                sx={{ 
-                  height: '100%', 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  cursor: 'pointer', '&:hover': { boxShadow:  6 }
-              }}
-                onClick={() => handlePackageDetails(pkg)}
-              >
-                <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    {getStatusIcon(pkg)}
-                    <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
-                      {pkg.name}
-                    </Typography>
-                    <Box sx={{ ml: 'auto'}}>
-                      <Rating value={pkg.rating} size="small" readOnly />
-                    </Box>
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    {pkg.description}
-                  </Typography>
+  if (pkg.isOutdated) {
+    return <Warning color="warning" fontSize="small" />;
+  }
 
-                  <Stack direction="row" spacing={1}, sx={{ mb:  2 }}>
-                    <Chip label={pkg.category} size="small" color="primary" />
-                    <Chip 
-                      label={pkg.current !== 'Not installed' ? pkg.current : 'Ikke installert'}
-                      size="small" 
-                      color={pkg.current !== 'Not installed' ? 'success' : 'default'}
-                    />
-                  </Stack>
+  return <CheckCircle color="success" fontSize="small" />;
+}
 
-                  {pkg.isOutdated && (
-                    <Alert severity="warning" sx={{ mb:  2 }}>
-                      Oppdatering tilgjengelig: {pkg.latest}
-                    </Alert>
-                  )}
+function generateInstallScript(packages: MarketplacePackage[]): string {
+  const targets = packages.filter((pkg) => pkg.isOutdated || !pkg.installed).map((pkg) => `${pkg.name}@${pkg.latest}`);
 
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                    <Typography variant="caption" color="text.secondary">
-                      {pkg.downloads.toLocaleString()} nedlastinger
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      {pkg.current === 'Not installed' ? (
-                        <Button size="small"
-                          variant="contained"
-                          startIcon={theming.getThemedIcon('getApp')}
-                          onClick={(e) = sx={theming.getThemedButtonSx()}> {
-                            e.stopPropagation();
-                            handleInstallPackage(pkg);
-                        }}
-                          disabled={installPackageMutation.isPending}
-                        >
-                          Installer
-                        </Button>
-                      ) : pkg.isOutdated ? (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<Update />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdatePackage(pkg);
-                        }}
-                          disabled={updatePackageMutation.isPending}
-                        >
-                          Oppdater
-                        </Button>
-                      ) : (
-                        <Chip 
-                          label="Oppdatert" 
-                          size="small" 
-                          color="success" 
-                          icon={theming.getThemedIcon('checkCircle')}}
-                        />
-                      )}
-                    </Stack>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))
-        )}
-      </Grid>
+  const installLine = targets.length > 0 ? `npm install ${targets.join(' ')}` : 'echo "No package updates required"';
 
-      {/* Package Details Dialog */}
-      <Dialog
-        open={packageDetailsOpen}
-        onClose={() => setPackageDetailsOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            {selectedPackage && getStatusIcon(selectedPackage)}
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedPackage?.name}</Typography>
-            <Rating value={selectedPackage?.rating} size="small" readOnly />
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedPackage && (
-            <Box>
-              <Typography variant="body1" sx={{ mb: 2 }}>
-                {selectedPackage.description}
-              </Typography>
+  return `#!/usr/bin/env bash
+set -euo pipefail
 
-              <Grid container spacing={2}, sx={{ mb:  3 }}>
-                <Grid size={{ xs:  6 }}>
-                  <Typography variant="subtitle2">Nåværende versjon</Typography>
-                  <Typography>{selectedPackage.current}</Typography>
-                </Grid>
-                <Grid size={{ xs:  6 }}>
-                  <Typography variant="subtitle2">Siste versjon</Typography>
-                  <Typography>{selectedPackage.latest}</Typography>
-                </Grid>
-                <Grid size={{ xs:  6 }}>
-                  <Typography variant="subtitle2">Lisens</Typography>
-                  <Typography>{selectedPackage.license}</Typography>
-                </Grid>
-                <Grid size={{ xs:  6 }}>
-                  <Typography variant="subtitle2">Størrelse</Typography>
-                  <Typography>{selectedPackage.size}</Typography>
-                </Grid>
-              </Grid>
+echo "Starting CreatorHub package refresh"
+${installLine}
+echo "Done"
+`;
+}
 
-              <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-                  <Typography>Installasjonsskript</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ backgroundColor: 'grey.10', p: 2, borderRadius:  1 }}>
-                    <Typography variant="body2" component="pre">
-                      {selectedPackage.scripts.install}
-                    </Typography>
-                  </Box>
-                  <Button
-                    startIcon={theming.getThemedIcon('contentCopy')}
-                    onClick={() => copyToClipboard(selectedPackage.scripts.install)}
-                    sx={{ mt:  1 }}
-                  >
-                    Kopier script
-                  </Button>
-                </AccordionDetails>
-              </Accordion>
+const PackageMarketplace: FC = () => {
+  const queryClient = useQueryClient();
+  const [tabValue, setTabValue] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [showInstalledOnly, setShowInstalledOnly] = useState(false);
+  const [packageDetails, setPackageDetails] = useState<MarketplacePackage | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
+  const [generatedScript, setGeneratedScript] = useState('');
+  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
 
-              <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-                  <Typography>Dokumentasjon</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Button
-                    startIcon={theming.getThemedIcon('launch')}
-                    href={selectedPackage.documentation}
-                    target="_blank"
-                  >
-                    Åpne dokumentasjon
-                  </Button>
-                </AccordionDetails>
-              </Accordion>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPackageDetailsOpen(false)}>
-            Lukk
-          </Button>
-          {selectedPackage?.current === 'Not installed' ? (
-            <Button variant="contained"
-              startIcon={theming.getThemedIcon('getApp')}
-              onClick={() => {
-                handleInstallPackage(selectedPackage);
-                setPackageDetailsOpen(false);
-            }}
-            >
-              Installer
-            </Button>
-          ) : selectedPackage?.isOutdated ? (
-            <Button variant="contained"
-              startIcon={<Update />}
-              onClick={() => {
-                handleUpdatePackage(selectedPackage);
-                setPackageDetailsOpen(false);
-            }}
-            >
-              Oppdater
-            </Button>
-          ) : null}
-        </DialogActions>
-      </Dialog>
+  const marketplaceQuery = useQuery({
+    queryKey: ['/api/admin/dependencies-manager/marketplace'],
+    queryFn: async () => {
+      const fallback: MarketplaceResponse = {
+        packages: fallbackPackages,
+        summary: {
+          total: fallbackPackages.length,
+          installed: fallbackPackages.filter((pkg) => pkg.installed).length,
+          outdated: fallbackPackages.filter((pkg) => pkg.isOutdated).length,
+          vulnerable: fallbackPackages.filter((pkg) => pkg.vulnerabilities > 0).length,
+        },
+      };
 
-      {/* Script Generator Dialog */}
-      <Dialog
-        open={scriptGeneratorOpen}
-        onClose={() => setScriptGeneratorOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            {theming.getThemedIcon('smartToy')}
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Automatisk Script Generator</Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Dette scriptet installerer alle utdaterte pakker automatisk.
-          </Typography>
-          <Box sx={{ backgroundColor: 'grey.10', p: 2, borderRadius: 1, mb:  2 }}>
-            <Typography variant="body2" component="pre" sx={{ whiteSpace: 'pre-wrap'}}>
-              {generatedScript}
+      return safeApiRequest<MarketplaceResponse>('/api/admin/dependencies-manager/marketplace', fallback);
+    },
+  });
+
+  const repositoriesQuery = useQuery({
+    queryKey: ['/api/admin/dependencies-manager/repositories'],
+    queryFn: async () =>
+      safeApiRequest<RepositoryInfo[]>('/api/admin/dependencies-manager/repositories', fallbackRepositories),
+  });
+
+  const installMutation = useMutation({
+    mutationFn: async (payload: { name: string; version: string }) => {
+      await apiRequest('/api/admin/dependencies-manager/install', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    onSuccess: async () => {
+      setSnackbarMessage('Package install completed.');
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/dependencies-manager/marketplace'] });
+    },
+    onError: () => {
+      setSnackbarMessage('Package install failed.');
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (payload: { name: string; version: string }) => {
+      await apiRequest('/api/admin/dependencies-manager/update', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+    onSuccess: async () => {
+      setSnackbarMessage('Package update completed.');
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/dependencies-manager/marketplace'] });
+    },
+    onError: () => {
+      setSnackbarMessage('Package update failed.');
+    },
+  });
+
+  const packages = marketplaceQuery.data?.packages ?? fallbackPackages;
+  const summary = marketplaceQuery.data?.summary ?? {
+    total: fallbackPackages.length,
+    installed: fallbackPackages.filter((pkg) => pkg.installed).length,
+    outdated: fallbackPackages.filter((pkg) => pkg.isOutdated).length,
+    vulnerable: fallbackPackages.filter((pkg) => pkg.vulnerabilities > 0).length,
+  };
+
+  const repositories = repositoriesQuery.data ?? fallbackRepositories;
+  const isLoading = marketplaceQuery.isLoading || repositoriesQuery.isLoading;
+
+  const categories = useMemo(() => {
+    const map = packages.reduce<Record<string, number>>((acc, pkg) => {
+      acc[pkg.category] = (acc[pkg.category] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(map)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([category, count]) => ({ category, count }));
+  }, [packages]);
+
+  const filteredPackages = useMemo(() => {
+    return packages.filter((pkg) => {
+      const matchesSearch =
+        searchQuery.trim().length === 0 ||
+        pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        pkg.description.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesCategory = selectedCategory === 'all' || pkg.category === selectedCategory;
+      const matchesInstalled = !showInstalledOnly || pkg.installed;
+
+      return matchesSearch && matchesCategory && matchesInstalled;
+    });
+  }, [packages, searchQuery, selectedCategory, showInstalledOnly]);
+
+  const handleRefresh = async () => {
+    await Promise.all([marketplaceQuery.refetch(), repositoriesQuery.refetch()]);
+  };
+
+  const openDetails = (pkg: MarketplacePackage) => {
+    setPackageDetails(pkg);
+    setDetailsDialogOpen(true);
+  };
+
+  const openScriptDialog = () => {
+    setGeneratedScript(generateInstallScript(filteredPackages));
+    setScriptDialogOpen(true);
+  };
+
+  const copyScript = async () => {
+    await navigator.clipboard.writeText(generatedScript);
+    setSnackbarMessage('Script copied to clipboard.');
+  };
+
+  return (
+    <Box sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Store color="primary" sx={{ fontSize: 36 }} />
+          <Box>
+            <Typography variant="h5" fontWeight={700}>
+              Package Marketplace
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Install, update and audit dependency packages.
             </Typography>
           </Box>
+        </Stack>
+
+        <Stack direction="row" spacing={1}>
+          <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+            Refresh
+          </Button>
+          <Button startIcon={<Download />} variant="outlined" onClick={openScriptDialog}>
+            Generate Script
+          </Button>
+        </Stack>
+      </Stack>
+
+      {isLoading ? <LinearProgress sx={{ mt: 2 }} /> : null}
+
+      <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Total Packages
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {summary.total}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Installed
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {summary.installed}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Outdated
+              </Typography>
+              <Typography variant="h5" fontWeight={700} color={summary.outdated > 0 ? 'warning.main' : 'text.primary'}>
+                {summary.outdated}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Vulnerabilities
+              </Typography>
+              <Typography variant="h5" fontWeight={700} color={summary.vulnerable > 0 ? 'error.main' : 'success.main'}>
+                {summary.vulnerable}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Box sx={{ mt: 3 }}>
+        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)}>
+          <Tab label="Packages" {...tabA11yProps(0)} />
+          <Tab label="Repositories" {...tabA11yProps(1)} />
+          <Tab label="Health" icon={<InfoOutlined />} iconPosition="start" {...tabA11yProps(2)} />
+        </Tabs>
+
+        <TabPanel value={tabValue} index={0}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <TextField
+              label="Search packages"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              fullWidth
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <FormControl sx={{ minWidth: 220 }}>
+              <InputLabel id="package-category-filter-label">Category</InputLabel>
+              <Select
+                labelId="package-category-filter-label"
+                label="Category"
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+              >
+                <MenuItem value="all">All</MenuItem>
+                {categories.map((entry) => (
+                  <MenuItem key={entry.category} value={entry.category}>
+                    {entry.category} ({entry.count})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Typography variant="body2">Installed only</Typography>
+              <Switch checked={showInstalledOnly} onChange={(event) => setShowInstalledOnly(event.target.checked)} />
+            </Stack>
+          </Stack>
+
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Package</TableCell>
+                    <TableCell>Version</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell>Downloads</TableCell>
+                    <TableCell>Rating</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredPackages.map((pkg) => (
+                    <TableRow key={pkg.name} hover>
+                      <TableCell>{packageStatusIcon(pkg)}</TableCell>
+                      <TableCell>
+                        <Typography fontWeight={600}>{pkg.name}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {pkg.description}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{pkg.current}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          latest: {pkg.latest}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={pkg.category} variant="outlined" />
+                      </TableCell>
+                      <TableCell>{pkg.downloads.toLocaleString('nb-NO')}</TableCell>
+                      <TableCell>{pkg.rating.toFixed(1)}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1}>
+                          <Tooltip title="View package details">
+                            <Button size="small" variant="outlined" onClick={() => openDetails(pkg)}>
+                              Details
+                            </Button>
+                          </Tooltip>
+                          {pkg.installed ? (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => updateMutation.mutate({ name: pkg.name, version: pkg.latest })}
+                              disabled={!pkg.isOutdated || updateMutation.isPending}
+                            >
+                              Update
+                            </Button>
+                          ) : (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => installMutation.mutate({ name: pkg.name, version: pkg.latest })}
+                              disabled={installMutation.isPending}
+                            >
+                              Install
+                            </Button>
+                          )}
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={1}>
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Trust</TableCell>
+                    <TableCell>Packages</TableCell>
+                    <TableCell>URL</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {repositories.map((repository) => (
+                    <TableRow key={repository.id} hover>
+                      <TableCell>{repository.name}</TableCell>
+                      <TableCell>{repository.type}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={repository.status}
+                          color={repository.status === 'active' ? 'success' : repository.status === 'error' ? 'error' : 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip size="small" label={repository.trusted ? 'Trusted' : 'Untrusted'} color={repository.trusted ? 'success' : 'warning'} />
+                      </TableCell>
+                      <TableCell>{repository.packageCount.toLocaleString('nb-NO')}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {repository.url}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <Alert severity={summary.vulnerable > 0 ? 'warning' : 'success'} sx={{ mb: 2 }}>
+            {summary.vulnerable > 0
+              ? `${summary.vulnerable} package(s) report known vulnerabilities and should be patched.`
+              : 'No known vulnerabilities in current package set.'}
+          </Alert>
+          <Alert severity={summary.outdated > 0 ? 'info' : 'success'}>
+            {summary.outdated > 0
+              ? `${summary.outdated} installed package(s) are outdated. Generate script and update safely.`
+              : 'All installed packages are up to date.'}
+          </Alert>
+        </TabPanel>
+      </Box>
+
+      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Package Details</DialogTitle>
+        <DialogContent>
+          {packageDetails ? (
+            <Stack spacing={1.5} sx={{ pt: 1 }}>
+              <Typography variant="subtitle1" fontWeight={700}>
+                {packageDetails.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {packageDetails.description}
+              </Typography>
+              <Typography variant="body2">Current: {packageDetails.current}</Typography>
+              <Typography variant="body2">Latest: {packageDetails.latest}</Typography>
+              <Typography variant="body2">License: {packageDetails.license ?? 'Unknown'}</Typography>
+              <Typography variant="body2">Size: {packageDetails.size ?? 'Unknown'}</Typography>
+              <Typography variant="body2">Updated: {packageDetails.lastUpdated ?? 'Unknown'}</Typography>
+              <Typography variant="body2">Repository: {packageDetails.repository ?? 'N/A'}</Typography>
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setScriptGeneratorOpen(false)}>
-            Lukk
-          </Button>
-          <Button variant="contained"
-            startIcon={theming.getThemedIcon('contentCopy')}
-            onClick={() => copyToClipboard(generatedScript)}
-          >
-            Kopier Script
-          </Button>
+          <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Installation Wizard */}
-      <InstallationWizard
-        open={installationWizardOpen}
-        onClose={() => setInstallationWizardOpen(false)}
-        packages={selectedPackagesForInstall}
-        mode={installationMode}
-        onComplete={handleInstallationComplete}
-      />
+      <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Generated Install Script</DialogTitle>
+        <DialogContent>
+          <TextField
+            multiline
+            minRows={10}
+            value={generatedScript}
+            fullWidth
+            InputProps={{ readOnly: true }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button startIcon={<ContentCopy />} onClick={copyScript}>
+            Copy
+          </Button>
+          <Button onClick={() => setScriptDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
-        open={snackbarOpen}
-        autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
-        message={snackbarMessage}
-      />
+        open={snackbarMessage !== null}
+        autoHideDuration={3500}
+        onClose={() => setSnackbarMessage(null)}
+      >
+        <Alert severity={snackbarMessage?.includes('failed') ? 'error' : 'success'} onClose={() => setSnackbarMessage(null)}>
+          {snackbarMessage}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

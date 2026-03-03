@@ -1,9 +1,5 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
@@ -43,6 +39,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  type ChipProps,
 } from '@mui/material';
 import {
   Publish,
@@ -92,6 +89,24 @@ interface EnvironmentDiff {
   status: 'new_in_staging' | 'missing_in_staging' | 'different' | 'same';
 }
 
+interface FeatureFlagsResponse {
+  flags: FeatureFlag[];
+}
+
+interface HistoryResponse {
+  history: PublishHistory[];
+}
+
+interface EnvironmentDiffResponse {
+  summary?: {
+    newInStaging: number;
+    missingInStaging: number;
+    different: number;
+    same: number;
+  };
+  diff: EnvironmentDiff[];
+}
+
 export default function FeatureManagementWithPublish() {
   const [tabValue, setTabValue] = useState(0);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
@@ -109,7 +124,7 @@ export default function FeatureManagementWithPublish() {
   const theming = useTheming('prototype_tester');
 
   // Fetch current feature flags for staging
-  const { data: stagingFlags, isLoading: stagingLoading } = useQuery({
+  const { data: stagingFlags, isLoading: stagingLoading } = useQuery<FeatureFlagsResponse>({
     queryKey: ['/api/feature-flags/status/staging'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -119,7 +134,7 @@ export default function FeatureManagementWithPublish() {
 });
 
   // Fetch current feature flags for production
-  const { data: productionFlags, isLoading: productionLoading } = useQuery({
+  const { data: productionFlags, isLoading: productionLoading } = useQuery<FeatureFlagsResponse>({
     queryKey: ['/api/feature-flags/status/production', ],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -129,7 +144,7 @@ export default function FeatureManagementWithPublish() {
 });
 
   // Fetch publish history
-  const { data: stagingHistory } = useQuery({
+  const { data: stagingHistory } = useQuery<HistoryResponse>({
     queryKey: ['/api/feature-flags/history/staging', ],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -137,7 +152,7 @@ export default function FeatureManagementWithPublish() {
     },
 });
 
-  const { data: productionHistory } = useQuery({
+  const { data: productionHistory } = useQuery<HistoryResponse>({
     queryKey: ['/api/feature-flags/history/production', ],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -146,7 +161,7 @@ export default function FeatureManagementWithPublish() {
 });
 
   // Fetch environment differences
-  const { data: environmentDiff } = useQuery({
+  const { data: environmentDiff } = useQuery<EnvironmentDiffResponse>({
     queryKey: ['/api/feature-flags/diff/staging-production', ],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
@@ -268,7 +283,7 @@ export default function FeatureManagementWithPublish() {
   });
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: EnvironmentDiff['status']): ChipProps['color'] => {
     switch (status) {
       case 'new_in_staging': return 'success';
       case 'missing_in_staging': return 'error';
@@ -278,28 +293,21 @@ export default function FeatureManagementWithPublish() {
 }
 };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: EnvironmentDiff['status']) => {
     switch (status) {
-      case 'new_in_staging': return theming.getThemedIcon(',');
-      case 'missing_in_staging': return theming.getThemedIcon('error');
-      case 'different': return theming.getThemedIcon('warning');
-      case 'same': return theming.getThemedIcon('info');
-      default: return theming.getThemedIcon(', ');
+      case 'new_in_staging': return <CheckCircle />;
+      case 'missing_in_staging': return <Error />;
+      case 'different': return <Warning />;
+      case 'same': return <Info />;
+      default: return <Info />;
   }
 };
 
   return (
     <Box sx={{ p:  3 }}>
       <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        {professionIcon && (
-          <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
-            {professionIcon}
-          </Box>
-        )}
         {theming.getThemedIcon('settings')}
-        {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-          ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Feature Flag Management & Deployment`
-          : 'Feature Flag Management & Deployment'}
+        Feature Flag Management & Deployment
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
         Manage feature flags across staging and production environments with publish/revert capabilities.
@@ -415,7 +423,7 @@ export default function FeatureManagementWithPublish() {
         >
           <Tab label="Environment Comparison" icon={<Compare />} />
           <Tab label="Publish History" icon={<History />} />
-          <Tab label="Feature Flags" icon={theming.getThemedIcon('settings')} />
+          <Tab label="Feature Flags" icon={<Settings />} />
         </Tabs>
 
         {/* Environment Comparison Tab */}
@@ -429,22 +437,22 @@ export default function FeatureManagementWithPublish() {
                 <Chip
                   label={`${environmentDiff.summary.newInStaging} new in staging`}
                   color="success"
-                  icon={theming.getThemedIcon('checkCircle')}
+                  icon={<CheckCircle />}
                 />
                 <Chip
                   label={`${environmentDiff.summary.missingInStaging} missing in staging`}
                   color="error"
-                  icon={theming.getThemedIcon('error')}
+                  icon={<Error />}
                 />
                 <Chip
                   label={`${environmentDiff.summary.different} different`}
                   color="warning"
-                  icon={theming.getThemedIcon('warning')}
+                  icon={<Warning />}
                 />
                 <Chip
                   label={`${environmentDiff.summary.same} same`}
                   color="default"
-                  icon={theming.getThemedIcon('info')}
+                  icon={<Info />}
                 />
               </Box>
             )}
@@ -459,8 +467,8 @@ export default function FeatureManagementWithPublish() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {environmentDiff?.diff?.map((item, index) => (
-                    <TableRow key={index}>
+                  {environmentDiff?.diff?.map((item: EnvironmentDiff) => (
+                    <TableRow key={item.featureName}>
                       <TableCell>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
                           {item.featureName}
@@ -484,7 +492,7 @@ export default function FeatureManagementWithPublish() {
                       </TableCell>
                       <TableCell>
                         <Chip
-                          label={item.status.replace('_', ', ')}
+                          label={item.status.replace(/_/g, ' ')}
                           color={getStatusColor(item.status)}
                           icon={getStatusIcon(item.status)}
                           size="small"
@@ -506,8 +514,8 @@ export default function FeatureManagementWithPublish() {
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   Staging History
                 </Typography>
-                {stagingHistory?.history?.map((entry, index) => (
-                  <Accordion key={index}>
+                {stagingHistory?.history?.map((entry: PublishHistory) => (
+                  <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
@@ -539,8 +547,8 @@ export default function FeatureManagementWithPublish() {
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   Production History
                 </Typography>
-                {productionHistory?.history?.map((entry, index) => (
-                  <Accordion key={index}>
+                {productionHistory?.history?.map((entry: PublishHistory) => (
+                  <Accordion key={entry.version}>
                     <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
                         <Typography variant="body2" sx={{ fontWeight: 500}}>
@@ -579,8 +587,8 @@ export default function FeatureManagementWithPublish() {
               Current Feature Flags
             </Typography>
             <Grid container spacing={2}>
-              {stagingFlags?.flags?.map((flag, index) => (
-                <Grid item xs={12} sm={6} md={4} key={index}>
+              {stagingFlags?.flags?.map((flag: FeatureFlag) => (
+                <Grid item xs={12} sm={6} md={4} key={flag.id}>
                   <Card variant="outlined" sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  1 }}>
@@ -691,6 +699,5 @@ export default function FeatureManagementWithPublish() {
     </Box>
   );
 }
-
 
 

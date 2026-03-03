@@ -17,7 +17,6 @@ import {
   CardContent,
   Tabs,
   Tab,
-  Grid,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,6 +30,7 @@ import {
   ListItemText,
   Avatar,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Dashboard,
   ViewModule,
@@ -49,10 +49,17 @@ import {
 } from '@mui/icons-material';
 
 interface DashboardIntegrationPanelProps {
-  selectedProject?: { id: string; name?: string };
+  selectedProject?: { id: string; name?: string; designCount?: number };
   onProjectUpdate?: (project: Record<string, unknown>) => void;
   onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
+
+const getLabelFromUnknown = (value: unknown, fallback: string): string => {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value;
+  }
+  return fallback;
+};
 
 export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps> = ({
   selectedProject,
@@ -68,10 +75,10 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
 
   // Component registration and performance monitoring
   useEffect(() => {
-    const endTiming = performance.startTiming('dashboard_integration_panel_render,');
+    const endTiming = performance.startTiming('dashboard_integration_panel_render');
 
     lifecycle.registerComponent({
-      id: 'DashboardIntegrationPanel,',
+      id: 'DashboardIntegrationPanel',
       type: 'dashboard-integration-panel',
       version: '1.0.0',
       capabilities: {
@@ -114,11 +121,13 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
 
   // TemplateDashboard functionality
   const handleTemplateSelect = useCallback((template: Record<string, unknown>) => {
+    const templateName = getLabelFromUnknown(template.name, 'Untitled template');
+
     onNotificationCreate?.({
       id: `template_selected_${Date.now()}`,
       type: 'project_updated',
       title: 'Template Selected',
-      message: `Template "${template.name}," applied`,
+      message: `Template "${templateName}" applied`,
       priority: 'medium',
       source: 'dashboard_integration',
       timestamp: new Date().toISOString()
@@ -134,11 +143,13 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
 
   // ExportPresetsDashboard functionality
   const handleExportPreset = useCallback((preset: Record<string, unknown>) => {
+    const presetName = getLabelFromUnknown(preset.name, 'Untitled preset');
+
     onNotificationCreate?.({
       id: `export_preset_${Date.now()}`,
       type: 'project_updated',
       title: 'Export Preset Applied',
-      message: `Preset "${preset.name}" ready for export`,
+      message: `Preset "${presetName}" ready for export`,
       priority: 'medium',
       source: 'dashboard_integration',
       timestamp: new Date().toISOString()
@@ -164,11 +175,12 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
 
   // TeamCollaborationDashboard functionality
   const handleTeamInvite = useCallback((teamData: Record<string, unknown>) => {
+    const memberCount = typeof teamData.count === 'number' ? teamData.count : 0;
     onNotificationCreate?.({
       id: `team_collaboration_${Date.now()}`,
       type: 'project_updated',
       title: 'Team Invited',
-      message: `${teamData.count} team members invited`,
+      message: `${memberCount} team members invited`,
       priority: 'medium',
       source: 'team_dashboard',
       timestamp: new Date().toISOString()
@@ -383,7 +395,7 @@ export const DashboardIntegrationPanel: React.FC<DashboardIntegrationPanelProps>
                 <Card sx={{ textAlign: 'center', p: 2,...theming.getThemedCardSx() }}>
                   <Cloud sx={{ fontSize: 40, mb: 1 }} />
                   <Typography variant="h6" sx={{ textTransform: 'capitalize', color: theming.colors.primary }}>
-                    {service.replace('-', ',')}
+                    {service.replace('-', ' ')}
                   </Typography>
                   <Button
                     variant="contained"

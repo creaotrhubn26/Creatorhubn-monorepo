@@ -36,7 +36,7 @@ export interface ScalingConfig {
 }
 
 export interface ScalingDecision {
-  action: 'scale_up, ' | 'scale_down' | 'maintain' | 'optimize';
+  action: 'scale_up' | 'scale_down' | 'maintain' | 'optimize';
   reason: string;
   confidence: number;
   currentInstances: number;
@@ -163,7 +163,7 @@ class AutoScalingSystem {
 
   private initializeResourceProfiles(): void {
     // CPU Profile
-    this.resourceProfiles.set('cpu, ', {
+    this.resourceProfiles.set('cpu', {
       id: 'cpu',
       name: 'CP',
       type: 'cpu',
@@ -735,10 +735,12 @@ class AutoScalingSystem {
 
     // Adjust scaling factor based on file size
     const sizeRatio = fileSize / profile.fileSize;
-    const adjustedProfile = {
+    const optimizationLevel: FileScalingProfile['optimizationLevel'] =
+      sizeRatio > 2 ? 'high' : sizeRatio > 1 ? 'medium' : 'low';
+    const adjustedProfile: FileScalingProfile = {
       ...profile,
       scalingFactor: profile.scalingFactor * Math.sqrt(sizeRatio),
-      optimizationLevel: sizeRatio > 2 ? 'high' : sizeRatio > 1 ? 'medium' : 'low'
+      optimizationLevel,
 };
 
     return adjustedProfile;
@@ -840,7 +842,6 @@ export const autoScalingSystem = new AutoScalingSystem();
 // Export types and class
 export { AutoScalingSystem };
 export default autoScalingSystem;
-
 
 
 

@@ -417,13 +417,13 @@ function useDebouncedValue<T>(value: T, ms = 300): T {
 // ============================================================================
 
 export default function EmailDesignerComplete({
-  context = 'general,',
+  context = 'general',
   profession = 'photographer',
   userId,
   onSave
 }: EmailDesignerCompleteProps = {}) {
   const { user } = useAuth();
-  const theming = useTheming(profession as any);
+  const theming = useTheming(profession);
   const queryClient = useQueryClient();
   const { analytics, lifecycle, performance: perf, debugging, features, communication } = useEnhancedMasterIntegration();
 
@@ -495,7 +495,7 @@ export default function EmailDesignerComplete({
       timestamp: Date.now()
     });
 
-    debugging.logIntegration('info, ','EmailDesigner mounted', {
+    debugging.logIntegration('info', 'EmailDesigner mounted', {
       componentId: 'email-designer',
       features: ['drag-drop','undo-redo','auto-save','template-variables']
     });

@@ -79,7 +79,7 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
   onImportClick,
   onExportClick
 }) => {
-  const [activeTab, setActiveTab] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -102,9 +102,15 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
     refreshData
 } = useTemplateManager();
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
 };
+
+  useEffect(() => {
+    if (activeTab === 0) onTemplatesClick();
+    if (activeTab === 1) onPresetsClick();
+    if (activeTab === 2) onCategoriesClick();
+  }, [activeTab, onTemplatesClick, onPresetsClick, onCategoriesClick]);
 
   const handleApplyTemplate = (templateId: string) => {
     try {
@@ -135,11 +141,11 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'dashboard': return <Dashboard />;
-      case 'showcase': return theming.getThemedIcon(', ');
+      case 'showcase': return <PhotoLibrary />;
       case 'project': return <Work />;
-      case 'ui': return theming.getThemedIcon('palette');
-      case 'workflow': return theming.getThemedIcon('settings');
-      default: return <Template />;
+      case 'ui': return <Palette />;
+      case 'workflow': return <Settings />;
+      default: return <ArticleOutlined />;
 }
 };
 
@@ -195,6 +201,13 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
             onClick={onImportClick}
           >
             Import
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={theming.getThemedIcon('settings')}
+            onClick={onSettingsClick}
+          >
+            Settings
           </Button>
         </Box>
       </Box>
@@ -567,7 +580,6 @@ const TemplatePresetDashboard: React.FC<TemplatePresetDashboardProps> = ({
 };
 
 export default TemplatePresetDashboard;
-
 
 
 

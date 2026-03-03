@@ -1,375 +1,273 @@
-import { useTheming } from '../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Video,
-  Calendar,
-  Users,
-  Clock,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemSecondaryAction,
+  ListItemText,
+  Tab,
+  Tabs,
+  Typography,
+} from '@mui/material';
+import {
+  CalendarToday,
   Phone,
   Settings,
-  Plus,
   Share,
-  Mic,
-  Camera,
-} from 'lucide-react';
+  Videocam,
+  People,
+  AccessTime,
+} from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 import { useAuth } from '@/hooks/useAuth';
 import { useMobile } from '@/hooks/use-mobile';
-import { Button } from '@/components/material-ui';
-import { Card as MuiCard, CardContent, CardHeader } from '@mui/material';
-import { CardTitle } from '@/components/material-ui';
-import { MaterialBadge as Badge } from '@/components/material-ui';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/material-ui';
 import SettingsPage from '@/components/SettingsPage';
 
 interface MeetingSystemMobileInterfaceProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
+
+type MobileTab = 'moter' | 'kalender' | 'opptak' | 'instillinger';
+
+interface MobileMeeting {
+  id: string;
+  title: string;
+  client: string;
+  time: string;
+  type: 'video' | 'phone';
+  status: 'upcoming' | 'live';
+}
+
+const mockMeetings: MobileMeeting[] = [
+  {
+    id: 'mobile-meet-1',
+    title: 'Bryllup-konsultasjon',
+    client: 'Emma & Lars',
+    time: '14:00 - 15:00',
+    type: 'video',
+    status: 'upcoming',
+  },
+  {
+    id: 'mobile-meet-2',
+    title: 'Portfolio review',
+    client: 'Bergen Music AS',
+    time: '16:30 - 17:30',
+    type: 'video',
+    status: 'upcoming',
+  },
+  {
+    id: 'mobile-meet-3',
+    title: 'Statusmøte',
+    client: 'Norsk Film Studio',
+    time: '19:00 - 19:30',
+    type: 'phone',
+    status: 'live',
+  },
+];
 
 export const MeetingSystemMobileInterface: React.FC<MeetingSystemMobileInterfaceProps> = ({
   children,
 }) => {
   const isMobile = useMobile();
-  
-  // Theming system
   const theming = useTheming('prototype_tester');
-  const [activeTab, setActiveTab] = useState('moter');
-  const [showQuickActions, setShowQuickActions] = useState(false);
   const { user, isAuthenticated } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<MobileTab>('moter');
+  const [showQuickActions, setShowQuickActions] = useState(false);
+
+  const todayCount = mockMeetings.length;
+  const liveCount = useMemo(
+    () => mockMeetings.filter((meeting) => meeting.status === 'live').length,
+    [],
+  );
 
   if (!isMobile) {
     return <>{children}</>;
-}
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'instillinger':
-        return (
-          <div className="space-y-4">
-            <SettingsPage />
-          </div>
-        );
-
-      case 'moter':
-        return (
-          <div className="space-y-4">
-            {/* Meeting Overview */}
-            <MuiCard className="bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95 backdrop-blur-lg border-amber-200/50 shadow-[0_16px_32px_rgba(2, 5, 1,146,60,0.15)] rounded-xl">
-              <CardContent className="p-4" sx={theming.getThemedCardSx()}>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-gray-800">Møter & Konsultasjoner</h3>
-                  <Badge variant="default" className="bg-amber-100 text-amber-800">
-                    Aktiv
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-green-600">3</p>
-                    <p className="text-xs text-gray-600">I dag</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-blue-600">12</p>
-                    <p className="text-xs text-gray-600">Denne uken</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-purple-600">47</p>
-                    <p className="text-xs text-gray-600">Total</p>
-                  </div>
-                </div>
-              </CardContent>
-            </MuiCard>
-
-            {/* Today's Meetings */}
-            <MuiCard className="bg-gradient-to-br from-white/95 via-green-50/20 to-white/95 backdrop-blur-lg border-green-200/50 shadow-[0_16px_32px_rgba(34,197,94,0.15)] rounded-xl">
-              <CardHeader sx={theming.getThemedCardSx()}>
-                <CardTitle className="text-gray-800 flex items-center gap-2" sx={theming.getThemedCardSx()}>
-                  <CalendarToday className="w-5 h-5 text-green-600" />
-                  Dagens Møter
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3" sx={theming.getThemedCardSx()}>
-                {[
-                  {
-                    title: 'Bryllup Konsultasjon',
-                    client: 'Emma & Lars Andersen',
-                    time: '14:00 - 15:0',
-                    type: 'video',
-                    status: 'upcoming',
-                },
-                  {
-                    title: 'Portfolio Gjennomgang',
-                    client: 'Bergen Musikk A',
-                    time: '16:30 - 17:3',
-                    type: 'video',
-                    status: 'upcoming',
-                },
-                  {
-                    title: 'Prosjekt Status Møte',
-                    client: 'Norsk Film Studio',
-                    time: '19:00 - 19:3',
-                    type: 'phone',
-                    status: 'upcoming',
-                },
-                ].map((meeting, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-gray-200/50"
-                  >
-                    <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                        meeting.type === 'video' ? 'bg-blue-100' : 'bg-green-100'
-                    }`}
-                    >
-                      {meeting.type === 'video' ? (
-                        <Videocam className="w-6 h-6 text-blue-600" />
-                      ) : (
-                        <Phone className="w-6 h-6 text-green-600" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">{meeting.title}</h4>
-                      <p className="text-xs text-gray-600">{meeting.client}</p>
-                      <p className="text-xs text-amber-600 font-medium">{meeting.time}</p>
-                    </div>
-                    <Button size="sm" className="bg-amber-600 hover: bg-amber-700">
-                      <Videocam className="w-4 h-4 mr-1" />
-                      Bli med
-                    </Button>
-                  </div>
-                , ))}
-              </CardContent>
-            </MuiCard>
-
-            {/* Quick Actions */}
-            <MuiCard className="bg-gradient-to-br from-white/95 via-blue-50/20 to-white/95 backdrop-blur-lg border-blue-200/50 shadow-[0_16px_32px_rgba(59,130,246,0.15)] rounded-xl">
-              <CardHeader sx={theming.getThemedCardSx()}>
-                <CardTitle className="text-gray-800" sx={theming.getThemedCardSx()}>Hurtighandlinger</CardTitle>
-              </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-3" sx={theming.getThemedCardSx()}>
-                <Button className="flex flex-col items-center gap-2 h-20 bg-green-600 hover: bg-green-700">
-                  <Videocam className="w-6 h-6" />
-                  <span className="text-sm">Start Møte</span>
-                </Button>
-                <Button className="flex flex-col items-center gap-2 h-20 bg-blue-600 hover:bg-blue-700">
-                  <CalendarToday className="w-6 h-6" />
-                  <span className="text-sm">Planlegg Møte</span>
-                </Button>
-              </CardContent>
-            </MuiCard>
-          </div>
-        );
-
-      case 'kalender':
-        return (
-          <div className="space-y-4">
-            <MuiCard className="bg-gradient-to-br from-white/95 via-purple-50/20 to-white/95 backdrop-blur-lg border-purple-200/50 shadow-[0_16px_32px_rgba(17,51,234,0.15)] rounded-xl">
-              <CardHeader sx={theming.getThemedCardSx()}>
-                <CardTitle className="text-gray-800" sx={theming.getThemedCardSx()}>Møtekalender</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3" sx={theming.getThemedCardSx()}>
-                {[
-                  { date: '21. juli', meetings: 2, type: 'i morgen',},
-                  { date: '22. juli', meetings:  4, type: 'tirsdag',},
-                  { date: '23. juli', meetings: 1, type: 'onsdag',},
-                  { date: '24. juli', meetings:  3, type: 'torsdag',},
-                  { date: '25. juli', meetings: 2, type: 'fredag',},
-                ].map((day, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-white/50 rounded-lg border border-gray-200/50"
-                  >
-                    <div>
-                      <p className="font-medium text-gray-800 text-sm">{day.date}</p>
-                      <p className="text-xs text-gray-600 capitalize">{day.type}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-purple-600">{day.meetings}</p>
-                      <p className="text-xs text-gray-600">møter</p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </MuiCard>
-          </div>
-        );
-
-      case 'opptak':
-        return (
-          <div className="space-y-4">
-            <MuiCard className="bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95 backdrop-blur-lg border-amber-200/50 shadow-[0_16px_32px_rgba(2, 5, 1,146,60,0.15)] rounded-xl">
-              <CardHeader sx={theming.getThemedCardSx()}>
-                <CardTitle className="text-gray-800" sx={theming.getThemedCardSx()}>Møteopptak</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3" sx={theming.getThemedCardSx()}>
-                {[
-                  {
-                    title: 'Bryllup Planlegging - Emma & Lars',
-                    date: '18. juli 202',
-                    duration: '45 min',
-                    size: '280 M',
-                },
-                  {
-                    title: 'Video Produksjon Review - Bergen Music',
-                    date: '17. juli 202',
-                    duration: '32 min',
-                    size: '195 M',
-                },
-                  {
-                    title: 'Portfolio Konsultasjon - Norsk Film',
-                    date: '15. juli 202',
-                    duration: '28 min',
-                    size: '165 M',
-                },
-                ].map((recording, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-white/50 rounded-lg border border-gray-200/50"
-                  >
-                    <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
-                      <Videocam className="w-6 h-6 text-amber-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-gray-800 text-sm">{recording.title}</h4>
-                      <p className="text-xs text-gray-600">
-                        {recording.date} • {recording.duration}
-                      </p>
-                      <p className="text-xs text-gray-500">{recording.size}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
-                        <Videocam className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Share className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </MuiCard>
-          </div>
-        );
-
-      default: return (
-          <div className="space-y-4">
-            <MuiCard className="bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95 backdrop-blur-lg border-amber-200/50 rounded-xl">
-              <CardContent className="p-4 text-center" sx={theming.getThemedCardSx()}>
-                <Videocam className="w-16 h-16 text-amber-600 mx-auto mb-4" />
-                <h2 className="text-xl font-bold text-gray-800 mb-2">Møtesystem</h2>
-                <p className="text-gray-600">Video møter og konsultasjoner</p>
-              </CardContent>
-            </MuiCard>
-          </div>
-        );
   }
-};
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/80 via-amber-100/20 to-orange-50/60 dark: from-slate-900/80 dark:via-slate-800/60, dark:to-black/80">
-      {/* Mobile Status Bar , *, /}
-      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 backdrop-blur-sm border-b border-amber-200/30">
-        <div className="flex items-center space-x-2">
-          <Videocam className="w-6 h-6 text-amber-600" />
-          <span className="text-gray-800 font-medium">CreatorHub Møter</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          {isAuthenticated && (
-            <Badge variant="outline" className="text-amber-700 border-amber-400">
-              Pålogget
-            </Badge>
-          )}
-          <div className="text-gray-800 text-sm">🔋 88%</div>
-        </div>
-      </div>
+    <Box sx={{ p: 2, pb: 10, minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            Møtesystem
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {isAuthenticated ? `Logget inn som ${user?.email ?? 'bruker'}` : 'Ikke logget inn'}
+          </Typography>
+        </Box>
+        <Button variant="contained" onClick={() => setShowQuickActions(true)}>
+          Hurtigvalg
+        </Button>
+      </Box>
 
-      {/* Main Content */}
-      <div className="p-4 pb-20">{renderContent()}</div>
+      {activeTab === 'moter' && (
+        <Box>
+          <Card sx={{ mb: 2, ...theming.getThemedCardSx() }}>
+            <CardContent>
+              <Typography variant="subtitle1" sx={{ color: theming.colors.primary }}>
+                Dagens oversikt
+              </Typography>
+              <Box display="flex" justifyContent="space-between" mt={1}>
+                <Stat label="I dag" value={todayCount} />
+                <Stat label="Live" value={liveCount} />
+                <Stat label="Planlagt" value={todayCount - liveCount} />
+              </Box>
+            </CardContent>
+          </Card>
 
-      {/* Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-white/95 to-amber-50/95 backdrop-blur-lg border-t border-amber-200/50">
-        <div className="flex items-center justify-around p-2">
-          <Button
-            variant={activeTab === 'moter' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('moter')}
-            className="flex flex-col items-center gap-1 h-16 text-amber-700 hover: text-amber-800"
-          >
-            <Videocam className="w-5 h-5" />
-            <span className="text-xs">Møter</span>
-          </Button>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardHeader title="Dagens møter" />
+            <CardContent>
+              <List>
+                {mockMeetings.map((meeting) => (
+                  <ListItem key={meeting.id} divider>
+                    <ListItemIcon>
+                      {meeting.type === 'video' ? <Videocam color="primary" /> : <Phone color="success" />}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={meeting.title}
+                      secondary={`${meeting.client} • ${meeting.time}`}
+                    />
+                    <ListItemSecondaryAction>
+                      <Button size="small" variant="outlined">
+                        Bli med
+                      </Button>
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Box>
+      )}
 
-          <Button
-            variant={activeTab === 'kalender' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('kalender')}
-            className="flex flex-col items-center gap-1 h-16 text-amber-700 hover: text-amber-800"
-          >
-            <CalendarToday className="w-5 h-5" />
-            <span className="text-xs">Kalender</span>
-          </Button>
+      {activeTab === 'kalender' && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardHeader title="Møtekalender" />
+          <CardContent>
+            {['Mandag', 'Tirsdag', 'Onsdag', 'Torsdag', 'Fredag'].map((day, index) => (
+              <Box key={day} display="flex" justifyContent="space-between" alignItems="center" py={1}>
+                <Box>
+                  <Typography variant="body2">{day}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Uke {30 + index}
+                  </Typography>
+                </Box>
+                <Chip size="small" label={`${(index % 3) + 1} møter`} />
+              </Box>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowQuickActions(true)}
-            className="flex flex-col items-center gap-1 h-16 text-amber-700 hover: text-amber-800"
-          >
-            <Add className="w-6 h-6" />
-            <span className="text-xs">+</span>
-          </Button>
+      {activeTab === 'opptak' && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardHeader title="Opptak" />
+          <CardContent>
+            <List>
+              {[
+                { title: 'Kickoff-opptak', date: '18. juli 2026', duration: '45 min', size: '280 MB' },
+                { title: 'Review-opptak', date: '17. juli 2026', duration: '32 min', size: '195 MB' },
+              ].map((recording) => (
+                <ListItem key={recording.title} divider>
+                  <ListItemIcon>
+                    <Videocam />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={recording.title}
+                    secondary={`${recording.date} • ${recording.duration} • ${recording.size}`}
+                  />
+                  <Button size="small">Åpne</Button>
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
 
-          <Button
-            variant={activeTab === 'opptak' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('opptak')}
-            className="flex flex-col items-center gap-1 h-16 text-amber-700 hover: text-amber-800"
-          >
-            <Videocam className="w-5 h-5" />
-            <span className="text-xs">Opptak</span>
-          </Button>
+      {activeTab === 'instillinger' && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardHeader title="Innstillinger" />
+          <CardContent>
+            <SettingsPage />
+          </CardContent>
+        </Card>
+      )}
 
-          <Button
-            variant={activeTab === 'instillinger' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setActiveTab('instillinger')}
-            className="flex flex-col items-center gap-1 h-16 text-amber-700 hover: text-amber-800"
-          >
-            <Settings className="w-5 h-5" />
-            <span className="text-xs">Instillinger</span>
-          </Button>
-        </div>
-      </div>
+      <Divider sx={{ my: 2 }} />
 
-      {/* Quick Actions Dialog , *, /}
-      <Dialog open={showQuickActions} onOpenChange={setShowQuickActions}>
-        <DialogContent className="bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95 backdrop-blur-lg border-amber-200/50">
-          <DialogHeader>
-            <DialogTitle className="text-gray-800 flex items-center gap-2">
-              <Videocam className="w-5 h-5 text-amber-600" />
-              Møtehandlinger
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4">
-            <Button className="flex flex-col items-center gap-2 h-20 bg-green-600 hover: bg-green-700">
-              <Videocam className="w-6 h-6" />
-              <span className="text-sm">Start Møte</span>
-            </Button>
-            <Button className="flex flex-col items-center gap-2 h-20 bg-blue-600 hover:bg-blue-700">
-              <CalendarToday className="w-6 h-6" />
-              <span className="text-sm">Planlegg Møte</span>
-            </Button>
-            <Button className="flex flex-col items-center gap-2 h-20 bg-purple-600 hover:bg-purple-700">
-              <People className="w-6 h-6" />
-              <span className="text-sm">Gruppe Møte</span>
-            </Button>
-            <Button className="flex flex-col items-center gap-2 h-20 bg-amber-600 hover:bg-amber-700">
-              <Share className="w-6 h-6" />
-              <span className="text-sm">Del Skjerm</span>
-            </Button>
-          </div>
+      <Box
+        sx={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          borderTop: '1px solid #dbe5f1',
+          backgroundColor: '#ffffff',
+          zIndex: 10,
+        }}
+      >
+        <Tabs
+          value={activeTab}
+          onChange={(_, value) => setActiveTab(value as MobileTab)}
+          variant="fullWidth"
+        >
+          <Tab value="moter" icon={<Videocam />} label="Møter" />
+          <Tab value="kalender" icon={<CalendarToday />} label="Kalender" />
+          <Tab value="opptak" icon={<AccessTime />} label="Opptak" />
+          <Tab value="instillinger" icon={<Settings />} label="Innst." />
+        </Tabs>
+      </Box>
+
+      <Dialog open={showQuickActions} onClose={() => setShowQuickActions(false)} fullWidth>
+        <DialogTitle>Hurtighandlinger</DialogTitle>
+        <DialogContent>
+          <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2} py={1}>
+            <QuickButton icon={<Videocam />} label="Start møte" />
+            <QuickButton icon={<CalendarToday />} label="Planlegg" />
+            <QuickButton icon={<People />} label="Gruppemøte" />
+            <QuickButton icon={<Share />} label="Del skjerm" />
+          </Box>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowQuickActions(false)}>Lukk</Button>
+        </DialogActions>
       </Dialog>
-    </div>
-  )
+    </Box>
+  );
 };
+
+function Stat({ label, value }: { label: string; value: number }): JSX.Element {
+  return (
+    <Box textAlign="center">
+      <Typography variant="h6">{value}</Typography>
+      <Typography variant="caption" color="text.secondary">
+        {label}
+      </Typography>
+    </Box>
+  );
+}
+
+function QuickButton({ icon, label }: { icon: React.ReactNode; label: string }): JSX.Element {
+  return (
+    <Button variant="outlined" sx={{ minHeight: 72, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <IconButton size="small">{icon}</IconButton>
+      <Typography variant="caption">{label}</Typography>
+    </Button>
+  );
+}
 
 export default MeetingSystemMobileInterface;

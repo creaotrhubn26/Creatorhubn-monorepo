@@ -567,7 +567,7 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
             branding.saveDraft({
               name: `Logo Config ${new Date().toLocaleString()}`,
               description: 'Logo configuration with placement',
-              logo: branding.logo
+              logo: branding.logo ?? undefined
           });
         }}
           disabled={!branding.hasLogo}
@@ -611,7 +611,6 @@ export const LogoManagementPanel: React.FC<LogoManagementPanelProps> = ({ open, 
     </Box>
   );
 };
-
 
 
 

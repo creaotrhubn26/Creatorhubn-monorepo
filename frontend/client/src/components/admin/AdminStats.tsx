@@ -88,7 +88,7 @@ const formatValue = (value: number, format: string): string => {
       return `${value}%`;
     case 'time':
       return `${value}ms`;
-    default: return value.toLocaleString('no-NO,');
+    default: return value.toLocaleString('no-NO');
 }
 };
 
@@ -103,7 +103,7 @@ export default function AdminStats({ userEmail }: AdminStatsProps) {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
 
   // Get auth from master integration
   const { auth } = useEnhancedMasterIntegration();

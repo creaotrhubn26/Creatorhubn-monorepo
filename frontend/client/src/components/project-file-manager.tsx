@@ -102,7 +102,12 @@ export default function ProjectFileManager({ projectId, profession, userId }: Pr
 
   // Post-production workflow steps
   const photoWorkflowSteps = [
-    'Import Raw Files','Photo Culling','Enhancement & Editing''Client Gallery Creation','Universal Showcase','Final Delivery'
+    'Import Raw Files',
+    'Photo Culling',
+    'Enhancement & Editing',
+    'Client Gallery Creation',
+    'Universal Showcase',
+    'Final Delivery',
   ];
 
   const videoWorkflowSteps = [

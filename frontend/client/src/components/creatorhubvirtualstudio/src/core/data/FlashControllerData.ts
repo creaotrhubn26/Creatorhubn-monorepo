@@ -1045,8 +1045,18 @@ export function getRecommendationMessage(lights: LightInScene[]): string {
  * Brand to controller mapping for quick lookup
  */
 export const BRAND_CONTROLLER_MAP: Record<string, string[]> = {
-  'profoto': ['profoto_connect_pro','profoto_connect']'godox': ['godox_xpro_ii','godox_x3','godox_x2t','godox_xpro']'flashpoint': ['flashpoint_r2_pro_ii','godox_xpro_ii'], // Flashpoint = Godox rebrand
-  'elinchrom': ['elinchrom_transmitter_pro','elinchrom_skyport_plus_hs']'broncolor': ['broncolor_rfs_2.2']'canon': ['godox_xpro_ii','yongnuo_yn622c_tx','pocketwizard_flextt5']'nikon': ['godox_xpro_ii','yongnuo_yn622n_tx','pocketwizard_flextt5']'sony': ['godox_xpro_ii','phottix_odin_ii']'fujifilm': ['godox_xpro_ii','nissin_air10s']'nissin': ['nissin_air10s']'phottix': ['phottix_odin_ii']'yongnuo': ['yongnuo_yn622c_tx', 'yongnuo_yn622n_tx'],
+  profoto: ['profoto_connect_pro', 'profoto_connect'],
+  godox: ['godox_xpro_ii', 'godox_x3', 'godox_x2t', 'godox_xpro'],
+  flashpoint: ['flashpoint_r2_pro_ii', 'godox_xpro_ii'], // Flashpoint = Godox rebrand
+  elinchrom: ['elinchrom_transmitter_pro', 'elinchrom_skyport_plus_hs'],
+  broncolor: ['broncolor_rfs_2.2'],
+  canon: ['godox_xpro_ii', 'yongnuo_yn622c_tx', 'pocketwizard_flextt5'],
+  nikon: ['godox_xpro_ii', 'yongnuo_yn622n_tx', 'pocketwizard_flextt5'],
+  sony: ['godox_xpro_ii', 'phottix_odin_ii'],
+  fujifilm: ['godox_xpro_ii', 'nissin_air10s'],
+  nissin: ['nissin_air10s'],
+  phottix: ['phottix_odin_ii'],
+  yongnuo: ['yongnuo_yn622c_tx', 'yongnuo_yn622n_tx'],
 };
 
 // ============================================================================
@@ -1117,4 +1127,3 @@ export function createDefaultGroups(controller: FlashController): FlashGroup[] {
     modelingLight: false,
   }));
 }
-

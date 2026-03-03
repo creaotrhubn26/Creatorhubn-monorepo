@@ -1,252 +1,241 @@
 /**
  * CreatorHub Norge - Material UI Icon Library for Visual CMS
- * Komplett tilgang til alle Material UI ikoner i Visual CMS
+ * Searchable picker for Material UI icons used in admin visual editor.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Autocomplete,
   Box,
-  Grid,
-  TextField,
-  Typography,
+  Button,
   Card,
   CardContent,
-  IconButton,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Button,
-  Chip,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
   InputAdornment,
   Tab,
   Tabs,
-  Autocomplete,
+  TextField,
   Tooltip,
+  Typography,
 } from '@mui/material';
-import {
-  Search,
-  Close,
-  ContentCopy,
-  Check,
-} from '@mui/icons-material';
-
-// Import all Material UI icons
+import { Check, Close, ContentCopy, Search } from '@mui/icons-material';
 import * as MaterialIcons from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
 interface MaterialIconLibraryProps {
   open: boolean;
   onClose: () => void;
-  onSelectIcon: (iconName: string, iconComponent: React.ComponentType) => void
+  onSelectIcon: (iconName: string, iconComponent: React.ComponentType) => void;
 }
 
-// Icon categories
-const ICON_CATEGORIES = {
-  'Action': ['Add','Delete','Edit','Save','Cancel','Done','Search','Settings','Home','Menu']'Communication': ['Email','Phone','Chat','Message','Call','VideoCall','Forum','Comment']'Content': ['Create','ContentCopy','ContentCut','ContentPaste','Clear','SelectAll','Undo','Redo']'Device': ['Computer','Phone','Tablet','Watch','Tv','Camera','Memory','Storage']'Editor': ['FormatBold','FormatItalic','FormatUnderlined','FormatAlignLeft','FormatAlignCenter','FormatAlignRight']'File': ['Folder','InsertDriveFile','CloudUpload','CloudDownload','Attachment','Archive']'Hardware': ['Keyboard','Mouse','Headset','Speaker','Microphone','Camera']'Image': ['Image','PhotoLibrary','Crop','Rotate90DegreesCcw','Brightness6','Contrast']'Maps': ['Place','Navigation','MyLocation','LocationOn','DirectionsCar','DirectionsWalk']'Navigation': ['ArrowBack','ArrowForward','ArrowUpward','ArrowDownward','ChevronLeft','ChevronRight']'Notification': ['Notifications','NotificationsActive','NotificationsOff','Warning','Error','Info']'Social': ['Person','Group','Public','Share','ThumbUp','Favorite','Star']'Toggle': ['CheckBox','RadioButtonChecked','ToggleOn','ToggleOff','Star','StarBorder']'AV': ['Play','Pause','Stop','VolumeUp','VolumeDown','VolumeMute','Replay','FastForward']'Photography': ['CameraAlt','PhotoCamera','Portrait','Landscape','FlashOn','FlashOff','Timer','Exposure']'Video': ['Videocam','Movie','VideoLibrary','Theaters','OndemandVideo','LiveTv','Subscriptions']'Business': ['Business','Work','Assignment','Assessment','AccountBalance','TrendingUp','BarChart']'Creative': ['Brush','Palette','ColorLens','FormatPaint','Gesture','Create','AutoFixHigh']
+const ICON_CATEGORIES: Record<string, string[]> = {
+  Action: ['Add', 'Delete', 'Edit', 'Save', 'Search', 'Settings', 'Home'],
+  Communication: ['Email', 'Phone', 'Chat', 'Message', 'Forum', 'Call'],
+  Content: ['Create', 'ContentCopy', 'ContentCut', 'ContentPaste', 'Undo', 'Redo'],
+  Device: ['Computer', 'PhoneAndroid', 'Tablet', 'Watch', 'Tv'],
+  File: ['Folder', 'InsertDriveFile', 'CloudUpload', 'CloudDownload', 'Attachment'],
+  Image: ['Image', 'PhotoLibrary', 'Crop', 'Brightness6', 'Contrast'],
+  Navigation: ['ArrowBack', 'ArrowForward', 'ChevronLeft', 'ChevronRight'],
+  Notification: ['Notifications', 'Warning', 'Error', 'Info'],
+  Social: ['Person', 'Group', 'Public', 'Share', 'Favorite', 'Star'],
+  AV: ['PlayArrow', 'Pause', 'Stop', 'VolumeUp', 'Replay', 'FastForward'],
+  Business: ['Business', 'Work', 'Assignment', 'Assessment', 'BarChart'],
+  Creative: ['Brush', 'Palette', 'ColorLens', 'Gesture', 'AutoFixHigh'],
 };
 
-// Get popular icons for quick access
 const POPULAR_ICONS = [
-  'Home','Search','Menu','Settings','Person','Email','Phone','Share','Favorite','Star','Add','Edit','Delete','Save','Download','Upload','CameraAlt','PhotoCamera','Videocam','Image','MusicNote','Business','Dashboard','Analytics','TrendingUp','Schedule','Event','Notifications'
+  'Home',
+  'Search',
+  'Menu',
+  'Settings',
+  'Person',
+  'Email',
+  'Phone',
+  'Share',
+  'Favorite',
+  'Star',
+  'Add',
+  'Edit',
+  'Delete',
+  'Save',
+  'CloudUpload',
+  'CloudDownload',
+  'Image',
+  'Videocam',
+  'MusicNote',
+  'Business',
+  'Dashboard',
+  'Analytics',
+  'TrendingUp',
+  'Schedule',
+  'Event',
+  'Notifications',
 ];
 
+const iconsMap = MaterialIcons as Record<string, React.ComponentType>;
+
 export default function MaterialIconLibrary({ open, onClose, onSelectIcon }: MaterialIconLibraryProps) {
-  const [searchTerm, setSearchTerm] = useState(false);
-  
-  // Theming system
   const theming = useTheming('photographer');
-  const [selectedCategory, setSelectedCategory] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [tabIndex, setTabIndex] = useState(0);
   const [copiedIcon, setCopiedIcon] = useState<string | null>(null);
 
-  // Get all icon names
   const allIconNames = useMemo(() => {
-    return Object.keys(MaterialIcons).filter(name => 
-      typeof (MaterialIcons as any)[name] === 'function' ||
-      typeof (MaterialIcons as any)[name] === 'object'
-    );
-}, []);
+    return Object.keys(iconsMap).filter((name) => typeof iconsMap[name] === 'function').sort();
+  }, []);
 
-  // Filter icons based on search and category
-  const filteredIcons = useMemo(() => {
-    let icons = allIconNames;
+  const categoryNames = useMemo(() => Object.keys(ICON_CATEGORIES), []);
 
-    // Filter by category
-    if (selectedCategory > 0) {
-      const categoryName = Object.keys(ICON_CATEGORIES)[selectedCategory - 1];
-      const categoryIcons = ICON_CATEGORIES[categoryName as keyof typeof ICON_CATEGORIES];
-      icons = allIconNames.filter(name => 
-        categoryIcons.some(catIcon => name.includes(catIcon))
-      );
-  } else if (selectedCategory === 0) {
-      icons = POPULAR_ICONS;
-  }
+  const iconNames = useMemo(() => {
+    let names: string[];
 
-    // Filter by search term
-    if (searchTerm) {
-      icons = icons.filter(name =>
-        name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-  }
-
-    return icons.slice(0, 200); // Limit to 200 for performance
-}, [searchTerm, selectedCategory, allIconNames]);
-
-  const handleIconSelect = (iconName: string) => {
-    const IconComponent = (MaterialIcons as any)[iconName];
-    if (IconComponent) {
-      onSelectIcon(iconName, IconComponent);
-      onClose();
-  }
-};
-
-  const handleCopyIconName = (iconName: string) => {
-    navigator.clipboard.writeText(iconName);
-    setCopiedIcon(iconName);
-    setTimeout(() => setCopiedIcon(null), 2000);
-};
-
-  const renderIcon = (iconName: string) => {
-    const IconComponent = (MaterialIcons as any)[iconName];
-    if (!IconComponent) return null;
-
-    return (
-      <Card
-        key={iconName}
-        sx={{
-          cursor: 'pointer',
-          transition: 'all 0.2s ease', '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow:  4,
-            bgcolor: 'action.hover'
+    if (tabIndex === 0) {
+      names = POPULAR_ICONS.filter((iconName) => allIconNames.includes(iconName));
+    } else {
+      const category = categoryNames[tabIndex - 1];
+      if (!category) {
+        names = allIconNames;
+      } else {
+        const probes = ICON_CATEGORIES[category] ?? [];
+        names = allIconNames.filter((name) => probes.some((probe) => name.includes(probe)));
       }
-      }}
-        onClick={() => handleIconSelect(iconName)}
-      >
-        <CardContent sx={{ textAlign: 'center', p: 2, '&:last-child': { pb: 2 }, ...theming.getThemedCardSx() }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap:  1 }}>
-            <IconComponent sx={{ fontSize:  32, color: 'primary.main' }} />
-            <Typography variant="caption" sx={{ fontSize: '0.7rem', wordBreak: 'break-word' }}>
-              {iconName}
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 0.5}}>
-              <Tooltip title="Bruk ikon">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleIconSelect(iconName);
-                }}
-                  sx={{ fontSize: '0.8rem' }}
-                >
-                  <Check fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Kopier navn">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCopyIconName(iconName);
-                }}
-                  sx={{ fontSize: '0.8rem' }}
-                >
-                  {copiedIcon === iconName ? (
-                    <Check fontSize="small" color="success" />
-                  ) : (
-                    <ContentCopy fontSize="small" />
-                  )}
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
-    );
-};
+    }
+
+    if (!searchTerm.trim()) {
+      return names.slice(0, 240);
+    }
+
+    const lowered = searchTerm.trim().toLowerCase();
+    return names.filter((name) => name.toLowerCase().includes(lowered)).slice(0, 240);
+  }, [allIconNames, categoryNames, searchTerm, tabIndex]);
+
+  const handleSelect = (iconName: string) => {
+    const IconComponent = iconsMap[iconName];
+    if (!IconComponent) {
+      return;
+    }
+    onSelectIcon(iconName, IconComponent);
+    onClose();
+  };
+
+  const handleCopy = async (iconName: string) => {
+    if (!navigator.clipboard) {
+      return;
+    }
+    await navigator.clipboard.writeText(iconName);
+    setCopiedIcon(iconName);
+    setTimeout(() => setCopiedIcon(null), 1200);
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
-      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-          🎨 Material UI Icon Library ({filteredIcons.length} ikoner)
-        </Typography>
-        <IconButton onClick={onClose}>
-          {theming.getThemedIcon('close')}
+      <DialogTitle sx={{ ...theming.getThemedCardSx(), display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography variant="h6">Material Icon Library</Typography>
+        <IconButton onClick={onClose} aria-label="Close icon picker">
+          <Close />
         </IconButton>
       </DialogTitle>
-      
-      <DialogContent sx={{ height: '70vh' }}>
-        <Box sx={{ mb:  3 }}>
+
+      <DialogContent dividers sx={theming.getThemedCardSx()}>
+        <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             fullWidth
-            placeholder="Søk etter ikoner..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search icons"
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  {theming.getThemedIcon('')}
+                  <Search />
                 </InputAdornment>
-              )
-          }}
-            sx={{ mb:  2 }}
+              ),
+            }}
           />
 
-          <Tabs
-            value={selectedCategory}
-            onChange={(_, value) => setSelectedCategory(value)}
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab label="Populære" />
-            {Object.keys(ICON_CATEGORIES).map((category, index) => (
-              <Tab key={category} label={category} />
-            ))}
-          </Tabs>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
-          <Chip
-            label={`${filteredIcons.length} ikoner funnet`}
-            color="primary"
-            size="small"
+          <Autocomplete
+            sx={{ minWidth: 260 }}
+            options={allIconNames}
+            onChange={(_event, value) => {
+              if (value) {
+                setSearchTerm(value);
+              }
+            }}
+            renderInput={(params) => <TextField {...params} label="Quick jump" size="small" />}
           />
-          {searchTerm && (
-            <Chip
-              label={`Søker: "${searchTerm}"`}
-              color="secondary"
-              size="small"
-              onDelete={() => setSearchTerm(', ')}
-            />
-          )}
         </Box>
 
-        <Grid container spacing={1} sx={{ maxHeight: 'calc(100% - 120px, )', overflow: 'auto' }}>
-          {filteredIcons.map((iconName) => (
-            <Grid size={{ xs:  6 }} sm={4} md={3} lg={2} key={iconName}>
-              {renderIcon(iconName)}
-            </Grid>
+        <Tabs
+          value={tabIndex}
+          onChange={(_event, value) => setTabIndex(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ mb: 2 }}
+        >
+          <Tab label="Popular" />
+          {categoryNames.map((categoryName) => (
+            <Tab key={categoryName} label={categoryName} />
           ))}
-        </Grid>
+        </Tabs>
 
-        {filteredIcons.length === 0 && (
-          <Box sx={{ textAlign: 'center', mt:  4 }}>
-            <Typography variant="h6" color="textSecondary" sx={{ color: theming.colors.primary }}>
-              Ingen ikoner funnet
-            </Typography>
-            <Typography variant="body2" color="textSecondary">
-              Prøv et annet søkeord eller velg en annen kategori
-            </Typography>
-          </Box>
-        )}
+        <Grid container spacing={1.5}>
+          {iconNames.map((iconName) => {
+            const IconComponent = iconsMap[iconName];
+            if (!IconComponent) {
+              return null;
+            }
+
+            return (
+              <Grid key={iconName} item xs={6} sm={4} md={3} lg={2}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    cursor: 'pointer',
+                    height: '100%',
+                    transition: 'transform 120ms ease, box-shadow 120ms ease',
+                    '&:hover': {
+                      transform: 'translateY(-2px)',
+                      boxShadow: 3,
+                    },
+                  }}
+                  onClick={() => handleSelect(iconName)}
+                >
+                  <CardContent sx={{ p: 1.5, textAlign: 'center', '&:last-child': { pb: 1.5 }, ...theming.getThemedCardSx() }}>
+                    <Box sx={{ minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <IconComponent />
+                    </Box>
+                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, wordBreak: 'break-word' }}>
+                      {iconName}
+                    </Typography>
+                    <Tooltip title={copiedIcon === iconName ? 'Copied' : 'Copy icon name'}>
+                      <IconButton
+                        size="small"
+                        aria-label={`Copy ${iconName}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleCopy(iconName);
+                        }}
+                      >
+                        {copiedIcon === iconName ? <Check fontSize="small" /> : <ContentCopy fontSize="small" />}
+                      </IconButton>
+                    </Tooltip>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
       </DialogContent>
 
-      <DialogActions>
-        <Typography variant="body2" color="textSecondary" sx={{ flexGrow:  1 }}>
-          💡 Tips: Klikk på et ikon for å bruke det, eller kopier navnet for kodebruk
+      <DialogActions sx={theming.getThemedCardSx()}>
+        <Typography variant="body2" color="text.secondary" sx={{ mr: 'auto' }}>
+          Showing {iconNames.length} of {allIconNames.length} icons
         </Typography>
-        <Button onClick={onClose}>Lukk</Button>
+        <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
   );

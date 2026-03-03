@@ -115,6 +115,13 @@ const useCmsMode = () => {
   return cmsMode;
 };
 
+const getErrorStatusCode = (error: unknown): number | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const prefixedMatch = message.match(/^(\d{3})[:\s]/);
+  if (prefixedMatch) return Number(prefixedMatch[1]);
+  return null;
+};
+
 interface EquipmentCatalogBrowserProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
   userId: string;
@@ -163,6 +170,103 @@ const PROFESSION_COLORS = {
   music_producer: '#FF5722',
   vendor: '#2196F3',
 };
+
+const FALLBACK_CATALOG: CatalogEquipment[] = [
+  {
+    id: 'fallback-sony-fx3',
+    brand: 'Sony',
+    model: 'FX3',
+    category: 'video',
+    description: 'Kompakt cinema-kamera for run-and-gun produksjon.',
+    specifications: { sensorSize: 'Full Frame', videoResolution: '4K', maxISO: 102400 },
+    priceNOK: 49990,
+    releaseYear: 2021,
+    mount: 'Sony E',
+    availability: 'available',
+  },
+  {
+    id: 'fallback-canon-c70',
+    brand: 'Canon',
+    model: 'C70',
+    category: 'video',
+    description: 'Super 35 cinema-kamera med intern ND.',
+    specifications: { sensorSize: 'Super 35', videoResolution: '4K', maxISO: 102400 },
+    priceNOK: 61990,
+    releaseYear: 2020,
+    mount: 'Canon RF',
+    availability: 'available',
+  },
+  {
+    id: 'fallback-sony-a7iv',
+    brand: 'Sony',
+    model: 'A7 IV',
+    category: 'cameras',
+    description: 'Allsidig hybridkamera for foto og video.',
+    specifications: { resolution: 33, continuousFPS: 10, maxISO: 51200 },
+    priceNOK: 31990,
+    releaseYear: 2021,
+    mount: 'Sony E',
+    availability: 'limited',
+  },
+  {
+    id: 'fallback-nikon-z8',
+    brand: 'Nikon',
+    model: 'Z8',
+    category: 'cameras',
+    description: 'Flaggskip-kamera i kompakt hus.',
+    specifications: { resolution: 45.7, continuousFPS: 20, maxISO: 25600 },
+    priceNOK: 55990,
+    releaseYear: 2023,
+    mount: 'Nikon Z',
+    availability: 'available',
+  },
+  {
+    id: 'fallback-canon-24-70',
+    brand: 'Canon',
+    model: 'RF 24-70mm f/2.8L',
+    category: 'lenses',
+    description: 'Standard zoom for event og kommersiell produksjon.',
+    specifications: { focalLength: '24-70mm', maxAperture: 2.8, lensType: 'zoom' },
+    priceNOK: 27990,
+    releaseYear: 2019,
+    mount: 'Canon RF',
+    availability: 'available',
+  },
+  {
+    id: 'fallback-sony-70-200',
+    brand: 'Sony',
+    model: 'FE 70-200mm f/2.8 GM II',
+    category: 'lenses',
+    description: 'Telezoom med høy optisk ytelse.',
+    specifications: { focalLength: '70-200mm', maxAperture: 2.8, lensType: 'telezoom' },
+    priceNOK: 34990,
+    releaseYear: 2021,
+    mount: 'Sony E',
+    availability: 'available',
+  },
+  {
+    id: 'fallback-rode-wireless-pro',
+    brand: 'Rode',
+    model: 'Wireless PRO',
+    category: 'audio',
+    description: 'Trådløst lydsystem for intervjuer og run-and-gun.',
+    specifications: { channels: 2, batteryLife: '7h' },
+    priceNOK: 5890,
+    releaseYear: 2023,
+    availability: 'available',
+  },
+  {
+    id: 'fallback-aputure-600d',
+    brand: 'Aputure',
+    model: 'LS 600d Pro',
+    category: 'flash',
+    description: 'Kraftig kontinuerlig lys for større sett.',
+    specifications: { power: '600W', weatherSealed: true },
+    priceNOK: 23990,
+    releaseYear: 2021,
+    availability: 'available',
+  },
+];
 
 // Use case configurations for equipment recommendations
 const USE_CASES = {
@@ -356,6 +460,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedBrand, setSelectedBrand] = useState('Alle');
+  const [catalogMode, setCatalogMode] = useState<'checking' | 'api' | 'fallback'>('checking');
   const [selectedEquipment, setSelectedEquipment] = useState<CatalogEquipment | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: ', ', severity: 'success' as 'success' | 'error' | 'info' });
   const [favorites, setFavorites] = useState<Set<string | number>>(new Set());
@@ -376,17 +481,68 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   // Visual editor for CMS mode
   const visualEditor = useVisualEditor();
 
+  // Lightweight health-check so we can stop request loops when API is unavailable.
+  useEffect(() => {
+    let cancelled = false;
+
+    const runHealthCheck = async () => {
+      try {
+        await apiRequest('/api/equipment/search?limit=1');
+        if (!cancelled) setCatalogMode('api');
+      } catch {
+        if (!cancelled) setCatalogMode('fallback');
+      }
+    };
+
+    runHealthCheck();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Fetch equipment catalog
   const { data: catalogData, isLoading } = useQuery({
     queryKey: ['/api/equipment/search', searchQuery, selectedCategory, selectedBrand],
+    enabled: catalogMode === 'api',
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (searchQuery) params.append('q', searchQuery);
-      if (selectedCategory !== 'all') params.append('category', selectedCategory);
-      if (selectedBrand !== 'Alle') params.append('brand', selectedBrand);
-      return apiRequest(`/api/equipment/search?${params.toString()}`);
+      try {
+        const params = new URLSearchParams();
+        if (searchQuery) params.append('q', searchQuery);
+        if (selectedCategory !== 'all') params.append('category', selectedCategory);
+        if (selectedBrand !== 'Alle') params.append('brand', selectedBrand);
+        return await apiRequest(`/api/equipment/search?${params.toString()}`);
+      } catch (error) {
+        const status = getErrorStatusCode(error);
+        if (status === 401 || status === 403 || status === 404) {
+          setCatalogMode('fallback');
+          return { results: [] };
+        }
+        setCatalogMode('fallback');
+        throw error;
+      }
     },
+    retry: false,
   });
+
+  const fallbackEquipmentList = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return FALLBACK_CATALOG.filter((item) => {
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) return false;
+      if (selectedBrand !== 'Alle' && item.brand !== selectedBrand) return false;
+      if (!query) return true;
+      const searchable = [
+        item.brand,
+        item.model,
+        item.description || '',
+        item.category,
+        item.mount || '',
+        item.type || '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [searchQuery, selectedBrand, selectedCategory]);
 
   // Add equipment to user's list mutation
   const addEquipmentMutation = useMutation({
@@ -426,7 +582,8 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
     },
   });
 
-  const equipmentList: CatalogEquipment[] = catalogData?.results || catalogData || [];
+  const equipmentList: CatalogEquipment[] =
+    catalogMode === 'api' ? catalogData?.results || catalogData || [] : fallbackEquipmentList;
 
   const toggleFavorite = (id: string | number) => {
     setFavorites((prev) => {
@@ -467,19 +624,49 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
     const results: { spec: string; values: { equipment: CatalogEquipment; value: string; isBest: boolean }[] }[] = [];
 
     // Define specs to compare
-    const specsToCompare = [
-      { key: 'resolution', label: 'Oppløsning', format: (v: number) => `${v}MP` },
-      { key: 'maxISO', label: 'Maks ISO', format: (v: number) => v.toLocaleString() },
-      { key: 'continuousFPS', label: 'Seriefoto', format: (v: number) => `${v} fps` },
-      { key: 'weight', label: 'Vekt', format: (v: number) => `${v}g`, lower: true },
-      { key: 'videoResolution', label: 'Video', format: (v: string) => v },
-      { key: 'sensorSize', label: 'Sensorstørrelse', format: (v: string) => v },
+    const specsToCompare: Array<{
+      key: string;
+      label: string;
+      format: (value: unknown) => string;
+      lower?: boolean;
+    }> = [
+      {
+        key: 'resolution',
+        label: 'Oppløsning',
+        format: (value) => (typeof value === 'number' ? `${value}MP` : '-'),
+      },
+      {
+        key: 'maxISO',
+        label: 'Maks ISO',
+        format: (value) => (typeof value === 'number' ? value.toLocaleString() : '-'),
+      },
+      {
+        key: 'continuousFPS',
+        label: 'Seriefoto',
+        format: (value) => (typeof value === 'number' ? `${value} fps` : '-'),
+      },
+      {
+        key: 'weight',
+        label: 'Vekt',
+        format: (value) => (typeof value === 'number' ? `${value}g` : '-'),
+        lower: true,
+      },
+      {
+        key: 'videoResolution',
+        label: 'Video',
+        format: (value) => (typeof value === 'string' ? value : '-'),
+      },
+      {
+        key: 'sensorSize',
+        label: 'Sensorstørrelse',
+        format: (value) => (typeof value === 'string' ? value : '-'),
+      },
     ];
 
     specsToCompare.forEach(({ key, label, format, lower }) => {
       const values = compareList.map((eq) => {
         const val = eq.specifications?.[key];
-        return { equipment: eq, rawValue: val, value: val ? format(val) : '-', isBest: false };
+        return { equipment: eq, rawValue: val, value: val !== undefined && val !== null ? format(val) : '-', isBest: false };
       });
 
       // Find best value
@@ -865,23 +1052,25 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
       </Box>
 
       {/* Loading State */}
-      {isLoading && (
+      {(catalogMode === 'checking' || (catalogMode === 'api' && isLoading)) && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
           <CircularProgress sx={{ color: professionColor }} />
         </Box>
       )}
 
       {/* Equipment Grid */}
-      {!isLoading && equipmentList.length > 0 && (
+      {catalogMode !== 'checking' && !(catalogMode === 'api' && isLoading) && equipmentList.length > 0 && (
         <Grid container spacing={3}>
           {equipmentList.map(renderEquipmentCard)}
         </Grid>
       )}
 
       {/* Empty State */}
-      {!isLoading && equipmentList.length === 0 && (
+      {catalogMode !== 'checking' && !(catalogMode === 'api' && isLoading) && equipmentList.length === 0 && (
         <Alert severity="info" sx={{ mt: 2 }}>
-          Ingen utstyr funnet med gjeldende filtre. Prøv å endre søket eller filtrene.
+          {catalogMode === 'fallback'
+            ? 'Katalog kjører i fallback-modus. Viser lokal reservekatalog uten API-kall.'
+            : 'Ingen utstyr funnet med gjeldende filtre. Prøv å endre søket eller filtrene.'}
         </Alert>
       )}
 
@@ -894,7 +1083,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
       >
         {selectedEquipment && (
           <>
-            <DialogTitle>
+            <DialogTitle component="div">
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>
                   <Typography variant="subtitle2" color="text.secondary">
@@ -1110,7 +1299,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
         maxWidth="lg"
         fullWidth
       >
-        <DialogTitle>
+        <DialogTitle component="div">
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <CompareArrows sx={{ color: professionColor }} />
@@ -1372,7 +1561,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <CloudUpload sx={{ color: professionColor }} />
             <Box>
               <Typography variant="h6">Legg til bilde</Typography>
@@ -1519,4 +1708,3 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
 
 export type { CatalogEquipment };
 export default EquipmentCatalogBrowser;
-

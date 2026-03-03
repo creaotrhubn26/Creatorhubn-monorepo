@@ -1,69 +1,63 @@
-import React, { useState, useCallback, useMemo, useReducer } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { useTheming } from '@/utils/theming-helper';
+import React, { useCallback, useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '@/utils/theming-helper';
 import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  TextField,
-  IconButton,
-  Dialog,
-  Stack,
   Alert,
-  Tooltip,
-  Divider,
+  Box,
+  Button,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  Paper,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Save as SaveIcon,
-  Send as SendIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-  Preview as PreviewIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  DragIndicator as DragIcon,
-  Code as CodeIcon,
-  Settings as SettingsIcon,
+  Add,
+  ArrowDownward,
+  ArrowUpward,
+  Code,
+  Delete,
+  Preview,
+  Redo,
+  Save,
+  Settings,
+  Undo,
 } from '@mui/icons-material';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
-// ============================================================================
-// TYPES & INTERFACES
-// ============================================================================
+type ComponentType = 'header' | 'text' | 'button' | 'image' | 'divider' | 'footer' | 'social' | 'spacer';
 
-interface ComponentStyles {
-  color?: string;
-  backgroundColor?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  fontWeight?: 'normal' | 'bold' | '600';
-  fontSize?: number;
-  padding?: number;
-  margin?: number;
-  borderRadius?: number;
-  width?: string;
-  height?: string | number;
+interface EmailComponentStyles {
+  color: string;
+  backgroundColor: string;
+  textAlign: 'left' | 'center' | 'right';
+  fontWeight: 'normal' | 'bold';
+  fontSize: number;
+  padding: number;
+  margin: number;
+  borderRadius: number;
+  width: string;
+  height: number;
 }
 
-interface ComponentContent {
-  text?: string;
-  src?: string;
-  alt?: string;
-  url?: string;
+interface EmailComponentContent {
+  text: string;
+  src: string;
+  alt: string;
+  url: string;
 }
 
 interface EmailComponent {
   id: string;
-  type: 'header' | 'text' | 'button' | 'image' | 'divider' | 'footer' | 'social' | 'spacer';
-  content: ComponentContent;
-  styles: ComponentStyles;
+  type: ComponentType;
+  content: EmailComponentContent;
+  styles: EmailComponentStyles;
 }
 
 interface GlobalStyles {
@@ -76,8 +70,7 @@ interface GlobalStyles {
   containerWidth: number;
 }
 
-interface EmailTemplate {
-  id?: string;
+interface EmailTemplatePayload {
   name: string;
   category: string;
   subject: string;
@@ -92,688 +85,873 @@ interface TemplateVariable {
   description: string;
   category: 'user' | 'project' | 'business' | 'custom';
   defaultValue: string;
-  example: string;
 }
 
-interface EmailDesignerState {
-  components: EmailComponent[];
-  history: EmailComponent[][];
-  historyIndex: number;
-  selectedComponent: EmailComponent | null;
-  globalStyles: GlobalStyles;
-  templateName: string;
-  subject: string;
-  preheader: string;
-  customVariables: Record<string, string>;
-  showVariablesPanel: boolean;
+interface ComponentPreset {
+  id: ComponentType;
+  name: string;
+  icon: string;
+  description: string;
 }
-
-// ============================================================================
-// REDUCER FOR STATE MANAGEMENT
-// ============================================================================
-
-type Action =
-  | { type: 'ADD_COMPONENT'; component: EmailComponent }
-  | { type: 'UPDATE_COMPONENT'; id: string; updates: Partial<EmailComponent> }
-  | { type: 'DELETE_COMPONENT'; id: string }
-  | { type: 'REORDER_COMPONENTS'; components: EmailComponent[] }
-  | { type: 'SELECT_COMPONENT'; component: EmailComponent | null }
-  | { type: 'UNDO' }
-  | { type: 'REDO' }
-  | { type: 'UPDATE_GLOBAL_STYLES'; styles: Partial<GlobalStyles> }
-  | { type: 'SET_TEMPLATE_META'; field: 'templateName' | 'subject' | 'preheader'; value: string }
-  | { type: 'LOAD_TEMPLATE'; template: EmailTemplate }
-  | { type: 'SET_CUSTOM_VARIABLE'; key: string; value: string }
-  | { type: 'TOGGLE_VARIABLES_PANEL' };
-
-function emailDesignerReducer(state: EmailDesignerState, action: Action): EmailDesignerState {
-  switch (action.type) {
-    case 'ADD_COMPONENT': const newComponents = [...state.components, action.component];
-      return {
-        ...state,
-        components: newComponents,
-        history: [...state.history.slice(0, state.historyIndex + 1), newComponents],
-        historyIndex: state.historyIndex + 1 };
-
-    case 'UPDATE_COMPONENT': const updatedComponents = state.components.map(c =>
-        c.id === action.id ? { ...c, ...action.updates } : c
-      );
-      return {
-        ...state,
-        components: updatedComponents,
-        history: [...state.history.slice(0, state.historyIndex + 1), updatedComponents],
-        historyIndex: state.historyIndex + 1 };
-
-    case 'DELETE_COMPONENT': const filteredComponents = state.components.filter(c => c.id !== action.id);
-      return {
-        ...state,
-        components: filteredComponents,
-        selectedComponent: state.selectedComponent?.id === action.id ? null : state.selectedComponent,
-        history: [...state.history.slice(0, state.historyIndex + 1), filteredComponents],
-        historyIndex: state.historyIndex + 1 };
-
-    case 'REORDER_COMPONENTS': return {
-        ...state,
-        components: action.components,
-        history: [...state.history.slice(0, state.historyIndex + 1), action.components],
-        historyIndex: state.historyIndex + 1 };
-
-    case 'SELECT_COMPONENT': return { ...state, selectedComponent: action.component };
-
-    case 'UNDO': if (state.historyIndex > 0) {
-        return {
-          ...state,
-          components: state.history[state.historyIndex - 1],
-          historyIndex: state.historyIndex - 1 };
-      }
-      return state;
-
-    case 'REDO': if (state.historyIndex < state.history.length - 1) {
-        return {
-          ...state,
-          components: state.history[state.historyIndex + 1],
-          historyIndex: state.historyIndex + 1 };
-      }
-      return state;
-
-    case 'UPDATE_GLOBAL_STYLES': return {
-        ...state,
-        globalStyles: { ...state.globalStyles, ...action.styles }
-      };
-
-    case 'SET_TEMPLATE_META': return { ...state, [action.field]: action.value };
-
-    case 'LOAD_TEMPLATE': return {
-        ...state,
-        components: action.template.components,
-        globalStyles: action.template.globalStyles,
-        templateName: action.template.name,
-        subject: action.template.subject,
-        preheader: action.template.preheader,
-        history: [action.template.components],
-        historyIndex: 0 };
-
-    case 'SET_CUSTOM_VARIABLE': return {
-        ...state,
-        customVariables: { ...state.customVariables, [action.key]: action.value }
-      };
-
-    case 'TOGGLE_VARIABLES_PANEL': return { ...state, showVariablesPanel: !state.showVariablesPanel };
-
-    default: return state;
-  }
-}
-
-// ============================================================================
-// DEFAULT VALUES
-// ============================================================================
-
-const DEFAULT_GLOBAL_STYLES: GlobalStyles = {
-  backgroundColor: '#f5f5f5',
-  fontFamily: 'Arial, sans-serif',
-  fontSize: 14,
-  lineHeight: 1.6
-  textColor: '#333333',
-  linkColor: '#ff6b35',
-  containerWidth: 600 };
-
-const COMPONENT_TYPES = [
-  { id: 'header', name: 'Overskrift', icon: '📝', description: 'Store overskrifter' },
-  { id: 'text', name: 'Tekst', icon: '📄', description: 'Brødtekst og avsnitt' },
-  { id: 'button', name: 'Knapp', icon: '🔘', description: 'Call-to-action knapp' },
-  { id: 'image', name: 'Bilde', icon: '🖼️', description: 'Bilder og grafikk' },
-  { id: 'divider', name: 'Linje', icon: '➖', description: 'Horisontal skillelinje' },
-  { id: 'social', name: 'Sosiale', icon: '📱', description: 'Sosiale medier lenker' },
-  { id: 'spacer', name: 'Avstand', icon: '⬜', description: 'Vertikal spacing' },
-  { id: 'footer', name: 'Footer', icon: '👣', description: 'Bunntekst' }
-] as const;
-
-// Template Variables System
-const TEMPLATE_VARIABLES: TemplateVariable[] = [
-  // User Variables
-  { key: 'user_name', label: 'Bruker Navn', description: 'Fullt navn', category: 'user', defaultValue: 'Navn Navnesen', example: 'Ola Nordmann' },
-  { key: 'user_first_name', label: 'Fornavn', description: 'Brukerens fornavn', category: 'user', defaultValue: 'Navn', example: 'Ola' },
-  { key: 'user_last_name', label: 'Etternavn', description: 'Brukerens etternavn', category: 'user', defaultValue: 'Navnesen', example: 'Nordmann' },
-  { key: 'user_email', label: 'E-post', description: 'Brukerens e-postadresse', category: 'user', defaultValue: 'epost@example.com', example: 'ola@example.com' },
-  { key: 'user_phone', label: 'Telefon', description: 'Brukerens telefonnummer', category: 'user', defaultValue: '+47 123 45 678', example: '+47 987 65 432' },
-  
-  // Project Variables
-  { key: 'project_name', label: 'Prosjektnavn', description: 'Navn på prosjektet', category: 'project', defaultValue: 'Mitt Prosjekt', example: 'Bryllup 2025' },
-  { key: 'project_date', label: 'Prosjektdato', description: 'Dato for prosjektet', category: 'project', defaultValue: '15. Juni 2025', example: '20. August 2025' },
-  { key: 'project_location', label: 'Sted', description: 'Lokasjon for prosjektet', category: 'project', defaultValue: 'Oslo', example: 'Bergen' },
-  { key: 'project_type', label: 'Prosjekttype', description: 'Type prosjekt', category: 'project', defaultValue: 'Bryllup', example: 'Portrettfotografering' },
-  { key: 'delivery_date', label: 'Leveringsdato', description: 'Når bildene leveres', category: 'project', defaultValue: '1. Juli 2025', example: '30. September 2025' },
-  { key: 'gallery_link', label: 'Galleri-lenke', description: 'Link til bildegalleri', category: 'project', defaultValue: 'https://gallery.example.com', example: 'https://gallery.example.com/abc123' },
-  
-  // Business Variables
-  { key: 'business_name', label: 'Bedriftsnavn', description: 'Navn på fotografbedriften', category: 'business', defaultValue: 'Mitt Fotofirma', example: 'Nordisk Foto AS' },
-  { key: 'business_phone', label: 'Bedrift Telefon', description: 'Bedriftens telefonnummer', category: 'business', defaultValue: '+47 123 45 678', example: '+47 456 78 901' },
-  { key: 'business_email', label: 'Bedrift E-post', description: 'Bedriftens e-postadresse', category: 'business', defaultValue: 'kontakt@firma.no', example: 'post@nordiskfoto.no' },
-  { key: 'business_address', label: 'Adresse', description: 'Bedriftens adresse', category: 'business', defaultValue: 'Gateveien 1, 0123 Oslo', example: 'Storgata 15, 5015 Bergen' },
-  { key: 'business_website', label: 'Nettside', description: 'Bedriftens nettside', category: 'business', defaultValue: 'www.firma.no', example: 'www.nordiskfoto.no' },
-  { key: 'photographer_name', label: 'Fotograf Navn', description: 'Navnet på fotografen', category: 'business', defaultValue: 'Fotograf Fotografsen', example: 'Kari Fotograf' },
-  
-  // Norwegian Specific
-  { key: 'org_number', label: 'Org.nr', description: 'Organisasjonsnummer', category: 'business', defaultValue: '123 456 789', example: '987 654 321' },
-  { key: 'vat_number', label: 'MVA-nummer', description: 'MVA-registrert nummer', category: 'business', defaultValue: 'NO123456789MVA', example: 'NO987654321MVA' },
-  
-  // Common Phrases
-  { key: 'greeting', label: 'Hilsen', description: 'Hilsen i starten', category: 'custom', defaultValue: 'Hei', example: 'Kjære' },
-  { key: 'closing', label: 'Avslutning', description: 'Avslutningshilsen', category: 'custom', defaultValue: 'Med vennlig hilsen', example: 'Beste hilsener' },
-  { key: 'signature', label: 'Signatur', description: 'Signaturlinje', category: 'custom', defaultValue: 'Fotograf Fotografsen', example: 'Kari Nordmann, Fotograf' }
-];
-
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
 
 interface EmailDesignerImprovedProps {
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
 }
 
-export default function EmailDesignerImproved({ 
-  profession = 'photographer,' 
-}: EmailDesignerImprovedProps) {
-  const { user } = useAuth();
-  const userProfession = profession || (user as any)?.profession || 'photographer';
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(userProfession);
-  const queryClient = useQueryClient();
+const DEFAULT_GLOBAL_STYLES: GlobalStyles = {
+  backgroundColor: '#f5f5f5',
+  fontFamily: 'Arial, sans-serif',
+  fontSize: 14,
+  lineHeight: 1.6,
+  textColor: '#333333',
+  linkColor: '#1f6feb',
+  containerWidth: 640,
+};
 
-  const [state, dispatch] = useReducer(emailDesignerReducer, {
-    components: [],
-    history: [[]],
-    historyIndex: 0,
-    selectedComponent: null,
-    globalStyles: DEFAULT_GLOBAL_STYLES,
-    templateName: 'Ny mal',
-    subject: '',
-    preheader: '',
-    customVariables: {},
-    showVariablesPanel: false
-  });
+const COMPONENT_PRESETS: ComponentPreset[] = [
+  { id: 'header', name: 'Header', icon: '📝', description: 'Main title area' },
+  { id: 'text', name: 'Text', icon: '📄', description: 'Body text block' },
+  { id: 'button', name: 'Button', icon: '🔘', description: 'CTA button block' },
+  { id: 'image', name: 'Image', icon: '🖼️', description: 'Image block' },
+  { id: 'divider', name: 'Divider', icon: '➖', description: 'Section separator' },
+  { id: 'social', name: 'Social', icon: '📱', description: 'Social links row' },
+  { id: 'spacer', name: 'Spacer', icon: '⬜', description: 'Vertical spacing' },
+  { id: 'footer', name: 'Footer', icon: '👣', description: 'Footer notes' },
+];
 
-  const [showPreview, setShowPreview] = useState(false);
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [previewVariables, setPreviewVariables] = useState<Record<string, string>>({});
+const TEMPLATE_VARIABLES: TemplateVariable[] = [
+  { key: 'user_name', label: 'User Name', description: 'Full name', category: 'user', defaultValue: 'Customer Name' },
+  { key: 'user_email', label: 'User Email', description: 'Email address', category: 'user', defaultValue: 'user@example.com' },
+  { key: 'project_name', label: 'Project Name', description: 'Current project', category: 'project', defaultValue: 'Project X' },
+  { key: 'project_date', label: 'Project Date', description: 'Project date', category: 'project', defaultValue: '2026-03-01' },
+  { key: 'business_name', label: 'Business Name', description: 'Business display name', category: 'business', defaultValue: 'CreatorHub Studio' },
+  { key: 'business_phone', label: 'Business Phone', description: 'Contact number', category: 'business', defaultValue: '+47 000 00 000' },
+  { key: 'greeting', label: 'Greeting', description: 'Intro phrase', category: 'custom', defaultValue: 'Hello' },
+  { key: 'closing', label: 'Closing', description: 'Closing phrase', category: 'custom', defaultValue: 'Best regards' },
+];
 
-  // Replace template variables in text
-  const replaceVariables = useCallback((text: string, variables: Record<string, string>) => {
-    let result = text;
-    TEMPLATE_VARIABLES.forEach(variable => {
-      const value = variables[variable.key] || variable.defaultValue;
-      result = result.replace(new RegExp(`{{${variable.key}}`, 'g,'), value);
-    });
-    return result;
-  }, []);
+function uniqueId(): string {
+  return `component-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
 
-  // ============================================================================
-  // COMPONENT ACTIONS
-  // ============================================================================
+function defaultContent(type: ComponentType): EmailComponentContent {
+  switch (type) {
+    case 'header':
+      return { text: 'Email title', src: '', alt: '', url: '' };
+    case 'text':
+      return { text: 'Write your email content here.', src: '', alt: '', url: '' };
+    case 'button':
+      return { text: 'Call To Action', src: '', alt: '', url: 'https://example.com' };
+    case 'image':
+      return { text: '', src: 'https://via.placeholder.com/1200x500?text=Email+Banner', alt: 'Banner', url: '' };
+    case 'divider':
+      return { text: '', src: '', alt: '', url: '' };
+    case 'social':
+      return { text: 'Instagram | Facebook | YouTube', src: '', alt: '', url: '' };
+    case 'spacer':
+      return { text: '', src: '', alt: '', url: '' };
+    case 'footer':
+      return { text: 'You are receiving this email because you subscribed to updates.', src: '', alt: '', url: '' };
+    default:
+      return { text: '', src: '', alt: '', url: '' };
+  }
+}
 
-  const addComponent = useCallback((type: EmailComponent['type']) => {
-    const newComponent: EmailComponent = {
-      id: `component-${Date.now()}-${Math.random()}`,
-      type,
-      content: getDefaultContent(type),
-      styles: getDefaultStyles(type)
-    };
-    dispatch({ type: 'ADD_COMPONENT', component: newComponent });
-  }, []);
-
-  const updateComponent = useCallback((id: string, updates: Partial<EmailComponent>) => {
-    dispatch({ type: 'UPDATE_COMPONENT', id, updates });
-  }, []);
-
-  const deleteComponent = useCallback((id: string) => {
-    dispatch({ type: 'DELETE_COMPONENT', id });
-  }, []);
-
-  const handleDragEnd = useCallback((result: DropResult) => {
-    if (!result.destination) return;
-
-    const items = Array.from(state.components);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-
-    dispatch({ type: 'REORDER_COMPONENTS', components: items });
-  }, [state.components]);
-
-  // ============================================================================
-  // SAVE & EXPORT
-  // ============================================================================
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const template: EmailTemplate = {
-        name: state.templateName,
-        category: 'custom',
-        subject: state.subject,
-        preheader: state.preheader,
-        components: state.components,
-        globalStyles: state.globalStyles
+function defaultStyles(type: ComponentType): EmailComponentStyles {
+  switch (type) {
+    case 'header':
+      return {
+        color: '#111827',
+        backgroundColor: 'transparent',
+        textAlign: 'left',
+        fontWeight: 'bold',
+        fontSize: 32,
+        padding: 8,
+        margin: 8,
+        borderRadius: 0,
+        width: '100%',
+        height: 0,
       };
-      return await apiRequest('/api/email-templates', {
+    case 'button':
+      return {
+        color: '#ffffff',
+        backgroundColor: '#1f6feb',
+        textAlign: 'center',
+        fontWeight: 'bold',
+        fontSize: 16,
+        padding: 12,
+        margin: 10,
+        borderRadius: 8,
+        width: 'auto',
+        height: 0,
+      };
+    case 'image':
+      return {
+        color: '#111827',
+        backgroundColor: 'transparent',
+        textAlign: 'center',
+        fontWeight: 'normal',
+        fontSize: 14,
+        padding: 0,
+        margin: 8,
+        borderRadius: 10,
+        width: '100%',
+        height: 260,
+      };
+    case 'divider':
+      return {
+        color: '#d1d5db',
+        backgroundColor: '#d1d5db',
+        textAlign: 'left',
+        fontWeight: 'normal',
+        fontSize: 1,
+        padding: 0,
+        margin: 16,
+        borderRadius: 0,
+        width: '100%',
+        height: 1,
+      };
+    case 'spacer':
+      return {
+        color: 'transparent',
+        backgroundColor: 'transparent',
+        textAlign: 'left',
+        fontWeight: 'normal',
+        fontSize: 1,
+        padding: 0,
+        margin: 0,
+        borderRadius: 0,
+        width: '100%',
+        height: 32,
+      };
+    case 'footer':
+      return {
+        color: '#6b7280',
+        backgroundColor: 'transparent',
+        textAlign: 'left',
+        fontWeight: 'normal',
+        fontSize: 12,
+        padding: 8,
+        margin: 8,
+        borderRadius: 0,
+        width: '100%',
+        height: 0,
+      };
+    default:
+      return {
+        color: '#111827',
+        backgroundColor: 'transparent',
+        textAlign: 'left',
+        fontWeight: 'normal',
+        fontSize: 14,
+        padding: 8,
+        margin: 8,
+        borderRadius: 0,
+        width: '100%',
+        height: 0,
+      };
+  }
+}
+
+function replaceVariables(input: string, values: Record<string, string>): string {
+  return TEMPLATE_VARIABLES.reduce((output, variable) => {
+    const replacement = values[variable.key] || variable.defaultValue;
+    return output.replaceAll(`{{${variable.key}}}`, replacement);
+  }, input);
+}
+
+function generateHTML(
+  templateName: string,
+  subject: string,
+  preheader: string,
+  components: EmailComponent[],
+  globalStyles: GlobalStyles,
+  values: Record<string, string>
+): string {
+  const style = `
+    body { margin: 0; padding: 0; background: ${globalStyles.backgroundColor}; font-family: ${globalStyles.fontFamily}; }
+    .wrapper { width: 100%; padding: 24px 0; }
+    .container { width: ${globalStyles.containerWidth}px; margin: 0 auto; background: #ffffff; }
+    .block { box-sizing: border-box; }
+  `;
+
+  const blocks = components
+    .map((component) => {
+      const text = replaceVariables(component.content.text, values);
+      const inlineBase = `
+        color:${component.styles.color};
+        background:${component.styles.backgroundColor};
+        text-align:${component.styles.textAlign};
+        font-weight:${component.styles.fontWeight};
+        font-size:${component.styles.fontSize}px;
+        padding:${component.styles.padding}px;
+        margin:${component.styles.margin}px;
+        border-radius:${component.styles.borderRadius}px;
+      `.replace(/\s+/g, ' ');
+
+      if (component.type === 'header') {
+        return `<h1 class="block" style="${inlineBase}">${text}</h1>`;
+      }
+
+      if (component.type === 'text') {
+        return `<p class="block" style="${inlineBase}; line-height:${globalStyles.lineHeight};">${text}</p>`;
+      }
+
+      if (component.type === 'button') {
+        const href = component.content.url || '#';
+        return `<div style="text-align:${component.styles.textAlign}; margin:${component.styles.margin}px;"><a href="${href}" style="${inlineBase}; text-decoration:none; display:inline-block;">${text}</a></div>`;
+      }
+
+      if (component.type === 'image') {
+        const height = component.styles.height > 0 ? `height:${component.styles.height}px;` : '';
+        return `<img class="block" src="${component.content.src}" alt="${component.content.alt}" style="${inlineBase}; width:${component.styles.width}; ${height} object-fit:cover; display:block;" />`;
+      }
+
+      if (component.type === 'divider') {
+        return `<hr class="block" style="border:0; border-top:1px solid ${component.styles.backgroundColor}; margin:${component.styles.margin}px 0;" />`;
+      }
+
+      if (component.type === 'social') {
+        return `<p class="block" style="${inlineBase}">${text}</p>`;
+      }
+
+      if (component.type === 'spacer') {
+        return `<div class="block" style="height:${component.styles.height}px"></div>`;
+      }
+
+      return `<p class="block" style="${inlineBase}">${text}</p>`;
+    })
+    .join('\n');
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${templateName}</title>
+    <style>${style}</style>
+  </head>
+  <body>
+    <span style="display:none;color:transparent;opacity:0;height:0;width:0;">${preheader}</span>
+    <div class="wrapper">
+      <div class="container" aria-label="${subject}">
+        ${blocks}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function renderComponentPreview(component: EmailComponent): JSX.Element {
+  const style: React.CSSProperties = {
+    color: component.styles.color,
+    backgroundColor: component.styles.backgroundColor,
+    textAlign: component.styles.textAlign,
+    fontWeight: component.styles.fontWeight,
+    fontSize: component.styles.fontSize,
+    padding: component.styles.padding,
+    margin: component.styles.margin,
+    borderRadius: component.styles.borderRadius,
+  };
+
+  if (component.type === 'header') {
+    return <Typography sx={style}>{component.content.text}</Typography>;
+  }
+
+  if (component.type === 'text') {
+    return <Typography sx={style}>{component.content.text}</Typography>;
+  }
+
+  if (component.type === 'button') {
+    return (
+      <Button href={component.content.url} sx={style} variant="contained">
+        {component.content.text}
+      </Button>
+    );
+  }
+
+  if (component.type === 'image') {
+    return (
+      <Box
+        component="img"
+        src={component.content.src}
+        alt={component.content.alt}
+        sx={{
+          ...style,
+          width: component.styles.width,
+          height: component.styles.height || 'auto',
+          objectFit: 'cover',
+          display: 'block',
+        }}
+      />
+    );
+  }
+
+  if (component.type === 'divider') {
+    return <Divider sx={{ borderColor: component.styles.backgroundColor, my: component.styles.margin / 8 }} />;
+  }
+
+  if (component.type === 'spacer') {
+    return <Box sx={{ height: component.styles.height }} />;
+  }
+
+  return <Typography sx={style}>{component.content.text}</Typography>;
+}
+
+export default function EmailDesignerImproved({ profession = 'photographer' }: EmailDesignerImprovedProps): JSX.Element {
+  const queryClient = useQueryClient();
+  const theming = useTheming(profession);
+
+  const [components, setComponents] = useState<EmailComponent[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [history, setHistory] = useState<EmailComponent[][]>([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const [globalStyles, setGlobalStyles] = useState<GlobalStyles>(DEFAULT_GLOBAL_STYLES);
+  const [templateName, setTemplateName] = useState('New Email Template');
+  const [subject, setSubject] = useState('');
+  const [preheader, setPreheader] = useState('');
+  const [customVariables, setCustomVariables] = useState<Record<string, string>>({});
+  const [showPreview, setShowPreview] = useState(false);
+  const [showVariablesPanel, setShowVariablesPanel] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string>('');
+
+  const selectedComponent = useMemo(
+    () => components.find((component) => component.id === selectedId) ?? null,
+    [components, selectedId]
+  );
+
+  const pushHistory = useCallback((nextComponents: EmailComponent[]) => {
+    setHistory((previous) => [...previous.slice(0, historyIndex + 1), nextComponents]);
+    setHistoryIndex((previous) => previous + 1);
+  }, [historyIndex]);
+
+  const updateComponents = useCallback(
+    (nextComponents: EmailComponent[]) => {
+      setComponents(nextComponents);
+      pushHistory(nextComponents);
+    },
+    [pushHistory]
+  );
+
+  const addComponent = useCallback(
+    (type: ComponentType) => {
+      const next = [
+        ...components,
+        {
+          id: uniqueId(),
+          type,
+          content: defaultContent(type),
+          styles: defaultStyles(type),
+        },
+      ];
+      updateComponents(next);
+      setSelectedId(next[next.length - 1].id);
+    },
+    [components, updateComponents]
+  );
+
+  const updateComponent = useCallback(
+    (componentId: string, updater: (component: EmailComponent) => EmailComponent) => {
+      const next = components.map((component) => (component.id === componentId ? updater(component) : component));
+      updateComponents(next);
+    },
+    [components, updateComponents]
+  );
+
+  const deleteComponent = useCallback(
+    (componentId: string) => {
+      const next = components.filter((component) => component.id !== componentId);
+      updateComponents(next);
+      if (selectedId === componentId) {
+        setSelectedId(next[0]?.id ?? null);
+      }
+    },
+    [components, selectedId, updateComponents]
+  );
+
+  const moveComponent = useCallback(
+    (componentId: string, direction: -1 | 1) => {
+      const index = components.findIndex((component) => component.id === componentId);
+      if (index < 0) {
+        return;
+      }
+
+      const target = index + direction;
+      if (target < 0 || target >= components.length) {
+        return;
+      }
+
+      const next = [...components];
+      const [item] = next.splice(index, 1);
+      next.splice(target, 0, item);
+      updateComponents(next);
+    },
+    [components, updateComponents]
+  );
+
+  const undo = useCallback(() => {
+    if (historyIndex <= 0) {
+      return;
+    }
+    const nextIndex = historyIndex - 1;
+    setHistoryIndex(nextIndex);
+    setComponents(history[nextIndex]);
+  }, [history, historyIndex]);
+
+  const redo = useCallback(() => {
+    if (historyIndex >= history.length - 1) {
+      return;
+    }
+    const nextIndex = historyIndex + 1;
+    setHistoryIndex(nextIndex);
+    setComponents(history[nextIndex]);
+  }, [history, historyIndex]);
+
+  const saveMutation = useMutation<unknown, Error, EmailTemplatePayload>({
+    mutationFn: async (payload) => {
+      return apiRequest('/api/email-templates', {
         method: 'POST',
-        body: JSON.stringify(template)
+        body: payload,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/email-templates'] });
-      setShowSaveDialog(false);
-    }
+      void queryClient.invalidateQueries({ queryKey: ['/api/email-templates'] });
+      setStatusMessage('Template saved successfully.');
+    },
+    onError: () => {
+      setStatusMessage('Save failed. Template kept locally.');
+    },
   });
 
-  const exportAsHTML = useCallback(() => {
-    const html = generateHTML(state.components, state.globalStyles);
-    const blob = new Blob([html], { type: 'text/html' });
+  const previewHtml = useMemo(
+    () => generateHTML(templateName, subject, preheader, components, globalStyles, customVariables),
+    [components, customVariables, globalStyles, preheader, subject, templateName]
+  );
+
+  const saveTemplate = () => {
+    saveMutation.mutate({
+      name: templateName,
+      category: 'custom',
+      subject,
+      preheader,
+      components,
+      globalStyles,
+    });
+  };
+
+  const exportHtml = () => {
+    const blob = new Blob([previewHtml], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${state.templateName}.html`;
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${templateName.replace(/\s+/g, '-').toLowerCase() || 'email-template'}.html`;
+    anchor.click();
     URL.revokeObjectURL(url);
-  }, [state.components, state.globalStyles, state.templateName]);
+  };
 
-  // ============================================================================
-  // RENDER
-  // ============================================================================
+  const insertVariable = (variableKey: string) => {
+    if (!selectedComponent) {
+      setStatusMessage('Select a component before inserting variables.');
+      return;
+    }
 
-  const canUndo = state.historyIndex > 0;
-  const canRedo = state.historyIndex < state.history.length - 1;
+    if (selectedComponent.type === 'image' || selectedComponent.type === 'divider' || selectedComponent.type === 'spacer') {
+      setStatusMessage('Selected component does not support text variables.');
+      return;
+    }
+
+    updateComponent(selectedComponent.id, (component) => ({
+      ...component,
+      content: {
+        ...component.content,
+        text: `${component.content.text} {{${variableKey}}}`.trim(),
+      },
+    }));
+  };
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#fafafa' }}>
-      {/* Toolbar */}
-      <Paper elevation={2}, sx={{ p: 2, borderRadius: 0 }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f6f7f9' }}>
+      <Paper elevation={2} sx={{ borderRadius: 0, p: 1.5 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1.5}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="h6" sx={{ fontWeight: 800, color: theming.colors.primary }}>
               Email Designer
             </Typography>
-            <Chip label={`${state.components.length} komponenter`} size="small" />
+            <Chip size="small" label={`${components.length} block(s)`} />
           </Stack>
 
-          <Stack direction="row" spacing={1}>
-            <Tooltip title="Angre (Ctrl+Z)">
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Tooltip title="Undo">
               <span>
-                <IconButton
-                  size="small"
-                  onClick={() => dispatch({ type: 'UNDO' })}
-                  disabled={!canUndo}
-                >
-                  <UndoIcon />
+                <IconButton onClick={undo} disabled={historyIndex <= 0}>
+                  <Undo />
                 </IconButton>
               </span>
             </Tooltip>
-
-            <Tooltip title="Gjør om (Ctrl+Y)">
+            <Tooltip title="Redo">
               <span>
-                <IconButton
-                  size="small"
-                  onClick={() => dispatch({ type: 'REDO' })}
-                  disabled={!canRedo}
-                >
-                  <RedoIcon />
+                <IconButton onClick={redo} disabled={historyIndex >= history.length - 1}>
+                  <Redo />
                 </IconButton>
               </span>
             </Tooltip>
 
             <Divider orientation="vertical" flexItem />
 
-            <Button
-              startIcon={<PreviewIcon />}
-              onClick={() => setShowPreview(!showPreview)}
-              variant="outlined"
-              size="small"
-            >
-              Forhåndsvisning
+            <Button size="small" startIcon={<Code />} onClick={() => setShowVariablesPanel((previous) => !previous)}>
+              Variables
             </Button>
-
-            <Button
-              startIcon={<SaveIcon />}
-              onClick={() => setShowSaveDialog(true)}
-              variant="contained"
-              size="small"
-              sx={theming.getThemedButtonSx()}
-            >
-              Lagre
+            <Button size="small" startIcon={<Preview />} onClick={() => setShowPreview(true)}>
+              Preview
             </Button>
-
-            <Button
-              onClick={exportAsHTML}
-              variant="outlined"
-              size="small"
-            >
-              Eksporter HTML
+            <Button size="small" startIcon={<Save />} variant="contained" onClick={saveTemplate}>
+              Save
             </Button>
-
-            <Divider orientation="vertical" flexItem />
-
-            <Tooltip title="Variabler">
-              <IconButton
-                size="small"
-                onClick={() => dispatch({ type: 'TOGGLE_VARIABLES_PANEL' })}
-                color={state.showVariablesPanel ? 'primary' : 'default'}
-              >
-                <CodeIcon />
-              </IconButton>
-            </Tooltip>
+            <Button size="small" variant="outlined" onClick={exportHtml}>
+              Export HTML
+            </Button>
           </Stack>
         </Stack>
       </Paper>
 
-      {/* Main Content */}
-      <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Component Palette */}
-        <Paper sx={{ width: 250, p: 2, overflow: 'auto', borderRadius: 0 }}>
-          <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-            Komponenter
+      {statusMessage ? (
+        <Alert severity={statusMessage.includes('failed') ? 'error' : 'success'} onClose={() => setStatusMessage('')}>
+          {statusMessage}
+        </Alert>
+      ) : null}
+
+      <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Paper sx={{ width: 240, borderRadius: 0, p: 1.5, overflow: 'auto' }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Components
           </Typography>
           <Stack spacing={1}>
-            {COMPONENT_TYPES.map((type) => (
-              <Tooltip key={type.id} title={type.description} placement="right">
+            {COMPONENT_PRESETS.map((preset) => (
+              <Tooltip key={preset.id} title={preset.description} placement="right">
                 <Button
                   variant="outlined"
-                  startIcon={<span>{type.icon}</span>}
-                  onClick={() => addComponent(type.id as EmailComponent['type'])}
+                  startIcon={<span>{preset.icon}</span>}
+                  onClick={() => addComponent(preset.id)}
                   sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
-                  fullWidth
                 >
-                  {type.name}
+                  {preset.name}
                 </Button>
               </Tooltip>
             ))}
           </Stack>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Template Meta
+          </Typography>
+          <Stack spacing={1}>
+            <TextField size="small" label="Template Name" value={templateName} onChange={(event) => setTemplateName(event.target.value)} />
+            <TextField size="small" label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
+            <TextField size="small" label="Preheader" value={preheader} onChange={(event) => setPreheader(event.target.value)} />
+          </Stack>
+
+          <Divider sx={{ my: 1.5 }} />
+
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Global Styles
+          </Typography>
+          <Stack spacing={1}>
+            <TextField
+              size="small"
+              label="Container Width"
+              type="number"
+              value={globalStyles.containerWidth}
+              onChange={(event) =>
+                setGlobalStyles((previous) => ({
+                  ...previous,
+                  containerWidth: Number.parseInt(event.target.value, 10) || 640,
+                }))
+              }
+            />
+            <TextField
+              size="small"
+              label="Font Family"
+              value={globalStyles.fontFamily}
+              onChange={(event) => setGlobalStyles((previous) => ({ ...previous, fontFamily: event.target.value }))}
+            />
+            <TextField
+              size="small"
+              label="Background"
+              value={globalStyles.backgroundColor}
+              onChange={(event) =>
+                setGlobalStyles((previous) => ({
+                  ...previous,
+                  backgroundColor: event.target.value,
+                }))
+              }
+            />
+          </Stack>
         </Paper>
 
-        {/* Canvas */}
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3, bgcolor: '#e0e0e0' }}>
-          <Paper
-            sx={{
-              width: state.globalStyles.containerWidth,
-              mx: 'auto',
-              p: 3,
-              minHeight: 500,
-              bgcolor: state.globalStyles.backgroundColor
-            }}>
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <Droppable droppableId="email-components">
-                {(provided) => (
-                  <Box
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    {state.components.length === 0 ? (
-                      <Box
-                        sx={{
-                          p: 4,
-                          textAlign: 'center',
-                          border: '2px dashed #ccc',
-                          borderRadius: 2,
-                          color: '#666'}}>
-                        <Typography variant="body2">
-                          Dra komponenter hit for å begynne
-                        </Typography>
-                      </Box>
-                    ) : (
-                      state.components.map((component, index) => (
-                        <Draggable
-                          key={component.id}
-                          draggableId={component.id}
-                          index={index}
-                        >
-                          {(provided, snapshot) => (
-                            <ComponentPreview
-                              component={component}
-                              provided={provided}
-                              isDragging={snapshot.isDragging}
-                              isSelected={state.selectedComponent?.id === component.id}
-                              onSelect={() => dispatch({ type: 'SELECT_COMPONENT', component })}
-                              onDelete={() => deleteComponent(component.id)}
-                              theming={theming}
-                            />
-                          )}
-                        </Draggable>
-                      ))
-                    )}
-                    {provided.placeholder}
-                  </Box>
-                )}
-              </Droppable>
-            </DragDropContext>
+        <Box sx={{ flex: 1, p: 2, overflow: 'auto', bgcolor: '#dde2ea' }}>
+          <Paper sx={{ width: globalStyles.containerWidth, mx: 'auto', p: 2, minHeight: 520, bgcolor: '#ffffff' }}>
+            {components.length === 0 ? (
+              <Box sx={{ p: 4, border: '2px dashed #c2c7d0', textAlign: 'center', borderRadius: 2 }}>
+                <Typography color="text.secondary">Add components from the left panel.</Typography>
+              </Box>
+            ) : (
+              components.map((component) => (
+                <Paper
+                  key={component.id}
+                  variant="outlined"
+                  sx={{
+                    mb: 1,
+                    p: 1,
+                    borderColor: selectedId === component.id ? 'primary.main' : '#d1d5db',
+                  }}
+                >
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}>
+                    <Chip size="small" label={component.type} />
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Move Up">
+                        <span>
+                          <IconButton size="small" onClick={() => moveComponent(component.id, -1)}>
+                            <ArrowUpward fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Move Down">
+                        <span>
+                          <IconButton size="small" onClick={() => moveComponent(component.id, 1)}>
+                            <ArrowDownward fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Edit">
+                        <IconButton size="small" onClick={() => setSelectedId(component.id)}>
+                          <Settings fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton size="small" onClick={() => deleteComponent(component.id)}>
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+
+                  {renderComponentPreview(component)}
+                </Paper>
+              ))
+            )}
           </Paper>
         </Box>
 
-        {/* Properties Panel */}
-        {state.selectedComponent && (
-          <Paper sx={{ width: 300, p: 2, overflow: 'auto', borderRadius: 0 }}>
-            <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-              Egenskaper
+        {selectedComponent ? (
+          <Paper sx={{ width: 320, borderRadius: 0, p: 1.5, overflow: 'auto' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Component Properties
             </Typography>
-            <ComponentProperties
-              component={state.selectedComponent}
-              onUpdate={(updates) => updateComponent(state.selectedComponent!.id, updates)}
-            />
-          </Paper>
-        )}
 
-        {/* Variables Panel */}
-        {state.showVariablesPanel && (
-          <Paper sx={{ width: 350, p: 2, overflow: 'auto', borderRadius: 0 }}>
-            <Stack spacing={2}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
-                  Template Variabler
-                </Typography>
-                <IconButton size="small" onClick={() => dispatch({ type: 'TOGGLE_VARIABLES_PANEL' })}>
-                  <DeleteIcon fontSize="small" />
-                </IconButton>
-              </Box>
+            <Stack spacing={1}>
+              {selectedComponent.type !== 'image' && selectedComponent.type !== 'divider' && selectedComponent.type !== 'spacer' ? (
+                <TextField
+                  label="Text"
+                  multiline
+                  minRows={3}
+                  value={selectedComponent.content.text}
+                  onChange={(event) =>
+                    updateComponent(selectedComponent.id, (component) => ({
+                      ...component,
+                      content: { ...component.content, text: event.target.value },
+                    }))
+                  }
+                />
+              ) : null}
 
-              <Alert severity="info" sx={{ fontSize: 12 }}>
-                Bruk {{'{{'}variabel_navn{{'},'} i teksten din for å sette inn dynamisk innhold.
-              </Alert>
+              {selectedComponent.type === 'image' ? (
+                <>
+                  <TextField
+                    label="Image URL"
+                    value={selectedComponent.content.src}
+                    onChange={(event) =>
+                      updateComponent(selectedComponent.id, (component) => ({
+                        ...component,
+                        content: { ...component.content, src: event.target.value },
+                      }))
+                    }
+                  />
+                  <TextField
+                    label="Alt text"
+                    value={selectedComponent.content.alt}
+                    onChange={(event) =>
+                      updateComponent(selectedComponent.id, (component) => ({
+                        ...component,
+                        content: { ...component.content, alt: event.target.value },
+                      }))
+                    }
+                  />
+                </>
+              ) : null}
 
-              {['user', 'project', 'business','custom'].map(category => (
-                <Box key={category}>
-                  <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase', color: 'text.secondary' }}>
-                    {category === 'user' && '👤 Bruker'}
-                    {category === 'project' && '📁 Prosjekt'}
-                    {category === 'business' && '🏢 Bedrift'}
-                    {category === 'custom' && '✨ Tilpasset'}
-                  </Typography>
-                  <Stack spacing={0.5}, sx={{ mt: 1 }}>
-                    {TEMPLATE_VARIABLES.filter(v => v.category === category).map(variable => (
-                      <Tooltip key={variable.key} title={variable.description} placement="left">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => {
-                            // Copy variable syntax to clipboard
-                            navigator.clipboard.writeText(`{{${variable.key}`);
-                          }}
+              {selectedComponent.type === 'button' ? (
+                <TextField
+                  label="Button URL"
+                  value={selectedComponent.content.url}
+                  onChange={(event) =>
+                    updateComponent(selectedComponent.id, (component) => ({
+                      ...component,
+                      content: { ...component.content, url: event.target.value },
+                    }))
+                  }
+                />
+              ) : null}
 
-                          sx={{
-                            justifyContent: 'space-between',
-                            textTransform: 'none',
-                            fontSize: 11 }}
-                          fullWidth
-                        >
-                          <span>{variable.label}</span>
-                          <Chip
-                            label={`{{${variable.key}}`}
-                            size="small"
-                            sx={{ fontSize: 9, height: 18 }} />
-                        </Button>
-                      </Tooltip>
-                    ))}
-                  </Stack>
-                </Box>
-              ))}
-
-              <Divider />
-
-              <Typography variant="caption" sx={{ fontWeight: 600}}>
-                Eksempel: </Typography>
-              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#f5f5f5' }}>
-                <Typography variant="caption" sx={{ fontFamily: 'monospace', fontSize: 10 }}>
-                  Hei {{'{{'}user_first_name{{'},'},<br />
-                  Takk for din interesse i {{'{{'}project_type{{'},'}<br />
-                  Dato: {{'{{'}project_date{{'},'}<br />
-                  <br />
-                  {{'{{'}closing{{'},'}<br />
-                  {{'{{'}photographer_name{{'}'}
-                </Typography>
-              </Paper>
+              <TextField
+                label="Text Color"
+                value={selectedComponent.styles.color}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: { ...component.styles, color: event.target.value },
+                  }))
+                }
+              />
+              <TextField
+                label="Background"
+                value={selectedComponent.styles.backgroundColor}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: { ...component.styles, backgroundColor: event.target.value },
+                  }))
+                }
+              />
+              <TextField
+                label="Font Size"
+                type="number"
+                value={selectedComponent.styles.fontSize}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: {
+                      ...component.styles,
+                      fontSize: Number.parseInt(event.target.value, 10) || 14,
+                    },
+                  }))
+                }
+              />
+              <TextField
+                label="Padding"
+                type="number"
+                value={selectedComponent.styles.padding}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: {
+                      ...component.styles,
+                      padding: Number.parseInt(event.target.value, 10) || 0,
+                    },
+                  }))
+                }
+              />
+              <TextField
+                label="Margin"
+                type="number"
+                value={selectedComponent.styles.margin}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: {
+                      ...component.styles,
+                      margin: Number.parseInt(event.target.value, 10) || 0,
+                    },
+                  }))
+                }
+              />
+              <TextField
+                label="Border Radius"
+                type="number"
+                value={selectedComponent.styles.borderRadius}
+                onChange={(event) =>
+                  updateComponent(selectedComponent.id, (component) => ({
+                    ...component,
+                    styles: {
+                      ...component.styles,
+                      borderRadius: Number.parseInt(event.target.value, 10) || 0,
+                    },
+                  }))
+                }
+              />
             </Stack>
           </Paper>
-        )}
+        ) : null}
+
+        {showVariablesPanel ? (
+          <Paper sx={{ width: 330, borderRadius: 0, p: 1.5, overflow: 'auto' }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Variables
+            </Typography>
+            <Alert severity="info" sx={{ mb: 1 }}>
+              Insert tokens like {'{{user_name}}'} into text components.
+            </Alert>
+
+            {(['user', 'project', 'business', 'custom'] as const).map((category) => (
+              <Box key={category} sx={{ mb: 1.5 }}>
+                <Typography variant="caption" sx={{ textTransform: 'uppercase', color: 'text.secondary' }}>
+                  {category}
+                </Typography>
+                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                  {TEMPLATE_VARIABLES.filter((item) => item.category === category).map((variable) => (
+                    <Button
+                      key={variable.key}
+                      size="small"
+                      variant="outlined"
+                      onClick={() => insertVariable(variable.key)}
+                      sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+                      endIcon={<Add />}
+                    >
+                      {variable.label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Box>
+            ))}
+
+            <Divider sx={{ my: 1 }} />
+
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Preview Values
+            </Typography>
+            <Stack spacing={1}>
+              {TEMPLATE_VARIABLES.map((variable) => (
+                <TextField
+                  key={`value-${variable.key}`}
+                  size="small"
+                  label={variable.label}
+                  value={customVariables[variable.key] ?? ''}
+                  onChange={(event) =>
+                    setCustomVariables((previous) => ({
+                      ...previous,
+                      [variable.key]: event.target.value,
+                    }))
+                  }
+                  placeholder={variable.defaultValue}
+                />
+              ))}
+            </Stack>
+          </Paper>
+        ) : null}
       </Box>
+
+      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>Email Preview</DialogTitle>
+        <DialogContent>
+          <Paper sx={{ p: 1.5, bgcolor: '#f2f4f7' }}>
+            <iframe
+              title="email-preview"
+              srcDoc={previewHtml}
+              style={{ width: '100%', height: '70vh', border: '1px solid #d0d7de', borderRadius: 8 }}
+            />
+          </Paper>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
-}
-
-// ============================================================================
-// HELPER COMPONENTS
-// ============================================================================
-
-const ComponentPreview = React.memo(({ component, provided, isDragging, isSelected, onSelect, onDelete, theming }: any) => {
-  return (
-    <Paper
-      ref={provided.innerRef}
-      {...provided.draggableProps}
-      {...provided.dragHandleProps}
-      elevation={isDragging ? 8 : isSelected ? 4 : 1}
-      onClick={onSelect}
-      sx={{
-        p: 2,
-        mb: 2,
-        position: 'relative',
-        cursor: 'pointer',
-        border: isSelected ? `2px solid ${theming.colors.primary}` : '2px solid transparent','&:hover': {
-          borderColor: theming.colors.primary'& .actions': { opacity: 1 }
-        }}
-      }
-    >
-      <Box className="actions" sx={{ position: 'absolute', top: 8, right: 8, opacity: 0, transition: 'opacity 0.2s' }}>
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete(); }>
-          <DeleteIcon fontSize="small" />
-        </IconButton>
-      </Box>
-      <RenderComponent component={component} />
-    </Paper>
-  );
-});
-
-const RenderComponent = ({ component }: { component: EmailComponent }) => {
-  // Detect if text contains template variables
-  const hasVariables = (text: string) => /{{\w+}/.test(text || ', ');
-  
-  const renderText = (text: string) => {
-    if (hasVariables(text) {
-      return (
-        <Box component="span">
-          {text.split(/({{\w+})/).map((part, i) => {
-            if (part.match(/{{\w+}/) {
-              return (
-                <Chip
-                  key={i}
-                  label={part}
-                  size="small"
-                  sx={{ fontSize: 10, height: 18, mx: 0.5 }
-                  color="primary"
-                  variant="outlined"
-                />
-              );
-            }
-            return <span key={i}>{part}</span>;
-          })}
-        </Box>
-      );
-    }
-    return text;
-  };
-
-  // Simplified render logic
-  switch (component.type) {
-    case 'header': return <Typography variant="h4" style={{ ...component.styles }}>{renderText(component.content.text || 'Overskrift')}</Typography>;
-    case 'text': return <Typography variant="body1" style={{ ...component.styles }}>{renderText(component.content.text || 'Tekst')}</Typography>;
-    case 'button': return <Button variant="contained" style={{ ...component.styles }}>{renderText(component.content.text || 'Knapp')}</Button>;
-    default: return <Box>Component: {component.type}</Box>;
-  }
-};
-
-const ComponentProperties = ({ component, onUpdate }: any) => {
-  return (
-    <Stack spacing={2}>
-      <TextField
-        label="Tekst"
-        value={component.content.text || ', '}
-        onChange={(e) => onUpdate({ content: { ...component.content, text: e.target.value } })}}
-        fullWidth
-        size="small"
-      />
-      <TextField
-        label="Farge"
-        type="color"
-        value={component.styles.color || '#333333'}
-        onChange={(e) => onUpdate({ styles: { ...component.styles, color: e.target.value } })}}
-        fullWidth
-        size="small"
-      />
-    </Stack>
-  );
-};
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function getDefaultContent(type: EmailComponent['type']): ComponentContent {
-  const defaults: Record<EmailComponent['type'], ComponentContent> = {
-    header: { text: 'Overskrift' },
-    text: { text: 'Dette er en tekstboks.' },
-    button: { text: 'Klikk her', url: '#' },
-    image: { src: '/api/placeholder/400/200', alt: 'Bilde' },
-    divider: {},
-    social: {},
-    spacer: {},
-    footer: { text: '© 2025 CreatorHub Norge' }
-  };
-  return defaults[type];
-}
-
-function getDefaultStyles(type: EmailComponent['type']): ComponentStyles {
-  const defaults: Record<EmailComponent['type'], ComponentStyles> = {
-    header: { color: '#333', fontSize: 24, fontWeight: 'bold', textAlign: 'left' },
-    text: { color: '#333', fontSize: 14, textAlign: 'left' },
-    button: { backgroundColor: '#ff6b35', color: '#ffffff', borderRadius: 8, padding: 12 },
-    image: { width: '100%' },
-    divider: { backgroundColor: '#e0e0e0', height: 1 },
-    social: {},
-    spacer: { height: 20 },
-    footer: { color: '#666', fontSize: 12, textAlign: 'center' }
-  };
-  return defaults[type];
-}
-
-function generateHTML(components: EmailComponent[], globalStyles: GlobalStyles): string {
-  // Simplified HTML generation
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: ${globalStyles.fontFamily}; background-color: ${globalStyles.backgroundColor}; }
-  </style>
-</head>
-<body>
-  <div style="max-width: ${globalStyles.containerWidth}px; margin: 0 auto;">
-    ${components.map(c => `<div>${c.content.text ||', '}</div>`).join('\n')}
-  </div>
-</body>
-</html>`;
 }

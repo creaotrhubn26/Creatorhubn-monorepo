@@ -28,7 +28,6 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -60,6 +59,7 @@ import {
   StepContent,
   StepButton,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   DragIndicator,
   Add,
@@ -363,7 +363,7 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
       const itemData: Partial<DragItem> = {
         type: 'custom',
         data: { name: 'Custom Drag Item',},
-        element: document.createElement(', '),
+        element: document.createElement('div'),
         position: { x: 0, y:  0 },
         size: { width: 10, height: 100,},
         bounds: { minX: 0, maxX: 100, minY: 0, maxY: 1000,},
@@ -385,7 +385,7 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
     try {
       const zoneData: Partial<DropZone> = {
         type: 'custom',
-        element: document.createElement(', '),
+        element: document.createElement('div'),
         position: { x: 0, y:  0 },
         size: { width: 20, height: 200,},
         bounds: { minX: 0, maxX: 100, minY: 0, maxY: 1000,},
@@ -393,10 +393,10 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
         acceptItems: ['*', ],
         rejectItems:  [],
         validation: () => true,
-        onDrop: () =>, {},
-        onDragEnter: () =>, {},
-        onDragLeave: () =>, {},
-        onDragOver: () =>, {}
+        onDrop: () => {},
+        onDragEnter: () => {},
+        onDragLeave: () => {},
+        onDragOver: () => {}
     };
       await registerDropZone(zoneData);
   } catch (error) {
@@ -405,7 +405,7 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
 }, [registerDropZone]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'default' | 'error' | 'warning' | 'success' => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -413,11 +413,15 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) {
+      const icon = theming.getThemedIcon('error');
+      return React.isValidElement(icon) ? icon : <Error />;
+    }
     if (!isInitialized) return <CircularProgress size={16} />;
     if (isEnabled) return <DragIndicator />;
-    return theming.getThemedIcon('warning');
+    const icon = theming.getThemedIcon('warning');
+    return React.isValidElement(icon) ? icon : <Warning />;
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status text
@@ -1159,8 +1163,6 @@ const DragDropDashboard: React.FC<DragDropDashboardProps> = memo(({
 DragDropDashboard.displayName ='DragDropDashboard';
 
 export default DragDropDashboard;
-
-
 
 
 

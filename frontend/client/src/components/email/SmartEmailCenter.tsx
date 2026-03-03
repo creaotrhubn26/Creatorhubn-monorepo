@@ -320,7 +320,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
   const composeMutation = useMutation({
     mutationFn: async (emailData: any) => {
       return apiRequest('/api/emails/smart/send', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({
           ...emailData,
@@ -349,7 +349,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
       pricePerImage: number;
 }) => {
       return apiRequest('/api/showcase/send-overage-email', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(overageData)
 });
@@ -370,7 +370,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
       photographerCompany: string;
 }) => {
       return apiRequest('/api/showcase/email', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(shareData)
 });
@@ -385,7 +385,7 @@ const SmartEmailCenter: React.FC<SmartEmailCenterProps> = ({
   const markAsReadMutation = useMutation({
     mutationFn: async (emailIds: string[]) => {
       return apiRequest('/api/emails/mark-read', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ emailI, dsuserId })
   });

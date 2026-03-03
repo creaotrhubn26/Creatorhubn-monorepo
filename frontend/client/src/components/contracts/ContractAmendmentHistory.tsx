@@ -24,6 +24,15 @@ import {
   CardContent,
 } from '@mui/material';
 import {
+  Timeline,
+  TimelineItem,
+  TimelineOppositeContent,
+  TimelineSeparator,
+  TimelineDot,
+  TimelineConnector,
+  TimelineContent,
+} from '@mui/lab';
+import {
   Close as CloseIcon,
   Image as ImageIcon,
   Link as LinkIcon,
@@ -41,6 +50,24 @@ interface ContractAmendmentHistoryProps {
   projectTitle?: string;
 }
 
+interface ContractAmendment {
+  id: string;
+  quoteNumber?: string;
+  title: string;
+  description?: string;
+  quoteType: 'extra_images' | 'contract_amendment' | string;
+  status: 'accepted' | 'pending' | 'rejected' | 'expired' | string;
+  totalAmount: string;
+  clientName?: string;
+  createdAt: string;
+  acceptedAt?: string;
+  fikenInvoiceNumber?: string;
+}
+
+interface ContractAmendmentsResponse {
+  quotes?: ContractAmendment[];
+}
+
 export default function ContractAmendmentHistory({
   open,
   onClose,
@@ -48,7 +75,7 @@ export default function ContractAmendmentHistory({
   projectTitle,
 }: ContractAmendmentHistoryProps) {
   // Fetch all amendments for this project
-  const { data: amendmentsData, isLoading } = useQuery({
+  const { data: amendmentsData, isLoading } = useQuery<ContractAmendmentsResponse>({
     queryKey: ['/api/quotes/amendments', projectId],
     queryFn: async () => {
       return apiRequest(`/api/quotes/all?contractAmendmentFor=${projectId}`);
@@ -56,7 +83,7 @@ export default function ContractAmendmentHistory({
     enabled: open && !!projectId,
   });
 
-  const amendments = amendmentsData?.quotes || [];
+  const amendments: ContractAmendment[] = amendmentsData?.quotes ?? [];
 
   const formatDate = (date: string) => {
     if (!date) return 'N/A';
@@ -69,8 +96,9 @@ export default function ContractAmendmentHistory({
     });
   };
 
-  const formatCurrency = (amount: string) => {
-    return `${parseFloat(amount).toLocaleString('no-NO')} NOK`;
+  const formatCurrency = (amount: string | number) => {
+    const numericValue = typeof amount === 'number' ? amount : parseFloat(amount || '0');
+    return `${numericValue.toLocaleString('no-NO')} NOK`;
   };
 
   const getAmendmentIcon = (quoteType: string) => {
@@ -152,7 +180,7 @@ export default function ContractAmendmentHistory({
                       {formatCurrency(
                         amendments
                           .reduce(
-                            (sum: number, a: unknown) => sum + parseFloat(a.totalAmount || '0'),
+                            (sum, amendment) => sum + parseFloat(amendment.totalAmount || '0'),
                             0,
                           )
                           .toString(),
@@ -164,7 +192,7 @@ export default function ContractAmendmentHistory({
             </Card>
 
             <Timeline position="right">
-              {amendments.map((amendment: any, index: number) => (
+              {amendments.map((amendment, index) => (
                 <TimelineItem key={amendment.id}>
                   <TimelineOppositeContent color="textSecondary" sx={{ flex: 0.3 }}>
                     <Typography variant="caption">{formatDate(amendment.createdAt)}</Typography>

@@ -123,7 +123,7 @@ export default function VisualEditorWithPageSelection() {
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(pageData)
   });
       if (!response.ok) throw new Error('Opprettelse feilet');

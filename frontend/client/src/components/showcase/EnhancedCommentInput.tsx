@@ -90,7 +90,7 @@ export const EnhancedCommentInput: React.FC<EnhancedCommentInputProps> = ({
     feedback: ['Wonderful work!','Great composition','Love the mood'],
   };
 
-  const norwegianTemplates = ['Dette er nydelig! 🇳🇴','Perfekt! ✨''Vi elsker dette ❤️'];
+  const norwegianTemplates = ['Dette er nydelig! 🇳🇴', 'Perfekt! ✨', 'Vi elsker dette ❤️'];
 
   const deliverables = contract?.metadata?.deliverables || [
     { id: '1', name: 'Ceremony Coverage (2 hours)', status: 'in_progress' },

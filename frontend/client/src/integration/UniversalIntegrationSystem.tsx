@@ -9,6 +9,7 @@ import { useIntegration } from './ComponentIntegrationManager';
 import { useCommunication } from './CrossComponentCommunication';
 import { useDataFlow } from './UniversalDataFlow';
 import { useComponentRegistry } from './UniversalComponentRegistry';
+import type { ComponentMetadata } from './UniversalComponentRegistry';
 import { withUniversalIntegration, INTEGRATION_CONFIGS } from './UniversalIntegrationHOC';
 
 // Auto-integration for all major component categories
@@ -226,6 +227,25 @@ export const withAutoIntegration = <P extends object>(
 });
 };
 
+function normalizeComponentType(type: string): ComponentMetadata['type'] {
+  switch (type) {
+    case 'page':
+    case 'dashboard':
+    case 'widget':
+    case 'modal':
+    case 'form':
+    case 'chart':
+    case 'editor':
+    case 'showcase':
+    case 'admin':
+    case 'universal':
+    case 'other':
+      return type;
+    default:
+      return 'other';
+  }
+}
+
 // Universal Integration System Provider
 export const UniversalIntegrationSystem: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const componentRegistry = useComponentRegistry();
@@ -249,7 +269,7 @@ export const UniversalIntegrationSystem: React.FC<{ children: React.ReactNode }>
 	        componentRegistry.registerComponent({
 	          id: componentId,
 	          name: componentName,
-	          type: data.config.componentType as any,
+	          type: normalizeComponentType(data.config.componentType),
 	          category: category.toLowerCase(),
 	          capabilities: data.config.capabilities,
 	          dependencies: [],
@@ -271,12 +291,12 @@ export const UniversalIntegrationSystem: React.FC<{ children: React.ReactNode }>
 	  // Set up global event listeners for cross-component communication
 	  const setupGlobalEventListeners = () => {
 	    // Listen for component registration events
-	    integration.on('component:registered', (component) => {
+	    integration.on('component:registered', (component: { name: string; id: string }) => {
 	      console.log(`Component registered: ${component.name} (${component.id})`);
 	    });
 
 	    // Listen for component unregistration events
-	    integration.on('component:unregistered', (data) => {
+	    integration.on('component:unregistered', (data: { componentId: string }) => {
 	      console.log(`Component unregistered: ${data.componentId}`);
 	    });
 

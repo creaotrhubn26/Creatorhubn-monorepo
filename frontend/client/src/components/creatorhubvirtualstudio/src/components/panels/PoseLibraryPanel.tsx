@@ -57,7 +57,7 @@ const CATEGORY_ICONS: Record<string, React.ReactElement> = {
   dance: <TheaterComedy />,
 };
 
-const DIFFICULTY_COLORS: Record<string'success' | 'warning' | 'error'> = {
+const DIFFICULTY_COLORS: Record<string, 'success' | 'warning' | 'error'> = {
   beginner: 'success',
   intermediate: 'warning',
   advanced: 'error',
@@ -344,4 +344,3 @@ export const PoseLibraryPanel: React.FC<PoseLibraryPanelProps> = ({
 };
 
 export default PoseLibraryPanel;
-

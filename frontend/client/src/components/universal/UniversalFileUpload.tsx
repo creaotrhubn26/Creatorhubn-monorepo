@@ -1158,7 +1158,7 @@ export const UniversalFileUpload: React.FC<UniversalFileUploadProps> = ({
                     sx={{
                       width:  8,
                       height:  8,
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       backgroundColor: fileManagementStatus.googleDriveStatus === 'connected' ? '#4caf50' : '#f44330',
                       border: '1px solid white'
                 }}

@@ -21,7 +21,7 @@ export interface PluginConfig {
   cacheTimeout: number;
   versionTimeout: number;
   backupTimeout: number;
-  logLevel: 'debug, ' | 'info' | 'warn' | 'error';
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
   sandboxMode: 'strict' | 'moderate' | 'permissive';
   debug: boolean
 }
@@ -274,11 +274,11 @@ class PluginManager {
       this.setupEventListeners();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
 } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
 }
 }
 

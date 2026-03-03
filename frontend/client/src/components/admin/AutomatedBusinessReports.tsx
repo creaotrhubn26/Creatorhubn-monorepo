@@ -189,8 +189,8 @@ const AutomatedBusinessReports: React.FC = () => {
   const isMusicProducer = profession === 'music_producer';
 
   // Fetch split sheet statistics for reports (only for music producers)
-  const { data: splitSheetStats } = React.useQuery({
-    queryKey: ['split-sheets-report-stats,', userEmail],
+  const { data: splitSheetStats } = useQuery({
+    queryKey: ['split-sheets-report-stats', userEmail],
     queryFn: async () => {
       const authHeaders = await masterIntegration.auth.getAuthHeader();
       const response = await fetch(`/api/split-sheets/stats?profession=${profession}`, {
@@ -847,7 +847,7 @@ const AutomatedBusinessReports: React.FC = () => {
 
         {/* Status Overview Cards */}
         <Grid container spacing={3} sx={{ mb: 3 }}>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
                 <Typography
@@ -864,7 +864,7 @@ const AutomatedBusinessReports: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
                 <Typography
@@ -881,7 +881,7 @@ const AutomatedBusinessReports: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
                 <Typography
@@ -898,7 +898,7 @@ const AutomatedBusinessReports: React.FC = () => {
             </Card>
           </Grid>
 
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
                 <Typography
@@ -917,7 +917,7 @@ const AutomatedBusinessReports: React.FC = () => {
 
           {/* Split Sheet Statistics - Only for Music Producers */}
           {isMusicProducer && splitSheetStats?.data && (
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid xs={12} sm={6} md={3}>
               <Card sx={{ ...theming.getThemedCardSx(), border: '1px solid', borderColor: '#9f7aea30' }}>
                 <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
                   <Typography
@@ -932,7 +932,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
                     {splitSheetStats.data.totalRevenue ? `${splitSheetStats.data.totalRevenue.toLocaleString('nb-NO')} kr` : '0 kr'} inntekt
                   </Typography>
-                  <AccountBalance sx={{ color: '#9f7aea', mt: 1 }} />
+                  <SplitSheetIcon sx={{ color: '#9f7aea', mt: 1 }} />
                 </CardContent>
               </Card>
             </Grid>
@@ -966,7 +966,7 @@ const AutomatedBusinessReports: React.FC = () => {
                     const categoryInfo = getCategoryInfo(template.category);
 
                     return (
-                      <Grid size={{ xs: 12 }} md={6} lg={4} key={template.id}>
+                      <Grid xs={12} md={6} lg={4} key={template.id}>
                         <Card sx={{ height: '100%', ...theming.getThemedCardSx() }}>
                           <CardContent sx={theming.getThemedCardSx()}>
                             <Box
@@ -1213,7 +1213,7 @@ const AutomatedBusinessReports: React.FC = () => {
 
                       return (
                         <ListItem
-                          key={template.d}
+                          key={template.id}
                           sx={{
                             border: 1,
                             borderColor: 'divider',
@@ -1277,7 +1277,7 @@ const AutomatedBusinessReports: React.FC = () => {
 
                 <Grid container spacing={3}>
                   {/* Tax Compliance Card */}
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1314,7 +1314,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Grid>
 
                   {/* Business Registry Card */}
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1351,7 +1351,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Grid>
 
                   {/* GDPR Compliance Card */}
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1388,7 +1388,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Grid>
 
                   {/* Creative Industry Specific */}
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -1435,7 +1435,7 @@ const AutomatedBusinessReports: React.FC = () => {
                 </Typography>
 
                 <Grid container spacing={3}>
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
@@ -1471,7 +1471,7 @@ const AutomatedBusinessReports: React.FC = () => {
                     </Card>
                   </Grid>
 
-                  <Grid size={{ xs: 12 }} md={6}>
+                  <Grid xs={12} md={6}>
                     <Card sx={theming.getThemedCardSx()}>
                       <CardContent sx={theming.getThemedCardSx()}>
                         <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
@@ -1539,7 +1539,7 @@ const AutomatedBusinessReports: React.FC = () => {
             )}
 
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <DatePicker
                   label="Fra dato"
                   value={selectedDateRange.start}
@@ -1547,7 +1547,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <DatePicker
                   label="Til dato"
                   value={selectedDateRange.end}
@@ -1555,7 +1555,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   slotProps={{ textField: { fullWidth: true } }}
                 />
               </Grid>
-              <Grid size={{ xs: 12 }}>
+              <Grid xs={12}>
                 <TextField
                   fullWidth
                   label="Ekstra mottakere (kommaseparert)"
@@ -1563,7 +1563,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   onChange={(e) =>
                     setCustomRecipients(
                       e.target.value
-                        .split('')
+                        .split(',')
                         .map((email) => email.trim())
                         .filter(Boolean),
                     )
@@ -1600,10 +1600,10 @@ const AutomatedBusinessReports: React.FC = () => {
             </DialogContentText>
 
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <TextField fullWidth label="Mal navn" margin="normal" />
               </Grid>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <FormControl fullWidth margin="normal">
                   <InputLabel>Kategori</InputLabel>
                   <Select>
@@ -1615,10 +1615,10 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid size={{ xs: 12 }}>
+              <Grid xs={12}>
                 <TextField fullWidth label="Beskrivelse" multiline rows={3} margin="normal" />
               </Grid>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <FormControl fullWidth margin="normal">
                   <InputLabel>Frekvens</InputLabel>
                   <Select>
@@ -1631,7 +1631,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid size={{ xs: 12 }} md={6}>
+              <Grid xs={12} md={6}>
                 <FormControl fullWidth margin="normal">
                   <InputLabel>Format</InputLabel>
                   <Select>
@@ -1641,7 +1641,7 @@ const AutomatedBusinessReports: React.FC = () => {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid size={{ xs: 12 }}>
+              <Grid xs={12}>
                 <FormGroup row>
                   <FormControlLabel control={<Checkbox />} label="Norsk compliance" />
                   <FormControlLabel control={<Checkbox />} label="MVA inkludert" />

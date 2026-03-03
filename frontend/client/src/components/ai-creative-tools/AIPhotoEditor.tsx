@@ -325,7 +325,7 @@ export function AIPhotoEditor({ projectId, initialImage, mode = 'single', classN
     }, 200);
 
       const response = await fetch('/api/ai-creative/enhance-photo,', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(enhanceData)
   });

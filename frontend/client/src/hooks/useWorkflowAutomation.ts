@@ -73,7 +73,7 @@ export interface UseWorkflowAutomationReturn {
  */
 export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}): UseWorkflowAutomationReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onWorkflowCreated,
     onWorkflowDeleted,
     onWorkflowExecuted,
@@ -124,8 +124,8 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
   // Initialize workflow automation manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      workflowAutomationManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      workflowAutomationManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -239,7 +239,7 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onWorkflowCreated, onWorkflowDeleted, onWorkflowExecuted, onWorkflowPaused, onWorkflowResumed, onWorkflowStopped, onWorkflowCompleted, onWorkflowFailed, onTemplateCreated, onTemplateDeleted, onError, onInitialized]);
+}, [optionConfig, onWorkflowCreated, onWorkflowDeleted, onWorkflowExecuted, onWorkflowPaused, onWorkflowResumed, onWorkflowStopped, onWorkflowCompleted, onWorkflowFailed, onTemplateCreated, onTemplateDeleted, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -301,7 +301,7 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return workflowAutomationManager.getConfig();
 }, []);
 
@@ -316,7 +316,7 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
     createTemplate,
     deleteTemplate,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -354,7 +354,7 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
     createTemplate,
     deleteTemplate,
     state,
-    config,
+    currentConfig,
     updateConfig
   ]);
 
@@ -362,7 +362,6 @@ export const useWorkflowAutomation = (options: UseWorkflowAutomationOptions = {}
 };
 
 export default useWorkflowAutomation;
-
 
 
 

@@ -252,7 +252,7 @@ const ColorCheckerPosition: React.FC<{
     ['#735244','#c29682','#627a9d','#576c43','#8580b1','#67bdaa'],
     ['#d67e2c','#505ba6','#c15a63','#5e3c6c','#9dbc40','#e0a32e'],
     ['#383d96','#469449','#af363c','#e7c71f','#bb5695','#0885a1'],
-    ['#f3f3f2','#c8c8c8','#a0a0a0','#7a7a7a''#555555','#343434'],
+    ['#f3f3f2','#c8c8c8','#a0a0a0','#7a7a7a','#555555','#343434'],
   ];
 
   const cellSize = 0.04;
@@ -364,4 +364,3 @@ export const ColorExposureGuides: React.FC<ColorExposureGuidesProps> = ({
 };
 
 export default ColorExposureGuides;
-

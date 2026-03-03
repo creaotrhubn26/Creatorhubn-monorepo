@@ -344,7 +344,7 @@ export const StoryboardPanel: React.FC = () => {
     });
 
     // Initial sync on mount
-    storyboardSyncService.fetchAll().catch(err => log.error(, 'Failed to fetch storyboards: ', err));
+    storyboardSyncService.fetchAll().catch((err) => log.error('Failed to fetch storyboards: ', err));
 
     return unsubscribe;
   }, []);
@@ -447,7 +447,7 @@ export const StoryboardPanel: React.FC = () => {
   }, [currentStoryboard, addFrame, setCapturing, settings.defaultDuration, announce, addToast]);
 
   // Create placeholder frame (for testing without 3D scene)
-  const createPlaceholderFrame = (): Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | , 'updatedAt, '> => {
+  const createPlaceholderFrame = (): Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | 'updatedAt'> => {
     const frameNumber = (currentStoryboard?.frames.length || 0) + 1;
     const shotType = settings.defaultShotType;
     return {
@@ -1196,4 +1196,3 @@ export const StoryboardPanel: React.FC = () => {
 };
 
 export default StoryboardPanel;
-

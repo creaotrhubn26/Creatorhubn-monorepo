@@ -437,6 +437,11 @@ const ThemeDashboard: React.FC<ThemeDashboardProps> = memo(({
     return theming.getThemedIcon('warning');
 }, [hasError, isInitialized, isEnabled]);
 
+  const statusChipIcon = useMemo(() => {
+    const icon = getStatusIcon();
+    return React.isValidElement(icon) ? icon : <Palette />;
+  }, [getStatusIcon]);
+
   // Get status text
   const getStatusText = useCallback(() => {
     if (hasError) return 'Error';
@@ -479,7 +484,7 @@ const ThemeDashboard: React.FC<ThemeDashboardProps> = memo(({
   const renderMinimal = () => (
     <Tooltip title={`Theme: ${getStatusText()}`}>
       <Chip
-        icon={getStatusIcon()}
+        icon={statusChipIcon}
         label={currentTheme}
         color={getStatusColor()}
         size="small"
@@ -1105,7 +1110,6 @@ const ThemeDashboard: React.FC<ThemeDashboardProps> = memo(({
 ThemeDashboard.displayName ='ThemeDashboard';
 
 export default ThemeDashboard;
-
 
 
 

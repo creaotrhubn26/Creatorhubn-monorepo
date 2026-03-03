@@ -4,22 +4,8 @@
  */
 
 import React, { useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  useTheme,
-  alpha,
-} from '@mui/material';
-import {
-  SVG,
-  pathGenerators,
-  scaleUtils,
-  colorUtils,
-  textUtils,
-  gridUtils,
-} from '@/utils/svg-render';
+import { Box, Typography, useTheme, alpha } from '@mui/material';
 
-// Common chart interfaces
 export interface ChartDataPoint {
   label: string;
   value: number;
@@ -37,7 +23,6 @@ export interface ChartProps {
   colors?: string[];
 }
 
-// Chart padding/margins
 const DEFAULT_PADDING = {
   top: 40,
   right: 40,
@@ -45,540 +30,672 @@ const DEFAULT_PADDING = {
   left: 60,
 };
 
-/**
- * Line Chart Component
- */
+const BASE_COLORS = ['#2196f3', '#26a69a', '#ff9800', '#ab47bc', '#ef5350', '#42a5f5'];
+
+function formatCompact(value: number): string {
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (Math.abs(value) >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+  return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+}
+
+function buildLinePath(points: Array<{ x: number; y: number }>): string {
+  if (points.length === 0) return '';
+  return points
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+}
+
+function buildAreaPath(points: Array<{ x: number; y: number }>, baselineY: number): string {
+  if (points.length === 0) return '';
+  const linePath = buildLinePath(points);
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `${linePath} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`;
+}
+
+function getDomain(values: number[]): [number, number] {
+  if (values.length === 0) return [0, 1];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) {
+    const delta = min === 0 ? 1 : Math.abs(min) * 0.1;
+    return [min - delta, max + delta];
+  }
+  return [min, max];
+}
+
+function getColor(index: number, colors?: string[], fallback?: string): string {
+  if (fallback) return fallback;
+  if (colors && colors.length > 0) {
+    return colors[index % colors.length];
+  }
+  return BASE_COLORS[index % BASE_COLORS.length];
+}
+
+function chartY(
+  value: number,
+  minY: number,
+  maxY: number,
+  chartTop: number,
+  chartBottom: number,
+): number {
+  const normalized = (value - minY) / (maxY - minY);
+  return chartBottom - normalized * (chartBottom - chartTop);
+}
+
+function emptyState(
+  width: number,
+  height: number,
+  message: string,
+  color: string,
+): React.ReactElement {
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <text
+        x={width / 2}
+        y={height / 2}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fontSize={13}
+        fill={color}
+      >
+        {message}
+      </text>
+    </svg>
+  );
+}
+
 export const LineChart: React.FC<ChartProps & { smooth?: boolean }> = ({
   width = 600,
   height = 400,
   data,
   title,
   showGrid = true,
-  smooth = true,
   colors = ['#2196f3'],
 }) => {
   const theme = useTheme();
 
   const chartData = useMemo(() => {
     const values = data.map((d) => d.value);
-    const [minY, maxY] = scaleUtils.getNiceDomain(values);
+    const [minY, maxY] = getDomain(values);
+    const chartLeft = DEFAULT_PADDING.left;
+    const chartRight = width - DEFAULT_PADDING.right;
+    const chartTop = DEFAULT_PADDING.top;
+    const chartBottom = height - DEFAULT_PADDING.bottom;
+    const usableWidth = Math.max(1, chartRight - chartLeft);
 
-    const plotWidth = width - DEFAULT_PADDING.left - DEFAULT_PADDING.right;
-    const plotHeight = height - DEFAULT_PADDING.top - DEFAULT_PADDING.bottom;
-
-    const points = data.map((d, i) => {
-      const x = DEFAULT_PADDING.left + (plotWidth / (data.length - 1) * i;
-      const y = scaleUtils.linear()
-        d.value,
-        [minY, maxY],
-        [height - DEFAULT_PADDING.bottom, DEFAULT_PADDING.top],
-      );
-      return { x, y, label: d.label, value: d.value };
+    const points = data.map((d, index) => {
+      const step = data.length > 1 ? usableWidth / (data.length - 1) : 0;
+      return {
+        x: chartLeft + index * step,
+        y: chartY(d.value, minY, maxY, chartTop, chartBottom),
+        label: d.label,
+        value: d.value,
+      };
     });
 
-    return { points, minY, maxY, plotWidth, plotHeight };
+    return { points, minY, maxY, chartLeft, chartRight, chartTop, chartBottom };
   }, [data, width, height]);
 
-  const linePath = pathGenerators.line(chartData.points, smooth);
-  const areaPath = pathGenerators.area(chartData.points, height - DEFAULT_PADDING.bottom, smooth);
+  const linePath = buildLinePath(chartData.points);
+  const areaPath = buildAreaPath(chartData.points, chartData.chartBottom);
 
-  // Grid lines
-  const gridLines = showGrid
-    ? gridUtils.generateHorizontalLines(5, width, height, {
-        top: DEFAULT_PADDING.top,
-        bottom: DEFAULT_PADDING.bottom,
-      })
-    : [];
-
-  return ()
+  return (
     <Box>
-      {title && ()
+      {title ? (
         <Typography variant="h6" gutterBottom textAlign="center">
           {title}
         </Typography>
-      )}
-      <SVG width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Gradient */}
-        <defs>
-          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={colors[0]} stopOpacity={0.3} />
-            <stop offset="100%" stopColor={colors[0]} stopOpacity={0.05} />
-          </linearGradient>
-        </defs>
+      ) : null}
+      {data.length === 0 ? (
+        emptyState(width, height, 'No data available', theme.palette.text.secondary)
+      ) : (
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+          <defs>
+            <linearGradient id="line-chart-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={colors[0]} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={colors[0]} stopOpacity={0.05} />
+            </linearGradient>
+          </defs>
 
-        {/* Grid */}
-        {showGrid && ()
-          <g opacity={0.2}>
-            {gridLines.map((line, i) => ()
-              <line
-                key={i}
-                x1={DEFAULT_PADDING.left}
-                y1={line.y}
-                x2={width - DEFAULT_PADDING.right}
-                y2={line.y}
-                stroke={theme.palette.divider}
-                strokeWidth={1}
-                strokeDasharray="4 4"
-              />
-            ))}
-          </g>
-        )}
+          {showGrid
+            ? Array.from({ length: 5 }).map((_, i) => {
+                const ratio = i / 4;
+                const y = chartData.chartTop + ratio * (chartData.chartBottom - chartData.chartTop);
+                const value = chartData.maxY - ratio * (chartData.maxY - chartData.minY);
+                return (
+                  <g key={`line-grid-${i}`}>
+                    <line
+                      x1={chartData.chartLeft}
+                      y1={y}
+                      x2={chartData.chartRight}
+                      y2={y}
+                      stroke={alpha(theme.palette.text.secondary, 0.25)}
+                      strokeDasharray="4 4"
+                    />
+                    <text
+                      x={chartData.chartLeft - 10}
+                      y={y + 4}
+                      textAnchor="end"
+                      fontSize={11}
+                      fill={theme.palette.text.secondary}
+                    >
+                      {formatCompact(value)}
+                    </text>
+                  </g>
+                );
+              })
+            : null}
 
-        {/* Area */}
-        <path d={areaPath} fill="url(#lineGradient)" opacity={0.5} />
+          <path d={areaPath} fill="url(#line-chart-fill)" />
+          <path
+            d={linePath}
+            fill="none"
+            stroke={colors[0]}
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
 
-        {/* Line */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke={colors[0]}
-          strokeWidth={3}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+          {chartData.points.map((point) => (
+            <g key={`line-point-${point.label}-${point.x}`}>
+              <circle cx={point.x} cy={point.y} r={4.5} fill={colors[0]} stroke="white" strokeWidth={2} />
+              <title>{`${point.label}: ${point.value}`}</title>
+            </g>
+          ))}
 
-        {/* Data points */}
-        {chartData.points.map((point, i) => ()
-          <g key={i}>
-            <circle
-              cx={point.x}
-              cy={point.y}
-              r={5}
-              fill={colors[0]}
-              stroke="white"
-              strokeWidth={2}
-            />
-            {/* Hover tooltip placeholder */}
-            <title>
-              {point.label}: {point.value}
-            </title>
-          </g>
-        ))}
-
-        {/* X-axis labels */}
-        {chartData.points.map((point, i) => ()
-          <text
-            key={i}
-            x={point.x}
-            y={height - DEFAULT_PADDING.bottom + 20}
-            textAnchor="middle"
-            fontSize={12}
-            fill={theme.palette.text.secondary}
-          >
-            {textUtils.truncate(point.label, 10)}
-          </text>
-        ))}
-
-        {/* Y-axis labels */}
-        {gridLines.map((line, i) => {
-          const value = scaleUtils.linear()
-            line.y,
-            [height - DEFAULT_PADDING.bottom, DEFAULT_PADDING.top],
-            [chartData.minY, chartData.maxY],
-          );
-          return ()
+          {chartData.points.map((point) => (
             <text
-              key={i}
-              x={DEFAULT_PADDING.left - 10}
-              y={line.y + 5}
-              textAnchor="end"
-              fontSize={12}
+              key={`line-label-${point.label}-${point.x}`}
+              x={point.x}
+              y={height - DEFAULT_PADDING.bottom + 20}
+              textAnchor="middle"
+              fontSize={11}
               fill={theme.palette.text.secondary}
             >
-              {textUtils.formatNumber(value)}
+              {point.label.length > 10 ? `${point.label.slice(0, 9)}…` : point.label}
             </text>
-          );
-        })}
+          ))}
 
-        {/* Axes */}
-        <line
-          x1={DEFAULT_PADDING.left}
-          y1={DEFAULT_PADDING.top}
-          x2={DEFAULT_PADDING.left}
-          y2={height - DEFAULT_PADDING.bottom}
-          stroke={theme.palette.divider}
-          strokeWidth={2}
-        />
-        <line
-          x1={DEFAULT_PADDING.left}
-          y1={height - DEFAULT_PADDING.bottom}
-          x2={width - DEFAULT_PADDING.right}
-          y2={height - DEFAULT_PADDING.bottom}
-          stroke={theme.palette.divider}
-          strokeWidth={2}
-        />
-      </SVG>
+          <line
+            x1={chartData.chartLeft}
+            y1={chartData.chartTop}
+            x2={chartData.chartLeft}
+            y2={chartData.chartBottom}
+            stroke={theme.palette.divider}
+            strokeWidth={2}
+          />
+          <line
+            x1={chartData.chartLeft}
+            y1={chartData.chartBottom}
+            x2={chartData.chartRight}
+            y2={chartData.chartBottom}
+            stroke={theme.palette.divider}
+            strokeWidth={2}
+          />
+        </svg>
+      )}
     </Box>
   );
 };
 
-/**
- * Bar Chart Component
- */
 export const BarChart: React.FC<ChartProps & { horizontal?: boolean }> = ({
   width = 600,
   height = 400,
   data,
   title,
   showGrid = true,
+  showLegend = false,
   colors,
   horizontal = false,
 }) => {
   const theme = useTheme();
-  const chartColors = colors || colorUtils.generatePalette(data.length);
 
-  const chartData = useMemo(() => {
-    const values = data.map((d) => d.value);
-    const [minY, maxY] = scaleUtils.getNiceDomain(values);
+  const values = data.map((d) => d.value);
+  const [minY, maxY] = getDomain(values);
+  const chartLeft = DEFAULT_PADDING.left;
+  const chartRight = width - DEFAULT_PADDING.right;
+  const chartTop = DEFAULT_PADDING.top;
+  const chartBottom = height - DEFAULT_PADDING.bottom;
 
-    const plotWidth = width - DEFAULT_PADDING.left - DEFAULT_PADDING.right;
-    const plotHeight = height - DEFAULT_PADDING.top - DEFAULT_PADDING.bottom;
+  const bars = useMemo(() => {
+    if (data.length === 0) return [] as Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      label: string;
+      value: number;
+      color: string;
+    }>;
 
-    const barWidth = (plotWidth / data.length) * 0.8;
-    const barGap = (plotWidth / data.length) * 0.2;
+    if (horizontal) {
+      const rowHeight = (chartBottom - chartTop) / data.length;
+      return data.map((item, index) => {
+        const x = chartLeft;
+        const y = chartTop + index * rowHeight + rowHeight * 0.1;
+        const barWidth = ((item.value - minY) / (maxY - minY)) * (chartRight - chartLeft);
+        const barHeight = rowHeight * 0.8;
+        return {
+          x,
+          y,
+          width: Math.max(0, barWidth),
+          height: barHeight,
+          label: item.label,
+          value: item.value,
+          color: getColor(index, colors, item.color),
+        };
+      });
+    }
 
-    const bars = data.map((d, i) => {
-      const x = DEFAULT_PADDING.left + (plotWidth / data.length) * i + barGap / 2;
-      const barHeight = ((d.value - minY) / (maxY - minY) * plotHeight;
-      const y = height - DEFAULT_PADDING.bottom - barHeight;
-      return { x, y, width: barWidth, height: barHeight, ...d };
+    const columnWidth = (chartRight - chartLeft) / data.length;
+    return data.map((item, index) => {
+      const x = chartLeft + index * columnWidth + columnWidth * 0.15;
+      const barWidth = columnWidth * 0.7;
+      const barHeight = ((item.value - minY) / (maxY - minY)) * (chartBottom - chartTop);
+      const y = chartBottom - barHeight;
+      return {
+        x,
+        y,
+        width: barWidth,
+        height: Math.max(0, barHeight),
+        label: item.label,
+        value: item.value,
+        color: getColor(index, colors, item.color),
+      };
     });
+  }, [chartBottom, chartLeft, chartRight, chartTop, colors, data, horizontal, maxY, minY]);
 
-    return { bars, minY, maxY, plotHeight };
-  }, [data, width, height]);
-
-  return ()
+  return (
     <Box>
-      {title && ()
+      {title ? (
         <Typography variant="h6" gutterBottom textAlign="center">
           {title}
         </Typography>
-      )}
-      <SVG width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Bars */}
-        {chartData.bars.map((bar, i) => ()
-          <g key={i}>
-            <rect
-              x={bar.x}
-              y={bar.y}
-              width={bar.width}
-              height={bar.height}
-              fill={bar.color || chartColors[i]}
-              rx={4}
-              opacity={0.85}
-            >
-              <title>
-                {bar.label}: {bar.value}
-              </title>
-            </rect>
-            {/* Value label on top */}
-            <text
-              x={bar.x + bar.width / 2}
-              y={bar.y - 5}
-              textAnchor="middle"
-              fontSize={12}
-              fontWeight="bold"
-              fill={bar.color || chartColors[i]}
-            >
-              {textUtils.formatNumber(bar.value)}
-            </text>
-            {/* X-axis label */}
-            <text
-              x={bar.x + bar.width / 2}
-              y={height - DEFAULT_PADDING.bottom + 20}
-              textAnchor="middle"
-              fontSize={12}
-              fill={theme.palette.text.secondary}
-            >
-              {textUtils.truncate(bar.label, 10)}
-            </text>
-          </g>
-        ))}
+      ) : null}
 
-        {/* Axes */}
-        <line
-          x1={DEFAULT_PADDING.left}
-          y1={DEFAULT_PADDING.top}
-          x2={DEFAULT_PADDING.left}
-          y2={height - DEFAULT_PADDING.bottom}
-          stroke={theme.palette.divider}
-          strokeWidth={2}
-        />
-        <line
-          x1={DEFAULT_PADDING.left}
-          y1={height - DEFAULT_PADDING.bottom}
-          x2={width - DEFAULT_PADDING.right}
-          y2={height - DEFAULT_PADDING.bottom}
-          stroke={theme.palette.divider}
-          strokeWidth={2}
-        />
-      </SVG>
+      {data.length === 0 ? (
+        emptyState(width, height, 'No data available', theme.palette.text.secondary)
+      ) : (
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+          {showGrid
+            ? Array.from({ length: 5 }).map((_, i) => {
+                const ratio = i / 4;
+                const y = chartTop + ratio * (chartBottom - chartTop);
+                return (
+                  <line
+                    key={`bar-grid-${i}`}
+                    x1={chartLeft}
+                    y1={y}
+                    x2={chartRight}
+                    y2={y}
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                    strokeDasharray="4 4"
+                  />
+                );
+              })
+            : null}
+
+          {bars.map((bar) => (
+            <g key={`bar-${bar.label}-${bar.x}`}>
+              <rect x={bar.x} y={bar.y} width={bar.width} height={bar.height} fill={bar.color} rx={4} />
+              <title>{`${bar.label}: ${bar.value}`}</title>
+              {!horizontal ? (
+                <>
+                  <text
+                    x={bar.x + bar.width / 2}
+                    y={bar.y - 6}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fill={bar.color}
+                  >
+                    {formatCompact(bar.value)}
+                  </text>
+                  <text
+                    x={bar.x + bar.width / 2}
+                    y={chartBottom + 20}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fill={theme.palette.text.secondary}
+                  >
+                    {bar.label.length > 10 ? `${bar.label.slice(0, 9)}…` : bar.label}
+                  </text>
+                </>
+              ) : (
+                <>
+                  <text
+                    x={bar.x - 8}
+                    y={bar.y + bar.height / 2 + 4}
+                    textAnchor="end"
+                    fontSize={11}
+                    fill={theme.palette.text.secondary}
+                  >
+                    {bar.label.length > 14 ? `${bar.label.slice(0, 13)}…` : bar.label}
+                  </text>
+                  <text
+                    x={bar.x + bar.width + 6}
+                    y={bar.y + bar.height / 2 + 4}
+                    textAnchor="start"
+                    fontSize={11}
+                    fill={bar.color}
+                  >
+                    {formatCompact(bar.value)}
+                  </text>
+                </>
+              )}
+            </g>
+          ))}
+
+          <line x1={chartLeft} y1={chartTop} x2={chartLeft} y2={chartBottom} stroke={theme.palette.divider} strokeWidth={2} />
+          <line x1={chartLeft} y1={chartBottom} x2={chartRight} y2={chartBottom} stroke={theme.palette.divider} strokeWidth={2} />
+        </svg>
+      )}
+
+      {showLegend ? (
+        <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+          {bars.map((bar) => (
+            <Box
+              key={`legend-${bar.label}`}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                backgroundColor: alpha(bar.color, 0.1),
+              }}
+            >
+              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: bar.color }} />
+              <Typography variant="caption">{bar.label}</Typography>
+            </Box>
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 };
 
-/**
- * Pie/Donut Chart Component
- */
 export const PieChart: React.FC<ChartProps & { innerRadius?: number; showLabels?: boolean }> = ({
   width = 400,
   height = 400,
   data,
   title,
   colors,
+  showLegend = true,
   innerRadius = 0,
   showLabels = true,
 }) => {
   const theme = useTheme();
-  const chartColors = colors || colorUtils.generatePalette(data.length);
 
-  const chartData = useMemo(() => {
-    const total = data.reduce((sum, d) => sum + d.value, 0);
-    const centerX = width / 2;
-    const centerY = height / 2;
+  const prepared = useMemo(() => {
+    const total = data.reduce((sum, item) => sum + Math.max(0, item.value), 0);
     const radius = Math.min(width, height) / 2 - 40;
+    const cx = width / 2;
+    const cy = height / 2;
 
-    let currentAngle = -90; // Start at top
+    let currentAngle = -Math.PI / 2;
+    const slices = data.map((item, index) => {
+      const value = Math.max(0, item.value);
+      const ratio = total > 0 ? value / total : 0;
+      const angle = ratio * Math.PI * 2;
+      const start = currentAngle;
+      const end = currentAngle + angle;
+      currentAngle = end;
 
-    const slices = data.map((d, i) => {
-      const percentage = (d.value / total) * 100;
-      const angle = (d.value / total) * 360;
-      const startAngle = currentAngle;
-      const endAngle = currentAngle + angle;
+      const x1 = cx + radius * Math.cos(start);
+      const y1 = cy + radius * Math.sin(start);
+      const x2 = cx + radius * Math.cos(end);
+      const y2 = cy + radius * Math.sin(end);
+      const largeArc = angle > Math.PI ? 1 : 0;
 
-      // Calculate label position
-      const labelAngle = ((startAngle + endAngle) / 2) * (Math.PI / 180);
+      let path: string;
+      if (innerRadius > 0) {
+        const ix1 = cx + innerRadius * Math.cos(start);
+        const iy1 = cy + innerRadius * Math.sin(start);
+        const ix2 = cx + innerRadius * Math.cos(end);
+        const iy2 = cy + innerRadius * Math.sin(end);
+        path = `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${ix1} ${iy1} Z`;
+      } else {
+        path = `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
+      }
+
+      const labelAngle = (start + end) / 2;
       const labelRadius = innerRadius > 0 ? (radius + innerRadius) / 2 : radius * 0.7;
-      const labelX = centerX + labelRadius * Math.cos(labelAngle);
-      const labelY = centerY + labelRadius * Math.sin(labelAngle);
-
-      currentAngle = endAngle;
 
       return {
-        ...d,
-        startAngle,
-        endAngle,
-        percentage,
-        labelX,
-        labelY,
-        color: d.color || chartColors[i],
+        label: item.label,
+        value,
+        ratio,
+        color: getColor(index, colors, item.color),
+        path,
+        labelX: cx + labelRadius * Math.cos(labelAngle),
+        labelY: cy + labelRadius * Math.sin(labelAngle),
       };
     });
 
-    return { slices, centerX, centerY, radius, total };
-  }, [data, width, height, innerRadius, chartColors]);
+    return { slices, total, cx, cy };
+  }, [colors, data, height, innerRadius, width]);
 
-  return ()
+  return (
     <Box>
-      {title && ()
+      {title ? (
         <Typography variant="h6" gutterBottom textAlign="center">
           {title}
         </Typography>
-      )}
-      <SVG width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Slices */}
-        {chartData.slices.map((slice, i) => {
-          const path = pathGenerators.arc()
-            chartData.centerX,
-            chartData.centerY,
-            chartData.radius,
-            slice.startAngle,
-            slice.endAngle,
-            innerRadius,
-          );
+      ) : null}
 
-          return ()
-            <g key={i}>
-              <path d={path} fill={slice.color} stroke="white" strokeWidth={2} opacity={0.9}>
-                <title>
-                  {slice.label}: {slice.value} ({slice.percentage.toFixed(1)}%)
-                </title>
+      {prepared.total <= 0 ? (
+        emptyState(width, height, 'No data available', theme.palette.text.secondary)
+      ) : (
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+          {prepared.slices.map((slice) => (
+            <g key={`pie-${slice.label}`}>
+              <path d={slice.path} fill={slice.color} stroke="white" strokeWidth={2} opacity={0.95}>
+                <title>{`${slice.label}: ${slice.value} (${(slice.ratio * 100).toFixed(1)}%)`}</title>
               </path>
-              {/* Labels */}
-              {showLabels && slice.percentage > 5 && ()
-                <g>
-                  <text
-                    x={slice.labelX}
-                    y={slice.labelY}
-                    textAnchor="middle"
-                    fontSize={12}
-                    fontWeight="bold"
-                    fill="white"
-                  >
-                    {slice.percentage.toFixed(0)}%
-                  </text>
-                </g>
-              )}
+              {showLabels && slice.ratio > 0.05 ? (
+                <text
+                  x={slice.labelX}
+                  y={slice.labelY}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={11}
+                  fontWeight={700}
+                  fill="white"
+                >
+                  {`${Math.round(slice.ratio * 100)}%`}
+                </text>
+              ) : null}
             </g>
-          );
-        })}
+          ))}
 
-        {/* Center label for donut */}
-        {innerRadius > 0 && ()
-          <g>
-            <text
-              x={chartData.centerX}
-              y={chartData.centerY - 5}
-              textAnchor="middle"
-              fontSize={24}
-              fontWeight="bold"
-              fill={theme.palette.text.primary}
-            >
-              {textUtils.formatNumber(chartData.total)}
-            </text>
-            <text
-              x={chartData.centerX}
-              y={chartData.centerY + 15}
-              textAnchor="middle"
-              fontSize={12}
-              fill={theme.palette.text.secondary}
-            >
-              Total
-            </text>
-          </g>
-        )}
-      </SVG>
+          {innerRadius > 0 ? (
+            <>
+              <text
+                x={prepared.cx}
+                y={prepared.cy - 5}
+                textAnchor="middle"
+                fontSize={22}
+                fontWeight={700}
+                fill={theme.palette.text.primary}
+              >
+                {formatCompact(prepared.total)}
+              </text>
+              <text
+                x={prepared.cx}
+                y={prepared.cy + 14}
+                textAnchor="middle"
+                fontSize={11}
+                fill={theme.palette.text.secondary}
+              >
+                Total
+              </text>
+            </>
+          ) : null}
+        </svg>
+      )}
 
-      {/* Legend */}
-      <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
-        {chartData.slices.map((slice, i) => ()
-          <Box
-            key={i}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5
-             , px: 1,
-              py: 0.5
-              borderRadius: 1,
-              bgcolor: alpha(slice.color, 0.1)}}>
+      {showLegend ? (
+        <Box sx={{ mt: 1.5, display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+          {prepared.slices.map((slice) => (
             <Box
+              key={`pie-legend-${slice.label}`}
               sx={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                bgcolor: slice.color}} />
-            <Typography variant="caption">
-              {slice.label}: {textUtils.formatNumber(slice.value)}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                backgroundColor: alpha(slice.color, 0.1),
+              }}
+            >
+              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: slice.color }} />
+              <Typography variant="caption">{`${slice.label}: ${formatCompact(slice.value)}`}</Typography>
+            </Box>
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
 };
 
-/**
- * Area Chart Component
- */
 export const AreaChart: React.FC<ChartProps & { smooth?: boolean }> = ({
   width = 600,
   height = 400,
   data,
   title,
   showGrid = true,
-  smooth = true,
   colors = ['#4caf50'],
 }) => {
   const theme = useTheme();
 
   const chartData = useMemo(() => {
     const values = data.map((d) => d.value);
-    const [minY, maxY] = scaleUtils.getNiceDomain(values);
+    const [minY, maxY] = getDomain(values);
+    const chartLeft = DEFAULT_PADDING.left;
+    const chartRight = width - DEFAULT_PADDING.right;
+    const chartTop = DEFAULT_PADDING.top;
+    const chartBottom = height - DEFAULT_PADDING.bottom;
+    const usableWidth = Math.max(1, chartRight - chartLeft);
 
-    const plotWidth = width - DEFAULT_PADDING.left - DEFAULT_PADDING.right;
-    const plotHeight = height - DEFAULT_PADDING.top - DEFAULT_PADDING.bottom;
-
-    const points = data.map((d, i) => {
-      const x = DEFAULT_PADDING.left + (plotWidth / (data.length - 1) * i;
-      const y = scaleUtils.linear()
-        d.value,
-        [minY, maxY],
-        [height - DEFAULT_PADDING.bottom, DEFAULT_PADDING.top],
-      );
-      return { x, y, label: d.label, value: d.value };
+    const points = data.map((d, index) => {
+      const step = data.length > 1 ? usableWidth / (data.length - 1) : 0;
+      return {
+        x: chartLeft + index * step,
+        y: chartY(d.value, minY, maxY, chartTop, chartBottom),
+        label: d.label,
+        value: d.value,
+      };
     });
 
-    return { points, minY, maxY };
+    return { points, minY, maxY, chartLeft, chartRight, chartTop, chartBottom };
   }, [data, width, height]);
 
-  const areaPath = pathGenerators.area(chartData.points, height - DEFAULT_PADDING.bottom, smooth);
+  const linePath = buildLinePath(chartData.points);
+  const areaPath = buildAreaPath(chartData.points, chartData.chartBottom);
 
-  return ()
+  return (
     <Box>
-      {title && ()
+      {title ? (
         <Typography variant="h6" gutterBottom textAlign="center">
           {title}
         </Typography>
-      )}
-      <SVG width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* Gradient */}
-        <defs>
-          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={colors[0]} stopOpacity={0.6} />
-            <stop offset="100%" stopColor={colors[0]} stopOpacity={0.1} />
-          </linearGradient>
-        </defs>
+      ) : null}
 
-        {/* Area */}
-        <path d={areaPath} fill="url(#areaGradient)" />
+      {data.length === 0 ? (
+        emptyState(width, height, 'No data available', theme.palette.text.secondary)
+      ) : (
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+          <defs>
+            <linearGradient id="area-chart-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={colors[0]} stopOpacity={0.6} />
+              <stop offset="100%" stopColor={colors[0]} stopOpacity={0.1} />
+            </linearGradient>
+          </defs>
 
-        {/* Border line */}
-        <path
-          d={pathGenerators.line(chartData.points, smooth)}
-          fill="none"
-          stroke={colors[0]}
-          strokeWidth={2}
-        />
+          {showGrid
+            ? Array.from({ length: 5 }).map((_, i) => {
+                const ratio = i / 4;
+                const y = chartData.chartTop + ratio * (chartData.chartBottom - chartData.chartTop);
+                return (
+                  <line
+                    key={`area-grid-${i}`}
+                    x1={chartData.chartLeft}
+                    y1={y}
+                    x2={chartData.chartRight}
+                    y2={y}
+                    stroke={alpha(theme.palette.text.secondary, 0.2)}
+                    strokeDasharray="4 4"
+                  />
+                );
+              })
+            : null}
 
-        {/* Data points */}
-        {chartData.points.map((point, i) => ()
-          <circle
-            key={i}
-            cx={point.x}
-            cy={point.y}
-            r={4}
-            fill={colors[0]}
-            stroke="white"
+          <path d={areaPath} fill="url(#area-chart-fill)" />
+          <path
+            d={linePath}
+            fill="none"
+            stroke={colors[0]}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {chartData.points.map((point) => (
+            <circle
+              key={`area-point-${point.label}-${point.x}`}
+              cx={point.x}
+              cy={point.y}
+              r={4}
+              fill={colors[0]}
+              stroke="white"
+              strokeWidth={2}
+            >
+              <title>{`${point.label}: ${point.value}`}</title>
+            </circle>
+          ))}
+
+          {chartData.points.map((point) => (
+            <text
+              key={`area-label-${point.label}-${point.x}`}
+              x={point.x}
+              y={height - DEFAULT_PADDING.bottom + 20}
+              textAnchor="middle"
+              fontSize={11}
+              fill={theme.palette.text.secondary}
+            >
+              {point.label.length > 10 ? `${point.label.slice(0, 9)}…` : point.label}
+            </text>
+          ))}
+
+          <line
+            x1={chartData.chartLeft}
+            y1={chartData.chartTop}
+            x2={chartData.chartLeft}
+            y2={chartData.chartBottom}
+            stroke={theme.palette.divider}
             strokeWidth={2}
-          >
-            <title>
-              {point.label}: {point.value}
-            </title>
-          </circle>
-        ))}
-
-        {/* X-axis labels */}
-        {chartData.points.map((point, i) => ()
-          <text
-            key={i}
-            x={point.x}
-            y={height - DEFAULT_PADDING.bottom + 20}
-            textAnchor="middle"
-            fontSize={12}
-            fill={theme.palette.text.secondary}
-          >
-            {textUtils.truncate(point.label, 10)}
-          </text>
-        ))}
-
-        {/* Axes */}
-        <line
-          x1={DEFAULT_PADDING.left}
-          y1={height - DEFAULT_PADDING.bottom}
-          x2={width - DEFAULT_PADDING.right}
-          y2={height - DEFAULT_PADDING.bottom}
-          stroke={theme.palette.divider}
-          strokeWidth={2}
-        />
-      </SVG>
+          />
+          <line
+            x1={chartData.chartLeft}
+            y1={chartData.chartBottom}
+            x2={chartData.chartRight}
+            y2={chartData.chartBottom}
+            stroke={theme.palette.divider}
+            strokeWidth={2}
+          />
+        </svg>
+      )}
     </Box>
   );
 };
 
-/**
- * Sparkline Component (mini line chart)
- */
 export const Sparkline: React.FC<{
   data: number[];
   width?: number;
@@ -586,24 +703,32 @@ export const Sparkline: React.FC<{
   color?: string;
   showArea?: boolean;
 }> = ({ data, width = 100, height = 30, color = '#2196f3', showArea = true }) => {
-  const chartData = useMemo(() => {
-    const [minY, maxY] = scaleUtils.getDomain(data);
-    const points = data.map((value, i) => {
-      const x = (width / (data.length - 1) * i;
-      const y = scaleUtils.linear(value, [minY, maxY], [height - 2, 2]);
+  const chart = useMemo(() => {
+    if (data.length === 0) {
+      return { points: [] as Array<{ x: number; y: number }> };
+    }
+    const [minY, maxY] = getDomain(data);
+    const points = data.map((value, index) => {
+      const step = data.length > 1 ? width / (data.length - 1) : 0;
+      const x = index * step;
+      const y = chartY(value, minY, maxY, 2, height - 2);
       return { x, y };
     });
     return { points };
-  }, [data, width, height]);
+  }, [data, height, width]);
 
-  const linePath = pathGenerators.line(chartData.points, true);
-  const areaPath = showArea ? pathGenerators.area(chartData.points, height - 2, true) :'';
+  const linePath = buildLinePath(chart.points);
+  const areaPath = buildAreaPath(chart.points, height - 2);
 
-  return ()
-    <SVG width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-      {showArea && <path d={areaPath} fill={color} opacity={0.2} />}
+  if (data.length === 0) {
+    return emptyState(width, height, 'No data', '#999');
+  }
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      {showArea ? <path d={areaPath} fill={color} opacity={0.2} /> : null}
       <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" />
-    </SVG>
+    </svg>
   );
 };
 

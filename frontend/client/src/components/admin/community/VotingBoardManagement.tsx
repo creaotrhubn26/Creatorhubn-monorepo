@@ -170,7 +170,7 @@ export default function VotingBoardManagement({ groupId }: VotingBoardManagement
   // Form states
   const [boardTitle, setBoardTitle] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
-  const [boardType, setBoardType] = useState('feature_request,');
+  const [boardType, setBoardType] = useState('feature_request');
   const [boardStatus, setBoardStatus] = useState<'active' | 'closed' | 'archived'>('active');
   const [allowNewItems, setAllowNewItems] = useState(true);
   const [allowComments, setAllowComments] = useState(true);

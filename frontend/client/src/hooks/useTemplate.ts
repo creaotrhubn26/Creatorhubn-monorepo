@@ -85,7 +85,6 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
 });
 
   const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const eventHandlersRef = useRef<Map<string, Function>>(new Map());
 
   // Initialize template manager
   useEffect(() => {
@@ -131,14 +130,6 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
     }
   };
 
-    // Store event handlers
-    eventHandlersRef.current.set('template_added', handleTemplateAdded);
-    eventHandlersRef.current.set('category_added', handleCategoryAdded);
-    eventHandlersRef.current.set('search_completed', handleSearchCompleted);
-    eventHandlersRef.current.set('search_failed', handleSearchFailed);
-    eventHandlersRef.current.set('error', handleError);
-    eventHandlersRef.current.set('initialized', handleInitialized);
-
     // Add event listeners
     templateManager.on('template_added', handleTemplateAdded);
     templateManager.on('category_added', handleCategoryAdded);
@@ -151,11 +142,12 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
     setState(templateManager.getState());
 
     return () => {
-      // Remove event listeners
-      eventHandlersRef.current.forEach((handler, event) => {
-        templateManager.off(event, handler);
-    });
-      eventHandlersRef.current.clear();
+      templateManager.off('template_added', handleTemplateAdded);
+      templateManager.off('category_added', handleCategoryAdded);
+      templateManager.off('search_completed', handleSearchCompleted);
+      templateManager.off('search_failed', handleSearchFailed);
+      templateManager.off('error', handleError);
+      templateManager.off('initialized', handleInitialized);
   };
 }, [config, onTemplateAdded, onCategoryAdded, onSearchCompleted, onSearchFailed, onError, onInitialized]);
 
@@ -190,7 +182,7 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
 
   // Get template by ID
   const getTemplate = useCallback((id: string) => {
-    return templateManager.getTemplate(id);
+    return templateManager.getTemplate(id) || null;
 }, []);
 
   // Get templates by type
@@ -275,6 +267,5 @@ export const useTemplate = (options: UseTemplateOptions = {}): UseTemplateReturn
 };
 
 export default useTemplate;
-
 
 

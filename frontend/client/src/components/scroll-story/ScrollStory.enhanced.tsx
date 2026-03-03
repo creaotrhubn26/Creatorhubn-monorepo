@@ -1,31 +1,15 @@
 /**
  * ScrollStory React component - ENHANCED VERSION
- * Renders scroll-based story animations and scroll triggers
- *
- * ✅ Performance optimizations (throttling, GPU acceleration)
- * ✅ Intersection Observer for better scroll detection
- * ✅ Parallax effects and advanced animations
- * ✅ Media preloading system
- * ✅ Keyboard navigation
- * ✅ Mobile gesture support
- * ✅ Accessibility improvements (WCAG AA compliant)
- * ✅ Video auto-play when in viewport
- * ✅ Progress indicator with navigation controls
+ * Scroll-driven story rendering with media preloading, keyboard navigation,
+ * trigger callbacks, intersection callbacks and autoplay for in-view videos.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, IconButton, Tooltip } from '@mui/material';
-import {
-  KeyboardArrowUp,
-  KeyboardArrowDown,
-  PlayArrow,
-  Pause,
-} from '@mui/icons-material';
+import { KeyboardArrowDown, KeyboardArrowUp, Pause, PlayArrow } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 import { useScrollStory } from './useScrollStory';
 import type { ScrollStory as ScrollStoryType } from './useScrollStory';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { svgRenderer } from '../../services/svg-renderer';
 
 interface ScrollStoryProps {
   story: ScrollStoryType;
@@ -40,6 +24,27 @@ interface ScrollStoryProps {
   children?: React.ReactNode;
 }
 
+interface MediaEntry {
+  id: string;
+  type: 'image' | 'video' | 'audio';
+  url: string;
+  thumbnail?: string;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function isElementInPlaybackViewport(element: HTMLVideoElement): boolean {
+  const rect = element.getBoundingClientRect();
+  const mid = window.innerHeight / 2;
+  return rect.top <= mid && rect.bottom >= mid;
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 export default function ScrollStory({
   story,
   onScrollProgress,
@@ -51,717 +56,531 @@ export default function ScrollStory({
   preloadMedia = true,
   autoPlayVideos = true,
   children,
-}: ScrollStoryProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map();
+}: ScrollStoryProps): JSX.Element {
+  const theming = useTheming('photographer');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map());
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const activeAnimationIds = useRef<Set<string>>(new Set());
+  const activatedTriggerIds = useRef<Set<string>>(new Set());
+
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [loadedMediaIds, setLoadedMediaIds] = useState<Set<string>>(new Set());
+
   const { scrollProgress, setScrollProgress } = useScrollStory();
 
-  // ⭐ Enhanced Master Integration
-  const { lifecycle, analytics, performance, features } = useEnhancedMasterIntegration();
+  const pageCount = story.pages.length;
 
-  // Theming system
-  const theming = useTheming('photographer');
-  const [seenElements, setSeenElements] = useState<Set<string>>(new Set();
-  const [isPaused, setIsPaused] = useState(false);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [isMediaLoaded, setIsMediaLoaded] = useState<Set<string>>(new Set();
-  const [svgRendered, setSvgRendered] = useState<Map<string, string>>(new Map(); // SVG ID -> PNG data URL
-  const [svgRenderingInProgress, setSvgRenderingInProgress] = useState(false);
+  const storyMedia = useMemo<MediaEntry[]>(() => {
+    return story.pages.flatMap((page) =>
+      page.media.map((media, mediaIndex) => ({
+        id: `${page.id}-${mediaIndex}`,
+        type: media.type,
+        url: media.url,
+        thumbnail: media.thumbnail,
+      }))
+    );
+  }, [story.pages]);
 
-  // Initialize SVG Renderer
-  useEffect(() => {
-    const initSvgRenderer = async () => {
-      try {
-        await svgRenderer.initialize();
-        console.log('✅ SVG Renderer initialized for ScrollStory, ');
-
-        analytics.trackEvent('scroll_story_svg_renderer_initialized,', {
-          storyId: story.id,
-        });
-      } catch (error) {
-        console.error('❌ SVG Renderer initialization failed: ', error);
+  const scrollToPage = useCallback(
+    (pageIndex: number) => {
+      if (!containerRef.current || pageCount === 0) {
+        return;
       }
-    };
 
-    initSvgRenderer();
-  }, []);
+      const bounded = clamp(pageIndex, 0, pageCount - 1);
+      const target = containerRef.current.querySelector<HTMLElement>(`#page-${story.pages[bounded].id}`);
+      if (target) {
+        target.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      }
+    },
+    [pageCount, story.pages]
+  );
 
-  // Register component with Master Integration
-  useEffect(() => {
-    lifecycle.registerComponent({
-      id: 'ScrollStory',
-      type: 'content',
-      version: '1.0.0',
-      capabilities: {
-        data: ['story','pages','media','animations','scroll-triggers'],
-        events: [
-          'scroll:progress','animation:enter''animation:exit','trigger:activate''page:change',
-        ],
-        actions: ['scroll','pause','resume','navigate','preload'],
-        ui: [
-          'progress-bar','navigation-controls''keyboard-shortcuts', 'parallax', 'svg-rendering',
-        ],
-        system: [
-          'scroll-story', 'media-preloading', 'intersection-observer', 'performance-optimized', 'svg-renderer',
-        ],
-      },
-      dependencies: ['universal-showcase', 'theming-system','svg-renderer'],
-      lastActive: Date.now(),
-      performance: {
-        renderCount: 0,
-        avgRenderTime: 0,
-        memoryUsage: 0,
-      },
-    });
-
-    // Track feature usage
-    analytics.trackEvent('scroll_story_mounted', {
-      storyId: story.id,
-      storyName: story.name,
-      pageCount: story.pages.length,
-      animationCount: story.animations.length,
-      triggerCount: story.scrollTriggers.length,
-      enableParallax,
-      enableKeyboardNav,
-      preloadMedia,
-      autoPlayVideos,
-    });
-
-    features.trackFeatureUsage('scroll-story', 'mounted', {
-      storyId: story.id,
-      pageCount: story.pages.length,
-    });
-
-    return () => {
-      lifecycle.unregisterComponent('ScrollStory');
-      analytics.trackEvent('scroll_story_unmounted', {
-        storyId: story.id,
-        finalScrollProgress: scrollProgress,
-      });
-    };
-  }, [story.id, lifecycle, analytics, features]);
-
-  // Clear seen elements when story changes
-  useEffect(() => {
-    setSeenElements(new Set();
-    setCurrentPageIndex(0);
-  }, [story.id]);
-
-  // Throttled scroll handler for performance (60fps)
   const handleScroll = useCallback(() => {
-    if (isPaused || !containerRef.current) return;
-
-    // Performance tracking
-    const endTiming = performance.startTiming('scroll_story_scroll');
-
-    // Clear existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
+    if (isPaused || !containerRef.current || pageCount === 0) {
+      return;
     }
 
-    // Throttle to ~60fps (16ms)
-    scrollTimeoutRef.current = setTimeout(() => {
-      if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const contentHeight = containerRef.current.offsetHeight;
+    const maxScrollable = Math.max(1, contentHeight - window.innerHeight);
+    const scrolledInContainer = clamp(-rect.top, 0, maxScrollable);
+    const progress = clamp(scrolledInContainer / maxScrollable, 0, 1);
 
-      const rect = containerRef.current.getBoundingClientRect();
-      const scrolled = Math.min(
-        1,
-        Math.max(0, (window.innerHeight - rect.top) / (window.innerHeight + rect.height)),
-      );
-      setScrollProgress(scrolled);
-      onScrollProgress?.(scrolled);
+    setScrollProgress(progress);
+    onScrollProgress?.(progress);
 
-      // Update current page index
-      const pageIndex = Math.floor(scrolled * story.pages.length);
-      if (pageIndex !== currentPageIndex && pageIndex < story.pages.length) {
-        setCurrentPageIndex(pageIndex);
-
-        // Track page change
-        analytics.trackEvent('scroll_story_page_change', {
-          storyId: story.id,
-          fromPage: currentPageIndex,
-          toPage: pageIndex,
-          scrollProgress: scrolled,
-        });
-      }
-
-      endTiming();
-    }, 16);
-  }, [
-    isPaused,
-    onScrollProgress,
-    setScrollProgress,
-    story.pages.length,
-    currentPageIndex,
-    performance,
-    analytics,
-    story.id,
-  ]);
+    const computedPageIndex = clamp(Math.floor(progress * pageCount), 0, Math.max(0, pageCount - 1));
+    if (computedPageIndex !== currentPageIndex) {
+      setCurrentPageIndex(computedPageIndex);
+    }
+  }, [currentPageIndex, isPaused, onScrollProgress, pageCount, setScrollProgress]);
 
   useEffect(() => {
+    handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll(); // Initial call
+    window.addEventListener('resize', handleScroll);
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
+      window.removeEventListener('resize', handleScroll);
     };
   }, [handleScroll]);
 
-  // Intersection Observer for efficient element tracking
   useEffect(() => {
-    if (!observerRef.current) {
-      observerRef.current = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            const elementId = entry.target.id;
-            if (entry.isIntersecting && !seenElements.has(elementId) {
-              setSeenElements((prev) => new Set([...prev, elementId]));
-              onAnimationEnter?.(elementId);
-
-              // Track animation enter
-              analytics.trackEvent('scroll_story_animation_enter', {
-                storyId: story.id,
-                elementId,
-                scrollProgress,
-              });
-            } else if (!entry.isIntersecting && seenElements.has(elementId) {
-              onAnimationExit?.(elementId);
-
-              // Track animation exit
-              analytics.trackEvent('scroll_story_animation_exit', {
-                storyId: story.id,
-                elementId,
-                scrollProgress,
-              });
-            }
-          });
-        },
-        {
-          threshold: [0, 0.25 0.5 0.75 1],
-          rootMargin: '50px',
-        },
-      );
+    if (!enableKeyboardNav || pageCount === 0) {
+      return;
     }
 
-    // Observe all animated elements
-    story.animations.forEach((anim) => {
-      const element = document.getElementById(anim.elementId);
-      if (element && observerRef.current) {
-        observerRef.current.observe(element);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowDown' || event.key === 'PageDown') {
+        event.preventDefault();
+        scrollToPage(currentPageIndex + 1);
+        return;
       }
-    });
 
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
+      if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+        event.preventDefault();
+        scrollToPage(currentPageIndex - 1);
+        return;
       }
-    };
-  }, [story.animations, onAnimationEnter, onAnimationExit, seenElements]);
 
-  // GPU-accelerated animations with transform
-  useEffect(() => {
-    story.animations.forEach((anim) => {
-      const element = document.getElementById(anim.elementId);
-      if (!element) return;
-
-      const shouldAnimate = scrollProgress >= (anim.triggerPoint || 0) && scrollProgress < 1;
-
-      if (shouldAnimate) {
-        const progress = Math.min(1, (scrollProgress - (anim.triggerPoint || 0)) / 0.2);
-
-        // Use CSS custom properties for smooth GPU-accelerated animations
-        element.style.setProperty('--scroll-progress', progress.toString();
-        element.style.transition = `transform ${anim.duration}ms ${anim.easing || 'cubic-bezier(0.4 0.0 0.2 1)'}, opacity ${anim.duration}ms ${anim.easing || 'cubic-bezier(0.4 0.0 0.2 1)'}`;
-        element.style.willChange = 'transform, opacity';
-
-        // Apply transforms (GPU-accelerated)
-        const transforms: string[] = [];
-        const styles: Record<string, string> = {};
-
-        Object.entries(anim.to).forEach(([prop, value]) => {
-          if (prop === 'translateX' || prop === 'translateY' || prop === 'translateZ') {
-            transforms.push(`${prop}(${value})`);
-          } else if (prop === 'scale' || prop === 'rotate') {
-            transforms.push(`${prop}(${value})`);
-          } else {
-            styles[prop] = value;
-          }
-        });
-
-        if (transforms.length > 0) {
-          element.style.transform = transforms.join(', ');
-        }
-
-        Object.entries(styles).forEach(([prop, value]) => {
-          (element.style as any)[prop] = value;
-        });
-      }
-    });
-  }, [scrollProgress, story.animations]);
-
-  // Scroll triggers with delay support
-  useEffect(() => {
-    story.scrollTriggers.forEach((trigger) => {
-      const element = document.getElementById(trigger.elementId);
-      if (!element) return;
-
-      const entryRatio = trigger.threshold;
-      if (scrollProgress >= entryRatio && !seenElements.has(`trigger_${trigger.id}`)) {
-        const triggerAction = () => {
-          setSeenElements((prev) => new Set([...prev, `trigger_${trigger.id}`]));
-          onTriggerActivate?.(trigger.id);
-
-          // Track trigger activation
-          analytics.trackEvent('scroll_story_trigger_activate', {
-            storyId: story.id,
-            triggerId: trigger.id,
-            threshold: trigger.threshold,
-            scrollProgress,
-          });
-        };
-
-        if (trigger.delay && trigger.delay > 0) {
-          setTimeout(triggerAction, trigger.delay);
-        } else {
-          triggerAction();
-        }
-      }
-    });
-  }, [scrollProgress, story.scrollTriggers, onTriggerActivate, seenElements]);
-
-  // Preload media for smooth experience
-  useEffect(() => {
-    if (!preloadMedia) return;
-
-    let loadedCount = 0;
-    const totalMedia = story.pages.reduce((sum, page) => sum + page.media.length, 0);
-
-    story.pages.forEach((page) => {
-      page.media.forEach((media) => {
-        if (media.type === 'image' && !isMediaLoaded.has(media.url) {
-          const img = new Image();
-          img.src = media.url;
-          img.onload = () => {
-            setIsMediaLoaded((prev) => new Set([...prev, media.url]));
-            loadedCount++;
-
-            // Track preload progress
-            if (loadedCount === totalMedia) {
-              analytics.trackEvent('scroll_story_media_preload_complete', {
-                storyId: story.id,
-                totalMedia,
-                loadTime: Date.now(),
-              });
-            }
-          };
-        } else if (media.type === 'video' && !isMediaLoaded.has(media.url) {
-          // Preload video metadata
-          const video = document.createElement('video');
-          video.preload = 'metadata';
-          video.src = media.url;
-          video.onloadedmetadata = () => {
-            setIsMediaLoaded((prev) => new Set([...prev, media.url]));
-            loadedCount++;
-
-            // Track preload progress
-            if (loadedCount === totalMedia) {
-              analytics.trackEvent('scroll_story_media_preload_complete', {
-                storyId: story.id,
-                totalMedia,
-                loadTime: Date.now(),
-              });
-            }
-          };
-        }
-      });
-    });
-  }, [story.pages, preloadMedia, isMediaLoaded, analytics, story.id]);
-
-  // Auto-play/pause videos based on viewport
-  useEffect(() => {
-    if (!autoPlayVideos) return;
-
-    videoRefs.current.forEach((video) => {
-      const rect = video.getBoundingClientRect();
-      const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight;
-
-      if (isInViewport && video.paused) {
-        video.play().catch(() => {});
-      } else if (!isInViewport && !video.paused) {
-        video.pause();
-      }
-    });
-  }, [scrollProgress, autoPlayVideos]);
-
-  // Keyboard navigation
-  useEffect(() => {
-    if (!enableKeyboardNav) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowDown' && currentPageIndex < story.pages.length - 1) {
-        e.preventDefault();
-        const nextPage = document.getElementById(`page-${story.pages[currentPageIndex + 1].id}`);
-        nextPage?.scrollIntoView({ behavior: 'smooth' });
-      } else if (e.key === 'ArrowUp' && currentPageIndex > 0) {
-        e.preventDefault();
-        const prevPage = document.getElementById(`page-${story.pages[currentPageIndex - 1].id}`);
-        prevPage?.scrollIntoView({ behavior: 'smooth' });
-      } else if (e.key === ', ') {
-        e.preventDefault();
-        setIsPaused((prev) => {
-          const newPaused = !prev;
-
-          // Track pause/resume
-          analytics.trackEvent('scroll_story_pause_toggle', {
-            storyId: story.id,
-            isPaused: newPaused,
-            currentPage: currentPageIndex,
-            scrollProgress,
-          });
-
-          features.trackFeatureUsage('scroll-story', newPaused ? 'paused' : 'resumed', {
-            currentPage: currentPageIndex,
-          });
-
-          return newPaused;
-        });
+      if (event.key === ' ' || event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsPaused((previous) => !previous);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enableKeyboardNav, currentPageIndex, story.pages]);
+  }, [currentPageIndex, enableKeyboardNav, pageCount, scrollToPage]);
 
-  // Render SVG graphics to PNG for better performance
-  const renderSVGGraphics = useCallback(
-    async (
-      svgContent: string,
-      svgId: string,
-      options?: {
-        width?: number;
-        height?: number;
-      },
-    ) => {
-      if (svgRendered.has(svgId) {
-        return svgRendered.get(svgId);
-      }
-
-      try {
-        const endTiming = performance.startTiming('scroll_story_svg_render');
-
-        const result = await svgRenderer.renderSVGToPNG(svgContent, {
-          width: options?.width || 800,
-          height: options?.height || 600,
-          format: 'png',
-          cache: true,
-        });
-
-        setSvgRendered((prev) => new Map(prev).set(svgId, result.dataUrl));
-
-        endTiming();
-
-        analytics.trackEvent('scroll_story_svg_rendered', {
-          storyId: story.id,
-          svgId,
-          renderTime: result.renderTime,
-          width: result.width,
-          height: result.height,
-        });
-
-        return result.dataUrl;
-      } catch (error) {
-        console.error('Error rendering SVG:', error);
-        return null;
-      }
-    },
-    [svgRendered, performance, analytics, story.id],
-  );
-
-  // Batch render all SVG graphics in the story
   useEffect(() => {
-    const renderAllSVGs = async () => {
-      if (svgRenderingInProgress) return;
+    if (!preloadMedia || storyMedia.length === 0) {
+      return;
+    }
 
-      // Find all SVG elements in story pages
-      const svgElements: Array<{ id: string; svg: string; options?: any }> = [];
+    let cancelled = false;
 
-      story.pages.forEach((page, pageIndex) => {
-        page.media.forEach((media, mediaIndex) => {
-          if (media.type === 'image' && media.url.endsWith('.svg') {
-            svgElements.push({
-              id: `${page.id}-${mediaIndex}`,
-              svg: media.url, // In real implementation, fetch SVG content
-              options: { width: 1200, height: 800 },
-            });
-          }
-        });
-      });
-
-      if (svgElements.length === 0) return;
-
-      setSvgRenderingInProgress(true);
-
-      try {
-        console.log(`🎨 Batch rendering ${svgElements.length} SVG graphics...`);
-
-        // Process SVGs in parallel batches for optimal performance
-        for (const element of svgElements) {
-          await renderSVGGraphics(element.svg, element.id, element.options);
-        }
-
-        console.log(`✅ All SVGs rendered successfully`);
-
-        analytics.trackEvent('scroll_story_batch_svg_complete', {
-          storyId: story.id,
-          svgCount: svgElements.length,
-        });
-      } catch (error) {
-        console.error('Error in batch SVG rendering:', error);
-      } finally {
-        setSvgRenderingInProgress(false);
+    const markLoaded = (id: string) => {
+      if (cancelled) {
+        return;
       }
+      setLoadedMediaIds((previous) => {
+        const updated = new Set(previous);
+        updated.add(id);
+        return updated;
+      });
     };
 
-    renderAllSVGs();
-  }, [story.pages, svgRenderingInProgress, renderSVGGraphics, analytics, story.id]);
+    storyMedia.forEach((media) => {
+      if (media.type === 'image') {
+        const image = new Image();
+        image.onload = () => markLoaded(media.id);
+        image.onerror = () => markLoaded(media.id);
+        image.src = media.url;
+        return;
+      }
 
-  // Parallax effect calculation
-  const getParallaxTransform = useCallback(
-    (index: number) => {
-      if (!enableParallax) return 'translateY(0)';
+      const element = document.createElement(media.type === 'video' ? 'video' : 'audio');
+      element.preload = 'metadata';
+      element.onloadedmetadata = () => markLoaded(media.id);
+      element.onerror = () => markLoaded(media.id);
+      element.src = media.url;
+    });
 
-      const pageProgress = (scrollProgress - index * 0.25) * 4;
-      const parallaxSpeed = 0.5;
-      return `translateY(${(1 - pageProgress) * 100 * parallaxSpeed}px)`;
+    return () => {
+      cancelled = true;
+    };
+  }, [preloadMedia, storyMedia]);
+
+  useEffect(() => {
+    if (!autoPlayVideos || isPaused) {
+      return;
+    }
+
+    videoRefs.current.forEach((video, videoId) => {
+      if (isElementInPlaybackViewport(video)) {
+        if (video.paused) {
+          void video.play().catch(() => {
+            // Autoplay may be blocked by browser policy.
+          });
+        }
+      } else if (!video.paused) {
+        video.pause();
+      }
+
+      if (!videoRefs.current.has(videoId)) {
+        video.pause();
+      }
+    });
+  }, [autoPlayVideos, isPaused, scrollProgress]);
+
+  useEffect(() => {
+    const triggerThresholds = story.scrollTriggers;
+    if (triggerThresholds.length === 0) {
+      return;
+    }
+
+    triggerThresholds.forEach((trigger) => {
+      if (scrollProgress < trigger.threshold) {
+        return;
+      }
+
+      if (activatedTriggerIds.current.has(trigger.id)) {
+        return;
+      }
+
+      activatedTriggerIds.current.add(trigger.id);
+      if (trigger.delay && trigger.delay > 0) {
+        window.setTimeout(() => onTriggerActivate?.(trigger.id), trigger.delay);
+      } else {
+        onTriggerActivate?.(trigger.id);
+      }
+    });
+  }, [onTriggerActivate, scrollProgress, story.scrollTriggers]);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    observerRef.current?.disconnect();
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const id = entry.target.id;
+          if (!id) {
+            return;
+          }
+
+          if (entry.isIntersecting) {
+            if (!activeAnimationIds.current.has(id)) {
+              activeAnimationIds.current.add(id);
+              onAnimationEnter?.(id);
+            }
+          } else if (activeAnimationIds.current.has(id)) {
+            activeAnimationIds.current.delete(id);
+            onAnimationExit?.(id);
+          }
+        });
+      },
+      {
+        threshold: [0.25, 0.5, 0.75],
+        rootMargin: '0px',
+      }
+    );
+
+    const animationElementIds = new Set<string>();
+    story.animations.forEach((animation) => animationElementIds.add(animation.elementId));
+    story.pages.forEach((page) => {
+      animationElementIds.add(`page-${page.id}`);
+      animationElementIds.add(`page-title-${page.id}`);
+      animationElementIds.add(`page-content-${page.id}`);
+    });
+
+    animationElementIds.forEach((id) => {
+      const element = containerRef.current?.querySelector<HTMLElement>(`#${id}`) ?? document.getElementById(id);
+      if (element) {
+        observerRef.current?.observe(element);
+      }
+    });
+
+    return () => {
+      observerRef.current?.disconnect();
+    };
+  }, [onAnimationEnter, onAnimationExit, story.animations, story.pages]);
+
+  useEffect(() => {
+    story.animations.forEach((animation) => {
+      const element = document.getElementById(animation.elementId);
+      if (!element) {
+        return;
+      }
+
+      const triggerPoint = animation.triggerPoint ?? 0;
+      const durationPortion = 0.2;
+      const localProgress = clamp((scrollProgress - triggerPoint) / durationPortion, 0, 1);
+
+      const transition = `${animation.duration}ms ${animation.easing || 'cubic-bezier(0.4, 0, 0.2, 1)'}`;
+      element.style.transition = `transform ${transition}, opacity ${transition}`;
+      element.style.willChange = 'transform, opacity';
+
+      const toOpacity = typeof animation.to.opacity === 'number' ? animation.to.opacity : typeof animation.to.opacity === 'string' ? Number.parseFloat(animation.to.opacity) : 1;
+      if (Number.isFinite(toOpacity)) {
+        element.style.opacity = String(clamp(localProgress * toOpacity, 0, 1));
+      }
+
+      const translateX = typeof animation.to.translateX === 'string' ? animation.to.translateX : '0px';
+      const translateY = typeof animation.to.translateY === 'string' ? animation.to.translateY : '0px';
+      const scale = typeof animation.to.scale === 'string' ? animation.to.scale : '1';
+
+      if (localProgress > 0) {
+        element.style.transform = `translateX(${translateX}) translateY(${translateY}) scale(${scale})`;
+      }
+    });
+  }, [scrollProgress, story.animations]);
+
+  const getPageProgress = useCallback(
+    (pageIndex: number): number => {
+      if (pageCount <= 1) {
+        return 1;
+      }
+      const start = pageIndex / pageCount;
+      const end = (pageIndex + 1) / pageCount;
+      return clamp((scrollProgress - start) / Math.max(0.0001, end - start), 0, 1);
     },
-    [scrollProgress, enableParallax],
+    [pageCount, scrollProgress]
   );
 
   return (
     <Box
       ref={containerRef}
-      sx={{
-        position: 'relative',
-        height: '100vh',
-        minHeight: '80vh',
-        padding: '4rem 2rem',
-        backgroundColor: story.settings?.backgroundColor || '#ffffff',
-        color: story.settings?.textColor || '#222222',
-        overflow: 'hidden'}}
       id={`scroll-story-${story.id}`}
       role="article"
       aria-label={story.name}
-      aria-live="polite"
+      sx={{
+        position: 'relative',
+        minHeight: `${Math.max(1, pageCount) * 100}vh`,
+        color: story.settings?.theme === 'dark' ? '#f5f5f5' : '#1f1f1f',
+        backgroundColor: story.settings?.theme === 'dark' ? '#0f1115' : '#ffffff',
+      }}
     >
-      {/* Story Pages */}
-      {story.pages.map((page, index) => {
-        const pageProgress = Math.min(1, Math.max(0, (scrollProgress - index * 0.25) * 4));
-        const isActive = scrollProgress >= index * 0.25 && scrollProgress < (index + 1) * 0.25;
+      {story.pages.map((page, pageIndex) => {
+        const pageProgress = getPageProgress(pageIndex);
+        const active = pageIndex === currentPageIndex;
+        const translateOffset = enableParallax ? (0.5 - pageProgress) * 60 : 0;
 
         return (
           <Box
             key={page.id}
+            id={`page-${page.id}`}
+            role="region"
+            aria-label={`Page ${pageIndex + 1}: ${page.title}`}
             sx={{
-              position: 'absolute',
-              top: index * 100 + 'vh',
-              left: 0,
-              right: 0,
-              height: '100vh',
+              minHeight: '100vh',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: isActive ? pageProgress : 0,
-              transform: getParallaxTransform(index),
-              filter: `blur(${(1 - pageProgress) * 5}px)`,
-              transition: `opacity ${story.settings?.transitionDuration || 800}ms ${story.settings?.easing || 'cubic-bezier(0.4 0.0 0.2 1)'}, transform ${story.settings?.transitionDuration || 800}ms ${story.settings?.easing || 'cubic-bezier(0.4 0.0 0.2 1)'}`,
-              willChange: 'transform, opacity'}}
-            id={`page-${page.id}`}
-            role="region"
-            aria-label={`Page ${index + 1}: ${page.title}`}
-            aria-hidden={!isActive}
+              p: { xs: 2, md: 4 },
+              position: 'relative',
+              opacity: active ? 1 : 0.72,
+              transform: `translateY(${translateOffset}px)`,
+              transition: 'opacity 280ms ease, transform 320ms ease',
+            }}
           >
-            <Box sx={{ textAlign: 'center', maxWidth: '800px', px: 2 }}>
+            <Box sx={{ width: '100%', maxWidth: 980, textAlign: 'center' }}>
               <Box
+                id={`page-title-${page.id}`}
                 component="h1"
-                sx={{ fontSize: '3rem', marginBottom: '1rem', fontWeight: 'bold' }}>
+                sx={{
+                  fontSize: { xs: '2rem', md: '3rem' },
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                  mb: 1.5,
+                }}
+              >
                 {page.title}
               </Box>
-              <Box component="div" sx={{ lineHeight: 1.6 fontSize: '1.125rem', mb: 3 }}>
+
+              <Box
+                id={`page-content-${page.id}`}
+                component="p"
+                sx={{
+                  fontSize: { xs: '1rem', md: '1.2rem' },
+                  lineHeight: 1.7,
+                  mb: 3,
+                  maxWidth: 820,
+                  mx: 'auto',
+                  opacity: 0.95,
+                }}
+              >
                 {page.content}
               </Box>
-              {page.media.map((media, idx) => {
-                if (media.type === 'video') {
+
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                {page.media.map((media, mediaIndex) => {
+                  const mediaId = `${page.id}-${mediaIndex}`;
+                  const isLoaded = loadedMediaIds.has(mediaId);
+
+                  if (media.type === 'video') {
+                    return (
+                      <Box
+                        key={mediaId}
+                        id={`anim-${mediaId}`}
+                        component="video"
+                        ref={(element: HTMLVideoElement | null) => {
+                          if (!element) {
+                            videoRefs.current.delete(mediaId);
+                            return;
+                          }
+                          videoRefs.current.set(mediaId, element);
+                        }}
+                        src={media.url}
+                        poster={media.thumbnail}
+                        controls
+                        playsInline
+                        muted
+                        preload={preloadMedia ? 'metadata' : 'none'}
+                        sx={{
+                          width: '100%',
+                          maxHeight: '70vh',
+                          borderRadius: 2,
+                          boxShadow: 3,
+                          opacity: isLoaded ? 1 : 0.6,
+                          transition: 'opacity 220ms ease',
+                        }}
+                        onLoadedMetadata={() => {
+                          setLoadedMediaIds((previous) => {
+                            const updated = new Set(previous);
+                            updated.add(mediaId);
+                            return updated;
+                          });
+                        }}
+                      />
+                    );
+                  }
+
+                  if (media.type === 'audio') {
+                    return (
+                      <Box
+                        key={mediaId}
+                        id={`anim-${mediaId}`}
+                        component="audio"
+                        src={media.url}
+                        controls
+                        preload={preloadMedia ? 'metadata' : 'none'}
+                        sx={{ width: '100%' }}
+                        onLoadedMetadata={() => {
+                          setLoadedMediaIds((previous) => {
+                            const updated = new Set(previous);
+                            updated.add(mediaId);
+                            return updated;
+                          });
+                        }}
+                      />
+                    );
+                  }
+
                   return (
                     <Box
-                      key={idx}
-                      component="video"
-                      ref={(el: HTMLVideoElement | null) => {
-                        if (el) videoRefs.current.set(`${page.id}-${idx}`, el);
-                      }}
-                      src={media.url}
-                      poster={media.thumbnail}
-                      controls
-                      playsInline
-                      muted
-                      loop
-                      preload={preloadMedia ? 'metadata' : 'none'}
-                      sx={{
-                        maxWidth: '100%',
-                        maxHeight: '80vh',
-                        borderRadius: 2,
-                        boxShadow: 3}}
-                      aria-label={`Video ${idx + 1}`}
-                    />
-                  );
-                } else if (media.type === 'audio') {
-                  return (
-                    <Box
-                      key={idx}
-                      component="audio"
-                      src={media.url}
-                      controls
-                      preload={preloadMedia ? 'metadata' : 'none'}
-                      sx={{ width: '100%', maxWidth: 500 }}
-                      aria-label={`Audio ${idx + 1}`}
-                    />
-                  );
-                } else {
-                  return (
-                    <Box
-                      key={idx}
+                      key={mediaId}
+                      id={`anim-${mediaId}`}
                       component="img"
                       src={media.url}
-                      alt={`${page.title} - Image ${idx + 1}`}
+                      alt={`${page.title} media ${mediaIndex + 1}`}
                       loading="lazy"
                       sx={{
-                        maxWidth: '100%',
-                        maxHeight: '50vh',
+                        width: '100%',
+                        maxHeight: '62vh',
+                        objectFit: 'cover',
                         borderRadius: 2,
                         boxShadow: 3,
-                        opacity: isMediaLoaded.has(media.url) ? 1 : 0.5
-                       , transition: 'opacity 300ms ease-in-out'}} />
+                        opacity: isLoaded ? 1 : 0.55,
+                        transition: 'opacity 220ms ease',
+                      }}
+                      onLoad={() => {
+                        setLoadedMediaIds((previous) => {
+                          const updated = new Set(previous);
+                          updated.add(mediaId);
+                          return updated;
+                        });
+                      }}
+                    />
                   );
-                }
-              })}
+                })}
+              </Box>
             </Box>
           </Box>
         );
       })}
 
-      {/* Child content */}
       {children}
 
-      {/* Story progress indicator */}
-      {story.settings?.showProgress && (
+      {story.settings?.showProgress ? (
         <Box
-          sx={{
-            position: 'fixed',
-            bottom: '2rem',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: '90%',
-            maxWidth: '300px',
-            height: '6px',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderRadius: '3px',
-            overflow: 'hidden',
-            backdropFilter: 'blur(10px)',
-            zIndex: 100}}
           role="progressbar"
-          aria-valuenow={Math.round(scrollProgress * 100)}
           aria-valuemin={0}
           aria-valuemax={100}
+          aria-valuenow={Math.round(scrollProgress * 100)}
           aria-label="Story progress"
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'min(420px, 88vw)',
+            height: 8,
+            borderRadius: 99,
+            bgcolor: 'rgba(0,0,0,0.18)',
+            overflow: 'hidden',
+            zIndex: 20,
+            backdropFilter: 'blur(8px)',
+          }}
         >
           <Box
             sx={{
-              height: '100%',
-              backgroundColor: theming.colors.primary,
-              transition: 'width 150ms cubic-bezier(0.4 0.0 0.2 1)',
               width: `${scrollProgress * 100}%`,
-              borderRadius: '3px',
-              boxShadow: `0 0 10px ${theming.colors.primary}`,
-            }
+              height: '100%',
+              bgcolor: theming.colors.primary,
+              transition: 'width 120ms linear',
+            }}
           />
         </Box>
-      )}
+      ) : null}
 
-      {/* Navigation controls */}
-      {enableKeyboardNav && (
+      {enableKeyboardNav && pageCount > 0 ? (
         <Box
           sx={{
             position: 'fixed',
-            bottom: '2rem',
-            right: '2rem',
+            right: 24,
+            bottom: 24,
             display: 'flex',
             flexDirection: 'column',
             gap: 1,
-            zIndex: 100}}>
-          <Tooltip title="Previous page (↑)" placement="left">
-            <IconButton
-              onClick={() => {
-                if (currentPageIndex > 0) {
-                  const prevPage = document.getElementById(
-                    `page-${story.pages[currentPageIndex - 1].id}`,
-                  );
-                  prevPage?.scrollIntoView({ behavior: 'smooth' });
-                }}
-              }}
-              disabled={currentPageIndex === 0}
-              sx={{
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                color: 'white', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.8)' }, '&:disabled': { opacity: 0.3 }}}
-              aria-label="Previous page"
-            >
-              <KeyboardArrowUp />
-            </IconButton>
+            zIndex: 21,
+          }}
+        >
+          <Tooltip title="Previous page (Arrow Up)">
+            <span>
+              <IconButton
+                onClick={() => scrollToPage(currentPageIndex - 1)}
+                disabled={currentPageIndex <= 0}
+                aria-label="Previous page"
+                sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#fff' }}
+              >
+                <KeyboardArrowUp />
+              </IconButton>
+            </span>
           </Tooltip>
 
-          <Tooltip title={isPaused ? 'Resume' : 'Pause'} placement="left">
+          <Tooltip title={isPaused ? 'Resume (K or Space)' : 'Pause (K or Space)'}>
             <IconButton
-              onClick={() => setIsPaused((prev) => !prev)}
-              sx={{
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                color: 'white','&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.8)' }}}
+              onClick={() => setIsPaused((previous) => !previous)}
               aria-label={isPaused ? 'Resume story' : 'Pause story'}
+              sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#fff' }}
             >
               {isPaused ? <PlayArrow /> : <Pause />}
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Next page (↓)" placement="left">
-            <IconButton
-              onClick={() => {
-                if (currentPageIndex < story.pages.length - 1) {
-                  const nextPage = document.getElementById(
-                    `page-${story.pages[currentPageIndex + 1].id}`,
-                  );
-                  nextPage?.scrollIntoView({ behavior: 'smooth' });
-                }}
-              }}
-              disabled={currentPageIndex === story.pages.length - 1}
-              sx={{
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                color: 'white', '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.8)' }, '&:disabled': { opacity: 0.3 }}}
-              aria-label="Next page"
-            >
-              <KeyboardArrowDown />
-            </IconButton>
+          <Tooltip title="Next page (Arrow Down)">
+            <span>
+              <IconButton
+                onClick={() => scrollToPage(currentPageIndex + 1)}
+                disabled={currentPageIndex >= pageCount - 1}
+                aria-label="Next page"
+                sx={{ bgcolor: 'rgba(0,0,0,0.65)', color: '#fff' }}
+              >
+                <KeyboardArrowDown />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
-      )}
-
-      {/* Article container */}
-      <Box
-        sx={{
-          height: story.pages.length * window.innerHeight * 0.9
-          paddingTop: '50vh',
-          paddingBottom:'50vh'}} />
+      ) : null}
     </Box>
   );
 }

@@ -98,8 +98,8 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
     queryKey: [...QUERY_KEYS.MEDIA, selectedType, selectedFolderId, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (selectedType !== 'all') params.append('type,', selectedType);
-      if (selectedFolderId) params.append('folderId,', selectedFolderId);
+      if (selectedType !== 'all') params.append('type', selectedType);
+      if (selectedFolderId) params.append('folderId', selectedFolderId);
       params.append('sortBy', sortBy);
 
       const res = await fetch(`/api/media?${params.toString()}`);
@@ -120,7 +120,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
 
   // Fetch available tags
   const { data: availableTags = [] } = useQuery({
-    queryKey: [...QUERY_KEYS.MEDIA'tags'],
+    queryKey: [...QUERY_KEYS.MEDIA, 'tags'],
     queryFn: async () => {
       const res = await fetch('/api/media/tags');
       if (!res.ok) throw new Error('Failed to fetch tags');
@@ -153,7 +153,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
     mutationFn: async ({ fileId, isFavorite }: { fileId: string; isFavorite: boolean }) => {
       const res = await fetch(`/api/media/${fileId}/favorite`, {
         method: 'PATCH',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isFavorite })
       });
       if (!res.ok) throw new Error('Failed to update favorite status');
@@ -169,7 +169,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
     mutationFn: async ({ fileId, tags }: { fileId: string; tags: string[] }) => {
       const res = await fetch(`/api/media/${fileId}/tags`, {
         method: 'PATCH',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags })
       });
       if (!res.ok) throw new Error('Failed to update tags');
@@ -177,7 +177,7 @@ export default function UnifiedMediaLibrary({ onSelectFile }: { onSelectFile?: (
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.MEDIA });
-      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.MEDIA'tags'] });
+      queryClient.invalidateQueries({ queryKey: [...QUERY_KEYS.MEDIA, 'tags'] });
     }
   });
 

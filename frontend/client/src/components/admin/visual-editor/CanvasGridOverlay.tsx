@@ -170,7 +170,7 @@ export const GridControls: React.FC<GridControlsProps> = ({
 }) => {
   const tokens = getVisualEditorTokens();
   return (
-    <Box sx={{ display: 'flex', gap: 0.5 alignItems: 'center' }}>
+    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
       <Tooltip title={showGrid ? tokens.gridControls.hideGrid : tokens.gridControls.showGrid}>
         <IconButton
           size="small"
@@ -180,7 +180,7 @@ export const GridControls: React.FC<GridControlsProps> = ({
             border: 1,
             borderColor: showGrid ? 'primary.main' : 'divider',
             borderRadius: 1}}>
-          {showGrid ? <Grid fontSize="small" /> : <GridOff fontSize="small" />}
+          {showGrid ? <GridOn fontSize="small" /> : <GridOff fontSize="small" />}
         </IconButton>
       </Tooltip>
 
@@ -201,7 +201,7 @@ export const GridControls: React.FC<GridControlsProps> = ({
       <ToggleButtonGroup
         value={gridSize.toString()}
         exclusive
-        onChange={(_, value) => value && onChangeGridSize(Number(value)}
+        onChange={(_, value) => value && onChangeGridSize(Number(value))}
         size="small"
         disabled={!showGrid}
       >

@@ -91,7 +91,7 @@ export default function GoogleIntegrationTestDashboard() {
   const updateGoogleIntegrationTestDashboard = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/dashboard/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: () => {
@@ -262,7 +262,7 @@ export default function GoogleIntegrationTestDashboard() {
       acc[result.service].push(result);
       return acc;
   },
-    {} as { [key: string]: TestResult[, ],},
+    {} as Record<string, TestResult[]>,
   );
 
   return (
@@ -273,8 +273,10 @@ export default function GoogleIntegrationTestDashboard() {
         sx={{
           p:  3,
           mb:  3,
-          background: 'linear-gradient(135deg, #4285F4 0%, #34A853 50%, #FBBC05 100%)' }}
-       sx={theming.getThemedCardSx()}>
+          background: 'linear-gradient(135deg, #4285F4 0%, #34A853 50%, #FBBC05 100%)',
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Box
           sx={{
             display: 'flex',

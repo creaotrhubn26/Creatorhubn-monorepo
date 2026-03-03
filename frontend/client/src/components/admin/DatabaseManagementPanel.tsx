@@ -122,14 +122,15 @@ export default function DatabaseManagementPanel() {
   const [refreshInterval, setRefreshInterval] = useState(5000);
   const [dryRunMode, setDryRunMode] = useState(() => {
     // Load from localStorage, default to DRY_RUN for safety
-    const saved = localStorage.getItem('dbPanel_dryRunMode,');
+    const saved = localStorage.getItem('dbPanel_dryRunMode');
     return saved !== null ? JSON.parse(saved) : true;
 });
   const [showSafetyWarning, setShowSafetyWarning] = useState(false);
-  const [pendingScript, setPendingScript] = useState<'create-tables' | 'test-database' | 'optimize-database' | 'feature-management-tables' | null>(null);
-  const [hasRunDryRun, setHasRunDryRun] = useState<Record<string 
- boolean>>(() => {
-    const saved = localStorage.getItem('dbPanel_hasRunDryRun,');
+  const [pendingScript, setPendingScript] = useState<
+    'create-tables' | 'test-database' | 'optimize-database' | 'feature-management-tables' | 'audio-enhancement-tables' | null
+  >(null);
+  const [hasRunDryRun, setHasRunDryRun] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dbPanel_hasRunDryRun');
     return saved ? JSON.parse(saved) : {};
 });
   const [showDryRunReminder, setShowDryRunReminder] = useState(false);
@@ -362,7 +363,7 @@ export default function DatabaseManagementPanel() {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/database/execute', {
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         method: 'POST',
         body: JSON.stringify({ sql })
@@ -413,7 +414,7 @@ export default function DatabaseManagementPanel() {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/database/create-table', {
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         method: 'POST',
         body: JSON.stringify(tableData)
@@ -463,7 +464,7 @@ export default function DatabaseManagementPanel() {
   } else {
       // DRY_RUN mode - execute immediately and track it
       scriptRunnerMutation.mutate(scriptType);
-      setHasRunDryRun(prev => ({ ...prev, [scriptType]: true }));
+      setHasRunDryRun((prev: Record<string, boolean>) => ({ ...prev, [scriptType]: true }));
   }
 };
 
@@ -512,13 +513,17 @@ export default function DatabaseManagementPanel() {
       const steps = {
         'create-tables': [
           'Checking database connection...','Getting current table count...','Creating missing tables...','Verifying table creation...','Updating statistics...','Finalizing...'
-        ]'test-database': [
+        ],
+        'test-database': [
           'Testing server health...','Testing database stats...','Testing SQL execution...','Testing table operations...','Testing performance...','Generating report...'
-        ]'optimize-database': [
+        ],
+        'optimize-database': [
           'Analyzing database...','Running VACUUM ANALYZE...','Updating statistics...','Checking indexes...','Optimizing queries...','Finalizing optimization...'
-        ]'feature-management-tables': [
+        ],
+        'feature-management-tables': [
           'Checking database connection...','Analyzing required tables...','Checking existing tables...','Creating feature management tables...','Verifying table creation...','Finalizing setup...'
-        ]'audio-enhancement-tables': [
+        ],
+        'audio-enhancement-tables': [
           'Checking database connection...','Checking if audio_enhancement_jobs exists...','Creating audio_enhancement_jobs table...','Creating indexes...','Verifying table creation...','Finalizing setup...'
         ]
     };
@@ -562,7 +567,7 @@ export default function DatabaseManagementPanel() {
                 const response = await apiRequest('/api/admin/database/scripts/feature-management-tables', {
                   method: 'POST',
                   body: JSON.stringify({ dryRun: isDryRun }),
-                  headers: { , 'Content-Type': 'application/json' }
+                  headers: { 'Content-Type': 'application/json' }
                 });
                 
                 if (response.success) {
@@ -592,7 +597,7 @@ export default function DatabaseManagementPanel() {
                 const response = await apiRequest('/api/admin/database/scripts/audio-enhancement-tables', {
                   method: 'POST',
                   body: JSON.stringify({ dryRun: isDryRun }),
-                  headers: { , 'Content-Type': 'application/json' }
+                  headers: { 'Content-Type': 'application/json' }
                 });
                 
                 if (response.success) {
@@ -936,7 +941,7 @@ export default function DatabaseManagementPanel() {
       if (timeSinceHeartbeat > 30000) {
         setScriptProgress(prev => ({
           ...prev,
-          logs: [...prev.logs'⚠️  Script appears to be stuck - no heartbeat for 30s'],
+          logs: [...prev.logs, '⚠️  Script appears to be stuck - no heartbeat for 30s'],
           error: 'Script timeout - no heartbeat detected'
       }));
     }
@@ -1404,7 +1409,7 @@ export default function DatabaseManagementPanel() {
       </Card>
 
       {/* Database Stats */}
-      <Grid container spacing={3}, sx={{ mb: 3 }}>
+      <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
@@ -2009,7 +2014,7 @@ export default function DatabaseManagementPanel() {
                           borderRadius: 0.5,
                           bgcolor: log.includes('🔍') ? 'rgba(76, 175, 80, 0.1)' : 
                                    log.includes('❌') ? 'rgba(211, 47, 47, 0.1)' :
-                                   log.includes('⚠️') ? 'rgba(255, 1520.1)' : 
+                                   log.includes('⚠️') ? 'rgba(255, 152, 0, 0.1)' : 
                                    log.includes('✅') ? 'rgba(46, 125, 50, 0.1)' : 
                                    'transparent',
                           color: log.includes('❌') ? 'error.main' : 
@@ -2017,7 +2022,7 @@ export default function DatabaseManagementPanel() {
                                  log.includes('✅') ? 'success.main' :
                                  log.includes('🔍') ? 'success.dark' :
                                  'text.primary',
-                          fontWeight: og.includes('🔍') || log.includes('DRY RUN') ? 'bold' : 'normal',
+                          fontWeight: log.includes('🔍') || log.includes('DRY RUN') ? 'bold' : 'normal',
                           animation: index === scriptProgress.logs.length - 1 ? 'slideIn 0.3s ease-out' : 'none','@keyframes slideIn': {
                             from: { transform: 'translateX(-10px)', opacity: 0 },
                             to: { transform: 'translateX(0)', opacity: 1 }
@@ -2148,7 +2153,7 @@ export default function DatabaseManagementPanel() {
                             ...prev,
                             running: false,
                             currentStep: 'Script stopped by user',
-                            logs: [...prev.logs'⏹️  Script stopped by user']
+                            logs: [...prev.logs, '⏹️  Script stopped by user']
                         }));
                       }}
                       >
@@ -2181,7 +2186,7 @@ export default function DatabaseManagementPanel() {
             </Alert>
 
             {/* Coverage Overview */}
-            <Grid container spacing={3}, sx={{ mb: 3 }}>
+            <Grid container spacing={3} sx={{ mb: 3 }}>
               <Grid item xs={12} md={3}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent sx={theming.getThemedCardSx()}>
@@ -2212,7 +2217,7 @@ export default function DatabaseManagementPanel() {
                           {schemaValidation.tablesWithMethods}
                         </Typography>
                       </Box>
-                      <CheckCircle color={schemaValidation.coverage >= 80 ? 'success' : 'warning'}, sx={{ fontSize: 40 }} />
+                      <CheckCircle color={schemaValidation.coverage >= 80 ? 'success' : 'warning'} sx={{ fontSize: 40 }} />
                     </Box>
                   </CardContent>
                 </Card>
@@ -2230,7 +2235,7 @@ export default function DatabaseManagementPanel() {
                           {schemaValidation.missingMethods.length}
                         </Typography>
                       </Box>
-                      <ErrorIcon color={schemaValidation.missingMethods.length === 0 ? 'success' : 'error'}, sx={{ fontSize: 40 }} />
+                      <ErrorIcon color={schemaValidation.missingMethods.length === 0 ? 'success' : 'error'} sx={{ fontSize: 40 }} />
                     </Box>
                   </CardContent>
                 </Card>
@@ -2251,7 +2256,7 @@ export default function DatabaseManagementPanel() {
                           {schemaValidation.coverage}%
                         </Typography>
                       </Box>
-                      <Speed color={schemaValidation.coverage >= 80 ? 'success' : 'warning'}, sx={{ fontSize: 40 }} />
+                      <Speed color={schemaValidation.coverage >= 80 ? 'success' : 'warning'} sx={{ fontSize: 40 }} />
                     </Box>
                   </CardContent>
                 </Card>
@@ -2333,7 +2338,7 @@ export default function DatabaseManagementPanel() {
                             fontWeight: 'bold'
                         }}>
                             {step.status === 'completed' ? <CheckCircle /> : 
-                             step.status === 'in-progress' ? <CircularProgress size={20}, sx={{ color: 'white' }} /> :
+                             step.status === 'in-progress' ? <CircularProgress size={20} sx={{ color: 'white' }} /> :
                              step.status === 'warning' ? <Warning /> :
                              step.id}
                           </Box>
@@ -2471,7 +2476,7 @@ export default function DatabaseManagementPanel() {
                     📊 Missing Methods Analysis
                   </Typography>
 
-                  <Alert severity={schemaValidation.missingMethods.some(m => m.priority === 'high') ? 'error' : 'warning'}, sx={{ mb: 3 }}>
+                  <Alert severity={schemaValidation.missingMethods.some(m => m.priority === 'high') ? 'error' : 'warning'} sx={{ mb: 3 }}>
                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                       Found {schemaValidation.missingMethods.length} table(s) without proper storage methods
                     </Typography>
@@ -2481,7 +2486,7 @@ export default function DatabaseManagementPanel() {
                   </Alert>
 
                   {schemaValidation.missingMethods.map((item, index) => (
-                    <Accordion key={index}, sx={{ mb: 2 }}>
+                    <Accordion key={index} sx={{ mb: 2 }}>
                       <AccordionSummary expandIcon={<ExpandMore />}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
                           <TableChart color="primary" />
@@ -2573,7 +2578,7 @@ export default function DatabaseManagementPanel() {
                             {missingTables.critical.length}
                           </Typography>
                         </Box>
-                        <ErrorIcon color={missingTables.critical.length > 0 ? 'error' : 'success'}, sx={{ fontSize: 40 }} />
+                        <ErrorIcon color={missingTables.critical.length > 0 ? 'error' : 'success'} sx={{ fontSize: 40 }} />
                       </Box>
                     </CardContent>
                   </Card>
@@ -2591,7 +2596,7 @@ export default function DatabaseManagementPanel() {
                             {missingTables.missing.length}
                           </Typography>
                         </Box>
-                        <Warning color={missingTables.missing.length > 0 ? 'warning' : 'success'}, sx={{ fontSize: 40 }} />
+                        <Warning color={missingTables.missing.length > 0 ? 'warning' : 'success'} sx={{ fontSize: 40 }} />
                       </Box>
                     </CardContent>
                   </Card>
@@ -3316,8 +3321,8 @@ export default function DatabaseManagementPanel() {
                     (parsed.isDryRun ? 
                       'Dry-run preview was interrupted - No changes were made': 'Script was interrupted during EXECUTION - Some changes may have been applied. Please verify database state.') 
                     : parsed.error,
-                  logs: wasInterrupted ? 
-                    [...parsed.logs', ', '⚠️ SCRIPT INTERRUPTED - Process stopped due to page navigation', '📊 Partial results shown below:'] 
+                  logs: wasInterrupted ?
+                    [...parsed.logs, '⚠️ SCRIPT INTERRUPTED - Process stopped due to page navigation', '📊 Partial results shown below:']
                     : parsed.logs,
               });
                 setSelectedTab(2); // Switch to Script Runner tab
@@ -3399,7 +3404,7 @@ export default function DatabaseManagementPanel() {
               setShowDryRunReminder(false);
               if (pendingScript) {
                 scriptRunnerMutation.mutate(pendingScript);
-                setHasRunDryRun(prev => ({ ...prev, [pendingScript]: true }));
+                setHasRunDryRun((prev: Record<string, boolean>) => ({ ...prev, [pendingScript]: true }));
             }
               setPendingScript(null);
           }}

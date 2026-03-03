@@ -76,7 +76,7 @@ export default function FirmwareInfoDialog({
     try {
       // Call API to mark firmware as updated for this user/camera
       await fetch('/api/camera-firmware/mark-updated', {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type' : 'application/json' },
         body: JSON.stringify({

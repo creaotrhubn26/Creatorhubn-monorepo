@@ -5,7 +5,7 @@
 
 export interface HeatmapData {
   id: string;
-  type: 'click, ' | 'scroll' | 'move' | 'hover' | 'focus';
+  type: 'click' | 'scroll' | 'move' | 'hover' | 'focus';
   x: number;
   y: number;
   intensity: number;
@@ -188,7 +188,7 @@ export class AdvancedAnalytics {
         name: 'Landing Page Conversion',
         steps: [
           {
-            id: 'step-00',
+            id: 'step-landing',
             name: 'Landing Page View',
             description: 'User visits the landing page',
             eventType: 'page_view',
@@ -197,9 +197,9 @@ export class AdvancedAnalytics {
             conversionRate: 10,
             averageTime:  0,
             dropOffRate: 0
- },
+          },
           {
-            id: 'step-00',
+            id: 'step-cta',
             name: 'CTA Click',
             description: 'User clicks the main call-to-action',
             eventType: 'click',
@@ -209,9 +209,9 @@ export class AdvancedAnalytics {
             conversionRate:  30,
             averageTime:  45,
             dropOffRate: 70
- },
+          },
           {
-            id: 'step-00',
+            id: 'step-submit',
             name: 'Form Submission',
             description: 'User submits the contact form',
             eventType: 'form_submit',
@@ -238,20 +238,20 @@ export class AdvancedAnalytics {
         status: 'running',
         variants: [
           {
-            id: 'variant-00',
-            name: 'Control (Blue, ) ',
+            id: 'variant-control',
+            name: 'Control (Blue)',
             description: 'Original blue button',
             trafficPercentage:  50,
             changes:  [],
-            sessions: 50,
+            sessions: 500,
             conversions:  75,
             conversionRate:  15,
             averageSessionDuration: 10,
             bounceRate: 45
  },
           {
-            id: 'variant-00',
-            name: 'Test (Green, ), ',
+            id: 'variant-test',
+            name: 'Test (Green)',
             description: 'Green button variant',
             trafficPercentage:  50,
             changes: [
@@ -259,19 +259,19 @@ export class AdvancedAnalytics {
                 type: 'css',
                 selector: '.cta-button',
                 property: 'background-color',
-                value: '#',
+                value: '#16a34a',
                 description: 'Change button color to green'
  }
             ],
-            sessions: 50,
+            sessions: 500,
             conversions:  90,
             conversionRate:  18,
             averageSessionDuration: 15,
             bounceRate: 42
  }
         ],
-        trafficAllocation: 10,
-        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 100),
+        trafficAllocation: 100,
+        startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
         primaryMetric: 'conversion_rate',
         secondaryMetrics: ['bounce_rate','session_duration'],
         confidenceLevel:  95,
@@ -767,7 +767,7 @@ export class AdvancedAnalytics {
         title: 'High Bounce Rate',
         description: `Bounce rate is ${bounceRate.toFixed()}%, which is above the recommended threshold.`,
         impact: 'high',
-        confidence: 0.0,
+        confidence: 0.8,
         data: { bounceRate },
         recommendations: [
           'Improve page relevance','Add clear call-to-actions','Optimize page content'
@@ -842,7 +842,6 @@ export class AdvancedAnalytics {
 
 // Export singleton instance
 export const advancedAnalytics = new AdvancedAnalytics();
-
 
 
 

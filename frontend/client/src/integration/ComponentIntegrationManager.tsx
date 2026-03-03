@@ -204,7 +204,7 @@ export interface EnhancedComponentProps {
 export const withIntegration = <P extends object>(
   Component: React.ComponentType<P>
 ) => {
-  return React.forwardRef<any, P & EnhancedComponentProps>((props, ref) => {
+  return React.forwardRef<any, P & EnhancedComponentProps>((props) => {
     const integration = useIntegration();
     
     // Enhanced props that include integration capabilities
@@ -214,8 +214,9 @@ export const withIntegration = <P extends object>(
       componentId: props.componentId || Component.displayName || 'Unknown',
       integrationEnabled: props.integrationEnabled !== false
   };
+    const componentProps = enhancedProps as P;
 
-    return <Component {...enhancedProps} ref={ref} />;
+    return <Component {...componentProps} />;
 });
 };
 
@@ -284,7 +285,5 @@ export const ACTIONS = {
 };
 
 export default IntegrationProvider;
-
-
 
 

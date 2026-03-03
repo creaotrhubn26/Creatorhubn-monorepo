@@ -48,7 +48,7 @@ export interface DesignToken {
   id: string;
   name: string;
   value: any;
-  type: 'color, ' | 'typography' | 'spacing' | 'shadow' | 'border' | 'animation' | 'icon' | 'component' | 'layout' | 'pattern';
+  type: 'color' | 'typography' | 'spacing' | 'shadow' | 'border' | 'animation' | 'icon' | 'component' | 'layout' | 'pattern';
   category: string;
   subcategory?: string;
   description: string;
@@ -952,7 +952,6 @@ class DesignSystemManager {
 export const designSystemManager = new DesignSystemManager();
 
 export default designSystemManager;
-
 
 
 

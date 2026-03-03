@@ -85,14 +85,28 @@ export const AnimatedActorCard: React.FC<AnimatedActorCardProps> = ({ actor, onA
     const heightScale = 0.8 + (height * 0.4);
     
     return {
-      '--shoulder-width': `${shoulderWidth}px`'--hip-width': `${hipWidth}px`'--chest-size': `${chestSize}px`'--waist-size': `${waistSize}px`'--height-scale': heightScale,
+      '--shoulder-width': `${shoulderWidth}px`,
+      '--hip-width': `${hipWidth}px`,
+      '--chest-size': `${chestSize}px`,
+      '--waist-size': `${waistSize}px`,
+      '--height-scale': heightScale,
     } as React.CSSProperties;
   }, [actor.parameters]);
 
   // Get genre-specific color
   const genreColor = useMemo(() => {
     const colors: Record<string, string> = {
-      'cosmic-horror':'#4a1a6b','horror':'#8b0000','action':'#ff6b00','sci-fi':'#00a8ff','fantasy':'#9370db','western':'#cd853f','film-noir':'#2c2c2c','period-drama':'#8b7355','asian-cinema':'#c41e3a','superhero':'#1e90ff','profession' : '#2e8b57', // Sea green for professionals
+      'cosmic-horror': '#4a1a6b',
+      horror: '#8b0000',
+      action: '#ff6b00',
+      'sci-fi': '#00a8ff',
+      fantasy: '#9370db',
+      western: '#cd853f',
+      'film-noir': '#2c2c2c',
+      'period-drama': '#8b7355',
+      'asian-cinema': '#c41e3a',
+      superhero: '#1e90ff',
+      profession: '#2e8b57', // Sea green for professionals
     };
     return colors[actor.metadata?.genre || ', '] || '#555';
   }, [actor.metadata?.genre]);
@@ -309,4 +323,3 @@ export const AnimatedActorCard: React.FC<AnimatedActorCardProps> = ({ actor, onA
 };
 
 export default AnimatedActorCard;
-

@@ -1,60 +1,42 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Box,
-  Paper,
-  Typography,
   Button,
-  TextField,
-  Chip,
-  Stack,
-  IconButton,
-  Tooltip,
+  Card,
+  CardContent,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
-  Slider,
+  IconButton,
+  MenuItem,
+  Select,
+  Stack,
+  Switch,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import {
-  PlayArrow,
-  Code,
-  Image,
-  SmartToy,
-  Settings,
-  Add,
-  Delete,
-  Edit,
-  Visibility,
-  VisibilityOff,
-} from '@mui/icons-material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import { Add, Delete, Edit } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
-export interface InteractiveElement {
-  id: string;
-  type: 'button' | 'form' | 'code-sandbox' | 'diagram' | 'simulation' | 'video' | 'quiz' | 'text' | 'image';
-  position: { x: number; y: number; width: number; height: number };
-  content: any;
-  interactions: Interaction[];
-  responsive: ResponsiveConfig;
-  style: ElementStyle;
-  visible: boolean;
-  locked: boolean
-}
+export type InteractiveElementType =
+  | 'button'
+  | 'form'
+  | 'code-sandbox'
+  | 'diagram'
+  | 'simulation'
+  | 'video'
+  | 'quiz'
+  | 'text'
+  | 'image';
 
 export interface Interaction {
   id: string;
-  trigger: 'click' | 'hover' | 'scroll' | 'input' | 'timer' | 'load';
-  action: 'navigate' | 'show-content' | 'execute-code' | 'play-media' | 'submit-form' | 'toggle-visibility';
-  target: string;
-  animation?: AnimationConfig;
-  delay?: number
+  trigger: 'click' | 'hover' | 'focus';
+  action: 'navigate' | 'open-modal' | 'play' | 'pause' | 'submit' | 'custom';
+  payload?: Record<string, unknown>;
 }
 
 export interface ResponsiveConfig {
@@ -75,7 +57,7 @@ export interface ElementStyle {
   padding: number;
   margin: number;
   opacity: number;
-  zIndex: , number
+  zIndex: number;
 }
 
 export interface AnimationConfig {
@@ -83,555 +65,296 @@ export interface AnimationConfig {
   duration: number;
   easing: 'ease' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'linear';
   delay: number;
-  direction: 'normal' | 'reverse' | 'alternate'
+  direction: 'normal' | 'reverse' | 'alternate';
+}
+
+export interface InteractiveElement {
+  id: string;
+  type: InteractiveElementType;
+  position: { x: number; y: number; width: number; height: number };
+  content: Record<string, unknown>;
+  interactions: Interaction[];
+  responsive: ResponsiveConfig;
+  style: ElementStyle;
+  animation?: AnimationConfig;
+  visible: boolean;
+  locked: boolean;
 }
 
 interface InteractiveElementsProps {
   elements: InteractiveElement[];
-  onElementAdd: (element: Omit<InteractiveElement, 'id, '>) => void;
+  onElementAdd: (element: Omit<InteractiveElement, 'id'>) => void;
   onElementUpdate: (id: string, updates: Partial<InteractiveElement>) => void;
   onElementDelete: (id: string) => void;
   onElementSelect: (id: string) => void;
-  selectedElementId?: string
+  selectedElementId?: string;
+}
+
+function getDefaultContent(type: InteractiveElementType): Record<string, unknown> {
+  switch (type) {
+    case 'button':
+      return { text: 'Click me', action: 'navigate' };
+    case 'form':
+      return { title: 'Kontakt', submitText: 'Send' };
+    case 'code-sandbox':
+      return { language: 'javascript', initialCode: 'console.log("Hello World");' };
+    case 'diagram':
+      return { title: 'Flowchart', definition: 'graph TD; A[Start] --> B[End]' };
+    case 'simulation':
+      return { title: 'Simulation', steps: [] };
+    case 'video':
+      return { url: '', autoplay: false, controls: true };
+    case 'quiz':
+      return { title: 'Quiz', passingScore: 70 };
+    case 'image':
+      return { src: '', alt: 'Image', caption: '' };
+    case 'text':
+    default:
+      return { text: 'Skriv inn tekst...' };
+  }
+}
+
+function getDefaultStyle(type: InteractiveElementType): ElementStyle {
+  return {
+    backgroundColor: type === 'button' ? '#1976d2' : 'transparent',
+    textColor: type === 'button' ? '#ffffff' : '#111111',
+    borderColor: '#e0e0e0',
+    borderWidth: 1,
+    borderRadius: type === 'button' ? 6 : 2,
+    fontSize: 14,
+    fontWeight: 'normal',
+    fontFamily: 'Roboto, sans-serif',
+    padding: 8,
+    margin: 4,
+    opacity: 1,
+    zIndex: 1,
+  };
+}
+
+function getDefaultResponsiveConfig(): ResponsiveConfig {
+  return {
+    mobile: { x: 0, y: 0, width: 100, height: 48 },
+    tablet: { x: 0, y: 0, width: 100, height: 56 },
+    desktop: { x: 0, y: 0, width: 100, height: 64 },
+  };
 }
 
 export default function InteractiveElements({
   elements,
   onElementAdd,
-  onElementUpdate,
   onElementDelete,
   onElementSelect,
+  onElementUpdate,
   selectedElementId,
 }: InteractiveElementsProps) {
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  
-  // Theming system
   const theming = useTheming('photographer');
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [newType, setNewType] = useState<InteractiveElementType>('text');
   const [editingElement, setEditingElement] = useState<InteractiveElement | null>(null);
+  const [editingText, setEditingText] = useState('');
 
-  const handleAddElement = (type: InteractiveElement['type']) => {
-    const newElement: Omit<InteractiveElement, 'id'> = {
-      type,
-      position: { x: 10, y: 10, width: 20, height: 50,},
-      content: getDefaultContent(type),
-      interactions:  [],
-      responsive: {
-        mobile: { x: 50, y:  50, width: 10, height: 40,},
-        tablet: { x: 75, y:  75, width: 15, height: 45,},
-        desktop: { x: 10, y: 10, width: 20, height: 50,},
-    },
-      style: getDefaultStyle(type),
+  const selectedElement = useMemo(
+    () => elements.find((element) => element.id === selectedElementId) || null,
+    [elements, selectedElementId],
+  );
+
+  const handleAddElement = () => {
+    const element: Omit<InteractiveElement, 'id'> = {
+      type: newType,
+      position: { x: 0, y: 0, width: 280, height: 120 },
+      content: getDefaultContent(newType),
+      interactions: [],
+      responsive: getDefaultResponsiveConfig(),
+      style: getDefaultStyle(newType),
       visible: true,
       locked: false,
-  };
-    onElementAdd(newElement);
+    };
+    onElementAdd(element);
     setShowAddDialog(false);
-};
-
-  const handleEditElement = (element: InteractiveElement) => {
-    setEditingElement(element);
-    setShowEditDialog(true);
-};
-
-  const handleUpdateElement = (updates: Partial<InteractiveElement>) => {
-    if (editingElement) {
-      onElementUpdate(editingElement., idupdates);
-      setShowEditDialog(false);
-      setEditingElement(null);
-  }
-};
-
-  const getDefaultContent = (type: InteractiveElement['type']) => {
-    switch (type) {
-      case 'button':
-        return { text: 'Click M', action: 'navigate',};
-      case 'form':
-        return { fields:  [], submitText: 'Submit',};
-      case 'code-sandbox':
-        return { language: 'javascript', initialCode: 'console.log("Hello World!");',};
-      case 'diagram':
-        return { type: 'flowchart', definition: 'graph TD; A[Start] --> B[End]',};
-      case 'simulation':
-        return { steps:  [], currentStep:  0 };
-      case 'video':
-        return { url: '', autoplay: false, controls: true };
-      case 'quiz':
-        return { questions:  [], passingScore: 70,};
-      case 'text':
-        return { text: 'Enter your text here...',};
-      case 'image':
-        return { src: '', alt: 'Image', caption: ', ',};
-      default: return, {};
-  }
-};
-
-  const getDefaultStyle = (type: InteractiveElement['type']): ElementStyle => {
-    return {
-      backgroundColor: type === 'button' ? '#1976d2' : 'transparent',
-      textColor: type === 'button' ? '#ffffff' : '#000000',
-      borderColor: '#e0e0e0',
-      borderWidth:  1,
-      borderRadius: type === 'button' ? 4 : 0,
-      fontSize:  14,
-      fontWeight: 'normal',
-      fontFamily: 'Roboto, sans-serif',
-      padding:  8,
-      margin:  4,
-      opacity:  1,
-      zIndex: 1,
   };
-};
 
-  const renderElement = (element: InteractiveElement) => {
-    const isSelected = selectedElementId === element.id;
-    
-    return (
-      <Box
-        key={element.d}
-        sx={{
-          position: 'absolute',
-          left: element.position.x,
-          top: element.position.y,
-          width: element.position.width,
-          height: element.position.height,
-          zIndex: , element.style.zIndex,
-          opacity: element.visible ? element.style.opacity : 0.5,
-          cursor: element.locked ? 'default' : 'move',
-          border: isSelected ? '2px solid #1976d2' : '1px solid transparent',
-          borderRadius: element.style.borderRadius,
-          backgroundColor: element.style.backgroundColor,
-          color: element.style.textColor,
-          fontSize: element.style.fontSize,
-          fontWeight: lement.style.fontWeight,
-          fontFamily: element.style.fontFamily,
-          padding: element.style.padding,
-          margin: element.style.margin'&:hover': { border: '1px solid #1976d0',
-        }}}
-        onClick={() => onElementSelect(element.id)}
-      >
-        {renderElementContent(element)}
-        
-        {/* Element controls */}
-        {isSelected && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: -0,
-              right:  0,
-              display: 'flex',
-              gap: 0.5}}
-          >
-            <Tooltip title="Edit">
-              <IconButton size="small" onClick={() => handleEditElement(element)}>
-                <Edit fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Toggle Visibility">
-              <IconButton 
-                size="small" 
-                onClick={() => onElementUpdate(element.id, { visible: !element.visible })}
-              >
-                {element.visible ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Delete">
-              <IconButton 
-                size="small" 
-                color="error"
-                onClick={() => onElementDelete(element.id)}
-              >
-                <Delete fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        )}
-      </Box>
-    );
-};
+  const handleStartEdit = (element: InteractiveElement) => {
+    setEditingElement(element);
+    const textValue = typeof element.content.text === 'string' ? element.content.text : '';
+    setEditingText(textValue);
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingElement) return;
+    onElementUpdate(editingElement.id, {
+      content: { ...editingElement.content, text: editingText },
+    });
+    setShowEditDialog(false);
+    setEditingElement(null);
+  };
 
   const renderElementContent = (element: InteractiveElement) => {
+    if (!element.visible) {
+      return <Typography variant="caption">Skjult element</Typography>;
+    }
+
     switch (element.type) {
       case 'button':
         return (
-          <Button variant="contained"
-            fullWidth
-            sx={{ height: '100%'}}
-            onClick={() => handleElementInteraction(element)} sx={theming.getThemedButtonSx()}
-          >
-            {element.content.text}
+          <Button variant="contained" size="small">
+            {typeof element.content.text === 'string' ? element.content.text : 'Button'}
           </Button>
         );
-      
-      case 'form':
-        return (
-          <Box sx={{ p:  1 }}>
-            <Typography variant="body2" gutterBottom>
-              {element.content.title || 'Form'}
-            </Typography>
-            {element.content.fields?.map((field: any, index: number) => (
-              <TextField
-                key={index}
-                label={field.label}
-                size="small"
-                fullWidth
-                sx={{ mb:  1 }}
-              />
-            ))}
-            <Button size="small" variant="outlined">
-              {element.content.submitText || 'Submit'}
-            </Button>
-          </Box>
-        );
-      
-      case 'code-sandbox':
-        return (
-          <Box sx={{ p: 1, height: '100%', overflow: 'auto'}}>
-            <Typography variant="caption" color="text.secondary">
-              {element.content.language?.toUpperCase()}
-            </Typography>
-            <Box
-              sx={{
-                fontFamily: 'monospace',
-                fontSize: '12px',
-                backgroundColor: '#f5f5f0',
-                p:  1,
-                borderRadius:  1,
-                mt:  1}}
-            >
-              {element.content.initialCode}
-            </Box>
-            <Button
-              size="small"
-              startIcon={<CREATOR_HUB_ICONS.playArrow />}
-              sx={{ mt:  1 }}
-              onClick={() => handleElementInteraction(element)}
-            >
-              Run
-            </Button>
-          </Box>
-        );
-      
-      case 'text':
-        return (
-          <Typography
-            sx={{
-              fontSize: element.style.fontSize,
-              fontWeight: lement.style.fontWeight,
-              fontFamily: element.style.fontFamily}}
-          >
-            {element.content.text}
-          </Typography>
-        );
-      
       case 'image':
         return (
-          <Box sx={{ textAlign: 'center'}}>
-            <img
-              src={element.content.src || '/placeholder-image.jpg'}
-              alt={element.content.alt}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                borderRadius: element.style.borderRadius}}
-            />
-            {element.content.caption && (
-              <Typography variant="caption" sx={{ mt: 1, display: 'block'}}>
-                {element.content.caption}
-              </Typography>
-            )}
-          </Box>
+          <Typography variant="body2">
+            {typeof element.content.caption === 'string' ? element.content.caption : 'Image element'}
+          </Typography>
         );
-      
-      default: return (
-          <Box sx={{ p: 1, textAlign: 'center'}}>
-            <CREATOR_HUB_ICONS.smartToy sx={{ fontSize:  24, mb:  1 }} />
-            <Typography variant="caption">
-              {element.type}
-            </Typography>
-          </Box>
+      default:
+        return (
+          <Typography variant="body2">
+            {typeof element.content.text === 'string' ? element.content.text : element.type}
+          </Typography>
         );
-  }
-};
-
-  const handleElementInteraction = (element: InteractiveElement) => {
-    // Handle element interactions
-    console.log('Element interaction, :', element.id, element.interactions);
-};
+    }
+  };
 
   return (
     <Box>
-      {/* Element Library */}
-      <Paper sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
           Interactive Elements
         </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap">
-          <Button
-            size="small"
-            startIcon={<CREATOR_HUB_ICONS.add />}
-            onClick={() => setShowAddDialog(true)}
-          >
+        <Stack direction="row" spacing={1}>
+          <Button startIcon={<Add />} variant="contained" onClick={() => setShowAddDialog(true)}>
             Add Element
           </Button>
-          {elements.map((element) => (
-            <Chip
-              key={element.id}
-              label={element.type}
-              onClick={() => onElementSelect(element.id)}
-              color={selectedElementId === element.id ? 'primary' : 'default'}
-              size="small"
-            />
-          ))}
+          {selectedElement && (
+            <Button
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={() => handleStartEdit(selectedElement)}
+            >
+              Edit Selected
+            </Button>
+          )}
         </Stack>
-      </Paper>
+      </Stack>
 
-      {/* Canvas Area */}
-      <Paper
-        sx={{
-          position: 'relative',
-          minHeight: 40,
-          bgcolor: '#fafafa',
-          border: '1px dashed #ccc'}}
-       sx={theming.getThemedCardSx()}>
-        {elements.map(renderElement)}
-        
-        {elements.length === 0 && (
-          <Box
-            sx={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-5%, -50%)',
-              textAlign: 'center',
-              color: 'text.secondary'}}
-          >
-            <CREATOR_HUB_ICONS.smartToy sx={{ fontSize:  48, mb:  2 }} />
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              No Interactive Elements
-            </Typography>
-            <Typography variant="body2">
-              Click "Add Element" to start building your interactive document
-            </Typography>
-          </Box>
-        )}
-      </Paper>
+      <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+        {elements.map((element) => {
+          const isSelected = selectedElementId === element.id;
+          return (
+            <Card
+              key={element.id}
+              sx={{
+                border: isSelected ? '2px solid' : '1px solid',
+                borderColor: isSelected ? 'primary.main' : 'divider',
+                opacity: element.visible ? 1 : 0.6,
+                ...theming.getThemedCardSx(),
+              }}
+              onClick={() => onElementSelect(element.id)}
+            >
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2">{element.type}</Typography>
+                  <Stack direction="row" spacing={0.5}>
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => handleStartEdit(element)}>
+                        <Edit fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => onElementDelete(element.id)}>
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </Stack>
+                {renderElementContent(element)}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
 
-      {/* Add Element Dialog */}
-      <Dialog open={showAddDialog} onClose={() => setShowAddDialog(false)}>
+      <Dialog open={showAddDialog} onClose={() => setShowAddDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>Add Interactive Element</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt:  1 }}>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Velg elementtype:
+          </Typography>
+          <Select fullWidth value={newType} onChange={(event) => setNewType(event.target.value as InteractiveElementType)}>
             {[
-              { type: 'button', label: 'Button', icon: <CREATOR_HUB_ICONS.playArrow />,},
-              { type: 'form', label: 'Form', icon: <CREATOR_HUB_ICONS.settings />,},
-              { type: 'code-sandbox', label: 'Code Sandbox', icon: <CREATOR_HUB_ICONS.code />,},
-              { type: 'text', label: 'Text', icon: <CREATOR_HUB_ICONS.description />,},
-              { type: 'image', label: 'Image', icon: <CREATOR_HUB_ICONS.image />,},
-            ].map(({ type, label, icon }) => (
-              <Button
-                key={type}
-                variant="outlined"
-                startIcon={icon}
-                onClick={() => handleAddElement(type as InteractiveElement['type'])}
-                sx={{ justifyContent: 'flex-start'}}
-              >
-                {label}
-              </Button>
+              'button',
+              'form',
+              'code-sandbox',
+              'diagram',
+              'simulation',
+              'video',
+              'quiz',
+              'text',
+              'image',
+            ].map((type) => (
+              <MenuItem key={type} value={type}>
+                {type}
+              </MenuItem>
             ))}
-          </Stack>
+          </Select>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowAddDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAddElement}>
+            Add
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Edit Element Dialog */}
-      <Dialog open={showEditDialog} onClose={() => setShowEditDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={showEditDialog} onClose={() => setShowEditDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Edit Element</DialogTitle>
         <DialogContent>
           {editingElement && (
-            <ElementEditor
-              element={editingElement}
-              onUpdate={handleUpdateElement}
-            />
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Text"
+                value={editingText}
+                onChange={(event) => setEditingText(event.target.value)}
+                fullWidth
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={editingElement.visible}
+                    onChange={(event) =>
+                      setEditingElement((prev) =>
+                        prev ? { ...prev, visible: event.target.checked } : prev,
+                      )
+                    }
+                  />
+                }
+                label="Visible"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={editingElement.locked}
+                    onChange={(event) =>
+                      setEditingElement((prev) =>
+                        prev ? { ...prev, locked: event.target.checked } : prev,
+                      )
+                    }
+                  />
+                }
+                label="Locked"
+              />
+            </Stack>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowEditDialog(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => setShowEditDialog(false)} sx={theming.getThemedButtonSx()}>
+          <Button variant="contained" onClick={handleSaveEdit}>
             Save
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
-  );
-}
-
-// Element Editor Component
-interface ElementEditorProps {
-  element: InteractiveElement;
-  onUpdate: (updates: Partial<InteractiveElement>) => void
-}
-
-function ElementEditor({ element, onUpdate }: ElementEditorProps) {
-  const [localElement, setLocalElement] = useState(element);
-
-  const handleStyleChange = (property: keyof ElementStyle, value: any) => {
-    const newStyle = { ...localElement.style, [property]: value };
-    setLocalElement({ ...localElement, style: newStyle });
-};
-
-  const handleContentChange = (property: string, value: any) => {
-    const newContent = { ...localElement.content, [property]: value };
-    setLocalElement({ ...localElement, content: newContent });
-};
-
-  return (
-    <Box sx={{ mt:  2 }}>
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        Element Properties
-      </Typography>
-      
-      {/* Basic Properties */}
-      <Stack spacing={2}>
-        <TextField
-          label="Element ID"
-          value={localElement.id}
-          disabled
-          size="small"
-        />
-        
-        <FormControl size="small">
-          <InputLabel>Type</InputLabel>
-          <Select
-            value={localElement.type}
-            label="Type"
-            disabled
-          >
-            <MenuItem value={localElement.type}>{localElement.type}</MenuItem>
-          </Select>
-        </FormControl>
-
-        {/* Position */}
-        <Typography variant="subtitle2">Position</Typography>
-        <Stack direction="row" spacing={1}>
-          <TextField
-            label="X"
-            type="number"
-            value={localElement.position.x}
-            onChange={(e) => onUpdate({
-              position: { ...localElement.position, x: Number(e.target.value, ),}
-          })}
-            size="small"
-            sx={{ width: 80}}
-          />
-          <TextField
-            label="Y"
-            type="number"
-            value={localElement.position.y}
-            onChange={(e) => onUpdate({
-              position: { ...localElement.position, y: Number(e.target.value, ),}
-          })}
-            size="small"
-            sx={{ width: 80}}
-          />
-          <TextField
-            label="Width"
-            type="number"
-            value={localElement.position.width}
-            onChange={(e) => onUpdate({
-              position: { ...localElement.position, width: Number(e.target.value, ),}
-          })}
-            size="small"
-            sx={{ width: 80}}
-          />
-          <TextField
-            label="Height"
-            type="number"
-            value={localElement.position.height}
-            onChange={(e) => onUpdate({
-              position: { ...localElement.position, height: Number(e.target.value, ),}
-          })}
-            size="small"
-            sx={{ width: 80}}
-          />
-        </Stack>
-
-        {/* Style Properties */}
-        <Typography variant="subtitle2">Style</Typography>
-        <Stack direction="row" spacing={1}>
-          <TextField
-            label="Background Color"
-            value={localElement.style.backgroundColor}
-            onChange={(e) => handleStyleChange('backgroundColor', e.target.value)}
-            size="small"
-            sx={{ width: 120}}
-          />
-          <TextField
-            label="Text Color"
-            value={localElement.style.textColor}
-            onChange={(e) => handleStyleChange('textColor', e.target.value)}
-            size="small"
-            sx={{ width: 120}}
-          />
-          <TextField
-            label="Font Size"
-            type="number"
-            value={localElement.style.fontSize}
-            onChange={(e) => handleStyleChange('fontSize', Number(e.target.value))}
-            size="small"
-            sx={{ width: 80}}
-          />
-        </Stack>
-
-        {/* Content Properties */}
-        <Typography variant="subtitle2">Content</Typography>
-        {element.type === 'button' && (
-          <TextField
-            label="Button Text"
-            value={localElement.content.text}
-            onChange={(e) => handleContentChange('text', e.target.value)}
-            size="small"
-            fullWidth
-          />
-        )}
-        
-        {element.type ==='text' && (
-          <TextField
-            label="Text Content"
-            multiline
-            rows={3}
-            value={localElement.content.text}
-            onChange={(e) => handleContentChange('text', e.target.value)}
-            size="small"
-            fullWidth
-          />
-        )}
-
-        {/* Visibility Controls */}
-        <Stack direction="row" spacing={2}>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={localElement.visible}
-                onChange={(e) => onUpdate({ visible: e.target.checked })}
-              />
-          }
-            label="Visible"
-          />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={localElement.locked}
-                onChange={(e) => onUpdate({ locked: e.target.checked })}
-              />
-          }
-            label="Locked"
-          />
-        </Stack>
-      </Stack>
     </Box>
   );
 }

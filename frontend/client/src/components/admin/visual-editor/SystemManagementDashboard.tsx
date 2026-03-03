@@ -150,6 +150,9 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
   className,
   style
 }) => {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
   const autoScaling = useAutoScaling({
     enableAutoScaling: true,
     minInstances:  1,
@@ -231,7 +234,7 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
 
   // Handle item click
   const handleItemClick = useCallback((item: unknown) => {
-    setSelectedItem(item);
+    setSelectedItem(isRecord(item) ? item : { value: item });
     setDetailsOpen(true);
 }, []);
 
@@ -835,7 +838,6 @@ const SystemManagementDashboard: React.FC<SystemManagementDashboardProps> = memo
 SystemManagementDashboard.displayName ='SystemManagementDashboard';
 
 export default SystemManagementDashboard;
-
 
 
 

@@ -9,8 +9,8 @@
 
 declare global {
   interface Window {
-    gtag?: (...args: any[]) => void;
-    dataLayer?: any[];
+    gtag?: (...args: unknown[]) => void;
+    dataLayer?: unknown[];
   }
 }
 
@@ -31,10 +31,13 @@ function isGA4Available(): boolean {
 /**
  * Track custom event
  */
-export function trackEvent(eventName: string, params?: Record<string, any>) {
+export function trackEvent(eventName: string, params?: Record<string, unknown>) {
   if (!isGA4Available()) return;
-  
-  window.gtag!('event', eventName, {
+
+  const gtag = window.gtag;
+  if (!gtag) return;
+
+  gtag('event', eventName, {
     ...params,
     platform: 'creatorhub_norge'
   });
@@ -47,8 +50,11 @@ export function trackEvent(eventName: string, params?: Record<string, any>) {
  */
 export function trackPageView(path: string, title?: string) {
   if (!isGA4Available()) return;
-  
-  window.gtag!('event', 'page_view', {
+
+  const gtag = window.gtag;
+  if (!gtag) return;
+
+  gtag('event', 'page_view', {
     page_path: path,
     page_title: title || document.title,
     page_location: window.location.href
@@ -62,7 +68,12 @@ export async function getGA4ClientId(): Promise<string | null> {
   if (!isGA4Available()) return null;
   
   return new Promise((resolve) => {
-    window.gtag!('get', GA4_ID, 'client_id', (clientId: string) => {
+    const gtag = window.gtag;
+    if (!gtag) {
+      resolve(null);
+      return;
+    }
+    gtag('get', GA4_ID, 'client_id', (clientId: string) => {
       resolve(clientId);
     });
   });
@@ -75,7 +86,12 @@ export async function getGA4SessionId(): Promise<string | null> {
   if (!isGA4Available()) return null;
   
   return new Promise((resolve) => {
-    window.gtag!('get', GA4_ID, 'session_id', (sessionId: string) => {
+    const gtag = window.gtag;
+    if (!gtag) {
+      resolve(null);
+      return;
+    }
+    gtag('get', GA4_ID, 'session_id', (sessionId: string) => {
       resolve(sessionId);
     });
   });
@@ -485,10 +501,13 @@ export function initializeGA4Tracking(userId?: string, profession?: string) {
 
   // Set user properties
   if (userId && profession) {
-    window.gtag!('set', 'user_properties', {
+    const gtag = window.gtag;
+    if (gtag) {
+      gtag('set', 'user_properties', {
       profession,
       user_id: userId
-    });
+      });
+    }
   }
 
   // Track initial page view
@@ -527,4 +546,3 @@ export function setupAutoTracking() {
     }
   }, 1000);
 }
-

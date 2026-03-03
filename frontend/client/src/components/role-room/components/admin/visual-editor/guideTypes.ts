@@ -11,7 +11,79 @@
 
 // ── Identifiers ───────────────────────────────────────────────────────────
 
-export type GuideId = 'shot-list' | 'stripboard' | 'screenplay' | 'live-set-mode' | 'crew-management' | 'audition';
+export type GuideId =
+  | 'shot-list'
+  | 'stripboard'
+  | 'screenplay'
+  | 'live-set-mode'
+  | 'crew-management'
+  | 'audition'
+  | 'location-management'
+  | 'location-analysis';
+
+// ── Annotation types ─────────────────────────────────────────────────────
+
+export const GUIDE_ANNOTATION_STYLE_IDS = [
+  'precise-box',
+  'tight-box',
+  'rounded-box',
+  'dashed-box',
+  'dotted-box',
+  'double-box',
+  'glow-box',
+  'soft-fill-box',
+  'thick-outline-box',
+  'neon-box',
+  'corners-sharp',
+  'corners-rounded',
+  'bracket-horizontal',
+  'bracket-vertical',
+  'bracket-left',
+  'bracket-right',
+  'arrow-right',
+  'arrow-left',
+  'arrow-up',
+  'arrow-down',
+  'line-horizontal',
+  'line-vertical',
+  'diagonal-down',
+  'diagonal-up',
+  'badge-number',
+  'badge-dot',
+  'badge-pill',
+  'highlight-stripe',
+  'focus-ring',
+  'dim-spotlight',
+] as const;
+
+export type GuideAnnotationStyle = (typeof GUIDE_ANNOTATION_STYLE_IDS)[number];
+
+export type GuideAnnotationLabelPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'center';
+
+export interface GuideStepAnnotation {
+  id: string;
+  style: GuideAnnotationStyle;
+  /** Percent values (0-100) relative to screenshot size. */
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+  color?: string;
+  secondaryColor?: string;
+  opacity?: number;
+  thickness?: number;
+  radius?: number;
+  rotation?: number;
+  labelPosition?: GuideAnnotationLabelPosition;
+}
 
 // ── Per-step override ─────────────────────────────────────────────────────
 
@@ -41,6 +113,11 @@ export interface GuideStepOverride {
    * Takes precedence over screenshotUrl when both are set.
    */
   videoUrl?: string;
+  /**
+   * Optional overlays rendered on top of screenshotUrl in the guide.
+   * Coordinates are stored as percentages so they remain responsive.
+   */
+  annotations?: GuideStepAnnotation[];
   /**
    * Short badge label shown in the left nav alongside the step label,
    * e.g. "New", "Updated", "Beta".
@@ -203,19 +280,52 @@ export const GUIDE_META: GuideMeta[] = [
   {
     id: 'audition',
     title: 'Audition Planner',
-    description: '10-step walkthrough of the Audition Planner: creating slots, three view modes, six-status workflow, filtering & search, favourites, details drawer, bulk actions, audition pool (cross-project templates), and CSV export with keyboard shortcuts.',
+    description: '10-step walkthrough of the Audition Planner: standard/pro workspace, pipeline & timeline triage, six-status workflow, conflict and priority insights, filtering, favourites, details drawer, bulk planning, audition pool templates, and CSV/shortcut workflows.',
     accentColor: '#ffb800',
     steps: [
       { id: 'overview',         label: 'Overview',           sectionCount: 2 },
       { id: 'creating-slots',   label: 'Creating Slots',     sectionCount: 2 },
-      { id: 'view-modes',       label: 'View Modes',         sectionCount: 1 },
-      { id: 'status-tracking',  label: 'Status Tracking',    sectionCount: 2 },
+      { id: 'view-modes',       label: 'View Modes',         sectionCount: 2 },
+      { id: 'status-tracking',  label: 'Status Tracking',    sectionCount: 3 },
       { id: 'filters',          label: 'Filtering',          sectionCount: 3 },
       { id: 'favourites',       label: 'Favourites',         sectionCount: 1 },
       { id: 'details-drawer',   label: 'Details Drawer',     sectionCount: 1 },
-      { id: 'bulk-actions',     label: 'Bulk Actions',       sectionCount: 2 },
+      { id: 'bulk-actions',     label: 'Bulk Actions',       sectionCount: 3 },
       { id: 'audition-pool',    label: 'Audition Pool',      sectionCount: 2 },
-      { id: 'export-shortcuts', label: 'Export & Shortcuts', sectionCount: 2 },
+      { id: 'export-shortcuts', label: 'Export & Shortcuts', sectionCount: 3 },
+    ],
+  },
+  {
+    id: 'location-management',
+    title: 'Location Management',
+    description: '9-step walkthrough of Location Management: overview, stats/filters, view modes, map-card sync, pro operations, scene links, media/storyboard, consistency workflow, and analysis handoff.',
+    accentColor: '#a855f7',
+    steps: [
+      { id: 'overview',             label: 'Overview',              sectionCount: 2 },
+      { id: 'stats-filters',        label: 'Stats & Filters',       sectionCount: 2 },
+      { id: 'view-modes',           label: 'View Modes',            sectionCount: 2 },
+      { id: 'map-cards',            label: 'Map & Cards',           sectionCount: 2 },
+      { id: 'pro-operations',       label: 'Pro Operations',        sectionCount: 2 },
+      { id: 'scene-links',          label: 'Scene Links',           sectionCount: 2 },
+      { id: 'media-storyboard',     label: 'Media & Storyboard',    sectionCount: 2 },
+      { id: 'consistency-workflow', label: 'Consistency Workflow',  sectionCount: 2 },
+      { id: 'analysis-handoff',     label: 'Analysis Handoff',      sectionCount: 1 },
+    ],
+  },
+  {
+    id: 'location-analysis',
+    title: 'Location Analysis',
+    description: '8-step walkthrough of Location Analysis: scoring, filters, manual overrides, permits/contacts, deadline timeline, risk fallback planning, technical sections, and save/sync workflow.',
+    accentColor: '#22d3ee',
+    steps: [
+      { id: 'overview',          label: 'Overview',          sectionCount: 2 },
+      { id: 'score-filters',     label: 'Score & Filters',   sectionCount: 2 },
+      { id: 'manual-edit',       label: 'Manual Edit',       sectionCount: 2 },
+      { id: 'permits-contacts',  label: 'Permits & Contacts',sectionCount: 2 },
+      { id: 'permit-timeline',   label: 'Permit Timeline',   sectionCount: 2 },
+      { id: 'risk-fallback',     label: 'Risk & Fallback',   sectionCount: 2 },
+      { id: 'technical-sections',label: 'Technical Sections',sectionCount: 2 },
+      { id: 'save-sync',         label: 'Save & Sync',       sectionCount: 2 },
     ],
   },
 ];

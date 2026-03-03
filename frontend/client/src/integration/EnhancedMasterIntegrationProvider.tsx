@@ -11,19 +11,16 @@ import { CommunicationProvider, useCommunication } from './CrossComponentCommuni
 import { DataFlowProvider, useDataFlow } from './UniversalDataFlow';
 import { ComponentRegistryProvider, useComponentRegistry } from './UniversalComponentRegistry';
 import { UniversalIntegrationSystem } from './UniversalIntegrationSystem';
-import { useGA4Tracking } from '@/hooks/useGA4Tracking';
+import { useGA4Tracking } from '../hooks/useGA4Tracking';
 import { PROFESSION_FEATURE_MATRIX } from '../../../shared/profession-feature-matrix';
 import { FEATURE_COMPONENT_MAP } from './feature-component-map';
 import { getFeatureMetadata } from './feature-metadata';
-
-// Token cache for impersonated access tokens
-const cachedToken = { token: "", exp: 0 };
 
 /**
  * Get impersonated access token via backend proxy
  * DISABLED: Authentication bypassed for direct dashboard access
  */
-async function getImpersonatedAccessToken(scopes: string[] = ["https://www.googleapis.com/auth/cloud-platform"]): Promise<string> {
+async function getImpersonatedAccessToken(_scopes: string[] = ["https://www.googleapis.com/auth/cloud-platform"]): Promise<string> {
   // Authentication disabled - return empty token
   return "";
 }
@@ -53,7 +50,6 @@ import {
   addSentryBreadcrumb,
   setSentryUser,
   setSentryTags,
-  setSentryContext,
 } from '../utils/sentry';
 
 // Enhanced type definitions
@@ -380,10 +376,12 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
 }) => {
   // Performance monitoring
   const performanceMetrics = useRef<Map<string, number[]>>(new Map());
-  const renderCounts = useRef<Map<string, number>>(new Map());
   const debugMode = useRef(enableDebugMode);
   const analyticsData = useRef<any[]>([]);
   const lastHealthStatus = useRef<IntegrationHealth['status']>('healthy');
+  const healthCheckInProgress = useRef(false);
+  const lastHealthSignature = useRef('');
+  const componentRegistrationSignatures = useRef<Map<string, string>>(new Map());
   
   // ✅ GA4 Integration - Automatic tracking for all events
   const ga4 = useGA4Tracking();
@@ -590,7 +588,11 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     if (debugMode.current) {
       console.log('📊 Analytics + GA4:', eventData);
   }
-}, [enableAnalytics, authState.user, ga4]);
+  }, [enableAnalytics, authState.user, ga4]);
+  const trackEventRef = useRef(trackEvent);
+  useEffect(() => {
+    trackEventRef.current = trackEvent;
+  }, [trackEvent]);
 
   // Debug logging
   const logIntegration = useCallback((level: 'info' | 'warn' | 'error', message: string, data?: any) => {
@@ -619,6 +621,26 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
 
   // Component lifecycle management
   const registerComponent = useCallback((metadata: ComponentMetadata) => {
+    const capabilitySignature = JSON.stringify({
+      data: [...metadata.capabilities.data].sort(),
+      events: [...metadata.capabilities.events].sort(),
+      actions: [...metadata.capabilities.actions].sort(),
+      ui: [...metadata.capabilities.ui].sort(),
+      system: [...metadata.capabilities.system].sort(),
+    });
+    const dependencySignature = [...metadata.dependencies].sort().join('|');
+    const nextSignature = `${metadata.type}::${metadata.version}::${capabilitySignature}::${dependencySignature}`;
+
+    const previousSignature = componentRegistrationSignatures.current.get(metadata.id);
+    if (previousSignature === nextSignature) {
+      const existing = componentMetadata.current.get(metadata.id);
+      if (existing) {
+        componentMetadata.current.set(metadata.id, { ...existing, lastActive: Date.now() });
+      }
+      return;
+    }
+
+    componentRegistrationSignatures.current.set(metadata.id, nextSignature);
     componentMetadata.current.set(metadata.id, {
       ...metadata,
       lastActive: Date.now(),
@@ -629,15 +651,19 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     }
   });
     
-    logIntegration('info, ', `Component registered: ${metadata.id}`, metadata);
-    trackEvent('component_registered', { componentId: metadata.id, type: metadata.type });
-}, [logIntegration, trackEvent]);
+    logIntegration('info', `Component registered: ${metadata.id}`, metadata);
+    trackEventRef.current('component_registered', { componentId: metadata.id, type: metadata.type });
+}, [logIntegration]);
 
   const unregisterComponent = useCallback((id: string) => {
+    if (!componentMetadata.current.has(id)) {
+      return;
+    }
+    componentRegistrationSignatures.current.delete(id);
     componentMetadata.current.delete(id);
     logIntegration('info', `Component unregistered: ${id}`);
-    trackEvent('component_unregistered', { componentId: id });
-}, [logIntegration, trackEvent]);
+    trackEventRef.current('component_unregistered', { componentId: id });
+}, [logIntegration]);
 
   const getComponentInfo = useCallback((id: string) => {
     return componentMetadata.current.get(id) || null;
@@ -663,16 +689,23 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
 
   // Health check
   const performHealthCheck = useCallback(() => {
+    if (healthCheckInProgress.current) {
+      return;
+    }
+    healthCheckInProgress.current = true;
+
+    try {
     const components = getAllComponents();
     const now = Date.now();
     
     const activeComponents = components.filter(c => now - c.lastActive < 30000); // Active within 30 seconds
     const errorComponents = components.filter(c => c.performance.avgRenderTime > 1000); // Slow components
     
-    const avgResponseTime = Array.from(performanceMetrics.current.values())
-      .flat()
-      .reduce((sum, time) => sum + time, 0) / 
-      Array.from(performanceMetrics.current.values()).flat().length || 0;
+    const flattenedPerformance = Array.from(performanceMetrics.current.values()).flat();
+    const avgResponseTimeRaw =
+      flattenedPerformance.length > 0
+        ? flattenedPerformance.reduce((sum, time) => sum + time, 0) / flattenedPerformance.length
+        : 0;
     
     type PerformanceMemoryInfo = {
       usedJSHeapSize: number;
@@ -683,7 +716,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     };
     const runtimePerformance = globalThis.performance as PerformanceWithMemory;
     const memoryInfo = runtimePerformance.memory;
-    const memoryUsage = memoryInfo ? (memoryInfo.usedJSHeapSize / 1024 / 1024) : 0; // MB
+    const memoryUsageRaw = memoryInfo ? (memoryInfo.usedJSHeapSize / 1024 / 1024) : 0; // MB
     const memoryUsageRatio =
       memoryInfo && memoryInfo.jsHeapSizeLimit > 0
         ? memoryInfo.usedJSHeapSize / memoryInfo.jsHeapSizeLimit
@@ -693,15 +726,20 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     
     let status: 'healthy' | 'degraded' | 'critical' = 'healthy';
     const degradedByMemory =
-      memoryUsageRatio !== null ? memoryUsageRatio > 0.75 : memoryUsage > 512;
+      memoryUsageRatio !== null ? memoryUsageRatio > 0.75 : memoryUsageRaw > 512;
     const criticalByMemory =
-      memoryUsageRatio !== null ? memoryUsageRatio > 0.9 : memoryUsage > 768;
-    const degradedByLatency = avgResponseTime > 500;
-    const criticalByLatency = avgResponseTime > 1200;
+      memoryUsageRatio !== null ? memoryUsageRatio > 0.9 : memoryUsageRaw > 768;
+    const degradedByLatency = avgResponseTimeRaw > 500;
+    const criticalByLatency = avgResponseTimeRaw > 1200;
 
     if (errorRate > 0.3 || criticalByMemory || criticalByLatency) status = 'critical';
     else if (errorRate > 0.1 || degradedByMemory || degradedByLatency) status = 'degraded';
     
+    // Normalize tiny runtime fluctuations to avoid repeated health state updates.
+    const avgResponseTime = Number(avgResponseTimeRaw.toFixed(2));
+    const memoryUsage = Number(memoryUsageRaw.toFixed(2));
+    const normalizedErrorRate = Number(errorRate.toFixed(4));
+
     const newHealth: IntegrationHealth = {
       status,
       components: {
@@ -713,12 +751,22 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       performance: {
         avgResponseTime,
         memoryUsage,
-        errorRate
+        errorRate: normalizedErrorRate
     },
       lastCheck: now
   };
-    
-    setHealth(newHealth);
+
+    const signature = JSON.stringify({
+      status: newHealth.status,
+      components: newHealth.components,
+      performance: newHealth.performance,
+    });
+    const hasMeaningfulChange = lastHealthSignature.current !== signature;
+
+    if (hasMeaningfulChange) {
+      lastHealthSignature.current = signature;
+      setHealth(newHealth);
+    }
     
     if (status !== 'healthy' && status !== lastHealthStatus.current) {
       logIntegration('warn', `Health check failed: ${status}`, newHealth);
@@ -728,16 +776,29 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     }
     lastHealthStatus.current = status;
     
-    trackEvent('health_check', newHealth);
-}, [getAllComponents, logIntegration, trackEvent]);
+    if (hasMeaningfulChange) {
+      trackEventRef.current('health_check', newHealth);
+    }
+    } finally {
+      healthCheckInProgress.current = false;
+    }
+}, [getAllComponents, logIntegration]);
+
+  const performHealthCheckRef = useRef(performHealthCheck);
+  useEffect(() => {
+    performHealthCheckRef.current = performHealthCheck;
+  }, [performHealthCheck]);
 
   // Periodic health checks
   useEffect(() => {
     if (!enablePerformanceMonitoring) return;
-    
-    const interval = setInterval(performHealthCheck, 30000); // Every 30 seconds
+
+    performHealthCheckRef.current();
+    const interval = setInterval(() => {
+      performHealthCheckRef.current();
+    }, 30000); // Every 30 seconds
     return () => clearInterval(interval);
-}, [performHealthCheck, enablePerformanceMonitoring]);
+}, [enablePerformanceMonitoring]);
 
   // Analytics utilities
   const getMetrics = useCallback(() => {
@@ -1093,7 +1154,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     const hasAccess = availableFeatures.has(feature);
     const currentRole = userRole || authState.user?.role;
     const isPrototypeTester = currentRole === 'prototype_tester';
-    const isAdmin = currentRole === 'admin' || authState.user?.isAdmin;
+    const isAdmin = currentRole === 'admin' || authState.user?.role === 'admin';
     
     // Testing & QA Features - Tester-only restrictions
     const testerOnlyFeatures = ['test-data-generator','prototype-tester-tools'];
@@ -1171,7 +1232,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
 
     // ✅ AUTOMATICALLY SEND TO GA4
     try {
-      ga4.trackFeature(feature, action);
+      ga4.trackFeature(feature, action, authState.user?.role ?? 'unknown');
     } catch (error) {
       console.warn('GA4 feature tracking failed:', error);
     }
@@ -1179,7 +1240,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     if (debugMode.current) {
       console.log(`📊 Feature Usage + GA4: ${feature} - ${action}`, data);
   }
-}, [trackEvent, logIntegration, availableFeatures, ga4]);
+}, [trackEvent, logIntegration, availableFeatures, ga4, authState.user?.role]);
 
   const getFeatureAnalytics = useCallback(() => {
     const totalFeatures = availableFeatures.size;
@@ -1430,42 +1491,48 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       const updatedElements = { ...prev.project.elements };
 
       switch (alignment) {
-        case 'left':
+        case 'left': {
           const leftX = Math.min(...elements.map(el => el.x));
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, x: leftX };
         });
           break;
-        case 'center':
+        }
+        case 'center': {
           const centerX = Math.min(...elements.map(el => el.x)) + (Math.max(...elements.map(el => el.x + el.width)) - Math.min(...elements.map(el => el.x))) / 2;
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, x: centerX - el.width / 2 };
         });
           break;
-        case 'right':
+        }
+        case 'right': {
           const rightX = Math.max(...elements.map(el => el.x + el.width));
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, x: rightX - el.width };
         });
           break;
-        case 'top':
+        }
+        case 'top': {
           const topY = Math.min(...elements.map(el => el.y));
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, y: topY };
         });
           break;
-        case 'middle':
+        }
+        case 'middle': {
           const middleY = Math.min(...elements.map(el => el.y)) + (Math.max(...elements.map(el => el.y + el.height)) - Math.min(...elements.map(el => el.y))) / 2;
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, y: middleY - el.height / 2 };
         });
           break;
-        case 'bottom':
+        }
+        case 'bottom': {
           const bottomY = Math.max(...elements.map(el => el.y + el.height));
           elements.forEach(el => {
             updatedElements[el.id] = { ...el, y: bottomY - el.height };
         });
           break;
+        }
     }
 
       return {
@@ -1656,12 +1723,21 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     
     // ✅ AUTOMATICALLY TRACK IN GA4
     try {
-      ga4.trackOnboardingComplete();
+      ga4.trackOnboardingFinished(0);
       console.log('✅ Onboarding complete tracked in GA4');
     } catch (error) {
       console.warn('GA4 onboarding complete tracking failed:', error);
     }
   }, [trackEvent, ga4]);
+
+  const normalizeSubscriptionTier = (
+    tier: string,
+  ): 'basic' | 'pro' | 'enterprise' => {
+    if (tier === 'basic' || tier === 'pro' || tier === 'enterprise') {
+      return tier;
+    }
+    return 'pro';
+  };
 
   const trackSubscriptionStart = useCallback((tier: string) => {
     // Track locally
@@ -1669,7 +1745,11 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     
     // ✅ AUTOMATICALLY TRACK IN GA4
     try {
-      ga4.trackSubscriptionStart(tier);
+      ga4.trackSubscriptionStart({
+        tier: normalizeSubscriptionTier(tier),
+        billingCycle: 'monthly',
+        price: 0,
+      });
       console.log('✅ Subscription start tracked in GA4:', { tier });
     } catch (error) {
       console.warn('GA4 subscription start tracking failed:', error);
@@ -1682,7 +1762,11 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
     
     // ✅ AUTOMATICALLY TRACK IN GA4 (REVENUE!)
     try {
-      ga4.trackSubscriptionComplete(params);
+      ga4.trackSubscriptionComplete({
+        tier: params.tier,
+        price: params.price,
+        paymentMethod: params.paymentMethod || 'unknown',
+      });
       console.log('✅ Subscription complete tracked in GA4 (REVENUE):', params);
     } catch (error) {
       console.warn('GA4 subscription complete tracking failed:', error);
@@ -1773,7 +1857,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       getAuthHeader: async () => {
         // Get the auth header for API calls
         const authHeader = await getAuthHeaderFromToken();
-        return authHeader || { 'Authorization': `Bearer ${authState.token || ', '}` };
+        return authHeader || { Authorization: `Bearer ${authState.token || ''}` };
       },
       getAuthenticatedClient: async (scopes?: string[]) => {
         // Get authenticated Google API client
@@ -1865,7 +1949,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       startDrag: () => { /* Hidden - no access */ },
       endDrag: () => { /* Hidden - no access */ },
       handleDrop: () => { /* Hidden - no access */ },
-      saveProject: () => { /* Hidden - no access */ },
+      saveProject: async () => false,
       setExtendedThinking: () => { /* Hidden - no access */ },
       setHighPowerMode: () => { /* Hidden - no access */ },
       setShowGrid: () => { /* Hidden - no access */ },
@@ -1874,7 +1958,7 @@ export const EnhancedMasterIntegrationProvider: React.FC<{
       setGridSize: () => { /* Hidden - no access */ },
       setCanvasZoom: () => { /* Hidden - no access */ },
       setCanvasPan: () => { /* Hidden - no access */ },
-      setShowRulers: () => { /* Hidden - no access */ }
+      setShowRulers: (_enabled: boolean) => { /* Hidden - no access */ }
   }
 }), [
     health,
@@ -2164,8 +2248,15 @@ export const withEnhancedMasterIntegration = <P extends object>(
       debugging, 
       analytics 
   } = useEnhancedMasterIntegration();
+    const registerLifecycleComponent = lifecycle.registerComponent;
+    const unregisterLifecycleComponent = lifecycle.unregisterComponent;
+    const trackAnalyticsEvent = analytics.trackEvent;
     
     const renderCount = useRef(0);
+    const capabilitiesFingerprint = useMemo(() => {
+      if (!Array.isArray(capabilities)) return '';
+      return [...capabilities].sort().join('|');
+    }, [capabilities]);
     
     // Performance monitoring
     useEffect(() => {
@@ -2183,16 +2274,20 @@ export const withEnhancedMasterIntegration = <P extends object>(
     // Component registration
     useEffect(() => {
       if (integrationEnabled) {
-        lifecycle.registerComponent({
+        const capabilityList = capabilitiesFingerprint
+          ? capabilitiesFingerprint.split('|')
+          : [];
+
+        registerLifecycleComponent({
           id: componentId,
           type: componentType,
           version: '1.0.0',
           capabilities: {
-            data: capabilities.filter((c: string) => c.startsWith('data:')),
-            events: capabilities.filter((c: string) => c.startsWith('event:')),
-            actions: capabilities.filter((c: string) => c.startsWith('action:')),
-            ui: capabilities.filter((c: string) => c.startsWith('ui:')),
-            system: capabilities.filter((c: string) => c.startsWith('system:'))
+            data: capabilityList.filter((c: string) => c.startsWith('data:')),
+            events: capabilityList.filter((c: string) => c.startsWith('event:')),
+            actions: capabilityList.filter((c: string) => c.startsWith('action:')),
+            ui: capabilityList.filter((c: string) => c.startsWith('ui:')),
+            system: capabilityList.filter((c: string) => c.startsWith('system:'))
         },
           dependencies: [],
           lastActive: Date.now(),
@@ -2203,14 +2298,22 @@ export const withEnhancedMasterIntegration = <P extends object>(
         }
       });
         
-        analytics.trackEvent('component_mounted', { componentId, componentType });
+        trackAnalyticsEvent('component_mounted', { componentId, componentType });
         
         return () => {
-          lifecycle.unregisterComponent(componentId);
-          analytics.trackEvent('component_unmounted', { componentId, componentType });
+          unregisterLifecycleComponent(componentId);
+          trackAnalyticsEvent('component_unmounted', { componentId, componentType });
       };
     }
-  }, [componentId, componentType, capabilities, integrationEnabled, lifecycle, analytics]);
+  }, [
+      componentId,
+      componentType,
+      capabilitiesFingerprint,
+      integrationEnabled,
+      registerLifecycleComponent,
+      unregisterLifecycleComponent,
+      trackAnalyticsEvent,
+    ]);
     
     // Debug logging
     useEffect(() => {

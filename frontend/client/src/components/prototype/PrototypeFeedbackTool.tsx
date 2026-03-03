@@ -1,53 +1,52 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Fab,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  Typography,
-  TextField,
-  Button,
-  Chip,
-  Stack,
-  Rating,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  FormControlLabel,
-  Checkbox,
   Alert,
-  CircularProgress,
-  Divider,
-  Card as MuiCard,
+  Box,
+  Button,
+  Card,
   CardContent,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Fab,
+  FormControl,
+  FormControlLabel,
+  Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
+  Rating,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Feedback as FeedbackIcon,
-  BugReport,
-  Lightbulb,
   Accessibility,
-  Palette,
+  BugReport,
   Chat,
   Close,
+  Feedback as FeedbackIcon,
+  Lightbulb,
+  Palette,
   Send,
 } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { apiRequest } from '@/lib/queryClient';
 
 const feedbackSchema = z.object({
-  type: z.enum(['bug','feature_request','usability','ui_ux', 'general,']),
-  priority: z.enum(['low','medium','high','critical']),
-  title: z.string().min, ('Tittel må være minst 3 tegn'),
-  description: z.string().min(0, 'Beskrivelse må være minst 10 tegn'),
-  rating: z.number().min(1).max(),
-  tags: z.array(z.string()).optional(),
+  type: z.enum(['bug', 'feature_request', 'usability', 'ui_ux', 'general']),
+  priority: z.enum(['low', 'medium', 'high', 'critical']),
+  title: z.string().min(3, 'Tittel må være minst 3 tegn'),
+  description: z.string().min(10, 'Beskrivelse må være minst 10 tegn'),
+  rating: z.number().min(1).max(5),
+  tags: z.array(z.string()).default([]),
   currentUrl: z.string().optional(),
   deviceInfo: z.string().optional(),
   anonymous: z.boolean().default(false),
@@ -55,275 +54,305 @@ const feedbackSchema = z.object({
 
 type FeedbackForm = z.infer<typeof feedbackSchema>;
 
-// Mock data removed - using database connection
-
-// Mock data removed - using database connection
-
-// Mock data removed - using database connection
-
 interface PrototypeFeedbackToolProps {
   isVisible?: boolean;
+  profession?: string;
+  component?: string;
+  communityContext?: boolean;
+  communityComponent?: string;
 }
 
-export function PrototypeFeedbackTool({ isVisible = true }: PrototypeFeedbackToolProps) {
+const feedbackTypes = [
+  {
+    value: 'bug' as const,
+    label: 'Bug',
+    icon: <BugReport fontSize="small" />,
+    description: 'Noe fungerer ikke som forventet.',
+    color: '#ef4444',
+  },
+  {
+    value: 'feature_request' as const,
+    label: 'Feature',
+    icon: <Lightbulb fontSize="small" />,
+    description: 'Forslag til ny funksjon eller forbedring.',
+    color: '#f59e0b',
+  },
+  {
+    value: 'usability' as const,
+    label: 'Usability',
+    icon: <Accessibility fontSize="small" />,
+    description: 'Arbeidsflyt/brukervennlighet kan forbedres.',
+    color: '#3b82f6',
+  },
+  {
+    value: 'ui_ux' as const,
+    label: 'UI/UX',
+    icon: <Palette fontSize="small" />,
+    description: 'Visuelle eller interaksjonsrelaterte forbedringer.',
+    color: '#8b5cf6',
+  },
+  {
+    value: 'general' as const,
+    label: 'General',
+    icon: <Chat fontSize="small" />,
+    description: 'Generell tilbakemelding.',
+    color: '#10b981',
+  },
+];
+
+const priorityLevels = [
+  { value: 'low' as const, label: 'Lav', color: '#9ca3af' },
+  { value: 'medium' as const, label: 'Medium', color: '#3b82f6' },
+  { value: 'high' as const, label: 'Høy', color: '#f59e0b' },
+  { value: 'critical' as const, label: 'Kritisk', color: '#ef4444' },
+];
+
+const commonTags = [
+  'timeline',
+  'program-monitor',
+  'drag-drop',
+  'captions',
+  'rendering',
+  'performance',
+  'keyboard-shortcuts',
+  'workspace',
+  'audio-sync',
+  'stability',
+];
+
+export function PrototypeFeedbackTool({
+  isVisible = true,
+  profession = 'unknown',
+  component = 'Unknown',
+  communityContext = false,
+  communityComponent,
+}: PrototypeFeedbackToolProps): React.ReactElement | null {
   const [isOpen, setIsOpen] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const {
     control,
     handleSubmit,
     reset,
-    watch,
     formState: { errors },
-} = useForm<FeedbackForm>({
+  } = useForm<FeedbackForm>({
     resolver: zodResolver(feedbackSchema),
     defaultValues: {
       type: 'general',
       priority: 'medium',
-      title: ', ',
-      description: ', ',
-      rating:  3,
-      tags:  [],
-      currentUrl: window.location.href,
-      deviceInfo: navigator.userAgent,
+      title: '',
+      description: '',
+      rating: 3,
+      tags: [],
+      currentUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+      deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
       anonymous: false,
-  },
-});
+    },
+  });
 
-  const selectedType = watch('type');
+  const selectedTypeMeta = useMemo(
+    () => feedbackTypes.find((item) => item.value === 'general') ?? feedbackTypes[0],
+    [],
+  );
 
   const submitFeedbackMutation = useMutation({
     mutationFn: async (data: FeedbackForm) => {
+      const payload = {
+        ...data,
+        tags: selectedTags,
+        submittedAt: new Date().toISOString(),
+        metadata: {
+          profession,
+          component,
+          communityContext,
+          communityComponent: communityComponent ?? null,
+        },
+      };
+
       return apiRequest('/api/prototype/feedback', {
-        method: 'POS',
-        body: JSON.stringify({
-          ...data,
-          tags: selectedTags,
-          submittedAt: new Date().toISOString(),
-      }),
-    });
-  },
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+    },
     onSuccess: () => {
-      setIsOpen(false);
-      reset();
+      setSubmitSuccess(true);
       setSelectedTags([]);
-},
-});
+      reset({
+        type: 'general',
+        priority: 'medium',
+        title: '',
+        description: '',
+        rating: 3,
+        tags: [],
+        currentUrl: typeof window !== 'undefined' ? window.location.href : undefined,
+        deviceInfo: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        anonymous: false,
+      });
+    },
+  });
 
-  const onSubmit = (data: FeedbackForm) => {
-    submitFeedbackMutation.mutate(data);
-};
-
-  const handleTagToggle = (tag: string) => {
+  const handleTagToggle = (tag: string): void => {
     setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+      prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag],
     );
-};
+  };
 
-  if (!isVisible) return null;
+  const onSubmit = (data: FeedbackForm): void => {
+    setSubmitSuccess(false);
+    submitFeedbackMutation.mutate({ ...data, tags: selectedTags });
+  };
+
+  if (!isVisible) {
+    return null;
+  }
 
   return (
     <>
-      {/* Floating Feedback Button */}
       <Fab
         color="primary"
+        aria-label="open feedback tool"
+        onClick={() => setIsOpen(true)}
         sx={{
           position: 'fixed',
-          bottom:  20,
-          right:  20,
+          right: 20,
+          bottom: 20,
+          zIndex: 1300,
           background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
-          zIndex: 13,
-          boxShadow: '0 8px 24px rgba(25, 1400.3)', '&:hover': {
+          '&:hover': {
             background: 'linear-gradient(135deg, #e67c00 0%, #cc7000 100%)',
-            transform: 'scale(1.05, )',
-            boxShadow: '0 12px 32px rgba(25, 1400.4)' }, '&:active': {
-            transform: 'scale(0.95, )' }}}
-        onClick={() => setIsOpen(true)}
+          },
+        }}
       >
         <FeedbackIcon />
       </Fab>
 
-      {/* Feedback Dialog */}
-      <Dialog
-        open={isOpen}
-        onClose={() => setIsOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: '20px',
-            background: 'linear-gradient(145deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 20px 60px rgba(25,140,0,0.15)',
-            border: '1px solid rgba(25,140,0,0.2)' }}}
-      >
-        <DialogTitle
-          sx={{
-            p:  3,
-            pb:  1,
-            position: 'relative' }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <Box
-              sx={{
-                width:  48,
-                height:  48,
-                borderRadius: '12px',
-                background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white' }}
-            >
-              <FeedbackIcon />
-            </Box>
-            <Box>
-              <Typography variant="h5"
-                sx={{ 
-                  fontWeight: 'bold',
-                  color: '#1f2930',
-                  mb: 0.5 }}>
-                Prototype Feedback
-              </Typography>
-              <Typography variant="body2" sx={{ color: '#6b7280' }}>
-                Hjelp oss å forbedre CreatorHub Norge
-              </Typography>
-            </Box>
-          </Box>
-
-          <IconButton
-            onClick={() => setIsOpen(false)}
-            sx={{
-              position: 'absolute',
-              top:  8,
-              right:  8}}
-          >
-            {theming.getThemedIcon('close')}
-          </IconButton>
+      <Dialog open={isOpen} onClose={() => setIsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" justifyContent="space-between">
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <FeedbackIcon color="primary" />
+              <Box>
+                <Typography variant="h6">Prototype Feedback</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Component: {component} • Profession: {profession}
+                </Typography>
+              </Box>
+            </Stack>
+            <IconButton onClick={() => setIsOpen(false)} aria-label="close feedback dialog">
+              <Close />
+            </IconButton>
+          </Stack>
         </DialogTitle>
 
-        <DialogContent sx={{ p:  3, pt:  0 }}>
+        <DialogContent>
           <form onSubmit={handleSubmit(onSubmit)}>
-            <Stack spacing={3}>
-              {/* Feedback Type Selection */}
-              <Box>
-                <Typography variant="h6" sx={{  mb: 2, color: '#1f2937'  }}>
-                  Velg type tilbakemelding
-                </Typography>
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr',
-                      sm: 'repeat, (1fr)',
-                      md: 'repeat, (1fr)' },
-                    gap: 1.5}}
-                >
-                  {feedbackTypes.map((type) => (
+            <Stack spacing={2.5}>
+              {communityContext ? (
+                <Alert severity="info">
+                  Community context enabled{communityComponent ? ` (${communityComponent})` : ''}.
+                </Alert>
+              ) : null}
+
+              <Grid container spacing={1.5}>
+                {feedbackTypes.map((type) => (
+                  <Grid item xs={12} sm={6} md={4} key={type.value}>
                     <Controller
-                      key={type.value}
                       name="type"
                       control={control}
                       render={({ field }) => (
-                        <MuiCard
-                          onClick={() => field.onChange(type.value)}
+                        <Card
+                          variant="outlined"
                           sx={{
                             cursor: 'pointer',
-                            border: `2px solid ${field.value === type.value ? type.color : 'transparent'}`,
-                            background: field.value === type.value
-                                ? `${type.color}10`
-                                : 'rgba(255,255,255,0.5)',
-                            transition: 'all 0.2s ease', '&:hover': {
-                              transform: 'translateY(-2px)',
-                              boxShadow: `0 8px 24px ${type.color}20`,
-                          }}}
+                            borderColor: field.value === type.value ? type.color : 'divider',
+                            backgroundColor:
+                              field.value === type.value ? `${type.color}14` : 'transparent',
+                          }}
+                          onClick={() => field.onChange(type.value)}
                         >
-                          <CardContent sx={{ p: 2, textAlign: 'center' ,  ...theming.getThemedCardSx() }}>
-                            <Box sx={{ color: type.color, mb:  1 }}>{type.icon}</Box>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5}}>
-                              {type.label}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: '#6b7280' }}>
-                              {type.description}
-                            </Typography>
+                          <CardContent sx={{ py: 1.5 }}>
+                            <Stack spacing={0.5}>
+                              <Stack direction="row" spacing={1} alignItems="center" color={type.color}>
+                                {type.icon}
+                                <Typography variant="subtitle2">{type.label}</Typography>
+                              </Stack>
+                              <Typography variant="caption" color="text.secondary">
+                                {type.description}
+                              </Typography>
+                            </Stack>
                           </CardContent>
-                        </MuiCard>
+                        </Card>
                       )}
                     />
-                  ))}
-                </Box>
-              </Box>
+                  </Grid>
+                ))}
+              </Grid>
 
-              {/* Priority and Rating */}
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-                  gap:  2}}
-              >
-                <Controller
-                  name="priority"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth>
-                      <InputLabel>Prioritet</InputLabel>
-                      <Select {...field} label="Prioritet">
-                        {priorityLevels.map((priority) => (
-                          <MenuItem key={priority.value} value={priority.value}>
-                            <Box
-                              sx={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap:  1}}
-                            >
-                              <Box
-                                sx={{
-                                  width:  12,
-                                  height:  12,
-                                  borderRadius: '50, %',
-                                  backgroundColor: priority.color}}
-                              />
-                              {priority.label}
-                            </Box>
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  )}
-                />
-
-                <Box>
-                  <Typography variant="body2" sx={{ mb: 1, color: '#1f2937' }}>
-                    Generell vurdering
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="priority"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControl fullWidth>
+                        <InputLabel id="feedback-priority-label">Prioritet</InputLabel>
+                        <Select
+                          {...field}
+                          labelId="feedback-priority-label"
+                          label="Prioritet"
+                        >
+                          {priorityLevels.map((priority) => (
+                            <MenuItem key={priority.value} value={priority.value}>
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                <Box
+                                  sx={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    backgroundColor: priority.color,
+                                  }}
+                                />
+                                <Typography variant="body2">{priority.label}</Typography>
+                              </Stack>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>
+                    Vurdering
                   </Typography>
                   <Controller
                     name="rating"
                     control={control}
                     render={({ field }) => (
                       <Rating
-                        {...field}
+                        value={field.value}
+                        onChange={(_event, value) => {
+                          if (value !== null) {
+                            field.onChange(value);
+                          }
+                        }}
                         size="large"
-                        sx={{
-                          '& .MuiRating-iconFilled': {
-                            color: '#ff8c00' }}}
                       />
                     )}
                   />
-                </Box>
-              </Box>
+                </Grid>
+              </Grid>
 
-              {/* Title and Description */}
               <Controller
                 name="title"
                 control={control}
                 render={({ field }) => (
                   <TextField
                     {...field}
-                    fullWidth
                     label="Tittel"
-                    error={!!errors.title}
+                    fullWidth
+                    error={Boolean(errors.title)}
                     helperText={errors.title?.message}
                   />
                 )}
@@ -335,92 +364,70 @@ export function PrototypeFeedbackTool({ isVisible = true }: PrototypeFeedbackToo
                 render={({ field }) => (
                   <TextField
                     {...field}
+                    label="Detaljert beskrivelse"
                     fullWidth
                     multiline
                     rows={4}
-                    label="Detaljert beskrivelse"
-                    error={!!errors.description}
+                    error={Boolean(errors.description)}
                     helperText={errors.description?.message}
-                    placeholder="Beskriv din opplevelse, hva som skjedde, og eventuelle forslag til forbedring..."
                   />
                 )}
               />
 
-              {/* Tags */}
               <Box>
-                <Typography variant="body2" sx={{ mb: 1, color: '#1f2937' }}>
-                  Tags (valgfritt)
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  Tags
                 </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
                   {commonTags.map((tag) => (
                     <Chip
                       key={tag}
                       label={tag}
-                      onClick={() => handleTagToggle(tag)}
-                      color={selectedTags.includes(tag) ? 'primary' : 'default'}
-                      variant={selectedTags.includes(tag) ? 'filled' : 'outlined'}
                       size="small"
-                      sx={{
-                        '&.MuiChip-colorPrimary': {
-                          backgroundColor: '#ff8c00',
-                          color: 'white' }}}
+                      clickable
+                      color={selectedTags.includes(tag) ? 'primary' : 'default'}
+                      onClick={() => handleTagToggle(tag)}
                     />
                   ))}
-                </Box>
+                </Stack>
               </Box>
 
-              {/* Anonymous option */}
               <Controller
                 name="anonymous"
                 control={control}
                 render={({ field }) => (
                   <FormControlLabel
-                    control={
-                      <Checkbox
-                        {...field}
-                        checked={field.value}
-                        sx={{
-                          '&.Mui-checked': {
-                            color: '#ff8c00' }}}
-                      />
-                  }
-                    label="Send anonymt (ikke inkluder kontaktinformasjon)"
+                    control={<Checkbox checked={field.value} onChange={field.onChange} />}
+                    label="Send anonymt"
                   />
                 )}
               />
 
-              {/* Success/Error Messages */}
-              {submitFeedbackMutation.isError && (
-                <Alert severity="error">
-                  Det oppstod en feil ved sending av tilbakemelding. Prøv igjen.
-                </Alert>
-              )}
+              {submitFeedbackMutation.isError ? (
+                <Alert severity="error">Kunne ikke sende feedback. Prøv igjen.</Alert>
+              ) : null}
+              {submitSuccess ? (
+                <Alert severity="success">Takk. Tilbakemeldingen ble sendt.</Alert>
+              ) : null}
 
-              {submitFeedbackMutation.isSuccess && (
-                <Alert severity="success">
-                  Tusen takk for tilbakemeldingen! Vi vil gjennomgå den så snart som mulig.
-                </Alert>
-              )}
-
-              {/* Submit Button */}
-              <Button type="submit"
+              <Button
+                type="submit"
                 variant="contained"
-                size="large"
                 disabled={submitFeedbackMutation.isPending}
                 startIcon={
-                  submitFeedbackMutation.isPending ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : <Send />
-              }
-                sx={{
-                  background: 'linear-gradient(135deg, #ff8c00 0%, #e67c00 100%)',
-                  py: 1.5,
-                  borderRadius: '12px',
-                  textTransform: 'none',
-                  fontSize: '16px',
-                  fontWeight: 'bold','&:hover': {
-                    background: 'linear-gradient(135deg, #e67c00 0%, #cc7000 100%)' }}}
+                  submitFeedbackMutation.isPending ? (
+                    <CircularProgress size={18} color="inherit" />
+                  ) : (
+                    <Send />
+                  )
+                }
               >
-                {submitFeedbackMutation.isPending ? 'Sender...' : 'Send Tilbakemelding'}
+                {submitFeedbackMutation.isPending ? 'Sender...' : 'Send Feedback'}
               </Button>
+
+              <Typography variant="caption" color="text.secondary">
+                Default type: {selectedTypeMeta.label}
+              </Typography>
             </Stack>
           </form>
         </DialogContent>

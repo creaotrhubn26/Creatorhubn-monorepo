@@ -128,7 +128,7 @@ class ClientServicePricingService {
     return fallbackRates;
 }
 
-  private getFallbackCurrencyRates(): CurrencyRates {
+  getFallbackCurrencyRates(): CurrencyRates {
     return {
       NOK_TO_NOK: 1.0,
       NOK_TO_SEK: 1.05,
@@ -207,7 +207,7 @@ class ClientServicePricingService {
     return fallbackPlans;
 }
 
-  private getFallbackSubscriptionPlans(): SubscriptionPlan[] {
+  getFallbackSubscriptionPlans(): SubscriptionPlan[] {
     return [
       {
         id: 'basic',
@@ -305,7 +305,7 @@ class ClientServicePricingService {
     return fallbackFeatures;
 }
 
-  private getFallbackFeaturePricing(): FeaturePricing[] {
+  getFallbackFeaturePricing(): FeaturePricing[] {
     return [
       {
         id: 'pricing-calculator',

@@ -299,7 +299,8 @@ export function CameraControls({ settings, onChange, onReset }: CameraControlsPr
                     size={isTouch ? 'medium' : 'small'}
                     clickable
                     sx={{
-                      minHeight: isTouch ? 40 : 32'& .MuiChip-label': {
+                      minHeight: isTouch ? 40 : 32,
+                      '& .MuiChip-label': {
                         fontSize: isTouch ? '0.875rem' : '0.8125rem',
                       }}}
                   />

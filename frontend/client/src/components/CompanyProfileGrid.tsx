@@ -1,42 +1,34 @@
-// CompanyProfileGrid.tsx - Grid layout for animated company profile cards
-import { useTheming } from '../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from './universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
-  Grid,
-  Box,
-  Typography,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
-  Paper,
-  InputAdornment,
-  IconButton,
-  Fade,
-  Skeleton,
   Alert,
+  Box,
+  Chip,
+  FormControl,
+  Grid,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Skeleton,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Search as SearchIcon,
-  FilterList as FilterIcon,
-  Sort as SortIcon,
-  ViewModule as GridViewIcon,
-  ViewList as ListViewIcon,
   Business as BusinessIcon,
+  Search as SearchIcon,
+  ViewList as ListViewIcon,
+  ViewModule as GridViewIcon,
 } from '@mui/icons-material';
-import { motion, AnimatePresence } from 'framer-motion';
-import CompanyProfileQuickView from './CompanyProfileQuickView';
+import { AnimatePresence, motion } from 'framer-motion';
 import { apiRequest } from '@/lib/queryClient';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
+import { useTheming } from '../utils/theming-helper';
+import CompanyProfileQuickView from './CompanyProfileQuickView';
 
-interface CompanyProfile {
+export interface CompanyProfile {
   id: string;
   name: string;
   organizationNumber: string;
@@ -52,13 +44,13 @@ interface CompanyProfile {
     amount: number;
     year: number;
     currency: string;
-};
+  };
   rating?: number;
   verification: {
     brreg: boolean;
     proff: boolean;
     riskLevel: 'low' | 'medium' | 'high';
-};
+  };
   description?: string;
   founded?: number;
   services?: string[];
@@ -66,7 +58,7 @@ interface CompanyProfile {
     projects: number;
     clients: number;
     reviews: number;
-};
+  };
 }
 
 interface CompanyProfileGridProps {
@@ -79,84 +71,84 @@ interface CompanyProfileGridProps {
   onProfileSelect?: (profile: CompanyProfile) => void;
   onProfileContact?: (profile: CompanyProfile) => void;
   filterIndustries?: string[];
-  showRiskIndicators?: boolean
+  showRiskIndicators?: boolean;
 }
 
 const SAMPLE_PROFILES: CompanyProfile[] = [
   {
-    id: '',
-    name: 'Nordic Photo Studio A',
-    organizationNumber: '98765432',
-    industry: 'Fotograftjenester',
+    id: 'nordic-photo',
+    name: 'Nordic Photo Studio AS',
+    organizationNumber: '987654321',
+    industry: 'Fotografi',
     status: 'verified',
     address: 'Oslo, Norge',
-    phone: '+47 12 34 56 7',
+    phone: '+47 12 34 56 78',
     email: 'post@nordicphoto.no',
-    website: 'nordicphoto.no',
-    employees:  12,
-    revenue: { amount: 250000, year: 204, currency: 'NOK'},
+    website: 'https://nordicphoto.no',
+    employees: 12,
+    revenue: { amount: 2_500_000, year: 2024, currency: 'NOK' },
     rating: 4.8,
     verification: { brreg: true, proff: true, riskLevel: 'low' },
-    description: 'Profesjonell fotografstudio som spesialiserer seg på bryllup og bedriftsfotografering.',
+    description: 'Profesjonell foto- og videoproduksjon for events og kommersielle kunder.',
     founded: 2015,
-    services: ['Bryllupsfotografering','Bedriftsfoto','Portrettfoto','Produktfoto'],
-    socialProof: { projects: 150, clients: 89, reviews: 72 }
+    services: ['Bryllup', 'Bedrift', 'Portrett', 'Produktfoto'],
+    socialProof: { projects: 150, clients: 89, reviews: 72 },
   },
   {
-    id: '',
+    id: 'bergen-video',
     name: 'Bergen Video Production',
-    organizationNumber: '87654321',
+    organizationNumber: '876543219',
     industry: 'Videoproduksjon',
     status: 'active',
     address: 'Bergen, Norge',
-    phone: '+47 98 76 54 3',
+    phone: '+47 98 76 54 32',
     email: 'kontakt@bergenvideo.no',
-    website: 'bergenvideo.no',
-    employees:  8,
-    revenue: { amount: 180000, year: 204, currency: 'NOK'},
+    website: 'https://bergenvideo.no',
+    employees: 8,
+    revenue: { amount: 1_850_000, year: 2024, currency: 'NOK' },
     rating: 4.6,
-    verification: { brreg: true, proff: false, riskLevel: 'low'},
-    description: 'Kreativ videoproduksjon for bedrifter og private arrangementer.',
-    founded: 208,
-    services: ['Bedriftsvideo','Eventfilming','Reklamefilm','Dokumentarer'],
-    socialProof: { projects: 95, clients:  65, reviews: 48 }
-},
-  {
-    id: '',
-    name: 'Trondheim Music Studios',
-    organizationNumber: '76543210',
-    industry: 'Musikkproduksjon',
-    status: 'verified',
-    address: 'Trondheim, Norge',
-    phone: '+47 23 45 67 8',
-    email: 'studio@trondheimmusic.no',
-    website: 'trondheimmusic.no',
-    employees:  6,
-    revenue: { amount: 120000, year: 204, currency: 'NOK'},
-    rating: 4.9,
-    verification: { brreg: true, proff: true, riskLevel: 'low'},
-    description: 'Moderne musikkstudio med fokus på norsk musikk og lokale artister.',
-    founded: 200,
-    services: ['Opptak', 'Mixing', 'Mastering', 'Produksjon'],
-    socialProof: { projects: 78, clients:  42, reviews: 35}
-},
-  {
-    id: '',
-    name: 'Stavanger Creative Hub',
-    organizationNumber: '65432109',
-    industry: 'Kreative tjenester',
-    status: 'active',
-    address: 'Stavanger, Norge',
-    phone: '+47 34 56 78 9',
-    email: 'hei@stavangercreative.no',
-    employees:  15,
-    verification: { brreg: true, proff: false, riskLevel: 'medium'},
-    description: 'Sammenfaller ulike kreative tjenester under ett tak.',
-    founded: 209,
-    services: ['Design','Foto','Video','Markedsføring'],
-    socialProof: { projects: 10, clients:  78, reviews: 56}
-}
+    verification: { brreg: true, proff: false, riskLevel: 'low' },
+    description: 'Creative video-produksjon for markedsføring og dokumentar.',
+    founded: 2018,
+    services: ['Reklamefilm', 'Eventvideo', 'Intervjuer'],
+    socialProof: { projects: 95, clients: 65, reviews: 48 },
+  },
 ];
+
+const normalizeProfile = (item: unknown): CompanyProfile | null => {
+  if (!item || typeof item !== 'object') {
+    return null;
+  }
+
+  const data = item as Partial<CompanyProfile>;
+  if (!data.id || !data.name || !data.organizationNumber || !data.industry || !data.address) {
+    return null;
+  }
+
+  return {
+    id: String(data.id),
+    name: String(data.name),
+    organizationNumber: String(data.organizationNumber),
+    industry: String(data.industry),
+    status:
+      data.status === 'active' || data.status === 'inactive' || data.status === 'verified'
+        ? data.status
+        : 'active',
+    logo: data.logo,
+    address: String(data.address),
+    phone: data.phone,
+    email: data.email,
+    website: data.website,
+    employees: data.employees,
+    revenue: data.revenue,
+    rating: data.rating,
+    verification: data.verification ?? { brreg: false, proff: false, riskLevel: 'medium' },
+    description: data.description,
+    founded: data.founded,
+    services: data.services,
+    socialProof: data.socialProof,
+  };
+};
 
 export const CompanyProfileGrid: React.FC<CompanyProfileGridProps> = ({
   title = 'Bedriftsprofiler',
@@ -168,188 +160,169 @@ export const CompanyProfileGrid: React.FC<CompanyProfileGridProps> = ({
   onProfileSelect,
   onProfileContact,
   filterIndustries = [],
-  showRiskIndicators = false
+  showRiskIndicators = false,
 }) => {
-  const [searchQuery, setSearchQuery] = useState(false);
   const { profession } = useProfessionAdapter();
-  
-  // Theming system - use dynamic profession
   const theming = useTheming(profession || 'photographer');
+
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
-  const [sortBy, setSortBy] = useState('name');
+  const [sortBy, setSortBy] = useState<'name' | 'rating' | 'employees' | 'revenue' | 'founded'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(defaultView);
-  const [filteredProfiles, setFilteredProfiles] = useState<CompanyProfile[]>(SAMPLE_PROFILES);
 
-  // In a real app, this would fetch from API
-  const { data: profiles = SAMPLE_PROFILS, isLoading } = useQuery({
-    queryKey: ['/api/companies/profiles', ],
-    queryFn: () => Promise.resolve(SAMPLE_PROFILE), // Mock for demo
-    refetchInterval: false
-});
+  const { data: profiles = SAMPLE_PROFILES, isLoading } = useQuery({
+    queryKey: ['/api/companies/profiles'],
+    queryFn: async () => {
+      const response = await apiRequest('/api/companies/profiles', { method: 'GET' });
 
-  // Filter and sort profiles
-  useEffect(() => {
-    let filtered = [...profiles];
+      const payload = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.profiles)
+          ? response.profiles
+          : [];
 
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(profile =>
-        profile.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        profile.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        profile.address.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-  }
-
-    // Apply industry filter
-    if (selectedIndustry) {
-      filtered = filtered.filter(profile => profile.industry === selectedIndustry);
-  }
-
-    // Apply custom industry filters
-    if (filterIndustries.length > 0) {
-      filtered = filtered.filter(profile => filterIndustries.includes(profile.industry));
-  }
-
-    // Apply sorting
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.name.localeCompare(b.name, 'nb-NO');
-        case 'rating':
-          return (b.rating || 0) - (a.rating || 0);
-        case 'employees':
-          return (b.employees || 0) - (a.employees || 0);
-        case 'revenue':
-          return (b.revenue?.amount || 0) - (a.revenue?.amount || 0);
-        case 'founded':
-          return (b.founded || 0) - (a.founded || 0);
-        default: return 0;
-  }
+      const normalized = payload.map(normalizeProfile).filter((item): item is CompanyProfile => item !== null);
+      return normalized.length > 0 ? normalized : SAMPLE_PROFILES;
+    },
   });
 
-    // Apply max items limit
-    if (maxItems) {
-      filtered = filtered.slice(0, maxItems);
-  }
+  const industries = useMemo(() => {
+    const raw = profiles.map((profile) => profile.industry);
+    return [...new Set(raw)].sort((left, right) => left.localeCompare(right, 'nb-NO'));
+  }, [profiles]);
 
-    setFilteredProfiles(filtered);
-}, [profiles, searchQuery, selectedIndustry, sortBy, filterIndustries, maxItems]);
+  const filteredProfiles = useMemo(() => {
+    let list = [...profiles];
 
-  const getUniqueIndustries = () => {
-    const industries = profiles.map(p => p.industry);
-    return [...new Set(industries)].sort((a, b) => a.localeCompare(b, 'nb-NO'));
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      list = list.filter((profile) => {
+        return (
+          profile.name.toLowerCase().includes(query) ||
+          profile.industry.toLowerCase().includes(query) ||
+          profile.address.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    if (selectedIndustry) {
+      list = list.filter((profile) => profile.industry === selectedIndustry);
+    }
+
+    if (filterIndustries.length > 0) {
+      list = list.filter((profile) => filterIndustries.includes(profile.industry));
+    }
+
+    list.sort((left, right) => {
+      switch (sortBy) {
+        case 'rating':
+          return (right.rating ?? 0) - (left.rating ?? 0);
+        case 'employees':
+          return (right.employees ?? 0) - (left.employees ?? 0);
+        case 'revenue':
+          return (right.revenue?.amount ?? 0) - (left.revenue?.amount ?? 0);
+        case 'founded':
+          return (right.founded ?? 0) - (left.founded ?? 0);
+        case 'name':
+        default:
+          return left.name.localeCompare(right.name, 'nb-NO');
+      }
+    });
+
+    if (typeof maxItems === 'number') {
+      return list.slice(0, maxItems);
+    }
+
+    return list;
+  }, [filterIndustries, maxItems, profiles, searchQuery, selectedIndustry, sortBy]);
+
+  const gridItemProps = (mode: 'grid' | 'list') => {
+    if (mode === 'list') {
+      return { xs: 12 };
+    }
+    return { xs: 12, sm: 6, md: 4, lg: 3 };
   };
-
-  const getAnimationDelay = (index: number) => {
-    return animation === 'stagger' ? index * 0.1 : 0;
-};
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: animation === 'stagger' ? 0.1 : 0,
-        delayChildren: 0.1 }
-  }
-};
-
-  const itemVariants = {
-    hidden: { 
-      opacity: 0
-      y: animation === 'slide' ? 50 : 0,
-      scale: animation === 'zoom' ? 0.8 : 1 },
-    visible: { 
-      opacity: 1
-      y:  0,
-      scale:  1,
-      transition: { duration: 0, .ease: 'easeOut'}
-  }
-};
 
   if (isLoading) {
     return (
-      <Box sx={{ p:  3 }}>
-        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>{title}</Typography>
-        <Grid container spacing={3}>
-          {[135, 6].map((item) => (
-            <Grid size={{ xs: 12 }} sm={6} md={4} key={item}>
-              <Skeleton variant="rectangular" height={250}, sx={{ borderRadius:  2 }} />
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+          {title}
+        </Typography>
+        <Grid container spacing={2}>
+          {Array.from({ length: 6 }, (_, index) => (
+            <Grid item key={`skeleton-${index}`} xs={12} sm={6} md={4}>
+              <Skeleton variant="rectangular" height={260} sx={{ borderRadius: 2 }} />
             </Grid>
           ))}
         </Grid>
       </Box>
     );
-}
+  }
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <BusinessIcon sx={{ fontSize:  32, color: 'primary.main'}} />
-          <Typography variant="h5" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2.5, gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+          <BusinessIcon color="primary" />
+          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             {title}
           </Typography>
-          <Chip 
-            label={`${filteredProfiles.length} bedrifter`}
-            size="small" 
-            color="primary" 
-            variant="outlined" 
-          />
+          <Chip label={`${filteredProfiles.length} bedrifter`} size="small" color="primary" variant="outlined" />
         </Box>
 
-        <Box display="flex" gap={1}>
+        <Box sx={{ display: 'flex', gap: 0.75 }}>
           <IconButton
-            onClick={() => setViewMode('grid')}
+            aria-label="Grid view"
             color={viewMode === 'grid' ? 'primary' : 'default'}
+            onClick={() => setViewMode('grid')}
           >
             <GridViewIcon />
           </IconButton>
           <IconButton
-            onClick={() => setViewMode('list')}
+            aria-label="List view"
             color={viewMode === 'list' ? 'primary' : 'default'}
+            onClick={() => setViewMode('list')}
           >
             <ListViewIcon />
           </IconButton>
         </Box>
       </Box>
 
-      {/* Filters and Search */}
       {(showFilters || showSearch) && (
-        <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-          <Grid container spacing={2} alignItems="center">
+        <Paper variant="outlined" sx={{ p: 2, mb: 2.5, ...theming.getThemedCardSx() }}>
+          <Grid container spacing={1.5}>
             {showSearch && (
-              <Grid size={{ xs: 12 }} md={4}>
+              <Grid item xs={12} md={4}>
                 <TextField
                   fullWidth
-                  placeholder="Søk i bedrifter..."
+                  size="small"
+                  placeholder="Søk i bedrifter"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(event) => setSearchQuery(event.target.value)}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        <SearchIcon />
+                        <SearchIcon fontSize="small" />
                       </InputAdornment>
-                    )
-              }}
-                  size="small"
+                    ),
+                  }}
                 />
               </Grid>
             )}
 
             {showFilters && (
               <>
-                <Grid size={{ xs: 12 }} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel>Bransje</InputLabel>
                     <Select
-                      value={selectedIndustry}
-                      onChange={(e) => setSelectedIndustry(e.target.value)}
                       label="Bransje"
+                      value={selectedIndustry}
+                      onChange={(event) => setSelectedIndustry(event.target.value)}
                     >
-                      <MenuItem value="">Alle bransjer</MenuItem>
-                      {getUniqueIndustries().map((industry) => (
+                      <MenuItem value="">Alle</MenuItem>
+                      {industries.map((industry) => (
                         <MenuItem key={industry} value={industry}>
                           {industry}
                         </MenuItem>
@@ -358,13 +331,13 @@ export const CompanyProfileGrid: React.FC<CompanyProfileGridProps> = ({
                   </FormControl>
                 </Grid>
 
-                <Grid size={{ xs: 12 }} sm={6} md={3}>
+                <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel>Sorter etter</InputLabel>
+                    <InputLabel>Sorter</InputLabel>
                     <Select
+                      label="Sorter"
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value)}
-                      label="Sorter etter"
+                      onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
                     >
                       <MenuItem value="name">Navn</MenuItem>
                       <MenuItem value="rating">Vurdering</MenuItem>
@@ -380,40 +353,25 @@ export const CompanyProfileGrid: React.FC<CompanyProfileGridProps> = ({
         </Paper>
       )}
 
-      {/* Results */}
       {filteredProfiles.length === 0 ? (
-        <Alert severity="info" sx={{ textAlign: 'center'}}>
-          Ingen bedrifter funnet med de valgte kriteriene.
-        </Alert>
+        <Alert severity="info">Ingen bedrifter funnet med valgte kriterier.</Alert>
       ) : (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <Grid container spacing={3}>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <Grid container spacing={2}>
             <AnimatePresence mode="popLayout">
               {filteredProfiles.map((profile, index) => (
-                <Grid 
-                  item 
-                  xs={12}
-                  sm={viewMode === 'grid' ? 6 : 12}
-                  md={viewMode === 'grid' ? 4 : 12}
-                  lg={viewMode === 'grid' ? 3 : 12}
-                  key={profile.id}
-                >
+                <Grid key={profile.id} item {...gridItemProps(viewMode)}>
                   <motion.div
-                    variants={itemVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="hidden"
-                    transition={{ delay: getAnimationDelay(index)}}
                     layout
+                    initial={{ opacity: 0, y: animation === 'slide' || animation === 'stagger' ? 16 : 0 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{ delay: animation === 'stagger' ? index * 0.04 : 0 }}
                   >
                     <CompanyProfileQuickView
                       profile={profile}
                       variant={viewMode === 'list' ? 'expanded' : 'compact'}
-                      animation={animation}
+                      animation={animation === 'stagger' ? 'slide' : animation}
                       showRiskIndicators={showRiskIndicators}
                       onViewDetails={onProfileSelect}
                       onContact={onProfileContact}

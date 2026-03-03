@@ -67,7 +67,7 @@ export default function ScrollStoryExample() {
       {
         id: 'show-ceremony',
         elementId: 'page-2',
-        threshold: 0.5
+        threshold: 0.5,
         delay: 200,
       },
     ],

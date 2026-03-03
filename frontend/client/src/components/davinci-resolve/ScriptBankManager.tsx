@@ -122,7 +122,7 @@ export default function ScriptBankManager({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ category, scriptName, parameters }),
     });
   },
@@ -155,7 +155,7 @@ export default function ScriptBankManager({
 
   const getScriptColor = (category: string) => {
     const categoryInfo = scriptCategories.find(cat => cat.key === category);
-    return categoryInfo?.color || '#666',;
+    return categoryInfo?.color || '#666';
 };
 
   const handleScriptSelect = useCallback((script: Script, category: string) => {
@@ -376,7 +376,7 @@ export default function ScriptBankManager({
                           label={script.estimatedTime}
                           size="small"
                           variant="outlined"
-                          icon={theming.getThemedIcon('play')}}
+                          icon={theming.getThemedIcon('play')}
                         />
                       )}
                     </Box>
@@ -388,7 +388,7 @@ export default function ScriptBankManager({
                       <Button
                         size="small"
                         startIcon={theming.getThemedIcon('play')}
-                        sx={{ color: getScriptColor(scriptCategories[activeTab].key, )}}
+                        sx={{ color: getScriptColor(scriptCategories[activeTab].key) }}
                       >
                         Execute
                       </Button>
@@ -475,11 +475,20 @@ export default function ScriptBankManager({
           <Button onClick={handleExecuteScript}
             variant="contained"
             disabled={executeScript.isPending}
-            startIcon={executeScript.isPending ? <CircularProgress size={16} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('play')}
+            startIcon={
+              executeScript.isPending ? (
+                <CircularProgress size={16} sx={theming.getThemedButtonSx()} />
+              ) : (
+                theming.getThemedIcon('play')
+              )
+            }
             sx={{
-              background: getScriptColor(scriptCategories[activeTab].key)'&:hover': { background: getScriptColor(scriptCategories[activeTab].key),
+              background: getScriptColor(scriptCategories[activeTab].key),
+              '&:hover': {
+                background: getScriptColor(scriptCategories[activeTab].key),
                 opacity: 0.9,
-            }}}
+              },
+            }}
           >
             {executeScript.isPending ? 'Executing...': 'Execute Script'}
           </Button>

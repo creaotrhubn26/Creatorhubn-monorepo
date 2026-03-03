@@ -112,7 +112,7 @@ export default function PhotoAnalysisAndFeedback({
   const updateAnalysis = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/ai/photo-analysis/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: (response) => {

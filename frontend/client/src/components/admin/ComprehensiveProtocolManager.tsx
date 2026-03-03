@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, getAuthHeader } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -272,7 +271,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     queryKey: ['/api/admin/system-events'],
     refetchInterval: 5000,
     queryFn: async () => {
-      const authHeaders = await auth.getAuthHeader();
+      const authHeaders = await getAuthHeader();
       return apiRequest('/api/admin/system-events', {
         headers: authHeaders,
       });
@@ -283,7 +282,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   const { data: protocolRules = [] } = useQuery({
     queryKey: ['/api/admin/protocol-rules'],
     queryFn: async () => {
-      const authHeaders = await auth.getAuthHeader();
+      const authHeaders = await getAuthHeader();
       return apiRequest('/api/admin/protocol-rules', {
         headers: authHeaders,
       });
@@ -294,7 +293,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   const { data: alertChannels = {} } = useQuery({
     queryKey: ['/api/admin/alert-channels'],
     queryFn: async () => {
-      const authHeaders = await auth.getAuthHeader();
+      const authHeaders = await getAuthHeader();
       return apiRequest('/api/admin/alert-channels', {
         headers: authHeaders,
       });
@@ -306,7 +305,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
     queryKey: ['/api/admin/system-status'],
     refetchInterval: 10000,
     queryFn: async () => {
-      const authHeaders = await auth.getAuthHeader();
+      const authHeaders = await getAuthHeader();
       return apiRequest('/api/admin/system-status', {
         headers: authHeaders,
       });
@@ -350,7 +349,7 @@ const ComprehensiveProtocolManager: React.FC<ComprehensiveProtocolManagerProps> 
   const filteredEvents = systemEvents.filter((event: SystemEvent) => {
     const matchesSeverity = filterSeverity === 'all' || event.severity === filterSeverity;
     const matchesCategory = filterCategory === 'all' || event.category === filterCategory;
-    const matchesSearch = searchTerm === ', ' || 
+    const matchesSearch = searchTerm.trim() === '' || 
       event.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.source.toLowerCase().includes(searchTerm.toLowerCase());
     

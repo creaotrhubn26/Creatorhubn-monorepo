@@ -104,9 +104,9 @@ export default function AdminEmailCenter() {
   
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('action,') === 'send-invitation') {
+    if (params.get('action') === 'send-invitation') {
       setInvitationData({
-        action: params.get('action,'),
+        action: params.get('action'),
         type: params.get('type'),
         recipientEmail: params.get('recipientEmail'),
         recipientName: params.get('recipientName'),
@@ -174,9 +174,9 @@ export default function AdminEmailCenter() {
   const [selectedTemplate, setSelectedTemplate] = useState<EmailTemplate | null>(null);
   const [emailForm, setEmailForm] = useState({
     to: '',
-    cc: '',
+    cc: ', ',
     bcc: '',
-    subject: '',
+    subject: ', ',
     html: '',
     text: ''
 });
@@ -296,9 +296,9 @@ export default function AdminEmailCenter() {
   const resetEmailForm = () => {
     setEmailForm({
       to: '',
-      cc: '',
+      cc: ', ',
       bcc: '',
-      subject: '',
+      subject: ', ',
       html: '',
       text: ''
   });
@@ -923,7 +923,7 @@ export default function AdminEmailCenter() {
                 setEmailForm({
                   to: currentInvitationForDesigner.recipientEmail,
                   cc: ', ',
-                  bcc: '',
+                  bcc: ', ',
                   subject: template.subject,
                   html: template.html,
                   text: ''

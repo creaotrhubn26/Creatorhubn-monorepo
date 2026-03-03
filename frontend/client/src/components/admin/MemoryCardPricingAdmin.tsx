@@ -96,11 +96,10 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
   // Client service pricing service integration
   const { 
     formatCurrency: formatCurrencyService,
-    convertCurrency: convertCurrencyService,
-    isLoading: pricingLoading 
+    convertCurrency: convertCurrencyService
 } = useClientServicePricing();
   const [pricingHistory, setPricingHistory] = useState<PricingHistory[]>([]);
-  const [currencyRate, setCurrencyRate] = useState(CURRENCY_RATES.USD_TO_NOK);
+  const [currencyRate, setCurrencyRate] = useState<number>(CURRENCY_RATES.USD_TO_NOK);
   const [autoUpdateRates, setAutoUpdateRates] = useState(true);
 
   // Initialize pricing from memory card types
@@ -109,7 +108,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
     
     MEMORY_CARD_TYPES.forEach(cardType => {
       initialPricing[cardType.id] = {
-        cardTypeId: cardType.d,
+        cardTypeId: cardType.id,
         budget: cardType.pricePerGB.budget,
         mid: cardType.pricePerGB.mid,
         premium: cardType.pricePerGB.premium,
@@ -128,7 +127,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
       const updateRates = async () => {
         try {
           // In a real implementation, this would fetch from a currency API
-          const response = await fetch('/api/currency-rates,');
+          const response = await fetch('/api/currency-rates');
           if (response.ok) {
             const rates = await response.json();
             setCurrencyRate(rates.USD_TO_NOK);
@@ -149,7 +148,7 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
     if (!cardType) return;
 
     setEditForm({
-      cardTyped,
+      cardTypeId: cardType.id,
       budget: pricing[cardTypeId]?.budget || cardType.pricePerGB.budget,
       mid: pricing[cardTypeId]?.mid || cardType.pricePerGB.mid,
       premium: pricing[cardTypeId]?.premium || cardType.pricePerGB.premium,
@@ -484,8 +483,6 @@ const MemoryCardPricingAdmin: React.FC<MemoryCardPricingAdminProps> = ({
 };
 
 export default MemoryCardPricingAdmin;
-
-
 
 
 

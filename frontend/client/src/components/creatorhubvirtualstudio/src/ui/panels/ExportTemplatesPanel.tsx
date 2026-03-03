@@ -225,7 +225,7 @@ function TemplateCard({
                 label={preset.icon}
                 size="small"
                 variant="outlined"
-                sx={{ height: 22 '& .MuiChip-label': { px: 0.5 } }}
+                sx={{ height: 22, '& .MuiChip-label': { px: 0.5 } }}
                 title={preset.name}
               />
             ))}
@@ -723,7 +723,7 @@ export function ExportTemplatesPanel({
     }
   }, []);
 
-  const handleCreateTemplate = useCallback((templateData: Omit<ExportTemplate, 'id' | , 'category'>) => {
+  const handleCreateTemplate = useCallback((templateData: Omit<ExportTemplate, 'id' | 'category'>) => {
     exportTemplateService.createCustomTemplate(templateData);
     setTemplates(exportTemplateService.getAllTemplates());
   }, []);
@@ -873,4 +873,3 @@ export function ExportTemplatesPanel({
 }
 
 export default ExportTemplatesPanel;
-

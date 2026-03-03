@@ -107,7 +107,7 @@ export default function UniversalDashboardNotificationIntegration({
   const updateUniversalDashboardNotificationIntegration = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/dashboard/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: () => {

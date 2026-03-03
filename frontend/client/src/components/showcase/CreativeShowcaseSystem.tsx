@@ -1,404 +1,400 @@
-import React, { useState, useEffect } from 'react';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';";
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Avatar,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Grid,
-  Button,
-  Tabs,
-  Tab,
-  Avatar,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Grid,
   IconButton,
+  Stack,
+  Tab,
+  Tabs,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  PhotoCamera,
-  VideoLibrary,
-  LibraryMusic,
   Brush,
   CloudUpload,
-  Star,
-  PlayArrow,
   Download,
+  LibraryMusic,
+  PhotoCamera,
+  PlayArrow,
   Share,
+  Star,
+  VideoLibrary,
+  Visibility,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 import { UniversalFileUpload } from '../universal/UniversalFileUpload';
 
+type ShowcaseType = 'photo' | 'video' | 'audio' | 'design';
+type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+
 interface ShowcaseItem {
   id: string;
   title: string;
-  type: 'photo' | 'video' | 'audio' | 'design';
+  type: ShowcaseType;
   category: string;
   description: string;
   file: string;
   thumbnail?: string;
   views: number;
   likes: number;
-  profession: string;
-  createdAt: string
+  profession: Profession;
+  createdAt: string;
 }
 
-export default function CreativeShowcaseSystem() {
+interface ShowcaseStats {
+  totalItems: number;
+  totalViews: number;
+  totalLikes: number;
+}
+
+interface UploadResult {
+  url?: string;
+  thumbnail?: string;
+  type?: string;
+  name?: string;
+  title?: string;
+  profession?: string;
+}
+
+const professionMeta: Record<Profession, { label: string; color: string }> = {
+  photographer: { label: 'Photographer', color: '#ff6b35' },
+  videographer: { label: 'Videographer', color: '#1976d2' },
+  music_producer: { label: 'Music Producer', color: '#8e24aa' },
+  vendor: { label: 'Vendor', color: '#2e7d32' },
+};
+
+const typeTabs: Array<{ label: string; value: ShowcaseType | 'all'; icon: React.ReactNode }> = [
+  { label: 'All', value: 'all', icon: <Brush /> },
+  { label: 'Photos', value: 'photo', icon: <PhotoCamera /> },
+  { label: 'Videos', value: 'video', icon: <VideoLibrary /> },
+  { label: 'Audio', value: 'audio', icon: <LibraryMusic /> },
+  { label: 'Design', value: 'design', icon: <Brush /> },
+];
+
+const fallbackItems: ShowcaseItem[] = [
+  {
+    id: 'showcase-default-1',
+    title: 'Opening Frame',
+    type: 'photo',
+    category: 'Highlights',
+    description: 'Cinematic opening still for campaign reel.',
+    file: '/assets/NORWEDFILM_VIGNETT_DEMO2.mov',
+    views: 214,
+    likes: 38,
+    profession: 'photographer',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'showcase-default-2',
+    title: 'Audio Signature',
+    type: 'audio',
+    category: 'Sound Design',
+    description: 'Branded signature layer for intro sequence.',
+    file: '/assets/audio-signature.wav',
+    views: 132,
+    likes: 21,
+    profession: 'music_producer',
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const detectTypeFromResult = (item: UploadResult): ShowcaseType => {
+  const source = `${item.type ?? ''} ${item.url ?? ''}`.toLowerCase();
+  if (source.includes('video')) return 'video';
+  if (source.includes('audio')) return 'audio';
+  if (source.includes('design') || source.includes('psd') || source.includes('fig')) return 'design';
+  return 'photo';
+};
+
+const getTypeIcon = (type: ShowcaseType): React.ReactElement => {
+  switch (type) {
+    case 'photo':
+      return <PhotoCamera fontSize="small" />;
+    case 'video':
+      return <VideoLibrary fontSize="small" />;
+    case 'audio':
+      return <LibraryMusic fontSize="small" />;
+    case 'design':
+    default:
+      return <Brush fontSize="small" />;
+  }
+};
+
+export default function CreativeShowcaseSystem(): React.ReactElement {
   const queryClient = useQueryClient();
   const [currentTab, setCurrentTab] = useState(0);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const [selectedProfession, setSelectedProfession] = useState<string>('photographer');
-  
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // Dynamic profession system
-  const { getProfessionDisplayName } = useDynamicProfessions();
-  
-  // Register component with MasterIntegrationProvider
-  useEffect(() => {
-    componentRegistry.registerComponent({
-      id: 'creative-showcase-system',
-      type: 'showcase',
-      capabilities: [
-        'showcase-items','showcase-stats''profession-data','showcase: item-uploaded''showcase: item-liked','showcase: profession-changed''upload-items','like-item''filter-items','sort-items''showcase-grid','upload-dialog''filter-controls','stats-display''file-upload','image-processing''data-filtering'
-      ],
-      dependencies: ['showcase-admin','showcase-drive-manager'],
-      lastActive: Date.now(),
-      performance: {
-        renderCount: 0,
-        avgRenderTime:  0,
-        memoryUsage: 0 }
-  });
+  const [selectedProfession, setSelectedProfession] = useState<Profession>('photographer');
 
-    // Register data flow nodes
-    dataFlow.registerNode('showcase-items', 'source', {
-      description: 'Creative showcase items',
-      dataType: 'array',
-      schema: 'ShowcaseItem[]'
-});
-
-    dataFlow.registerNode('showcase-stats', 'source', {
-      description: 'Showcase statistics',
-      dataType: 'object',
-      schema: 'ShowcaseStats'
-});
-
-    dataFlow.registerNode('profession-data', 'source', {
-      description: 'Profession-specific data',
-      dataType: 'object',
-      schema: 'ProfessionData'
-});
-
-    // Subscribe to events
-    const unsubscribeEvents = [
-      communication.on('showcase: refresh-items', (data: any) => {
-        if (data.profession === selectedProfession) {
-          queryClient.invalidateQueries({ queryKey: ['/api/showcase/items', selectedProfession] });
-      }
-    }),
-      communication.on('showcase: item-uploaded', (data: any) => {
-        if (data.profession === selectedProfession) {
-          queryClient.invalidateQueries({ queryKey: ['/api/showcase/items', selectedProfession] });
-          queryClient.invalidateQueries({ queryKey: ['/api/showcase/stats', selectedProfession] });
-      }
-    })
-    ];
-
-    return () => {
-      componentRegistry.unregisterComponent('creative-showcase-system');
-      unsubscribeEvents.forEach(unsub => unsub());
-  };
-}, [componentRegistry, dataFlow, communication, selectedProfession, queryClient]);
-  
-  // Database connection for CreativeShowcaseSystem
-  const { data: showcaseItems = [], isLoading } = useQuery({
+  const { data: showcaseItems = [] } = useQuery<ShowcaseItem[]>({
     queryKey: ['/api/showcase/items', selectedProfession],
-    queryFn: () => apiRequest(`/api/showcase/items/${selectedProfession}`),
-    retry: false,
-});
-
-  const { data: showcaseStats } = useQuery({
-    queryKey: ['/api/showcase/stats', selectedProfession],
-    queryFn: () => apiRequest(`/api/showcase/stats/${selectedProfession}`),
-    retry: false,
-});
-
-  // Mutation for creating showcase items
-  const createShowcaseItem = useMutation({
-    mutationFn: async (itemData: any) => {
-      return apiRequest('/api/showcase/create', {
-        headers: {
-          "Content-Type": "application/json"
+    queryFn: async () => {
+      const response = await apiRequest(`/api/showcase/items/${selectedProfession}`);
+      const payload = response as { items?: ShowcaseItem[] } | ShowcaseItem[];
+      if (Array.isArray(payload)) {
+        return payload;
+      }
+      return payload.items ?? fallbackItems.filter((item) => item.profession === selectedProfession);
     },
-        method: 'POS',
-        body: JSON.stringify(itemData)
   });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
-      setUploadDialogOpen(false);
-  }
-});
 
-  const handleFilesSelected = (files: File[]) => {
-    console.log('🎨 Kreative filer valgt, :', files);
-    
-    // Broadcast files selected event
-    communication.emit('showcase: files-selected', {
-      files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
-      profession: selectedProfession,
-      timestamp: Date.now()
-});
-};
+  const { data: showcaseStats } = useQuery<ShowcaseStats>({
+    queryKey: ['/api/showcase/stats', selectedProfession],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/showcase/stats/${selectedProfession}`);
+      const payload = response as Partial<ShowcaseStats> | undefined;
+      return {
+        totalItems: payload?.totalItems ?? showcaseItems.length,
+        totalViews:
+          payload?.totalViews ?? showcaseItems.reduce((sum, item) => sum + (item.views ?? 0), 0),
+        totalLikes:
+          payload?.totalLikes ?? showcaseItems.reduce((sum, item) => sum + (item.likes ?? 0), 0),
+      };
+    },
+  });
 
-  const handleUploadComplete = (results: any[]) => {
-    console.log('✅ Showcase opplasting fullført, :', results);
-    queryClient.invalidateQueries({ queryKey: ['/api/showcase', ],});
-    
-    // Broadcast upload completed event
-    communication.emit('showcase: item-uploaded', {
-      results,
-      profession: selectedProfession,
-      timestamp: Date.now()
-});
-};
+  const createShowcaseItem = useMutation({
+    mutationFn: async (itemData: Omit<ShowcaseItem, 'id' | 'createdAt'>) => {
+      return apiRequest('/api/showcase/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemData),
+      });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/showcase/items', selectedProfession] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/showcase/stats', selectedProfession] });
+    },
+  });
 
-  const tabs = [
-    { label: 'Alle', value: 'all', icon: <Brush />,},
-    { label: 'Foto', value: 'photo', icon: theming.getThemedIcon(',') },
-    { label: 'Video', value: 'video', icon: theming.getThemedIcon(',') },
-    { label: 'Lyd', value: 'audio', icon: theming.getThemedIcon(',') },
-    { label: 'Design', value: 'design', icon: <Brush />,}
-  ];
+  const filteredItems = useMemo(() => {
+    const tab = typeTabs[currentTab]?.value ?? 'all';
+    const source = showcaseItems.length > 0 ? showcaseItems : fallbackItems;
+    return source.filter(
+      (item) => item.profession === selectedProfession && (tab === 'all' || item.type === tab),
+    );
+  }, [currentTab, showcaseItems, selectedProfession]);
 
-  const professions = [
-    { key: 'photographer', label: getProfessionDisplayName('photographer'), color: '#FF6B35',},
-    { key: 'videographer', label: getProfessionDisplayName('videographer'), color: '#1976d2',},
-    { key: 'music_producer', label: getProfessionDisplayName('music_producer'), color: '#9c27b0',},
-    { key: 'vendor', label: getProfessionDisplayName('vendor'), color: '#388e3c',}
-  ];
+  const handleUploadComplete = (results?: unknown[]): void => {
+    const normalized = Array.isArray(results) ? (results as UploadResult[]) : [];
+    normalized.forEach((result) => {
+      const type = detectTypeFromResult(result);
+      const title = result.title ?? result.name ?? `New ${type}`;
+      const file = result.url ?? '';
+      if (!file) {
+        return;
+      }
 
-  
+      createShowcaseItem.mutate({
+        title,
+        type,
+        category: 'Uploads',
+        description: 'Uploaded through Creative Showcase upload flow.',
+        file,
+        thumbnail: result.thumbnail,
+        views: 0,
+        likes: 0,
+        profession: selectedProfession,
+      });
+    });
+    setUploadDialogOpen(false);
+  };
 
-  const filteredItems = mockShowcaseItems.filter(item => 
-    (currentTab === 0) || (tabs[currentTab]?.value === item.type)
-  );
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'photo': return theming.getThemedIcon(',');
-      case 'video': return theming.getThemedIcon('videoLibrary');
-      case 'audio': return theming.getThemedIcon('libraryMusic');
-      case 'design': return <Brush />;
-      default: return theming.getThemedIcon(', ');
-  }
-};
+  const stats = showcaseStats ?? {
+    totalItems: filteredItems.length,
+    totalViews: filteredItems.reduce((sum, item) => sum + item.views, 0),
+    totalLikes: filteredItems.reduce((sum, item) => sum + item.likes, 0),
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Box sx={{ mb:  4 }}>
-        <Typography variant="h4" gutterBottom sx={{  fontWeight: 'bold',  color: theming.colors.primary }}>
-          Kreativ Showcase System
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          Creative Showcase
         </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          Vis frem ditt kreative arbeid på tvers av alle medier
+        <Typography variant="body1" color="text.secondary">
+          Present and manage creative outputs across media formats.
         </Typography>
       </Box>
 
-      {/* Profession selector */}
-      <Box sx={{ mb:  3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Velg yrke: </Typography>
-        {professions.map((prof) => (
+      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 2 }}>
+        {(Object.keys(professionMeta) as Profession[]).map((professionKey) => (
           <Chip
-            key={prof.key}
-            label={prof.label}
-            onClick={() => setSelectedProfession(prof.key)}
-            variant={selectedProfession === prof.key ? 'filled' : 'outlined'}
-            sx={{ 
-              mr: 1, mb:  1,
-              bgcolor: selectedProfession === prof.key ? prof.color : 'transparent',
-              color: selectedProfession === prof.key ? 'white' : prof.color,
-              borderColor: prof.color
-        }}
+            key={professionKey}
+            label={professionMeta[professionKey].label}
+            onClick={() => setSelectedProfession(professionKey)}
+            variant={selectedProfession === professionKey ? 'filled' : 'outlined'}
+            sx={{
+              bgcolor:
+                selectedProfession === professionKey
+                  ? professionMeta[professionKey].color
+                  : 'transparent',
+              color:
+                selectedProfession === professionKey ? 'white' : professionMeta[professionKey].color,
+              borderColor: professionMeta[professionKey].color,
+            }}
           />
         ))}
-      </Box>
+      </Stack>
 
-      {/* Stats cards */}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid item xs={12} md={4}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <Avatar sx={{ bgcolor: 'primary.main', mx: 'auto', mb:  1 }}>
-                {theming.getThemedIcon('photoCamera')}
-              </Avatar>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>{showcaseStats?.totalItems || filteredItems.length}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Totale Elementer
-              </Typography>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack alignItems="center" spacing={1}>
+                <Avatar sx={{ bgcolor: '#0ea5e9' }}>
+                  <PhotoCamera />
+                </Avatar>
+                <Typography variant="h6">{stats.totalItems}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Items
+                </Typography>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <Avatar sx={{ bgcolor: 'success.main', mx: 'auto', mb:  1 }}>
-                {theming.getThemedIcon('star')}
-              </Avatar>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>{showcaseStats?.totalViews || 587}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Totale Visninger
-              </Typography>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack alignItems="center" spacing={1}>
+                <Avatar sx={{ bgcolor: '#16a34a' }}>
+                  <Visibility />
+                </Avatar>
+                <Typography variant="h6">{stats.totalViews}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Views
+                </Typography>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={{ textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <Button variant="contained"
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined">
+            <CardContent>
+              <Stack alignItems="center" spacing={1}>
+                <Avatar sx={{ bgcolor: '#f59e0b' }}>
+                  <Star />
+                </Avatar>
+                <Typography variant="h6">{stats.totalLikes}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total Likes
+                </Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined" sx={{ height: '100%' }}>
+            <CardContent sx={{ height: '100%' }}>
+              <Button
+                variant="contained"
+                startIcon={<CloudUpload />}
                 fullWidth
-                startIcon={theming.getThemedIcon('cloudUpload')}
+                sx={{ height: '100%' }}
                 onClick={() => setUploadDialogOpen(true)}
-                sx={{ height: '100%',}}
               >
-                Last opp nytt innhold
+                Upload New
               </Button>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Content type tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
-        <Tabs value={currentTab} onChange={(e, newValue) => setCurrentTab(newValue)}>
-          {tabs.map((tab, index) => (
-            <Tab 
-              key={tab.value}
-              icon={tab.icon}
-              label={tab.label}
-              iconPosition="start"
-            />
-          ))}
-        </Tabs>
-      </Box>
+      <Tabs value={currentTab} onChange={(_event, value: number) => setCurrentTab(value)} sx={{ mb: 2 }}>
+        {typeTabs.map((tab) => (
+          <Tab key={tab.value} label={tab.label} icon={tab.icon} iconPosition="start" />
+        ))}
+      </Tabs>
 
-      {/* Showcase items grid */}
-      <Grid container spacing={3}>
+      <Grid container spacing={2}>
         {filteredItems.map((item) => (
           <Grid item xs={12} md={6} lg={4} key={item.id}>
-            <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column',  ...theming.getThemedCardSx() }}>
+            <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <Box
                 sx={{
-                  height: 20,
-                  bgcolor: 'grey.10',
+                  height: 180,
+                  bgcolor: 'grey.100',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  position: 'relative'
-            }}
+                  position: 'relative',
+                }}
               >
                 {getTypeIcon(item.type)}
-                {item.type === 'video' && (
+                {item.type === 'video' ? (
                   <IconButton
                     sx={{
                       position: 'absolute',
-                      bgcolor: 'rgba, (, 0,0,0,0.7)',
-                      color: 'white', '&:hover': { bgcolor: 'rgba, (, 0,0,0,0.8)' }
-                  }}
+                      bgcolor: 'rgba(0,0,0,0.6)',
+                      color: 'white',
+                      '&:hover': { bgcolor: 'rgba(0,0,0,0.8)' },
+                    }}
                   >
-                    {theming.getThemedIcon('play')}
+                    <PlayArrow />
                   </IconButton>
-                )}
+                ) : null}
               </Box>
-              <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                  {getTypeIcon(item.type)}
-                  <Chip 
-                    label={item.category}
-                    size="small" 
-                    sx={{ ml:  1 }}
-                  />
-                </Box>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  {item.title}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  {item.description}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',}}>
-                  <Box sx={{ display: 'flex', alignItems: 'center',}}>
-                    <Typography variant="body2" color="text.secondary">
-                      {item.views} visninger • {item.likes} likes
+              <CardContent sx={{ flexGrow: 1 }}>
+                <Stack spacing={1.25}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    {getTypeIcon(item.type)}
+                    <Chip label={item.category} size="small" />
+                  </Stack>
+                  <Typography variant="h6">{item.title}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {item.description}
+                  </Typography>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="caption" color="text.secondary">
+                      {item.views} views • {item.likes} likes
                     </Typography>
-                  </Box>
-                  <Box>
-                    <IconButton size="small">
-                      {theming.getThemedIcon('share')}
-                    </IconButton>
-                    <IconButton size="small">
-                      {theming.getThemedIcon('download')}
-                    </IconButton>
-                  </Box>
-                </Box>
+                    <Box>
+                      <Tooltip title="Share">
+                        <IconButton size="small">
+                          <Share fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Download">
+                        <IconButton size="small">
+                          <Download fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Stack>
+                </Stack>
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
 
-      {/* Upload dialog */}
-      {uploadDialogOpen && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top:  0,
-            left:  0,
-            right:  0,
-            bottom:  0,
-            bgcolor: 'rgba, (, 0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1300 }}
-        >
-          <Card sx={{ maxWidth: 70, width: '90, %', maxHeight: '80vh', overflow: 'auto',  ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Last opp nytt showcase-innhold</Typography>
-                <IconButton onClick={() => setUploadDialogOpen(false)}>
-                  ×
-                </IconButton>
-              </Box>
-              
-              <UniversalFileUpload
-                onFilesSelected={handleFilesSelected}
-                onUploadComplete={handleUploadComplete}
-                allowedTypes="all"
-                maxFiles={20}
-                maxFileSizeMB={500}
-                showFormatInfo={true}
-                uploadEndpoint="/api/showcase/upload"
-                profession={selectedProfession}
-                enableBackgroundUpload={true}
-                maxRetries={3}
-              />
-              
-              <Typography variant="body2" color="text.secondary" sx={{ mt:  2 }}>
-                Støtter alle kreative formater: RAW-bilder, 4K/8K video, høy-kvalitet lyd, 
-                design-filer, 3D-modeller og mer
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-      )}
+      <Dialog open={uploadDialogOpen} onClose={() => setUploadDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Upload Creative Content</DialogTitle>
+        <DialogContent>
+          <UniversalFileUpload
+            onFilesSelected={() => undefined}
+            onUploadComplete={handleUploadComplete}
+            onUploadError={() => undefined}
+            allowedTypes="all"
+            maxFiles={20}
+            maxFileSizeMB={500}
+            showFormatInfo
+            uploadEndpoint="/api/showcase/upload"
+            profession={selectedProfession}
+            enableBackgroundUpload
+            maxRetries={3}
+          />
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }

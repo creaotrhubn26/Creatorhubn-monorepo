@@ -11,7 +11,7 @@ export interface ProfessionToastConfig {
     error: string;
     warning: string;
     info: string;
-,};
+  };
   terminology: {
     project: string;
     client: string;
@@ -19,14 +19,14 @@ export interface ProfessionToastConfig {
     deliverables: string;
     timeline: string;
     budget: string;
-,};
+  };
   colors: {
     primary: string;
     success: string;
     error: string;
     warning: string;
     info: string;
-,};
+  };
 }
 
 // Profession configurations
@@ -459,4 +459,3 @@ export function useProfessionToasts(profession: string) {
 }
 
 export default useProfessionToasts;
-

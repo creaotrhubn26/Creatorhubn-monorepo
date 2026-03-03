@@ -297,7 +297,7 @@ export const MonitorFeedPanel: React.FC = () => {
       });
     }
     
-    log.info('Stopped recording all cameras, got', recordings.length'files');
+    log.info('Stopped recording all cameras, got', recordings.length, 'files');
   };
   
   const handleDownloadRecording = (recording: CameraRecording) => {
@@ -703,4 +703,3 @@ export const MonitorFeedPanel: React.FC = () => {
 };
 
 export default MonitorFeedPanel;
-

@@ -367,7 +367,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   
   // Theming system
   const theming = useTheming('prototype_tester');
-  const [apiName, setApiName] = useState('bring,');
+  const [apiName, setApiName] = useState('bring');
   const [apiNameError, setApiNameError] = useState<string>('');
   const [selectedTarget, setSelectedTarget] = useState<string>('vendor');
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void }>({ open: false, title: '', message: '', onConfirm: () => {} });
@@ -375,7 +375,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
   // Register component with EnhancedMasterIntegrationProvider
   React.useEffect(() => {
     componentRegistry.registerComponent({
-      id: 'CompleteDeploymentManager,',
+      id: 'CompleteDeploymentManager',
       name: 'Complete Deployment Manager',
       type: 'admin',
       category: 'administration',
@@ -1233,7 +1233,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           "Content-Type" : "application/json"
   },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(deploymentData),
   });
 
@@ -1592,7 +1592,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
             </Typography>
             <Grid container spacing={2}>
               {deploymentTargets.map((target, index) => (
-                <Grid size={{ xs: 12 }} key={index}>
+                <Grid item xs={12} key={index}>
                   <Card 
                     sx={{ 
                       cursor: 'pointer',
@@ -2282,7 +2282,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
               </Box>
               <Grid container spacing={2}>
                 {[13, 4].map((index) => (
-                  <Grid size={{ xs:  12, md:  6 }} key={index}>
+                  <Grid item xs={12} md={6} key={index}>
                     <Card sx={{ height: '100%'}}>
                       <CardContent>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -2303,7 +2303,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           ) : (
             <Grid container spacing={2}>
               {feedbackData?.feedback?.map((feedback) => (
-                <Grid size={{ xs:  12, md:  6 }} key={feedback.id}>
+                <Grid item xs={12} md={6} key={feedback.id}>
                   <Card sx={{ height: '100%'}}>
                     <CardContent>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
@@ -2363,10 +2363,10 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
 
                       {feedback.aiAnalysis ? (
                         <Box>
-                          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y}}>
+                          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600, color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY }}>
                             🤖 AI Analysis Results: </Typography>
                           {feedback.aiAnalysis.suggestedFixes.map((fix) => (
-                            <Card key={fix.d} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0'}}>
+                            <Card key={fix.id} sx={{ mb: 2, p: 2, border: '1px solid #e0e0e0'}}>
                               {/* Fix Header */}
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                                 <AutoFixHighIcon color="primary" />
@@ -2637,7 +2637,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 </Box>
 
                 <Grid container spacing={2} sx={{ mb:  2 }}>
-                  <Grid size={{ xs:  12, sm:  3 }}>
+                  <Grid item xs={12} sm={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.light', borderRadius:  1 }}>
                       <Typography variant="h4" color="success.contrastText" sx={{ color: theming.colors.primary }}>
                         {systemHealth.successfulEndpoints}
@@ -2647,7 +2647,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid size={{ xs:  12, sm:  3 }}>
+                  <Grid item xs={12} sm={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'error.light', borderRadius:  1 }}>
                       <Typography variant="h4" color="error.contrastText" sx={{ color: theming.colors.primary }}>
                         {systemHealth.failedEndpoints}
@@ -2657,7 +2657,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid size={{ xs:  12, sm:  3 }}>
+                  <Grid item xs={12} sm={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'info.light', borderRadius:  1 }}>
                       <Typography variant="h4" color="info.contrastText" sx={{ color: theming.colors.primary }}>
                         {systemHealth.averageResponseTime}ms
@@ -2667,7 +2667,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                       </Typography>
                     </Box>
                   </Grid>
-                  <Grid size={{ xs:  12, sm:  3 }}>
+                  <Grid item xs={12} sm={3}>
                     <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'warning.light', borderRadius:  1 }}>
                       <Typography variant="h4" color="warning.contrastText" sx={{ color: theming.colors.primary }}>
                         {Math.round((systemHealth.successfulEndpoints / systemHealth.totalEndpoints) * 100)}%
@@ -2816,7 +2816,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                   <Box sx={{
                     width: 80,
                     height: 80,
-                    borderRadius: '50, %', 
+                    borderRadius: '50%', 
                     display: 'flex', 
                     alignItems: 'center', 
                     justifyContent: 'center',
@@ -2842,7 +2842,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
                 {/* Quality Categories */}
                 <Grid container spacing={2}>
                   {Object.entries(qualityAnalysis.categories).map(([category, data]) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={category}>
+                    <Grid item xs={12} sm={6} md={4} key={category}>
                       <Card sx={{
                         border: 1,
                         borderColor: data.score >= 8 ? 'success.main' :
@@ -3036,7 +3036,7 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           {/* Environment Status Cards */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
             {environments.map((env) => (
-              <Grid size={{ xs: 12, md: 4 }} key={env.name}>
+              <Grid item xs={12} md={4} key={env.name}>
                 <Card sx={{
                   border: 1,
                   borderColor: env.status === 'healthy' ? 'success.main' :
@@ -3194,10 +3194,10 @@ const CompleteDeploymentManager = React.memo(function CompleteDeploymentManager(
           </Box>
 
           <Grid container spacing={3}>
-            <Grid size={{ xs:  12, md:  8 }}>
+            <Grid item xs={12} md={8}>
               <FeatureManagementWithPublish />
             </Grid>
-            <Grid size={{ xs:  12, md:  4 }}>
+            <Grid item xs={12} md={4}>
               <DeploymentStatusWidget 
                  onOpenFeatureManagement={() => setActiveTab(4)}
               />

@@ -21,6 +21,7 @@ import {
   CircularProgress,
   Divider,
   Stack,
+  type ChipProps,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -202,7 +203,7 @@ export default function FineTuningMonitoringPanel() {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipProps['color'] => {
     switch (status) {
       case 'passed':
       case 'completed':
@@ -217,6 +218,17 @@ export default function FineTuningMonitoringPanel() {
       default:
         return 'default';
     }
+  };
+
+  const toNumericValue = (value: string | number | null | undefined): number => {
+    if (value === null || value === undefined || value === '') {
+      return 0;
+    }
+    if (typeof value === 'number') {
+      return value;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   };
 
   return (
@@ -415,7 +427,7 @@ export default function FineTuningMonitoringPanel() {
                     </Typography>
                     <Typography variant="h6">
                       {trainingStats.avg_confidence
-                        ? (parseFloat(trainingStats.avg_confidence) * 100).toFixed(1)
+                        ? (toNumericValue(trainingStats.avg_confidence) * 100).toFixed(1)
                         : '0.0'}
                       %
                     </Typography>
@@ -427,7 +439,7 @@ export default function FineTuningMonitoringPanel() {
                     </Typography>
                     <Typography variant="h6">
                       {trainingStats.avg_adjustment
-                        ? parseFloat(trainingStats.avg_adjustment).toFixed(4)
+                        ? toNumericValue(trainingStats.avg_adjustment).toFixed(4)
                         : '0.0000'}s
                     </Typography>
                   </Box>
@@ -794,7 +806,7 @@ export default function FineTuningMonitoringPanel() {
                             <Chip
                               icon={getStatusIcon(version.status)}
                               label={version.status}
-                              color={getStatusColor(version.status) as any}
+                              color={getStatusColor(version.status)}
                               size="small"
                             />
                           </TableCell>
@@ -808,13 +820,13 @@ export default function FineTuningMonitoringPanel() {
                           <TableCell align="right">{version.training_data_count || 0}</TableCell>
                           <TableCell align="right">
                             {version.validation_accuracy
-                              ? (parseFloat(version.validation_accuracy) * 100).toFixed(1)
+                              ? (toNumericValue(version.validation_accuracy) * 100).toFixed(1)
                               : '-'}
                             %
                           </TableCell>
                           <TableCell align="right">
                             {version.test_accuracy
-                              ? (parseFloat(version.test_accuracy) * 100).toFixed(1)
+                              ? (toNumericValue(version.test_accuracy) * 100).toFixed(1)
                               : '-'}
                             %
                           </TableCell>
@@ -838,4 +850,3 @@ export default function FineTuningMonitoringPanel() {
     </Box>
   );
 }
-

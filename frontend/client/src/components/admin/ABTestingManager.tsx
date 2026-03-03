@@ -1,35 +1,86 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Plus, 
-  Play, 
-  Pause, 
-  Stop, 
-  TrendingUp, 
-  Users, 
-  Mail,
-  Share2,
-  BarChart3,
-  Eye,
-  MousePointer,
-  Target,
-  Crown,
-  AlertCircle
-} from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Progress } from '@/components/ui/progress';
+import React, { useMemo, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
+  type SelectChangeEvent,
+} from '@mui/material';
+import {
+  Add as AddIcon,
+  AdsClick as ClicksIcon,
+  BarChart as BarChartIcon,
+  Email as EmailIcon,
+  EmojiEvents as WinnerIcon,
+  Groups as AudienceIcon,
+  Pause as PauseIcon,
+  PlayArrow as PlayIcon,
+  Share as ShareIcon,
+  Stop as StopIcon,
+  TrackChanges as ConversionIcon,
+  TrendingUp as ImprovementIcon,
+  Visibility as ViewsIcon,
+  WarningAmber as WarningIcon,
+} from '@mui/icons-material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QUERY_KEYS } from '@/lib/queryKeys';
 import { useToast } from '@/hooks/use-toast';
 
 type TestStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled';
 type TestType = 'email' | 'social';
+type TestTab = 'active' | 'completed' | 'draft';
+
+interface VariantMetrics {
+  views: number;
+  clicks: number;
+  conversions: number;
+  conversionRate: number;
+  engagementRate: number;
+  revenue?: number;
+}
+
+interface TestVariant {
+  id: string;
+  name: string;
+  description: string;
+  audienceSplit: number;
+  content: Record<string, unknown>;
+  metrics: VariantMetrics;
+}
+
+interface TestConfig {
+  duration: number;
+  minSampleSize: number;
+  significanceLevel: number;
+  primaryMetric: 'clicks' | 'conversions' | 'engagement' | 'revenue';
+  audienceSegment?: string;
+}
+
+interface TestResults {
+  winner?: string;
+  confidence: number;
+  improvement: number;
+  recommendation: string;
+  statisticalSignificance: boolean;
+}
 
 interface ABTest {
   id: string;
@@ -44,442 +95,580 @@ interface ABTest {
   completedAt?: string;
 }
 
-interface TestVariant {
-  id: string;
+interface CreateABTestPayload {
   name: string;
-  description: string;
-  audienceSplit: number; // percentage
-  content: any;
-  metrics: VariantMetrics;
+  type: TestType;
+  variants: Array<Pick<TestVariant, 'name' | 'description' | 'audienceSplit' | 'content'>>;
+  config: TestConfig;
 }
 
-interface VariantMetrics {
-  views: number;
-  clicks: number;
-  conversions: number;
-  conversionRate: number;
-  engagementRate: number;
-  revenue?: number;
-}
-
-interface TestConfig {
-  duration: number; // days
-  minSampleSize: number;
-  significanceLevel: number; // 0.95 = 95%
-  primaryMetric: 'clicks' | 'conversions' | 'engagement' | 'revenue';
-  audienceSegment?: string;
-}
-
-interface TestResults {
-  winner?: string;
-  confidence: number;
-  improvement: number;
-  recommendation: string;
-  statisticalSignificance: boolean;
-}
+const defaultVariantMetrics: VariantMetrics = {
+  views: 0,
+  clicks: 0,
+  conversions: 0,
+  conversionRate: 0,
+  engagementRate: 0,
+};
 
 export default function ABTestingManager() {
-  const [selectedTab, setSelectedTab] = useState<'active' | 'completed' | 'draft'>('active');
+  const [selectedTab, setSelectedTab] = useState<TestTab>('active');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [selectedTest, setSelectedTest] = useState<ABTest | null>(null);
+  const [newTestName, setNewTestName] = useState('');
+  const [newTestType, setNewTestType] = useState<TestType>('email');
+  const [newPrimaryMetric, setNewPrimaryMetric] =
+    useState<TestConfig['primaryMetric']>('conversions');
+  const [newDurationDays, setNewDurationDays] = useState<number>(7);
+  const [newMinSampleSize, setNewMinSampleSize] = useState<number>(1000);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Fetch AB tests
   const { data: tests = [], isLoading } = useQuery({
     queryKey: [...QUERY_KEYS.AB_TESTS, selectedTab],
     queryFn: async () => {
       const res = await fetch(`/api/ab-tests?status=${selectedTab}`);
-      if (!res.ok) throw new Error('Failed to fetch AB tests ');
-      return res.json() as Promise<ABTest[]>;
-    }
+      if (!res.ok) {
+        throw new Error('Failed to fetch A/B tests');
+      }
+      return (await res.json()) as ABTest[];
+    },
   });
 
-  // Start test mutation
+  const createTestMutation = useMutation({
+    mutationFn: async (payload: CreateABTestPayload) => {
+      const res = await fetch('/api/ab-tests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to create A/B test');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.AB_TESTS });
+      setCreateDialogOpen(false);
+      setNewTestName('');
+      toast({
+        title: 'A/B test created',
+        description: 'The test is saved as draft and ready to start.',
+      });
+    },
+    onError: () => {
+      toast({
+        title: 'Failed to create test',
+        description: 'Please validate fields and try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const startTestMutation = useMutation({
     mutationFn: async (testId: string) => {
-      const res = await fetch(`/api/ab-tests/${testId}/start`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to start test');
+      const res = await fetch(`/api/ab-tests/${testId}/start`, { method: 'POST' });
+      if (!res.ok) {
+        throw new Error('Failed to start test');
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.AB_TESTS });
       toast({
         title: 'Test started',
-        description: 'Your A/B test is now running.'
+        description: 'A/B test is now running.',
       });
-    }
+    },
   });
 
-  // Pause test mutation
   const pauseTestMutation = useMutation({
     mutationFn: async (testId: string) => {
-      const res = await fetch(`/api/ab-tests/${testId}/pause`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to pause test');
+      const res = await fetch(`/api/ab-tests/${testId}/pause`, { method: 'POST' });
+      if (!res.ok) {
+        throw new Error('Failed to pause test');
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.AB_TESTS });
-    }
+      toast({
+        title: 'Test paused',
+        description: 'You can resume the test anytime.',
+      });
+    },
   });
 
-  // Stop test mutation
   const stopTestMutation = useMutation({
     mutationFn: async (testId: string) => {
-      const res = await fetch(`/api/ab-tests/${testId}/stop`, {
-        method: 'POST'
-      });
-      if (!res.ok) throw new Error('Failed to stop test');
+      const res = await fetch(`/api/ab-tests/${testId}/stop`, { method: 'POST' });
+      if (!res.ok) {
+        throw new Error('Failed to stop test');
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.AB_TESTS });
       toast({
         title: 'Test completed',
-        description: 'Results are now available.'
+        description: 'Result snapshot is now available.',
       });
-    }
+    },
   });
 
-  const getStatusBadge = (status: TestStatus) => {
-    const variants = {
-      draft: { variant: 'secondary' as const, text: 'Draft' },
-      running: { variant: 'default' as const, text: 'Running' },
-      paused: { variant: 'outline' as const, text: 'Paused' },
-      completed: { variant: 'default' as const, text: 'Completed' },
-      cancelled: { variant: 'destructive' as const, text: 'Cancelled' }
-    };
-
-    const config = variants[status];
-    return <Badge variant={config.variant}>{config.text}</Badge>;
+  const getStatusColor = (
+    status: TestStatus,
+  ): 'default' | 'primary' | 'secondary' | 'success' | 'error' | 'warning' => {
+    if (status === 'running') return 'success';
+    if (status === 'paused') return 'warning';
+    if (status === 'completed') return 'primary';
+    if (status === 'cancelled') return 'error';
+    return 'default';
   };
 
   const getTypeIcon = (type: TestType) => {
-    return type === 'email' ? <Mail className="h-4 w-4" /> : <Share2 className="h-4 w-4" />;
+    if (type === 'email') return <EmailIcon fontSize="small" />;
+    return <ShareIcon fontSize="small" />;
   };
 
   const calculateProgress = (test: ABTest): number => {
     if (!test.startedAt || test.status !== 'running') return 0;
-    
     const startTime = new Date(test.startedAt).getTime();
-    const endTime = startTime + (test.config.duration * 24 * 60 * 60 * 1000);
+    const endTime = startTime + test.config.duration * 24 * 60 * 60 * 1000;
     const now = Date.now();
-    
     if (now >= endTime) return 100;
-    
-    const elapsed = now - startTime;
-    const total = endTime - startTime;
-    return Math.min(100, (elapsed / total) * 100);
+    return Math.min(100, ((now - startTime) / (endTime - startTime)) * 100);
   };
 
+  const averageImprovement = useMemo(() => {
+    const completedWithResults = tests.filter(
+      (test) => test.status === 'completed' && typeof test.results?.improvement === 'number',
+    );
+    if (completedWithResults.length === 0) return 0;
+    const sum = completedWithResults.reduce((acc, test) => acc + (test.results?.improvement ?? 0), 0);
+    return sum / completedWithResults.length;
+  }, [tests]);
+
+  const totalAudience = useMemo(
+    () =>
+      tests.reduce(
+        (sum, test) =>
+          sum +
+          test.variants.reduce((variantSum, variant) => variantSum + (variant.metrics.views ?? 0), 0),
+        0,
+      ),
+    [tests],
+  );
+
+  const handleCreateTest = () => {
+    if (!newTestName.trim()) {
+      toast({
+        title: 'Missing test name',
+        description: 'Please set a name before creating the test.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const payload: CreateABTestPayload = {
+      name: newTestName.trim(),
+      type: newTestType,
+      variants: [
+        {
+          name: 'Variant A',
+          description: 'Control variant',
+          audienceSplit: 50,
+          content: {},
+        },
+        {
+          name: 'Variant B',
+          description: 'Test variant',
+          audienceSplit: 50,
+          content: {},
+        },
+      ],
+      config: {
+        duration: newDurationDays,
+        minSampleSize: newMinSampleSize,
+        significanceLevel: 0.95,
+        primaryMetric: newPrimaryMetric,
+      },
+    };
+
+    createTestMutation.mutate(payload);
+  };
+
+  const handleTabChange = (_event: React.SyntheticEvent, value: TestTab) => {
+    setSelectedTab(value);
+  };
+
+  const isBusy =
+    createTestMutation.isPending ||
+    startTestMutation.isPending ||
+    pauseTestMutation.isPending ||
+    stopTestMutation.isPending;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">A/B Testing</h2>
-          <p className="text-muted-foreground">
-            Test and optimize your email campaigns and social media posts
-          </p>
-        </div>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Test
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700 }}>
+            A/B Testing
+          </Typography>
+          <Typography color="text.secondary">
+            Optimize campaigns with controlled experiments and measurable winners.
+          </Typography>
+        </Box>
+        <Button startIcon={<AddIcon />} variant="contained" onClick={() => setCreateDialogOpen(true)}>
+          Create Test
+        </Button>
+      </Box>
+
+      <Grid container spacing={2}>
+        <Grid xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography color="text.secondary">Running</Typography>
+                <PlayIcon fontSize="small" />
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {tests.filter((test) => test.status === 'running').length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography color="text.secondary">Completed</Typography>
+                <BarChartIcon fontSize="small" />
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {tests.filter((test) => test.status === 'completed').length}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography color="text.secondary">Avg Improvement</Typography>
+                <ImprovementIcon fontSize="small" />
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {averageImprovement.toFixed(1)}%
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography color="text.secondary">Audience</Typography>
+                <AudienceIcon fontSize="small" />
+              </Stack>
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {totalAudience.toLocaleString('nb-NO')}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Card>
+        <CardContent>
+          <Tabs value={selectedTab} onChange={handleTabChange}>
+            <Tab value="active" label="Active" />
+            <Tab value="completed" label="Completed" />
+            <Tab value="draft" label="Drafts" />
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {isLoading ? (
+        <Card>
+          <CardContent>
+            <Typography color="text.secondary">Loading tests...</Typography>
+          </CardContent>
+        </Card>
+      ) : tests.length === 0 ? (
+        <Card>
+          <CardContent sx={{ textAlign: 'center', py: 6 }}>
+            <Typography color="text.secondary">No tests found for this filter.</Typography>
+            <Button sx={{ mt: 2 }} startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
+              Create your first test
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Create A/B Test</DialogTitle>
-              <DialogDescription>
-                Set up a new A/B test for your campaign
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Test Name</Label>
-                <Input placeholder="e.g. Email Subject Line Test" />
-              </div>
-              <div>
-                <Label>Test Type</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="email">Email Campaign</SelectItem>
-                    <SelectItem value="social">Social Media Post</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Primary Metric</Label>
-                <Select defaultValue="conversions">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="clicks">Click Rate</SelectItem>
-                    <SelectItem value="conversions">Conversions</SelectItem>
-                    <SelectItem value="engagement">Engagement</SelectItem>
-                    <SelectItem value="revenue">Revenue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Duration (days)</Label>
-                  <Input type="number" defaultValue="7" min="1" />
-                </div>
-                <div>
-                  <Label>Min Sample Size</Label>
-                  <Input type="number" defaultValue="1000" min="100" />
-                </div>
-              </div>
-              <div className="flex gap-2 pt-4">
-                <Button className="flex-1">Create Test</Button>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Stats Overview */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Tests</CardTitle>
-            <Play className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tests.filter(t => t.status === 'running').length}
-            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tests.filter(t => t.status === 'completed').length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Avg Improvement</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tests.filter(t => t.results?.improvement).length > 0
-                ? `${(tests.reduce((sum, t) => sum + (t.results?.improvement || 0), 0) / tests.filter(t => t.results?.improvement).length).toFixed(1)}%`
-                : '0%'}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Audience</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tests.reduce((sum, t) => sum + t.variants.reduce((vSum, v) => vSum + v.metrics.views, 0), 0).toLocaleString()}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tests List */}
-      <Tabs value={selectedTab} onValueChange={(v: any) => setSelectedTab(v)}>
-        <TabsList>
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
-          <TabsTrigger value="draft">Drafts</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value={selectedTab} className="space-y-4">
-          {isLoading ? (
-            <Card>
-              <CardContent className="py-8 text-center">
-                Loading tests...
-              </CardContent>
-            </Card>
-          ) : tests.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No tests found</p>
-                <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Test
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            tests.map(test => (
-              <Card key={test.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+      ) : (
+        <Stack spacing={2}>
+          {tests.map((test) => {
+            const winner = test.variants.find((variant) => variant.id === test.results?.winner);
+            return (
+              <Card key={test.id}>
+                <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'flex-start', md: 'center' }}
+                    gap={2}
+                  >
+                    <Box>
+                      <Stack direction="row" alignItems="center" spacing={1}>
                         {getTypeIcon(test.type)}
-                        <CardTitle className="text-xl">{test.name}</CardTitle>
-                        {getStatusBadge(test.status)}
-                      </div>
-                      <CardDescription>
-                        Testing {test.variants.length} variants • Primary metric: {test.config.primaryMetric}
-                      </CardDescription>
-                    </div>
-                    <div className="flex gap-2">
+                        <Typography variant="h6">{test.name}</Typography>
+                        <Chip size="small" label={test.status} color={getStatusColor(test.status)} />
+                      </Stack>
+                      <Typography color="text.secondary" variant="body2">
+                        {test.variants.length} variants | primary metric: {test.config.primaryMetric}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={1}>
                       {test.status === 'draft' && (
-                        <Button size="sm" onClick={() => startTestMutation.mutate(test.id)}>
-                          <Play className="h-4 w-4 mr-2" />
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<PlayIcon />}
+                          onClick={() => startTestMutation.mutate(test.id)}
+                          disabled={isBusy}
+                        >
                           Start
                         </Button>
                       )}
                       {test.status === 'running' && (
                         <>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<PauseIcon />}
                             onClick={() => pauseTestMutation.mutate(test.id)}
+                            disabled={isBusy}
                           >
-                            <Pause className="h-4 w-4 mr-2" />
                             Pause
                           </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<StopIcon />}
                             onClick={() => stopTestMutation.mutate(test.id)}
+                            disabled={isBusy}
                           >
-                            <Stop className="h-4 w-4 mr-2" />
                             Stop
                           </Button>
                         </>
                       )}
                       {test.status === 'paused' && (
-                        <Button size="sm" onClick={() => startTestMutation.mutate(test.id)}>
-                          <Play className="h-4 w-4 mr-2" />
+                        <Button
+                          size="small"
+                          variant="contained"
+                          startIcon={<PlayIcon />}
+                          onClick={() => startTestMutation.mutate(test.id)}
+                          disabled={isBusy}
+                        >
                           Resume
                         </Button>
                       )}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Progress */}
+                    </Stack>
+                  </Stack>
+
                   {test.status === 'running' && (
-                    <div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span className="text-muted-foreground">Progress</span>
-                        <span className="font-medium">{calculateProgress(test).toFixed(0)}%</span>
-                      </div>
-                      <Progress value={calculateProgress(test)} />
-                    </div>
+                    <Box>
+                      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Progress
+                        </Typography>
+                        <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                          {calculateProgress(test).toFixed(0)}%
+                        </Typography>
+                      </Stack>
+                      <LinearProgress value={calculateProgress(test)} variant="determinate" />
+                    </Box>
                   )}
 
-                  {/* Variants */}
-                  <div className="grid md: grid-cols-2, lg:grid-cols-3 gap-4">
-                    {test.variants.map(variant => (
-                      <Card key={variant.id} className={test.results?.winner === variant.id ? 'border-green-500' : ','}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm">{variant.name}</CardTitle>
-                            {test.results?.winner === variant.id && (
-                              <Crown className="h-4 w-4 text-yellow-500" />
-                            )}
-                          </div>
-                          <CardDescription className="text-xs">{variant.audienceSplit}% of audience</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              <Eye className="h-3 w-3" /> Views
-                            </span>
-                            <span className="font-medium">{variant.metrics.views.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              <MousePointer className="h-3 w-3" /> Clicks
-                            </span>
-                            <span className="font-medium">{variant.metrics.clicks.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-muted-foreground flex items-center gap-1">
-                              <Target className="h-3 w-3" /> Conversions
-                            </span>
-                            <span className="font-medium">{variant.metrics.conversions.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-xs pt-2 border-t">
-                            <span className="text-muted-foreground">Conv. Rate</span>
-                            <span className="font-bold">{variant.metrics.conversionRate.toFixed(2)}%</span>
-                          </div>
-                        </CardContent>
-                      </Card>
+                  <Grid container spacing={1.5}>
+                    {test.variants.map((variant) => (
+                      <Grid key={variant.id} xs={12} md={6} lg={4}>
+                        <Card variant="outlined">
+                          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="center">
+                              <Typography sx={{ fontWeight: 600 }}>{variant.name}</Typography>
+                              {winner?.id === variant.id && (
+                                <Tooltip title="Winner">
+                                  <WinnerIcon color="warning" fontSize="small" />
+                                </Tooltip>
+                              )}
+                            </Stack>
+                            <Typography variant="caption" color="text.secondary">
+                              {variant.audienceSplit}% of audience
+                            </Typography>
+                            <Stack direction="row" justifyContent="space-between">
+                              <Stack direction="row" spacing={0.5} alignItems="center">
+                                <ViewsIcon fontSize="small" />
+                                <Typography variant="caption">Views</Typography>
+                              </Stack>
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {(variant.metrics.views ?? 0).toLocaleString('nb-NO')}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" justifyContent="space-between">
+                              <Stack direction="row" spacing={0.5} alignItems="center">
+                                <ClicksIcon fontSize="small" />
+                                <Typography variant="caption">Clicks</Typography>
+                              </Stack>
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {(variant.metrics.clicks ?? 0).toLocaleString('nb-NO')}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" justifyContent="space-between">
+                              <Stack direction="row" spacing={0.5} alignItems="center">
+                                <ConversionIcon fontSize="small" />
+                                <Typography variant="caption">Conversions</Typography>
+                              </Stack>
+                              <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                {(variant.metrics.conversions ?? 0).toLocaleString('nb-NO')}
+                              </Typography>
+                            </Stack>
+                            <Stack direction="row" justifyContent="space-between" sx={{ pt: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Conversion rate
+                              </Typography>
+                              <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                                {(variant.metrics.conversionRate ?? 0).toFixed(2)}%
+                              </Typography>
+                            </Stack>
+                          </CardContent>
+                        </Card>
+                      </Grid>
                     ))}
-                  </div>
+                  </Grid>
 
-                  {/* Results */}
-                  {test.results && test.status === 'completed' && (
-                    <Card className="bg-muted/50">
-                      <CardHeader>
-                        <CardTitle className="text-sm flex items-center gap-2">
-                          <BarChart3 className="h-4 w-4" />
-                          Test Results
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Winner</span>
-                          <Badge variant="default">
-                            {test.variants.find(v => v.id === test.results?.winner)?.name ||'N/A'}
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Improvement</span>
-                          <span className="font-semibold text-green-600">
+                  {test.status === 'completed' && test.results && (
+                    <Card variant="outlined">
+                      <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <Typography variant="subtitle2">Test Results</Typography>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            Winner
+                          </Typography>
+                          <Chip
+                            size="small"
+                            label={winner?.name ?? 'No winner'}
+                            color={winner ? 'success' : 'default'}
+                          />
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            Improvement
+                          </Typography>
+                          <Typography sx={{ fontWeight: 700, color: 'success.main' }}>
                             +{test.results.improvement.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Confidence</span>
-                          <span className="font-semibold">
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">
+                            Confidence
+                          </Typography>
+                          <Typography sx={{ fontWeight: 700 }}>
                             {(test.results.confidence * 100).toFixed(0)}%
-                          </span>
-                        </div>
+                          </Typography>
+                        </Stack>
                         {!test.results.statisticalSignificance && (
-                          <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                            <AlertCircle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                            <p className="text-xs text-yellow-800">
-                              Results are not statistically significant. Consider running the test longer.
-                            </p>
-                          </div>
+                          <Alert icon={<WarningIcon fontSize="inherit" />} severity="warning">
+                            Results are not statistically significant yet. Run longer for stronger confidence.
+                          </Alert>
                         )}
-                        <p className="text-sm text-muted-foreground pt-2 border-t">
+                        <Typography variant="body2" color="text.secondary">
                           {test.results.recommendation}
-                        </p>
+                        </Typography>
                       </CardContent>
                     </Card>
                   )}
                 </CardContent>
               </Card>
-            ))
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
+            );
+          })}
+        </Stack>
+      )}
+
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create A/B Test</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '12px !important' }}>
+          <TextField
+            label="Test name"
+            value={newTestName}
+            onChange={(event) => setNewTestName(event.target.value)}
+            fullWidth
+          />
+
+          <FormControl fullWidth>
+            <InputLabel id="ab-test-type-label">Test type</InputLabel>
+            <Select
+              labelId="ab-test-type-label"
+              value={newTestType}
+              label="Test type"
+              onChange={(event: SelectChangeEvent<TestType>) => {
+                setNewTestType(event.target.value as TestType);
+              }}
+            >
+              <MenuItem value="email">Email campaign</MenuItem>
+              <MenuItem value="social">Social post</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth>
+            <InputLabel id="ab-test-metric-label">Primary metric</InputLabel>
+            <Select
+              labelId="ab-test-metric-label"
+              value={newPrimaryMetric}
+              label="Primary metric"
+              onChange={(event: SelectChangeEvent<TestConfig['primaryMetric']>) => {
+                setNewPrimaryMetric(event.target.value as TestConfig['primaryMetric']);
+              }}
+            >
+              <MenuItem value="clicks">Clicks</MenuItem>
+              <MenuItem value="conversions">Conversions</MenuItem>
+              <MenuItem value="engagement">Engagement</MenuItem>
+              <MenuItem value="revenue">Revenue</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Grid container spacing={2}>
+            <Grid xs={12} sm={6}>
+              <TextField
+                label="Duration (days)"
+                type="number"
+                value={newDurationDays}
+                onChange={(event) => setNewDurationDays(Math.max(1, Number(event.target.value) || 1))}
+                fullWidth
+              />
+            </Grid>
+            <Grid xs={12} sm={6}>
+              <TextField
+                label="Min sample size"
+                type="number"
+                value={newMinSampleSize}
+                onChange={(event) =>
+                  setNewMinSampleSize(Math.max(100, Number(event.target.value) || 100))
+                }
+                fullWidth
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleCreateTest}
+            variant="contained"
+            disabled={createTestMutation.isPending || !newTestName.trim()}
+          >
+            Create Test
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }

@@ -1,611 +1,458 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Grid,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Stack,
   Chip,
-  Alert,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  InputLabel,
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
+  MenuItem,
+  Select,
+  Stack,
   Switch,
-  FormControlLabel,
-  Divider,
-  Paper,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  ShoppingCart as ShoppingCartIcon,
-  Payment as PaymentIcon,
-  AttachMoney as AttachMoneyIcon,
   CloudOff as CloudOffIcon,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  Payment as PaymentIcon,
+  Sync as SyncIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
 
-interface GooglePayProduct {
+export type GooglePayCategory = 'feature' | 'subscription' | 'addon' | 'service';
+
+export interface GooglePayProduct {
   id: string;
   name: string;
   description: string;
-  price: number;
-  currency: 'NOK';
-  category: 'feature' | 'subscription' | 'addon' | 'service';
+  priceNok: number;
+  category: GooglePayCategory;
   recurring: boolean;
   billingPeriod?: 'monthly' | 'yearly';
   features: string[];
   isActive: boolean;
   googlePayProductId?: string;
-  createdAt: Date;
-  updatedAt: Date
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface GooglePayManagerProps {
   onClose?: () => void;
 }
 
-export function GooglePayManager({ onClose }: GooglePayManagerProps) {
-  const [products, setProducts] = useState<GooglePayProduct[]>([
-    {
-      id: 'basic-plan',
-      name: 'Basic Plan',
-      description: 'Grunnleggende funksjoner for småbedrifter',
-      price: 29,
-      currency: 'NO',
-      category: 'subscription',
-      recurring: true,
-      billingPeriod: 'monthly',
-      features: ['Google Drive integrasjon','Basis CRM','Prosjektadministrasjon'],
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-  },
-    {
-      id: 'premium-plan',
-      name: 'Premium Plan',
-      description: 'Avanserte funksjoner for profesjonelle fotografer',
-      price: 59,
-      currency: 'NO',
-      category: 'subscription',
-      recurring: true,
-      billingPeriod: 'monthly',
-      features: ['Alt i Basic','AI-bildeprosessering','Avansert prisberegning','Visual Editor'],
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-  },
-    {
-      id: 'feature-ai-suggestions',
-      name: 'AI-drevne Forslag',
-      description: 'Intelligente forslag for workflow-optimalisering',
-      price: 19,
-      currency: 'NO',
-      category: 'feature',
-      recurring: true,
-      billingPeriod: 'monthly',
-      features: ['AI-forslag','Automatisk optimalisering','Prediktiv analyse'],
-      isActive: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-  },
-  ]);
+interface ProductDraft {
+  name: string;
+  description: string;
+  priceNok: number;
+  category: GooglePayCategory;
+  recurring: boolean;
+  billingPeriod: 'monthly' | 'yearly';
+  featuresText: string;
+  isActive: boolean;
+}
 
-  const [isWorkloadIdentityReady, setIsWorkloadIdentityReady] = useState(false);
-  const [showProductDialog, setShowProductDialog] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<GooglePayProduct | null>(null);
-  const [newProduct, setNewProduct] = useState<Partial<GooglePayProduct>>({
-    currency: 'NO',
+const CATEGORY_LABELS: Record<GooglePayCategory, string> = {
+  feature: 'Feature',
+  subscription: 'Abonnement',
+  addon: 'Tillegg',
+  service: 'Tjeneste',
+};
+
+function emptyDraft(): ProductDraft {
+  return {
+    name: '',
+    description: '',
+    priceNok: 0,
     category: 'feature',
     recurring: false,
-    features:  [],
+    billingPeriod: 'monthly',
+    featuresText: '',
     isActive: true,
-});
+  };
+}
 
+const seedProducts: GooglePayProduct[] = [
+  {
+    id: 'subscription-basic',
+    name: 'Basic Plan',
+    description: 'Grunnpakke for enkelt produksjonsarbeid.',
+    priceNok: 299,
+    category: 'subscription',
+    recurring: true,
+    billingPeriod: 'monthly',
+    features: ['10 prosjekter', 'Google Drive sync', 'Basis support'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'feature-auto-captions',
+    name: 'Auto Captions+',
+    description: 'Automatisk teksting med norsk/engelsk støtte.',
+    priceNok: 149,
+    category: 'feature',
+    recurring: true,
+    billingPeriod: 'monthly',
+    features: ['Norsk transkripsjon', 'Tidskode eksport', 'SRT/VTT'],
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+export function GooglePayManager({ onClose }: GooglePayManagerProps) {
   const { toast } = useToast();
-  
-  // Theming system
-  const theming = useTheming('photographer');
+  const [products, setProducts] = useState<GooglePayProduct[]>(seedProducts);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<ProductDraft>(emptyDraft());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [workloadIdentityReady, setWorkloadIdentityReady] = useState(false);
 
-  // Sjekk Workload Identity status
-  useEffect(() => {
-    checkWorkloadIdentityStatus();
-}, []);
+  const activeCount = useMemo(() => products.filter((product) => product.isActive).length, [products]);
 
-  const checkWorkloadIdentityStatus = async () => {
-    try {
-      const response = await fetch('/api/auth/workload-identity-status,');
-      const data = await response.json();
-      setIsWorkloadIdentityReady(data.ready);
-  } catch (error) {
-      console.log('Workload Identity ikke klar ennå, ');
-      setIsWorkloadIdentityReady(false);
-  }
-};
-
-  const categories = [
-    { value: 'feature', label: 'Feature', color: '#2196f3' },
-    { value: 'subscription', label: 'Abonnement', color: '#4caf50' },
-    { value: 'addon', label: 'Tillegg', color: '#ff9800' },
-    { value: 'service', label: 'Tjeneste', color: '#9c27b0' },
-  ];
-
-  const getCategoryInfo = (category: string) => {
-    return categories.find((cat) => cat.value === category) || categories[0];
-};
-
-  const openProductDialog = (product?: GooglePayProduct) => {
-    if (product) {
-      setEditingProduct(product);
-      setNewProduct(product);
-  } else {
-      setEditingProduct(null);
-      setNewProduct({
-        currency: 'NO',
-        category: 'feature',
-        recurring: false,
-        features:  [],
-        isActive: true,
-    });
-  }
-    setShowProductDialog(true);
-};
-
-  const saveProduct = () => {
-    if (!newProduct.name || !newProduct.price) {
-      toast({
-        title: '⚠️ Manglende informasjon',
-        description: 'Navn og pris er påkrevd',
-        variant: 'destructive' });
-      return;
-  }
-
-    const productData: GooglePayProduct = {
-      id: editingProduct?.id || `product-${Date.now()}`,
-      name: newProduct.name!,
-      description: newProduct.description ||'',
-      price: newProduct.price!,
-      currency: 'NO',
-      category: newProduct.category!,
-      recurring: newProduct.recurring || false,
-      billingPeriod: newProduct.billingPeriod,
-      features: newProduct.features || [],
-      isActive: newProduct.isActive !== false,
-      googlePayProductId: editingProduct?.googlePayProductd,
-      createdAt: editingProduct?.createdAt || new Date(),
-      updatedAt: new Date(),
+  const openCreateDialog = () => {
+    setEditingProductId(null);
+    setDraft(emptyDraft());
+    setDialogOpen(true);
   };
 
-    if (editingProduct) {
-      setProducts((prev) => prev.map((p) => (p.id === editingProduct.id ? productData : p)));
-      toast({
-        title: '✅ Produkt oppdatert',
-        description: `${productData.name} er oppdatert`,
-        variant: 'default' });
-  } else {
-      setProducts((prev) => [...prev, productData]);
-      toast({
-        title: '✅ Produkt opprettet',
-        description: `${productData.name} er lagt til`,
-        variant: 'default' });
-  }
+  const openEditDialog = (product: GooglePayProduct) => {
+    setEditingProductId(product.id);
+    setDraft({
+      name: product.name,
+      description: product.description,
+      priceNok: product.priceNok,
+      category: product.category,
+      recurring: product.recurring,
+      billingPeriod: product.billingPeriod ?? 'monthly',
+      featuresText: product.features.join(', '),
+      isActive: product.isActive,
+    });
+    setDialogOpen(true);
+  };
 
-    setShowProductDialog(false);
-};
-
-  const toggleProductStatus = (productId: string) => {
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === productId ? { .., .isActive: !p.isActive, updatedAt: new Date(),} : p,
-      ),
-    );
-};
-
-  const deleteProduct = (productId: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
-    toast({
-      title: '🗑️ Produkt slettet',
-      description: 'Produktet er fjernet fra Google Pay',
-      variant: 'default' });
-};
-
-  const syncWithGooglePay = async () => {
-    if (!isWorkloadIdentityReady) {
-      toast({
-        title: '⚠️ Workload Identity ikke klar',
-        description: 'Venter på at Replit løser Workload Identity-problemet',
-        variant: 'destructive' });
+  const saveProduct = () => {
+    if (!draft.name.trim()) {
+      toast({ title: 'Mangler navn', description: 'Produktnavn er paakrevd.', variant: 'warning' });
       return;
-  }
+    }
 
-    try {
-      // Dette vil aktiveres når Workload Identity fungerer
-      const response = await fetch('/api/google-pay/sync-products', {
-        method: 'POS',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ products }),
+    if (draft.priceNok <= 0) {
+      toast({ title: 'Ugyldig pris', description: 'Pris maa vaere stoerre enn 0.', variant: 'warning' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const features = draft.featuresText
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    const nextProduct: GooglePayProduct = {
+      id: editingProductId ?? `product-${Date.now()}`,
+      name: draft.name.trim(),
+      description: draft.description.trim(),
+      priceNok: draft.priceNok,
+      category: draft.category,
+      recurring: draft.recurring,
+      billingPeriod: draft.recurring ? draft.billingPeriod : undefined,
+      features,
+      isActive: draft.isActive,
+      createdAt:
+        products.find((product) => product.id === editingProductId)?.createdAt ??
+        now,
+      updatedAt: now,
+    };
+
+    setProducts((previous) => {
+      if (!editingProductId) {
+        return [nextProduct, ...previous];
+      }
+
+      return previous.map((product) => (product.id === editingProductId ? nextProduct : product));
     });
 
-      const data = await response.json();
+    toast({
+      title: editingProductId ? 'Produkt oppdatert' : 'Produkt opprettet',
+      description: `${nextProduct.name} er lagret i katalogen.`,
+      variant: 'success',
+    });
 
-      if (data.success) {
-        toast({
-          title: '✅ Google Pay synkronisert',
-          description: `${data.syncedProducts} produkter synkronisert`,
-          variant: 'default' });
+    setDialogOpen(false);
+  };
+
+  const removeProduct = (productId: string) => {
+    const product = products.find((entry) => entry.id === productId);
+    setProducts((previous) => previous.filter((entry) => entry.id !== productId));
+    if (product) {
+      toast({ title: 'Produkt slettet', description: `${product.name} ble fjernet.`, variant: 'info' });
     }
-  } catch (error) {
-      console.error('Google Pay sync error: ', error);
-  }
-};
+  };
+
+  const toggleActive = (productId: string) => {
+    setProducts((previous) =>
+      previous.map((product) =>
+        product.id === productId
+          ? {
+              ...product,
+              isActive: !product.isActive,
+              updatedAt: new Date().toISOString(),
+            }
+          : product,
+      ),
+    );
+  };
+
+  const syncWithGooglePay = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch('/api/google-pay/sync-products', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ products }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sync feilet (${response.status})`);
+      }
+
+      const payload = (await response.json()) as { workloadIdentityReady?: boolean; syncedProducts?: number };
+      setWorkloadIdentityReady(payload.workloadIdentityReady === true);
+      toast({
+        title: 'Synkronisert',
+        description: `${payload.syncedProducts ?? products.length} produkter synkronisert mot Google Pay.`,
+        variant: 'success',
+      });
+    } catch (error) {
+      setWorkloadIdentityReady(false);
+      toast({
+        title: 'Sync utilgjengelig',
+        description: error instanceof Error ? error.message : 'Ukjent feil under synkronisering.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Paper
-        elevation={0}
-        sx={{
-          p:  3,
-          mb:  3,
-          background: 'linear-gradient(135deg, #1976d2 0%, #42a5f5 100%)',
-          color: 'white',
-          borderRadius:  2}}
-       sx={theming.getThemedCardSx()}>
-        <Stack direction="row" alignItems="center" spacing={2}>
-          <PaymentIcon sx={{ fontSize: 32}} />
-          <Box>
-            <Typography variant="h5" fontWeight={700} sx={{ color: theming.colors.primary }}>
-              💳 Google Pay Produktadministrasjon
-            </Typography>
-            <Typography variant="body2" sx={{ opacity: 0.9}}>
-              Administrer produkter og betalte tjenester for Google Pay
-            </Typography>
-          </Box>
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h6">Google Pay produktstyring</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {activeCount} aktive av {products.length} produkter
+          </Typography>
+        </Box>
+
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" onClick={onClose}>
+            Lukk
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateDialog}>
+            Nytt produkt
+          </Button>
         </Stack>
-      </Paper>
+      </Stack>
 
-      {/* Workload Identity Status */}
-      <Alert
-        severity={isWorkloadIdentityReady ? 'success' : 'warning'}
-        sx={{ mb:  3 }}
-        icon={isWorkloadIdentityReady ? <CheckCircleIcon /> : <CloudOffIcon />}
-      >
-        <Typography variant="body2">
-          <strong>Workload Identity Status: </strong>{', '}
-          {isWorkloadIdentityReady
-            ? 'Klar - Google Pay kan aktiveres'
-            : 'Venter på Replit support - Google Pay integrasjon er klargjort'}
-        </Typography>
-      </Alert>
+      {!workloadIdentityReady && (
+        <Alert severity="warning" icon={<CloudOffIcon />} sx={{ mb: 2 }}>
+          Workload Identity er ikke verifisert i denne sesjonen. Synk kan fortsatt testes, men kan feile ved backend-policy.
+        </Alert>
+      )}
 
-      <Grid container spacing={3}>
-        {/* Product Management */}
-        <Grid item xs={12} md={8}>
-          <Card elevation={2} sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>🛍️ Produktkatalog</Typography>
-                <Button variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={() => openProductDialog()}
-                >
-                  Nytt Produkt
-                </Button>
-              </Stack>
-
-              <List>
-                {products.map((product) => {
-                  const categoryInfo = getCategoryInfo(product.category);
-
-                  return (
-                    <React.Fragment key={product.id}>
-                      <ListItem>
-                        <ListItemText
-                          primary={
-                            <Stack direction="row" alignItems="center" spacing={1}>
-                              <Typography variant="subtitle1" fontWeight={600}>
-                                {product.name}
-                              </Typography>
-                              <Chip
-                                label={categoryInfo.label}
-                                size="small"
-                                sx={{
-                                  backgroundColor: categoryInfo.color,
-                                  color: 'white' }}
-                              />
-                              <Chip
-                                label={`${product.price} NOK${product.recurring ? `/${product.billingPeriod === 'yearly' ? 'år' : 'mnd'}` : ', '}`}
-                                size="small"
-                                color="primary"
-                              />
-                              {!product.isActive && (
-                                <Chip label="DEAKTIVERT" size="small" color="error" />
-                              )}
-                            </Stack>
-                        }
-                          secondary={
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {product.description}
-                              </Typography>
-                              <Stack direction="row" spacing={1} mt={1}>
-                                {product.features.slice(0, 3).map((feature, index) => (
-                                  <Chip
-                                    key={index}
-                                    label={feature}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                ))}
-                                {product.features.length > 3 && (
-                                  <Chip
-                                    label={`+${product.features.length - 3} flere`}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </Stack>
-                            </Box>
-                        }
-                        />
-                        <ListItemSecondaryAction>
-                          <Stack direction="row" spacing={1}>
-                            <Switch
-                              checked={product.isActive}
-                              onChange={() => toggleProductStatus(product.id)}
-                              size="small"
-                            />
-                            <IconButton size="small" onClick={() => openProductDialog(product)}>
-                              <EditIcon />
-                            </IconButton>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => deleteProduct(product.id)}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
-                          </Stack>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                      <Divider />
-                    </React.Fragment>
-                  );
-              })}
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Statistics & Actions */}
-        <Grid item xs={12} md={4}>
-          <Stack spacing={2}>
-            {/* Statistics */}
-            <Card elevation={2} sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  📊 Statistikk
-                </Typography>
-
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Totale produkter
-                    </Typography>
-                    <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                      {products.length}
-                    </Typography>
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Aktive produkter
-                    </Typography>
-                    <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
-                      {products.filter((p) => p.isActive).length}
-                    </Typography>
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Gjennomsnittspris
-                    </Typography>
-                    <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
-                      {Math.round(
-                        products.reduce((sum, p) => sum + p.price, 0) / products.length || 0,
-                      )}{', '}
-                      NOK
-                    </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-
-            {/* Actions */}
-            <Card elevation={2} sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  ⚡ Handlinger
-                </Typography>
-
-                <Stack spacing={2}>
-                  <Button fullWidth
-                    variant="contained"
-                    startIcon={<PaymentIcon />}
-                    onClick={syncWithGooglePay}
-                    disabled={!isWorkloadIdentityReady}
-                    color="success"
-                  >
-                    Synkroniser med Google Pay
-                  </Button>
-
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    startIcon={<ShoppingCartIcon />}
-                    onClick={() => {
-                      // Aktivere alle produkter
-                      setProducts((prev) => prev.map((p) => ({ ...p, isActive: true })));
-                      toast({
-                        title: '✅ Alle produkter aktivert',
-                        description: 'Alle produkter er nå tilgjengelige',
-                        variant: 'default' });
-                  }}
-                  >
-                    Aktiver alle produkter
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Typography variant="subtitle1">Katalog</Typography>
+            <Button variant="outlined" startIcon={<SyncIcon />} onClick={syncWithGooglePay} disabled={isSyncing}>
+              {isSyncing ? 'Synkroniserer...' : 'Synk med Google Pay'}
+            </Button>
           </Stack>
-        </Grid>
-      </Grid>
 
-      {/* Product Dialog */}
-      <Dialog
-        open={showProductDialog}
-        onClose={() => setShowProductDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>{editingProduct ? 'Rediger Produkt' : 'Nytt Produkt'}</DialogTitle>
+          <Divider sx={{ my: 1.5 }} />
+
+          <List>
+            {products.map((product) => (
+              <ListItem
+                key={product.id}
+                secondaryAction={
+                  <Stack direction="row" spacing={0.5} alignItems="center">
+                    <FormControlLabel
+                      control={<Switch checked={product.isActive} onChange={() => toggleActive(product.id)} />}
+                      label="Aktiv"
+                    />
+                    <IconButton onClick={() => openEditDialog(product)}>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton color="error" onClick={() => removeProduct(product.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Stack>
+                }
+                disableGutters
+                sx={{ py: 1.25 }}
+              >
+                <ListItemText
+                  primary={
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography fontWeight={600}>{product.name}</Typography>
+                      <Chip size="small" label={CATEGORY_LABELS[product.category]} />
+                      {product.recurring && <Chip size="small" color="primary" label={product.billingPeriod === 'yearly' ? 'Aarlig' : 'Maanedlig'} />}
+                    </Stack>
+                  }
+                  secondary={
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {product.description}
+                      </Typography>
+                      <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                        <Chip size="small" icon={<PaymentIcon />} label={`${product.priceNok} NOK`} />
+                        {product.features.map((feature) => (
+                          <Chip key={`${product.id}-${feature}`} size="small" variant="outlined" label={feature} />
+                        ))}
+                      </Stack>
+                    </Box>
+                  }
+                />
+              </ListItem>
+            ))}
+          </List>
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>{editingProductId ? 'Rediger produkt' : 'Opprett produkt'}</DialogTitle>
         <DialogContent>
-          <Stack spacing={3} sx={{ mt:  1 }}>
+          <Stack spacing={2} sx={{ pt: 1 }}>
             <TextField
-              fullWidth
-              label="Produktnavn"
-              value={newProduct.name || ', '}
-              onChange={(e) => setNewProduct((prev) => ({ ...prev, name: e.target.value }))}
+              label="Navn"
+              value={draft.name}
+              onChange={(event) => setDraft((previous) => ({ ...previous, name: event.target.value }))}
             />
-
             <TextField
-              fullWidth
               label="Beskrivelse"
               multiline
-              rows={3}
-              value={newProduct.description || ', '}
-              onChange={(e) =>
-                setNewProduct((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-              }))
-            }
+              minRows={2}
+              value={draft.description}
+              onChange={(event) => setDraft((previous) => ({ ...previous, description: event.target.value }))}
             />
 
             <Grid container spacing={2}>
-              <Grid item xs={6} >
+              <Grid item xs={6}>
                 <TextField
-                  fullWidth
-                  label="Pris (NOK)"
+                  label="Pris NOK"
                   type="number"
-                  value={newProduct.price || ', '}
-                  onChange={(e) =>
-                    setNewProduct((prev) => ({
-                      ...prev,
-                      price: Number(e.target.value),
-                  }))
-                }
+                  fullWidth
+                  value={draft.priceNok}
+                  onChange={(event) =>
+                    setDraft((previous) => ({
+                      ...previous,
+                      priceNok: Number.isFinite(Number(event.target.value)) ? Number(event.target.value) : 0,
+                    }))
+                  }
                 />
               </Grid>
 
-              <Grid item xs={6} >
+              <Grid item xs={6}>
                 <FormControl fullWidth>
                   <InputLabel>Kategori</InputLabel>
                   <Select
-                    value={newProduct.category || 'feature'}
                     label="Kategori"
-                    onChange={(e) =>
-                      setNewProduct((prev) => ({
-                        ...prev,
-                        category: e.target.value as any,
-                    }))
-                  }
+                    value={draft.category}
+                    onChange={(event) =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        category: event.target.value as GooglePayCategory,
+                      }))
+                    }
                   >
-                    {categories.map((cat) => (
-                      <MenuItem key={cat.value} value={cat.value}>
-                        {cat.label}
-                      </MenuItem>
-                    ))}
+                    <MenuItem value="feature">Feature</MenuItem>
+                    <MenuItem value="subscription">Abonnement</MenuItem>
+                    <MenuItem value="addon">Tillegg</MenuItem>
+                    <MenuItem value="service">Tjeneste</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
             </Grid>
 
+            <Stack direction="row" spacing={2} alignItems="center">
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={draft.recurring}
+                    onChange={(event) => setDraft((previous) => ({ ...previous, recurring: event.target.checked }))}
+                  />
+                }
+                label="Gjentakende betaling"
+              />
+
+              {draft.recurring && (
+                <FormControl sx={{ minWidth: 150 }}>
+                  <InputLabel>Fakturering</InputLabel>
+                  <Select
+                    label="Fakturering"
+                    value={draft.billingPeriod}
+                    onChange={(event) =>
+                      setDraft((previous) => ({
+                        ...previous,
+                        billingPeriod: event.target.value as 'monthly' | 'yearly',
+                      }))
+                    }
+                  >
+                    <MenuItem value="monthly">Maanedlig</MenuItem>
+                    <MenuItem value="yearly">Aarlig</MenuItem>
+                  </Select>
+                </FormControl>
+              )}
+            </Stack>
+
+            <TextField
+              label="Features (kommaseparert)"
+              value={draft.featuresText}
+              onChange={(event) => setDraft((previous) => ({ ...previous, featuresText: event.target.value }))}
+            />
+
             <FormControlLabel
               control={
                 <Switch
-                  checked={newProduct.recurring || false}
-                  onChange={(e) =>
-                    setNewProduct((prev) => ({
-                      ...prev,
-                      recurring: e.target.checked,
-                  }))
-                }
+                  checked={draft.isActive}
+                  onChange={(event) => setDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
                 />
-            }
-              label="Gjentakende betaling"
-            />
-
-            {newProduct.recurring && (
-              <FormControl fullWidth>
-                <InputLabel>Faktureringsperiode</InputLabel>
-                <Select
-                  value={newProduct.billingPeriod || 'monthly'}
-                  label="Faktureringsperiode"
-                  onChange={(e) =>
-                    setNewProduct((prev) => ({
-                      ...prev,
-                      billingPeriod: e.target.value as any,
-                  }))
-                }
-                >
-                  <MenuItem value="monthly">Månedlig</MenuItem>
-                  <MenuItem value="yearly">Årlig</MenuItem>
-                </Select>
-              </FormControl>
-            )}
-
-            <TextField
-              fullWidth
-              label="Features (kommaseparert)"
-              value={(newProduct.features || []).join(', ')}
-              onChange={(e) =>
-                setNewProduct((prev) => ({
-                  ...prev,
-                  features: e.target.value
-                    .split, ('')
-                    .map((f) => f.trim())
-                    .filter((f) => f),
-              }))
-            }
-              helperText="Skriv inn features separert med komma"
+              }
+              label="Produkt aktivt"
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowProductDialog(false)}>Avbryt</Button>
-          <Button variant="contained" onClick={saveProduct} sx={theming.getThemedButtonSx()}>
-            {editingProduct ? 'Oppdater' : 'Opprett'}
+          <Button onClick={() => setDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={saveProduct}>
+            Lagre
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
 }
+
+export default GooglePayManager;

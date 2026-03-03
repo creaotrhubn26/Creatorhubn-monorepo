@@ -92,18 +92,18 @@ import { alpha } from '@mui/material/styles';
 
 // Custom SVG icons for consistent visual language
 import {
-  DashboardCustomIcon as DashboardIcon,
+  DashboardCustomIcon as _DashboardIcon,
   RolesIcon as TheaterComedyIcon,
   CandidatesIcon as RecentActorsIcon,
-  AuditionsIcon as InterpreterModeIcon,
+  AuditionsIcon as _InterpreterModeIcon,
   TeamIcon as GroupsIcon,
   LocationsIcon as LocationIcon,
-  EquipmentIcon as PropIcon,
+  EquipmentIcon as _PropIcon,
   EquipmentIcon,
   CalendarCustomIcon as CalendarIcon,
   ShotListIcon,
   StoryArcIcon,
-  ShareCustomIcon as ShareIcon,
+  ShareCustomIcon as _ShareIcon,
   PersonNameIcon,
   NotesIcon,
   EmailIcon as CustomEmailIcon,
@@ -299,6 +299,8 @@ const TAB_IDS = [
   'tabpanel-deling',
   'tabpanel-live-set',
 ];
+const TEAM_TAB_INDEX = 4;
+const SHOT_LIST_TAB_INDEX = 8;
 
 const TabPanel = memo(function TabPanel({ children, value, index }: TabPanelProps) {
   const theme = useTheme();
@@ -567,6 +569,8 @@ export function CastingPlannerPanel({
   }), [branding.tokens.labels]);
   
   const [activeTab, setActiveTab] = useState(0);
+  const [teamDashboardOpenSignal, setTeamDashboardOpenSignal] = useState(0);
+  const [teamDashboardDefaultSegment, setTeamDashboardDefaultSegment] = useState<'all' | 'technical'>('all');
   const [storyArcView, setStoryArcView] = useState<'main' | 'story-logic' | 'story-writer'>('main');
   const [storyLogicData, setStoryLogicData] = useState<StoryLogicState | null>(null);
   const [calendarViewMode, setCalendarViewMode] = useState<'production' | 'crew'>('production');
@@ -586,9 +590,6 @@ export function CastingPlannerPanel({
 
   const [availableScenes, setAvailableScenes] = useState<Array<{ id: string; name: string; thumbnail?: string }>>([]);
   const [candidateStatusFilter, setCandidateStatusFilter] = useState<string>('all');
-  const [scheduleDateFilter, setScheduleDateFilter] = useState<string>('');
-  const [scheduleCandidateFilter, setScheduleCandidateFilter] = useState<string>('all');
-  const [scheduleRoleFilter, setScheduleRoleFilter] = useState<string>('all');
   const [candidateViewMode, setCandidateViewMode] = useState<'list' | 'kanban'>('list');
   const [draggedCandidate, setDraggedCandidate] = useState<Candidate | null>(null);
   const [quickContactIds, setQuickContactIds] = useState<Set<string>>(new Set());
@@ -658,6 +659,12 @@ export function CastingPlannerPanel({
   const [projectCreationModalOpen, setProjectCreationModalOpen] = useState(false);
   const [projectToEdit, setProjectToEdit] = useState<CastingProject | null>(null);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+
+  const handleOpenTechnicalTeamDashboard = useCallback(() => {
+    setTeamDashboardDefaultSegment('technical');
+    setTeamDashboardOpenSignal((current) => current + 1);
+    setActiveTab(SHOT_LIST_TAB_INDEX);
+  }, []);
   const [projectSelectorOpen, setProjectSelectorOpen] = useState(true); // Open by default to let user choose project
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
 
@@ -957,7 +964,7 @@ export function CastingPlannerPanel({
           return data.value;
         }
       }
-    } catch (error) {
+    } catch (_error) {
       // Silently handle API failure
     }
     try {
@@ -965,7 +972,7 @@ export function CastingPlannerPanel({
       if (cached && (cached === 'photographer' || cached === 'videographer')) {
         return cached;
       }
-    } catch (error) {
+    } catch (_error) {
       // Silently handle settings cache failure
     }
     return null;
@@ -985,12 +992,12 @@ export function CastingPlannerPanel({
         }),
       });
       await settingsService.setSetting('virtualStudio_castingProfession', prof, { userId });
-    } catch (error) {
+    } catch (_error) {
       // Silently handle API save failure
     }
     try {
       await settingsService.setSetting('virtualStudio_castingProfession', prof, { userId: getUserId() });
-    } catch (error) {
+    } catch (_error) {
       // Silently handle settings cache save failure
     }
   }, [getUserId]);
@@ -1098,7 +1105,7 @@ export function CastingPlannerPanel({
                 body: JSON.stringify({})
               });
               // Offers initialized successfully
-            } catch (e) {
+            } catch (_e) {
               // Offers/contracts may already exist or API unavailable
             }
             
@@ -1820,13 +1827,7 @@ export function CastingPlannerPanel({
     return 'repeat(1, minmax(0, 1fr))';
   }, [quickTier2, quickTier3, quickTier4, quickTier5, quickTier6, quickTier7]);
   
-  // Memoized filtered schedules
-  const schedules = useMemo(() => allSchedules.filter(s => {
-    const matchesDate = !scheduleDateFilter || s.date === scheduleDateFilter;
-    const matchesCandidate = scheduleCandidateFilter === 'all' || s.candidateId === scheduleCandidateFilter;
-    const matchesRole = scheduleRoleFilter === 'all' || s.roleId === scheduleRoleFilter;
-    return matchesDate && matchesCandidate && matchesRole;
-  }), [allSchedules, scheduleDateFilter, scheduleCandidateFilter, scheduleRoleFilter]);
+  const schedules = allSchedules;
 
   const stats = useMemo(() => ({
     totalRoles: roles.length,
@@ -2834,52 +2835,6 @@ export function CastingPlannerPanel({
         </TabPanel>
 
         <TabPanel value={activeTab} index={3}>
-          {/* Schedule filters */}
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center', mb: 2 }}>
-            <TextField
-              label={branding.tokens.labels.dateLabel}
-              type="date"
-              size="small"
-              value={scheduleDateFilter}
-              onChange={(e) => setScheduleDateFilter(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              sx={{ ...textFieldStyles, minWidth: 160 }}
-            />
-            <FormControl size="small" sx={{ minWidth: 140 }}>
-              <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.candidateLabel}</InputLabel>
-              <Select
-                value={scheduleCandidateFilter}
-                onChange={(e) => setScheduleCandidateFilter(e.target.value)}
-                MenuProps={selectMenuProps}
-                sx={{ color: '#fff', fontSize: '0.875rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
-              >
-                <MenuItem value="all">{branding.tokens.labels.allCandidatesLabel}</MenuItem>
-                {allCandidates.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            <FormControl size="small" sx={{ minWidth: 130 }}>
-              <InputLabel sx={inputLabelStyles}>{branding.tokens.labels.roleLabel}</InputLabel>
-              <Select
-                value={scheduleRoleFilter}
-                onChange={(e) => setScheduleRoleFilter(e.target.value)}
-                MenuProps={selectMenuProps}
-                sx={{ color: '#fff', fontSize: '0.875rem', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
-              >
-                <MenuItem value="all">{branding.tokens.labels.allRolesLabel}</MenuItem>
-                {roles.map(r => <MenuItem key={r.id} value={r.id}>{r.name}</MenuItem>)}
-              </Select>
-            </FormControl>
-            {(scheduleDateFilter || scheduleCandidateFilter !== 'all' || scheduleRoleFilter !== 'all') && (
-              <Button
-                size="small"
-                startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-                onClick={() => { setScheduleDateFilter(''); setScheduleCandidateFilter('all'); setScheduleRoleFilter('all'); }}
-                sx={{ color: 'rgba(255,255,255,0.7)', textTransform: 'none', fontSize: '0.8rem' }}
-              >
-                {branding.tokens.labels.resetFiltersLabel}
-              </Button>
-            )}
-          </Box>
           <AuditionSchedulePanel
             projectId={currentProject?.id || ''}
             schedules={schedules}
@@ -2899,7 +2854,7 @@ export function CastingPlannerPanel({
           />
         </TabPanel>
 
-        <TabPanel value={activeTab} index={4}>
+        <TabPanel value={activeTab} index={TEAM_TAB_INDEX}>
           {!currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
@@ -2940,6 +2895,9 @@ export function CastingPlannerPanel({
                   if (updated) setCurrentProject(updated);
                 }}
                 profession={profession}
+                onOpenTechnicalTeamDashboard={handleOpenTechnicalTeamDashboard}
+                productionDays={currentProject.productionDays || []}
+                scenes={currentProject.sceneBreakdowns || []}
               />
             </Box>
           )}
@@ -3131,7 +3089,7 @@ export function CastingPlannerPanel({
           )}
         </TabPanel>
 
-        <TabPanel value={activeTab} index={8}>
+        <TabPanel value={activeTab} index={SHOT_LIST_TAB_INDEX}>
           {!currentProject ? (
             <Box sx={{ p: 3, textAlign: 'center', color: 'rgba(255,255,255,0.87)' }}>
               <Typography variant="body1" sx={{ fontSize: isDesktop ? '1.125rem' : isTablet ? '1rem' : '0.875rem' }}>
@@ -3152,6 +3110,8 @@ export function CastingPlannerPanel({
                 if (updated) setCurrentProject(updated);
               }}
               profession={profession}
+              teamDashboardOpenSignal={teamDashboardOpenSignal}
+              teamDashboardDefaultSegment={teamDashboardDefaultSegment}
             />
           )}
         </TabPanel>
@@ -5423,7 +5383,7 @@ export function CastingPlannerPanel({
                               } as CastingProject;
                               setCurrentProject(projectWithCrewFromDb);
                             }
-                          } catch (error) {
+                          } catch (_error) {
                             // If reload fails, still use the returned project data
                             // Also try to update projects list with the new project
                             setProjects(prev => {

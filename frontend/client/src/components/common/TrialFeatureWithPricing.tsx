@@ -120,7 +120,7 @@ export function TrialFeatureWithPricing({
       
       // Create payment intent
       const response = await fetch('/api/google-pay/create-payment-intent', {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type' : 'application/json',
       },
@@ -196,7 +196,7 @@ export function TrialFeatureWithPricing({
         const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
         // Process payment with backend
         await fetch('/api/google-pay/process-payment', {
-          method: 'POS',
+          method: 'POST',
           headers: { 'Content-Type' : 'application/json',},
           body: JSON.stringify({
             paymentData,

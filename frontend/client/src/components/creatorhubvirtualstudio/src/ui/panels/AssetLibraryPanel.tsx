@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { logger } from '../../core/services/logger';
 
-const log = logger.module('AssetLibraryPanel, ');
+const log = logger.module('AssetLibraryPanel');
 import {
   Box,
   Tabs,
@@ -44,10 +44,16 @@ interface AssetCardProps {
   onPlaceManually?: (asset: AssetLibraryItem) => void;
 }
 
+interface RecommendedPattern {
+  pattern_id: string;
+  pattern_name: string;
+  recommendation_strength?: 'essential' | 'recommended' | 'optional' | string;
+}
+
 function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: AssetCardProps) {
   const handleDoubleClick = () => {
     // Dispatch custom event to add asset to scene
-    const event = new CustomEvent('ch-add-asset,', {
+    const event = new CustomEvent('ch-add-asset', {
       detail: {
         asset: {
           id: asset.id,
@@ -76,7 +82,7 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData(
-      , 'application/json',
+      'application/json',
       JSON.stringify({
         asset: {
           id: asset.id,
@@ -90,7 +96,15 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
   };
 
   // Get recommended patterns (if available)
-  const recommendedPatterns = (asset as any).recommended_patterns || [];
+  const recommendedPatterns: RecommendedPattern[] = Array.isArray(asset.metadata?.recommended_patterns)
+    ? asset.metadata.recommended_patterns.filter(
+        (pattern: unknown): pattern is RecommendedPattern =>
+          typeof pattern === 'object' &&
+          pattern !== null &&
+          'pattern_id' in pattern &&
+          'pattern_name' in pattern
+      )
+    : [];
   const hasPatterns = recommendedPatterns.length > 0;
 
   return (
@@ -104,7 +118,8 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
         border: '1px solid #e2e8f0',
         borderRadius: 1.5,
         overflow: 'hidden',
-        bgcolor: '#fff', '&:hover': {
+        bgcolor: '#fff',
+        '&:hover': {
           transform: 'scale(1.02)',
           boxShadow: 2,
         },
@@ -146,7 +161,9 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
           position: 'absolute',
           top: 6,
           right: 6,
-          bgcolor: 'rgba(255,255,255,0.9)','&:hover': { bgcolor: '#fff' }}}
+          bgcolor: 'rgba(255,255,255,0.9)',
+          '&:hover': { bgcolor: '#fff' },
+        }}
       >
         {isFavorite ? (
           <StarIcon fontSize="small" sx={{ color: '#FCD34D' }} />
@@ -182,7 +199,7 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
                 justifyContent: 'center',
                 alignItems: 'center'}}
             >
-              {recommendedPatterns.slice(0, 2).map((pattern: any) => (
+              {recommendedPatterns.slice(0, 2).map((pattern) => (
                 <Chip
                   key={pattern.pattern_id}
                   label={pattern.pattern_name}
@@ -197,7 +214,9 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
                         : pattern.recommendation_strength === 'recommended'
                         ? '#3B82F6'
                         : '#6B7280',
-                    color: '#fff','& .MuiChip-label': { px: 0.5 }}}
+                    color: '#fff',
+                    '& .MuiChip-label': { px: 0.5 },
+                  }}
                 />
               ))}
               {recommendedPatterns.length > 2 && (
@@ -226,7 +245,10 @@ function AssetCard({ asset, isFavorite, onToggleFavorite, onPlaceManually }: Ass
               bgcolor: '#F59E0B',
               color: '#fff',
               cursor: 'pointer',
-              width: '100%','&:hover': { bgcolor: '#D97706' }, '& .MuiChip-label': { px: 0.5 }}}
+              width: '100%',
+              '&:hover': { bgcolor: '#D97706' },
+              '& .MuiChip-label': { px: 0.5 },
+            }}
           />
         )}
       </Box>
@@ -333,7 +355,7 @@ function ManualPlacementDialog({
 
 export default function AssetLibraryPanel() {
   const [category, setCategory] = React.useState<string>('light');
-  const [search, setSearch] = React.useState(', ');
+  const [search, setSearch] = React.useState('');
   const [assets, setAssets] = React.useState<AssetLibraryItem[]>([]);
   const [favorites, setFavorites] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -492,4 +514,3 @@ export default function AssetLibraryPanel() {
     </Box>
   );
 }
-

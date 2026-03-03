@@ -166,7 +166,7 @@ export default function UniversalDashboardCalendarIntegration({
   const createQuickEventMutation = useMutation({
     mutationFn: (eventData: any) =>
       apiRequest('/api/calendar/events', {
-        method: 'POS',
+        method: 'POST',
         body: { ...eventData, userEmail, calendarId: 'primary' },
     }),
     onSuccess: () => {
@@ -218,7 +218,10 @@ export default function UniversalDashboardCalendarIntegration({
       default: // Use profession name in generic templates
         return [
           `${professionConfig.displayName} Møte`,
-          `${professionConfig.displayName} Prosjekt`'Kundemøte', 'Leveranse', 'Oppfølging',
+          `${professionConfig.displayName} Prosjekt`,
+          'Kundemøte',
+          'Leveranse',
+          'Oppfølging',
         ];
   }
 };
@@ -382,7 +385,8 @@ export default function UniversalDashboardCalendarIntegration({
                   variant="subtitle2"
                   sx={{ color: colors.primary, fontWeight: 'bold', mb:  1 }}
                 >
-                  <Today sx={{ fontSize:  16, mr: 0, .verticalAlign: 'middle' }} />I dag
+                  <Today sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }} />
+                  I dag
                 </Typography>
                 <Typography variant="h4" sx={{  color: colors.primary, fontWeight: 'bold'  }}>
                   {todayEvents?.length || 0}
@@ -414,7 +418,7 @@ export default function UniversalDashboardCalendarIntegration({
                   variant="subtitle2"
                   sx={{ color: colors.primary, fontWeight: 'bold', mb:  1 }}
                 >
-                  <Schedule sx={{ fontSize:  16, mr: 0, .verticalAlign: 'middle' }} />
+                  <Schedule sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }} />
                   Denne uken
                 </Typography>
                 <Typography variant="h4" sx={{  color: colors.primary, fontWeight: 'bold'  }}>
@@ -439,7 +443,7 @@ export default function UniversalDashboardCalendarIntegration({
                   variant="subtitle2"
                   sx={{ color: colors.primary, fontWeight: 'bold', mb:  1 }}
                 >
-                  <Event sx={{ fontSize:  16, mr: 0, .verticalAlign: 'middle' }} />
+                  <Event sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }} />
                   Prosjektavtaler
                 </Typography>
                 <Typography variant="h4" sx={{  color: colors.primary, fontWeight: 'bold'  }}>
@@ -570,7 +574,7 @@ export default function UniversalDashboardCalendarIntegration({
                 label="Hva skal du gjøre?"
                 value={quickEvent.summary}
                 onChange={(e) => setQuickEvent({ ...quickEvent, summary: e.target.value })}
-                placeholder={`F.eks: ${getProfessionSpecificSuggestions()[]}`}
+                placeholder={`F.eks: ${getProfessionSpecificSuggestions()[0] ?? ''}`}
               />
             </Grid>
             <Grid item xs={12} md={6}>

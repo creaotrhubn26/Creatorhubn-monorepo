@@ -18,7 +18,6 @@ import {
   InputAdornment,
   Chip,
   Stack,
-  Grid,
   Checkbox,
   FormControlLabel,
   Tooltip,
@@ -33,6 +32,7 @@ import {
   TableRow,
   TableSortLabel,
   Paper,
+  Skeleton,
   useMediaQuery,
   useTheme,
   Grow,
@@ -59,11 +59,38 @@ import {
   Place as PlaceIcon,
   Assessment as AssessmentIcon,
   Person as PersonIcon,
+  Email as EmailIcon,
   Cancel as CancelIcon,
   Save as SaveIcon,
   Explore as ExploreIcon,
   Group as GroupIcon,
+  Engineering as EngineeringIcon,
+  Verified as VerifiedIcon,
+  Timeline as TimelineIcon,
+  Landscape as OutdoorIcon,
+  MeetingRoom as IndoorIcon,
+  CameraAlt as StudioIcon,
+  Language as VirtualIcon,
+  Category as OtherTypeIcon,
+  HomeWork as BasecampIcon,
+  LocalShipping as LoadFlowIcon,
+  Link as LinkIcon,
+  Inventory2 as EquipmentIcon,
+  Movie as StoryboardIcon,
+  PhoneCallback as CallbackIcon,
+  Checklist as CrewLinkIcon,
+  Image as ImageIcon,
+  AddPhotoAlternate as AddPhotoIcon,
+  UploadFile as UploadFileIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material';
+import {
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Tooltip as LeafletMapTooltip,
+  useMap,
+} from 'react-leaflet';
 import settingsService from '../services/settingsService';
 import { 
   LocationsIcon as LocationIcon, 
@@ -72,16 +99,17 @@ import {
   PersonNameIcon,
   AddressIcon,
   CapacityIcon,
-  NotesIcon,
-  PhoneIcon as CustomPhoneIcon,
 } from './icons/CastingIcons';
-import { Location } from '../models/casting';
+import { CastingProject, CastingShot, CrewMember, Location } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';
+import { LocationManagementGuide } from './production/LocationManagementGuide';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import locationPng from './icons/Keep/roleroom_location.png';
+import { getRoleLabel, isTechnicalCrewMember as isTechnicalCrewMemberFromShared } from './shared/technicalCrew';
+import 'leaflet/dist/leaflet.css';
 
 // WCAG 2.2 - 2.5.5 Target Size (minimum 44x44px)
 const TOUCH_TARGET_SIZE = 44;
@@ -96,18 +124,428 @@ const focusVisibleStyles = {
 
 type SortField = 'name' | 'type' | 'capacity' | 'scenes';
 type SortDirection = 'asc' | 'desc';
-type ViewMode = 'grid' | 'table';
+type ViewMode = 'grid' | 'table' | 'pro';
+type ProPresetId = 'all' | 'tech_scout' | 'permits' | 'night_shoot' | 'low_budget';
+type OperationalFilterKey = 'all' | 'ready_today' | 'permit_missing' | 'high_risk' | 'over_budget' | 'with_shots';
+type BulkWorkflowStatus = 'ready' | 'hold' | 'blocked';
+
+interface SavedLocationProView {
+  id: string;
+  name: string;
+  preset: ProPresetId;
+  operationalFilter: OperationalFilterKey;
+  searchQuery: string;
+  filterType: Location['type'] | 'all';
+  sortField: SortField;
+  sortDirection: SortDirection;
+}
+
+interface LocationProMetrics {
+  locationId: string;
+  readinessScore: number;
+  riskScore: number;
+  riskLevel: 'lav' | 'moderat' | 'hoy';
+  estimatedCost: number;
+  overBudget: boolean;
+  hasPermitEvidence: boolean;
+  permitMissing: boolean;
+  missingTechnicalRoles: string[];
+  technicalCoverage: number;
+  shotsCount: number;
+  consistencyWarnings: string[];
+}
+
+const ROLE_ROOM_COLORS = {
+  accent: '#a855f7',
+  accentStrong: '#9333ea',
+  accentSoft: 'rgba(168,85,247,0.18)',
+  accentBorder: 'rgba(168,85,247,0.4)',
+  secondary: '#22d3ee',
+  secondarySoft: 'rgba(34,211,238,0.18)',
+  mutedText: 'rgba(255,255,255,0.74)',
+  panel: 'rgba(20,16,46,0.72)',
+  panelBorder: 'rgba(168,85,247,0.22)',
+};
+
+const LOCATION_PRO_VIEWS_NAMESPACE = 'roleRoom_locationProViews';
+const APPROVED_ANNOTATION_COLORS = new Set(['#a855f7', '#22d3ee', '#34d399', '#f59e0b', '#ef4444', '#c084fc', '#8b5cf6']);
+
+const PRO_PRESET_LABELS: Record<ProPresetId, string> = {
+  all: 'Alle',
+  tech_scout: 'Tech Scout',
+  permits: 'Tillatelser',
+  night_shoot: 'Nattopptak',
+  low_budget: 'Lavt budsjett',
+};
+
+const OPERATIONAL_FILTER_LABELS: Record<OperationalFilterKey, string> = {
+  all: 'Alle',
+  ready_today: 'Klar i dag',
+  permit_missing: 'Mangler tillatelse',
+  high_risk: 'Høy risiko',
+  over_budget: 'Over budsjett',
+  with_shots: 'Har shotlist',
+};
 
 interface LocationManagementPanelProps {
   projectId: string;
   onUpdate?: () => void;
 }
 
+interface ProMapLocation {
+  locationId: string;
+  lat: number;
+  lng: number;
+  typeColor: string;
+  name: string;
+}
+
+interface ProContactDraft {
+  name: string;
+  phone: string;
+  email: string;
+}
+
+type LoadFlowStatus = 'planned' | 'ready' | 'in_progress' | 'completed';
+
+interface ProLoadFlowDraft {
+  loadInAt: string;
+  shootStartAt: string;
+  wrapAt: string;
+  loadOutAt: string;
+  status: LoadFlowStatus;
+  notes: string;
+}
+
+interface ProSceneOption {
+  id: string;
+  label: string;
+}
+
+interface ProSceneInsight {
+  sceneId: string;
+  sceneLabel: string;
+  shotCount: number;
+  shotListCount: number;
+  callbackCount: number;
+  crewTouchpoints: number;
+  equipment: string[];
+  storyboardCount: number;
+}
+
+interface ProMediaAsset {
+  id: string;
+  url: string;
+  caption?: string;
+  sceneIds?: string[];
+  createdAt?: string;
+  source?: 'url' | 'upload';
+}
+
+interface ProMediaDraft {
+  locationImages: ProMediaAsset[];
+  storyboardImages: ProMediaAsset[];
+  locationImageUrlInput: string;
+  locationImageCaptionInput: string;
+  storyboardImageUrlInput: string;
+  storyboardImageCaptionInput: string;
+  storyboardSceneIds: string[];
+}
+
+type ProSectionKey = 'summary' | 'loadFlow' | 'sceneLinks' | 'media' | 'contact';
+type ProSectionState = Record<ProSectionKey, boolean>;
+
+interface ConsistencyFinding {
+  locationId: string;
+  warning: string;
+  targetSection: ProSectionKey;
+  ctaLabel: string;
+}
+
+const DEFAULT_PRO_SECTION_STATE: ProSectionState = {
+  summary: true,
+  loadFlow: false,
+  sceneLinks: false,
+  media: false,
+  contact: false,
+};
+
+const getConsistencyTargetSection = (warning: string): ProSectionKey => {
+  const normalized = warning.toLowerCase();
+  if (normalized.includes('load-in/load-out') || normalized.includes('flyt')) return 'loadFlow';
+  if (normalized.includes('scene') || normalized.includes('shot') || normalized.includes('storyboard')) return 'sceneLinks';
+  if (normalized.includes('kontakt') || normalized.includes('telefon') || normalized.includes('e-post')) return 'contact';
+  return 'summary';
+};
+
+const getConsistencyCtaLabel = (section: ProSectionKey): string => {
+  switch (section) {
+    case 'loadFlow':
+      return 'Gå til load-flow';
+    case 'sceneLinks':
+      return 'Gå til scene-kobling';
+    case 'media':
+      return 'Gå til media';
+    case 'contact':
+      return 'Gå til kontakt';
+    default:
+      return 'Rediger lokasjon';
+  }
+};
+
+const buildProContactDraft = (location: Location): ProContactDraft => {
+  const contactInfo = (location.contactInfo ?? {}) as Record<string, unknown>;
+  return {
+    name: typeof contactInfo.name === 'string' ? contactInfo.name : '',
+    phone: typeof contactInfo.phone === 'string' ? contactInfo.phone : '',
+    email: typeof contactInfo.email === 'string' ? contactInfo.email : '',
+  };
+};
+
+const toDateTimeInputValue = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value.trim())) return value.trim();
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hour = String(parsed.getHours()).padStart(2, '0');
+  const minute = String(parsed.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+};
+
+const formatDateTimeShort = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.length > 16 ? value.slice(0, 16) : value;
+  }
+  return parsed.toLocaleString('nb-NO', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const toIsoOrRawDateTime = (value: string): string | undefined => {
+  if (!value.trim()) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.trim();
+  return parsed.toISOString();
+};
+
+const normalizeSceneId = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return null;
+};
+
+const normalizeSceneIds = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => normalizeSceneId(entry))
+        .filter((entry): entry is string => Boolean(entry))
+    )
+  );
+};
+
+const readTextFromUnknown = (value: unknown): string | null => {
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const candidates = [
+      record.name,
+      record.label,
+      record.title,
+      record.itemName,
+      record.equipmentName,
+      record.displayName,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+    }
+  }
+  return null;
+};
+
+const extractEquipmentLabels = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => readTextFromUnknown(entry))
+    .filter((entry): entry is string => Boolean(entry));
+};
+
+const countStoryboardAssets = (shot: CastingShot): number => {
+  const frameLists = [
+    (shot as any).storyboardFrames,
+    (shot as any).storyboards,
+    (shot as any).storyboard,
+  ];
+  for (const maybeList of frameLists) {
+    if (Array.isArray(maybeList) && maybeList.length > 0) {
+      return maybeList.length;
+    }
+  }
+  if (
+    typeof (shot as any).storyboardImageUrl === 'string' ||
+    typeof (shot as any).storyboardImage === 'string' ||
+    typeof (shot as any).storyboardUrl === 'string'
+  ) {
+    return 1;
+  }
+  return 0;
+};
+
+const buildProLoadFlowDraft = (location: Location): ProLoadFlowDraft => {
+  const flow = ((location as any).loadFlow ?? {}) as Record<string, unknown>;
+  const status = String(flow.status ?? 'planned').toLowerCase();
+  const normalizedStatus: LoadFlowStatus =
+    status === 'ready' || status === 'in_progress' || status === 'completed' ? (status as LoadFlowStatus) : 'planned';
+  return {
+    loadInAt: toDateTimeInputValue(flow.loadInAt),
+    shootStartAt: toDateTimeInputValue(flow.shootStartAt),
+    wrapAt: toDateTimeInputValue(flow.wrapAt),
+    loadOutAt: toDateTimeInputValue(flow.loadOutAt),
+    status: normalizedStatus,
+    notes: typeof flow.notes === 'string' ? flow.notes : '',
+  };
+};
+
+const MAX_MEDIA_FILE_SIZE_BYTES = 8 * 1024 * 1024;
+
+const createProMediaAssetId = (): string =>
+  `loc-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeProMediaAssets = (value: unknown): ProMediaAsset[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        const url = entry.trim();
+        if (!url) return null;
+        return {
+          id: createProMediaAssetId(),
+          url,
+          source: 'url' as const,
+        };
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const record = entry as Record<string, unknown>;
+      const urlCandidates = [record.url, record.imageUrl, record.src, record.path];
+      const url = urlCandidates.find((candidate) => typeof candidate === 'string' && candidate.trim()) as
+        | string
+        | undefined;
+      if (!url) return null;
+      const id =
+        typeof record.id === 'string' && record.id.trim()
+          ? record.id.trim()
+          : createProMediaAssetId();
+      const caption =
+        (typeof record.caption === 'string' && record.caption.trim()) ||
+        (typeof record.title === 'string' && record.title.trim()) ||
+        undefined;
+      const sceneIds = normalizeSceneIds(record.sceneIds ?? record.scenes ?? record.scene_ids);
+      return {
+        id,
+        url: url.trim(),
+        caption,
+        sceneIds: sceneIds.length > 0 ? sceneIds : undefined,
+        createdAt: typeof record.createdAt === 'string' ? record.createdAt : undefined,
+        source: record.source === 'upload' ? 'upload' : 'url',
+      };
+    })
+    .filter((entry): entry is ProMediaAsset => Boolean(entry));
+};
+
+const buildProMediaDraft = (location: Location): ProMediaDraft => {
+  const locationRecord = location as Record<string, unknown>;
+  const media =
+    locationRecord.media && typeof locationRecord.media === 'object'
+      ? (locationRecord.media as Record<string, unknown>)
+      : {};
+
+  const locationImages = normalizeProMediaAssets(
+    media.locationImages ?? locationRecord.locationImages ?? locationRecord.referenceImages
+  );
+  const storyboardImages = normalizeProMediaAssets(
+    media.storyboardImages ?? locationRecord.storyboardImages ?? locationRecord.storyboardRefs
+  );
+
+  return {
+    locationImages,
+    storyboardImages,
+    locationImageUrlInput: '',
+    locationImageCaptionInput: '',
+    storyboardImageUrlInput: '',
+    storyboardImageCaptionInput: '',
+    storyboardSceneIds: [],
+  };
+};
+
+const buildProMediaAsset = (
+  url: string,
+  caption: string,
+  sceneIds: string[] = [],
+  source: 'url' | 'upload' = 'url'
+): ProMediaAsset => ({
+  id: createProMediaAssetId(),
+  url: url.trim(),
+  caption: caption.trim() || undefined,
+  sceneIds: sceneIds.length > 0 ? Array.from(new Set(sceneIds)) : undefined,
+  createdAt: new Date().toISOString(),
+  source,
+});
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string' && result.length > 0) {
+        resolve(result);
+      } else {
+        reject(new Error('Kunne ikke lese fil'));
+      }
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Feil ved filopplasting'));
+    reader.readAsDataURL(file);
+  });
+
+function LocationLeafletSync({
+  bounds,
+  activeLocation,
+}: {
+  bounds: Array<[number, number]>;
+  activeLocation: ProMapLocation | null;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (bounds.length === 0) return;
+    map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14, animate: false });
+  }, [map, bounds]);
+
+  useEffect(() => {
+    if (!activeLocation) return;
+    const target: [number, number] = [activeLocation.lat, activeLocation.lng];
+    const current = map.getCenter();
+    const isSameCenter =
+      Math.abs(current.lat - target[0]) < 0.0001 && Math.abs(current.lng - target[1]) < 0.0001;
+    if (isSameCenter) return;
+    map.flyTo(target, Math.max(map.getZoom(), 13), { duration: 0.6 });
+  }, [map, activeLocation]);
+
+  return null;
+}
+
 export function LocationManagementPanel({ projectId, onUpdate }: LocationManagementPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
-  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
 
   // Unique IDs for WCAG
   const baseId = useId();
@@ -119,6 +557,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
   // Core state
   const [locations, setLocations] = useState<Location[]>([]);
+  const [projectContext, setProjectContext] = useState<CastingProject | null>(null);
+  const [projectContextLoading, setProjectContextLoading] = useState(false);
   
   // Load locations when projectId changes
   useEffect(() => {
@@ -135,6 +575,27 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     };
     loadLocations();
   }, [projectId]);
+
+  useEffect(() => {
+    const loadProjectContext = async () => {
+      if (!projectId) {
+        setProjectContext(null);
+        return;
+      }
+      setProjectContextLoading(true);
+      try {
+        const project = await castingService.getProject(projectId);
+        setProjectContext(project);
+      } catch (error) {
+        console.warn('Could not load project context for location pro view:', error);
+        setProjectContext(null);
+      } finally {
+        setProjectContextLoading(false);
+      }
+    };
+    loadProjectContext();
+  }, [projectId]);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
@@ -147,8 +608,86 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [proPreset, setProPreset] = useState<ProPresetId>('all');
+  const [operationalFilter, setOperationalFilter] = useState<OperationalFilterKey>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showStats, setShowStats] = useState(true);
+  const [locationGuideOpen, setLocationGuideOpen] = useState(false);
+  const [activeMapLocationId, setActiveMapLocationId] = useState<string | null>(null);
+  const [consistencyIndicator, setConsistencyIndicator] = useState<{
+    locationId: string;
+    section: ProSectionKey;
+    activatedAt: number;
+  } | null>(null);
+  const [bulkWorkflowStatus, setBulkWorkflowStatus] = useState<BulkWorkflowStatus>('ready');
+  const [proPageSize, setProPageSize] = useState(24);
+  const [savedProViews, setSavedProViews] = useState<SavedLocationProView[]>([]);
+  const [savedViewsLoaded, setSavedViewsLoaded] = useState(false);
+  const [selectedProViewId, setSelectedProViewId] = useState<string>('custom');
+  const [proViewName, setProViewName] = useState('');
+
+  useEffect(() => {
+    const loadSavedViews = async () => {
+      try {
+        const views = await settingsService.getSetting<SavedLocationProView[]>(LOCATION_PRO_VIEWS_NAMESPACE, { projectId });
+        if (Array.isArray(views)) {
+          setSavedProViews(views);
+        }
+      } catch (error) {
+        console.warn('Could not load saved location pro views:', error);
+      } finally {
+        setSavedViewsLoaded(true);
+      }
+    };
+    loadSavedViews();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!savedViewsLoaded) return;
+    void settingsService.setSetting(LOCATION_PRO_VIEWS_NAMESPACE, savedProViews, { projectId });
+  }, [savedProViews, savedViewsLoaded, projectId]);
+
+  useEffect(() => {
+    setSelectedProViewId('custom');
+    setProViewName('');
+    setProPageSize(24);
+    setActiveMapLocationId(null);
+    setOperationalFilter('all');
+    setProPreset('all');
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!consistencyIndicator) return;
+    const timer = window.setTimeout(() => {
+      setConsistencyIndicator((current) =>
+        current?.activatedAt === consistencyIndicator.activatedAt ? null : current
+      );
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [consistencyIndicator]);
+
+  useEffect(() => {
+    if (selectedProViewId === 'custom') return;
+    const selected = savedProViews.find((view) => view.id === selectedProViewId);
+    if (!selected) {
+      setSelectedProViewId('custom');
+      return;
+    }
+    const hasChanged =
+      selected.preset !== proPreset ||
+      selected.operationalFilter !== operationalFilter ||
+      selected.searchQuery !== searchQuery ||
+      selected.filterType !== filterType ||
+      selected.sortField !== sortField ||
+      selected.sortDirection !== sortDirection;
+    if (hasChanged) {
+      setSelectedProViewId('custom');
+    }
+  }, [selectedProViewId, savedProViews, proPreset, operationalFilter, searchQuery, filterType, sortField, sortDirection]);
+
+  useEffect(() => {
+    setProPageSize(24);
+  }, [searchQuery, filterType, sortField, sortDirection, proPreset, operationalFilter]);
 
   // Selection state for bulk operations
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -194,6 +733,20 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
   // Expanded cards
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [editingProContactIds, setEditingProContactIds] = useState<Set<string>>(new Set());
+  const [savingProContactIds, setSavingProContactIds] = useState<Set<string>>(new Set());
+  const [proContactDrafts, setProContactDrafts] = useState<Record<string, ProContactDraft>>({});
+  const [savingBasecampIds, setSavingBasecampIds] = useState<Set<string>>(new Set());
+  const [editingLoadFlowIds, setEditingLoadFlowIds] = useState<Set<string>>(new Set());
+  const [savingLoadFlowIds, setSavingLoadFlowIds] = useState<Set<string>>(new Set());
+  const [loadFlowDrafts, setLoadFlowDrafts] = useState<Record<string, ProLoadFlowDraft>>({});
+  const [editingSceneLinkIds, setEditingSceneLinkIds] = useState<Set<string>>(new Set());
+  const [savingSceneLinkIds, setSavingSceneLinkIds] = useState<Set<string>>(new Set());
+  const [sceneLinkDrafts, setSceneLinkDrafts] = useState<Record<string, string[]>>({});
+  const [editingMediaIds, setEditingMediaIds] = useState<Set<string>>(new Set());
+  const [savingMediaIds, setSavingMediaIds] = useState<Set<string>>(new Set());
+  const [mediaDrafts, setMediaDrafts] = useState<Record<string, ProMediaDraft>>({});
+  const [proSectionStates, setProSectionStates] = useState<Record<string, ProSectionState>>({});
 
   // Form data
   const [formData, setFormData] = useState<Partial<Location>>({
@@ -242,13 +795,32 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
   const getTypeColor = (type: Location['type']): string => {
     const colors: Record<Location['type'], string> = {
-      studio: '#9c27b0',
-      outdoor: '#4caf50',
-      indoor: '#2196f3',
-      virtual: '#9333ea',
-      other: '#607d8b',
+      studio: '#c084fc',
+      outdoor: '#34d399',
+      indoor: '#22d3ee',
+      virtual: '#a855f7',
+      other: '#94a3b8',
     };
-    return colors[type] || '#607d8b';
+    return colors[type] || '#94a3b8';
+  };
+
+  const getTypeStatIcon = (type: string) => {
+    const iconSx = {
+      fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 },
+      color: getTypeColor(type as Location['type']),
+    };
+    switch (type) {
+      case 'outdoor':
+        return <OutdoorIcon sx={iconSx} />;
+      case 'indoor':
+        return <IndoorIcon sx={iconSx} />;
+      case 'studio':
+        return <StudioIcon sx={iconSx} />;
+      case 'virtual':
+        return <VirtualIcon sx={iconSx} />;
+      default:
+        return <OtherTypeIcon sx={iconSx} />;
+    }
   };
 
   const getFacilityLabel = (facility: string): string => {
@@ -330,9 +902,411 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     };
   }, [locations, favorites]);
 
+  const allShots = useMemo<CastingShot[]>(() => {
+    const shotLists = projectContext?.shotLists;
+    if (!Array.isArray(shotLists) || shotLists.length === 0) return [];
+    return shotLists.flatMap((shotList) => (Array.isArray(shotList.shots) ? shotList.shots : []));
+  }, [projectContext?.shotLists]);
+
+  const technicalCrewPool = useMemo<CrewMember[]>(() => {
+    const crew = projectContext?.crew;
+    if (!Array.isArray(crew) || crew.length === 0) return [];
+    return crew.filter(
+      (member) =>
+        isTechnicalCrewMemberFromShared(member as CrewMember, 'all') &&
+        String(member.status ?? '').toLowerCase() !== 'unavailable'
+    );
+  }, [projectContext?.crew]);
+
+  const callbackSchedules = useMemo(() => {
+    const schedules = Array.isArray(projectContext?.schedules) ? projectContext.schedules : [];
+    return schedules.filter((schedule) => {
+      const type = String(schedule.type ?? '').toLowerCase();
+      const status = String(schedule.status ?? '').toLowerCase();
+      const notes = String(schedule.notes ?? '').toLowerCase();
+      return type.includes('callback') || status.includes('callback') || notes.includes('callback');
+    });
+  }, [projectContext?.schedules]);
+
+  const proSceneOptions = useMemo<ProSceneOption[]>(() => {
+    const sceneMap = new Map<string, ProSceneOption>();
+
+    const sceneBreakdowns = Array.isArray(projectContext?.sceneBreakdowns)
+      ? projectContext.sceneBreakdowns
+      : [];
+    for (const scene of sceneBreakdowns) {
+      const sceneId = normalizeSceneId(scene.id) ?? normalizeSceneId(scene.sceneNumber);
+      if (!sceneId) continue;
+      const label =
+        (typeof scene.sceneName === 'string' && scene.sceneName.trim()) ||
+        (typeof scene.heading === 'string' && scene.heading.trim()) ||
+        `Scene ${scene.sceneNumber ?? sceneId}`;
+      if (!sceneMap.has(sceneId)) {
+        sceneMap.set(sceneId, { id: sceneId, label });
+      }
+    }
+
+    const shotLists = Array.isArray(projectContext?.shotLists) ? projectContext.shotLists : [];
+    for (const list of shotLists) {
+      const sceneId = normalizeSceneId(list.sceneId ?? list.scene_id);
+      if (!sceneId) continue;
+      const label =
+        (typeof list.sceneName === 'string' && list.sceneName.trim()) ||
+        sceneMap.get(sceneId)?.label ||
+        `Scene ${sceneId}`;
+      if (!sceneMap.has(sceneId)) {
+        sceneMap.set(sceneId, { id: sceneId, label });
+      }
+    }
+
+    for (const shot of allShots) {
+      const sceneId = normalizeSceneId(shot.sceneId);
+      if (!sceneId) continue;
+      if (!sceneMap.has(sceneId)) {
+        sceneMap.set(sceneId, { id: sceneId, label: `Scene ${sceneId}` });
+      }
+    }
+
+    return Array.from(sceneMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'nb'));
+  }, [projectContext?.sceneBreakdowns, projectContext?.shotLists, allShots]);
+
+  const proSceneLabelById = useMemo(
+    () => new Map(proSceneOptions.map((scene) => [scene.id, scene.label])),
+    [proSceneOptions]
+  );
+
+  const proSceneInsightsById = useMemo<Record<string, ProSceneInsight>>(() => {
+    const optionMap = new Map(proSceneOptions.map((scene) => [scene.id, scene]));
+    const accumulator = new Map<
+      string,
+      {
+        sceneLabel: string;
+        shotCount: number;
+        shotListCount: number;
+        callbackCount: number;
+        storyboardCount: number;
+        equipment: Set<string>;
+        crew: Set<string>;
+      }
+    >();
+
+    const ensureEntry = (sceneId: string) => {
+      const existing = accumulator.get(sceneId);
+      if (existing) return existing;
+      const created = {
+        sceneLabel: optionMap.get(sceneId)?.label ?? `Scene ${sceneId}`,
+        shotCount: 0,
+        shotListCount: 0,
+        callbackCount: 0,
+        storyboardCount: 0,
+        equipment: new Set<string>(),
+        crew: new Set<string>(),
+      };
+      accumulator.set(sceneId, created);
+      return created;
+    };
+
+    const shotLists = Array.isArray(projectContext?.shotLists) ? projectContext.shotLists : [];
+    for (const list of shotLists) {
+      const listSceneId = normalizeSceneId(list.sceneId ?? list.scene_id);
+      if (!listSceneId) continue;
+      const listEntry = ensureEntry(listSceneId);
+      listEntry.shotListCount += 1;
+      extractEquipmentLabels(list.equipment).forEach((label) => listEntry.equipment.add(label));
+
+      for (const shot of Array.isArray(list.shots) ? list.shots : []) {
+        const shotSceneId = normalizeSceneId(shot.sceneId) ?? listSceneId;
+        const entry = ensureEntry(shotSceneId);
+        entry.shotCount += 1;
+        entry.storyboardCount += countStoryboardAssets(shot);
+        extractEquipmentLabels((shot as any).equipment).forEach((label) => entry.equipment.add(label));
+        extractEquipmentLabels((shot as any).requiredEquipment).forEach((label) => entry.equipment.add(label));
+        extractEquipmentLabels((shot as any).gear).forEach((label) => entry.equipment.add(label));
+
+        if (Array.isArray(shot.assignments)) {
+          shot.assignments.forEach((assignment) => {
+            const roleName = readTextFromUnknown((assignment as any).roleName ?? (assignment as any).roleId);
+            const personName = readTextFromUnknown((assignment as any).name ?? (assignment as any).personId);
+            if (roleName) entry.crew.add(roleName);
+            else if (personName) entry.crew.add(personName);
+          });
+        } else {
+          const assignee = readTextFromUnknown((shot as any).assigneeName ?? (shot as any).assigneeId);
+          if (assignee) entry.crew.add(assignee);
+        }
+      }
+    }
+
+    callbackSchedules.forEach((schedule) => {
+      const scheduleSceneId = normalizeSceneId(schedule.sceneId ?? schedule.scene_id);
+      if (!scheduleSceneId) return;
+      const entry = ensureEntry(scheduleSceneId);
+      entry.callbackCount += 1;
+    });
+
+    return Array.from(accumulator.entries()).reduce<Record<string, ProSceneInsight>>((acc, [sceneId, entry]) => {
+      acc[sceneId] = {
+        sceneId,
+        sceneLabel: entry.sceneLabel,
+        shotCount: entry.shotCount,
+        shotListCount: entry.shotListCount,
+        callbackCount: entry.callbackCount,
+        crewTouchpoints: entry.crew.size,
+        equipment: Array.from(entry.equipment).sort((a, b) => a.localeCompare(b, 'nb')),
+        storyboardCount: entry.storyboardCount,
+      };
+      return acc;
+    }, {});
+  }, [proSceneOptions, projectContext?.shotLists, callbackSchedules]);
+
+  const locationProMetrics = useMemo<LocationProMetrics[]>(() => {
+    const requiredTechnicalRoles = ['cinematographer', 'camera_operator', 'gaffer', 'sound_engineer'];
+    const activeTechnicalRoles = new Set(
+      technicalCrewPool.map((member) => String(member.role ?? '').toLowerCase())
+    );
+    const budget = projectContext?.budget;
+
+    return locations.map((location) => {
+      const facilities = Array.isArray(location.facilities) ? location.facilities : [];
+      const assignedScenes = Array.isArray(location.assignedScenes) ? location.assignedScenes : [];
+      const shotsCount = allShots.filter((shot) => {
+        if (shot.locationId && shot.locationId === location.id) return true;
+        if (shot.sceneId && assignedScenes.includes(String(shot.sceneId))) return true;
+        return false;
+      }).length;
+
+      const notesBlob = `${String(location.notes ?? '')} ${String(location.accessNotes ?? '')}`.toLowerCase();
+      const hasPermitFromText = /(permit|tillatelse|godkjent|approval|filming permit)/i.test(notesBlob);
+      const hasPermitFromAnalysis = Boolean((location as any).propertyAnalysis?.droneRestrictions?.allowed);
+      const hasPermitEvidence = hasPermitFromText || hasPermitFromAnalysis;
+      const permitMissing = !hasPermitEvidence;
+      const hasCoordinates = Boolean(location.coordinates?.lat && location.coordinates?.lng);
+      const hasContact = Boolean(location.contactInfo?.name || location.contactInfo?.phone || location.contactInfo?.email);
+      const isBasecamp = Boolean((location as any).isBasecamp);
+      const loadFlowStatus = String((location as any).loadFlow?.status ?? '').toLowerCase();
+      const missingTechnicalRoles = requiredTechnicalRoles.filter((role) => !activeTechnicalRoles.has(role));
+
+      let readinessScore = 0;
+      if (hasCoordinates) readinessScore += 25;
+      readinessScore += facilities.length >= 3 ? 25 : facilities.length > 0 ? 10 : 0;
+      if (hasContact) readinessScore += 15;
+      if (hasPermitEvidence) readinessScore += 15;
+      if (assignedScenes.length > 0) readinessScore += 10;
+      if (isBasecamp) readinessScore += 5;
+      if (loadFlowStatus === 'completed' || loadFlowStatus === 'ready') readinessScore += 8;
+      else if (loadFlowStatus === 'in_progress') readinessScore += 4;
+      readinessScore += missingTechnicalRoles.length === 0 ? 10 : missingTechnicalRoles.length <= 1 ? 5 : 0;
+      if ((location as any).propertyAnalysis) readinessScore += 10;
+      readinessScore = Math.min(100, readinessScore);
+
+      const locationTypeMultiplier =
+        location.type === 'outdoor' ? 1.4 : location.type === 'studio' ? 1.22 : location.type === 'virtual' ? 0.85 : 1;
+      const estimatedCost = Math.round(
+        (1400 +
+          (location.capacity || 0) * 22 +
+          assignedScenes.length * 550 +
+          shotsCount * 180 +
+          (permitMissing ? 1200 : 0) +
+          missingTechnicalRoles.length * 450) *
+          locationTypeMultiplier
+      );
+      const overBudget = Boolean(
+        typeof budget === 'number' && budget > 0 && estimatedCost > Math.max(6000, budget * 0.18)
+      );
+
+      let riskScore = 0;
+      if (!hasCoordinates) riskScore += 28;
+      if (permitMissing) riskScore += 22;
+      if (facilities.length === 0) riskScore += 18;
+      if (missingTechnicalRoles.length >= 2) riskScore += 16;
+      if (!hasContact) riskScore += 10;
+      if (overBudget) riskScore += 12;
+      if (assignedScenes.length === 0) riskScore += 6;
+      if (assignedScenes.length > 0 && !loadFlowStatus) riskScore += 8;
+      riskScore = Math.min(100, riskScore);
+
+      const consistencyWarnings: string[] = [];
+      const annotationColor = String((location as any).annotationColor ?? '').toLowerCase();
+      if (annotationColor && !APPROVED_ANNOTATION_COLORS.has(annotationColor)) {
+        consistencyWarnings.push('Annoteringsfarge avviker fra standardpaletten.');
+      }
+      if (location.type === 'outdoor' && !hasCoordinates) {
+        consistencyWarnings.push('Utendørslokasjon mangler koordinater.');
+      }
+      if (!location.address) {
+        consistencyWarnings.push('Mangler adressefelt.');
+      }
+      if (hasCoordinates && !location.address) {
+        consistencyWarnings.push('Koordinater uten tekstadresse.');
+      }
+      if (new Set(facilities).size !== facilities.length) {
+        consistencyWarnings.push('Dupliserte fasilitet-tags.');
+      }
+      if (assignedScenes.length > 0 && !loadFlowStatus) {
+        consistencyWarnings.push('Scener er koblet, men load-in/load-out flyt mangler.');
+      }
+
+      const riskLevel: LocationProMetrics['riskLevel'] =
+        riskScore >= 55 ? 'hoy' : riskScore >= 30 ? 'moderat' : 'lav';
+
+      return {
+        locationId: location.id,
+        readinessScore,
+        riskScore,
+        riskLevel,
+        estimatedCost,
+        overBudget,
+        hasPermitEvidence,
+        permitMissing,
+        missingTechnicalRoles,
+        technicalCoverage: Math.max(
+          0,
+          Math.round(((requiredTechnicalRoles.length - missingTechnicalRoles.length) / requiredTechnicalRoles.length) * 100)
+        ),
+        shotsCount,
+        consistencyWarnings,
+      };
+    });
+  }, [locations, allShots, technicalCrewPool, projectContext?.budget]);
+
+  const locationMetricsById = useMemo<Record<string, LocationProMetrics>>(
+    () =>
+      locationProMetrics.reduce<Record<string, LocationProMetrics>>((acc, metric) => {
+        acc[metric.locationId] = metric;
+        return acc;
+      }, {}),
+    [locationProMetrics]
+  );
+
+  const proFilteredAndSortedLocations = useMemo(() => {
+    const base = [...filteredAndSortedLocations];
+    const avgBudgetPerLocation =
+      typeof projectContext?.budget === 'number' && projectContext.budget > 0 && base.length > 0
+        ? projectContext.budget / base.length
+        : null;
+
+    const presetFiltered = base.filter((location) => {
+      const metric = locationMetricsById[location.id];
+      if (!metric) return true;
+      if (proPreset === 'tech_scout') {
+        return Boolean(location.coordinates) || metric.shotsCount > 0 || location.type === 'outdoor';
+      }
+      if (proPreset === 'permits') {
+        return metric.permitMissing || metric.hasPermitEvidence;
+      }
+      if (proPreset === 'night_shoot') {
+        const text = `${String(location.name)} ${String(location.notes ?? '')} ${String(location.address ?? '')}`.toLowerCase();
+        return /(night|natt|kveld|mork|mørk)/i.test(text) || location.type === 'studio';
+      }
+      if (proPreset === 'low_budget') {
+        return avgBudgetPerLocation ? metric.estimatedCost <= avgBudgetPerLocation * 1.1 : metric.estimatedCost <= 12000;
+      }
+      return true;
+    });
+
+    return presetFiltered.filter((location) => {
+      const metric = locationMetricsById[location.id];
+      if (!metric) return true;
+      switch (operationalFilter) {
+        case 'ready_today':
+          return metric.readinessScore >= 80 && metric.riskLevel !== 'hoy';
+        case 'permit_missing':
+          return metric.permitMissing;
+        case 'high_risk':
+          return metric.riskLevel === 'hoy';
+        case 'over_budget':
+          return metric.overBudget;
+        case 'with_shots':
+          return metric.shotsCount > 0;
+        default:
+          return true;
+      }
+    });
+  }, [filteredAndSortedLocations, locationMetricsById, proPreset, operationalFilter, projectContext?.budget]);
+
+  const proVisibleLocations = useMemo(
+    () => proFilteredAndSortedLocations.slice(0, proPageSize),
+    [proFilteredAndSortedLocations, proPageSize]
+  );
+
+  const operationalStats = useMemo(() => {
+    const source = proFilteredAndSortedLocations;
+    const readyToday = source.filter((location) => (locationMetricsById[location.id]?.readinessScore ?? 0) >= 80).length;
+    const permitMissing = source.filter((location) => locationMetricsById[location.id]?.permitMissing).length;
+    const highRisk = source.filter((location) => locationMetricsById[location.id]?.riskLevel === 'hoy').length;
+    const overBudget = source.filter((location) => locationMetricsById[location.id]?.overBudget).length;
+    const withShots = source.filter((location) => (locationMetricsById[location.id]?.shotsCount ?? 0) > 0).length;
+    return {
+      total: source.length,
+      readyToday,
+      permitMissing,
+      highRisk,
+      overBudget,
+      withShots,
+    };
+  }, [proFilteredAndSortedLocations, locationMetricsById]);
+
+  const consistencyFindings = useMemo<ConsistencyFinding[]>(() => {
+    return locationProMetrics.flatMap((metric) =>
+      metric.consistencyWarnings.map((warning) => {
+        const targetSection = getConsistencyTargetSection(warning);
+        return {
+          locationId: metric.locationId,
+          warning,
+          targetSection,
+          ctaLabel: getConsistencyCtaLabel(targetSection),
+        };
+      })
+    );
+  }, [locationProMetrics]);
+
+  const mapLocations = useMemo<ProMapLocation[]>(() => {
+    return proFilteredAndSortedLocations
+      .filter((location) => typeof location.coordinates?.lat === 'number' && typeof location.coordinates?.lng === 'number')
+      .map((location) => ({
+        locationId: location.id,
+        lat: location.coordinates!.lat,
+        lng: location.coordinates!.lng,
+        typeColor: getTypeColor(location.type),
+        name: location.name,
+      }));
+  }, [proFilteredAndSortedLocations]);
+
+  const mapBounds = useMemo<Array<[number, number]>>(
+    () => mapLocations.map((location) => [location.lat, location.lng]),
+    [mapLocations]
+  );
+
+  const activeMapLocation = useMemo<ProMapLocation | null>(
+    () => mapLocations.find((location) => location.locationId === activeMapLocationId) ?? mapLocations[0] ?? null,
+    [mapLocations, activeMapLocationId]
+  );
+
+  const activeMapExternalUrl = useMemo(() => {
+    if (!activeMapLocation) return null;
+    return `https://www.openstreetmap.org/?mlat=${activeMapLocation.lat.toFixed(6)}&mlon=${activeMapLocation.lng.toFixed(6)}#map=13/${activeMapLocation.lat.toFixed(6)}/${activeMapLocation.lng.toFixed(6)}`;
+  }, [activeMapLocation]);
+
+  useEffect(() => {
+    if (mapLocations.length === 0) {
+      setActiveMapLocationId(null);
+      return;
+    }
+    if (!activeMapLocationId || !mapLocations.some((location) => location.locationId === activeMapLocationId)) {
+      setActiveMapLocationId(mapLocations[0].locationId);
+    }
+  }, [mapLocations, activeMapLocationId]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTextInput =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.getAttribute('contenteditable') === 'true');
+
       if (e.ctrlKey && e.key === 'n') {
         e.preventDefault();
         handleOpenDialog();
@@ -341,13 +1315,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         e.preventDefault();
         handleExportCSV();
       }
+      if (!isTextInput && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        setLocationGuideOpen(true);
+      }
+      if (e.key === 'Escape' && locationGuideOpen) {
+        e.preventDefault();
+        setLocationGuideOpen(false);
+      }
       if (e.key === 'Escape' && dialogOpen) {
         handleCloseDialog();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen]);
+  }, [dialogOpen, locationGuideOpen]);
 
   // Handlers
   const handleOpenDialog = (location?: Location) => {
@@ -377,7 +1359,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
-      showError('⚠️ Navn er påkrevd');
+      showError('Navn er påkrevd');
       return;
     }
 
@@ -407,9 +1389,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
       // Show success notification
       if (editingLocation) {
-        showSuccess(`✅ ${formData.name} oppdatert`, 3000);
+        showSuccess(`${formData.name} oppdatert`, 3000);
       } else {
-        showSuccess(`📍 ${formData.name} lagt til`, 3000);
+        showSuccess(`${formData.name} lagt til`, 3000);
       }
 
       handleCloseDialog();
@@ -429,7 +1411,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
         setUndoSnackbarOpen(true);
-        showInfo(`🗑️ ${location.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+        showInfo(`${location.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting location:', error);
@@ -444,7 +1426,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         await castingService.saveLocation(projectId, deletedLocation);
         const locs = await castingService.getLocations(projectId);
         setLocations(Array.isArray(locs) ? locs : []);
-        showSuccess(`↩️ ${deletedLocation.name} gjenopprettet`, 3000);
+        showSuccess(`${deletedLocation.name} gjenopprettet`, 3000);
         setDeletedLocation(null);
         setUndoSnackbarOpen(false);
         if (onUpdate) onUpdate();
@@ -563,6 +1545,209 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
   };
 
+  const applySavedProView = (view: SavedLocationProView) => {
+    setSelectedProViewId(view.id);
+    setProPreset(view.preset);
+    setOperationalFilter(view.operationalFilter);
+    setSearchQuery(view.searchQuery);
+    setFilterType(view.filterType);
+    setSortField(view.sortField);
+    setSortDirection(view.sortDirection);
+    setProViewName(view.name);
+    setViewMode('pro');
+  };
+
+  const handleSaveCurrentProView = () => {
+    const trimmedName = proViewName.trim();
+    if (!trimmedName) {
+      showError('Gi visningen et navn før lagring');
+      return;
+    }
+
+    const view: SavedLocationProView = {
+      id: selectedProViewId !== 'custom' ? selectedProViewId : `pro-view-${Date.now()}`,
+      name: trimmedName,
+      preset: proPreset,
+      operationalFilter,
+      searchQuery,
+      filterType,
+      sortField,
+      sortDirection,
+    };
+
+    setSavedProViews((prev) => {
+      const withoutCurrent = prev.filter((existing) => existing.id !== view.id);
+      return [view, ...withoutCurrent].slice(0, 12);
+    });
+    setSelectedProViewId(view.id);
+    showSuccess(`Visning "${trimmedName}" lagret`, 2500);
+  };
+
+  const handleDeleteSavedProView = () => {
+    if (selectedProViewId === 'custom') return;
+    const target = savedProViews.find((view) => view.id === selectedProViewId);
+    if (!target) return;
+    setSavedProViews((prev) => prev.filter((view) => view.id !== selectedProViewId));
+    setSelectedProViewId('custom');
+    setProViewName('');
+    showInfo(`Visning "${target.name}" slettet`, 2500);
+  };
+
+  const handleBulkSetWorkflowStatus = async () => {
+    if (selectedIds.size === 0) {
+      showInfo('Velg minst én lokasjon for statusoppdatering', 2500);
+      return;
+    }
+    try {
+      const targets = locations.filter((location) => selectedIds.has(location.id));
+      await Promise.all(
+        targets.map((location) =>
+          castingService.saveLocation(projectId, {
+            ...location,
+            workflowStatus: bulkWorkflowStatus,
+            updatedAt: new Date().toISOString(),
+          } as Location)
+        )
+      );
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      showSuccess(`Status satt til "${bulkWorkflowStatus}" for ${targets.length} lokasjoner`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error bulk updating workflow status:', error);
+      showError('Kunne ikke oppdatere status for valgte lokasjoner');
+    }
+  };
+
+  const handleBulkAssignTechnicalTeam = async () => {
+    if (selectedIds.size === 0) {
+      showInfo('Velg minst én lokasjon for å tildele teknisk team', 2500);
+      return;
+    }
+    try {
+      const technicalRoles = technicalCrewPool.map((member) => String(member.role)).filter(Boolean);
+      const targets = locations.filter((location) => selectedIds.has(location.id));
+      await Promise.all(
+        targets.map((location) =>
+          castingService.saveLocation(projectId, {
+            ...location,
+            technicalTeamAssigned: true,
+            technicalTeamRoles: technicalRoles,
+            technicalTeamAssignedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } as Location)
+        )
+      );
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      showSuccess(`Teknisk team tildelt til ${targets.length} lokasjoner`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error bulk assigning technical team:', error);
+      showError('Kunne ikke tildele teknisk team');
+    }
+  };
+
+  const handleBulkCopyFacilitiesFromActive = async () => {
+    const sourceId = activeMapLocationId || [...selectedIds][0];
+    if (!sourceId) {
+      showInfo('Velg en aktiv lokasjon først', 2500);
+      return;
+    }
+    if (selectedIds.size <= 1) {
+      showInfo('Velg flere lokasjoner for å kopiere tags/fasiliteter', 2500);
+      return;
+    }
+    const source = locations.find((location) => location.id === sourceId);
+    if (!source || !Array.isArray(source.facilities) || source.facilities.length === 0) {
+      showError('Aktiv lokasjon har ingen fasiliteter å kopiere');
+      return;
+    }
+    try {
+      const targets = locations.filter((location) => selectedIds.has(location.id) && location.id !== sourceId);
+      await Promise.all(
+        targets.map((location) =>
+          castingService.saveLocation(projectId, {
+            ...location,
+            facilities: [...source.facilities],
+            updatedAt: new Date().toISOString(),
+          } as Location)
+        )
+      );
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      showSuccess(`Kopierte fasiliteter til ${targets.length} lokasjoner`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error bulk copying facilities:', error);
+      showError('Kunne ikke kopiere fasiliteter');
+    }
+  };
+
+  const handleExportSelectedCallSheet = async () => {
+    if (selectedIds.size === 0) {
+      showInfo('Velg lokasjoner før eksport av call sheet', 2500);
+      return;
+    }
+    try {
+      const project = await castingService.getProject(projectId);
+      if (!project) {
+        showError('Prosjekt ikke funnet');
+        return;
+      }
+      const selectedLocations = locations.filter((location) => selectedIds.has(location.id));
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        showError('Kunne ikke åpne eksport-vindu. Tillat popups.');
+        return;
+      }
+      const htmlContent = generateLocationsHTML(
+        {
+          ...project,
+          name: `${project.name} • Call sheet (lokasjoner)`,
+        },
+        selectedLocations
+      );
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 250);
+    } catch (error) {
+      console.error('Error exporting selected location call sheet:', error);
+      showError('Kunne ikke eksportere valgte lokasjoner');
+    }
+  };
+
+  const handleNormalizeAnnotationColors = async () => {
+    const candidates = locations.filter((location) => {
+      const annotationColor = String((location as any).annotationColor ?? '').toLowerCase();
+      return annotationColor && !APPROVED_ANNOTATION_COLORS.has(annotationColor);
+    });
+    if (candidates.length === 0) {
+      showInfo('Ingen avvikende annoteringsfarger funnet', 2500);
+      return;
+    }
+    try {
+      await Promise.all(
+        candidates.map((location) =>
+          castingService.saveLocation(projectId, {
+            ...location,
+            annotationColor: getTypeColor(location.type),
+            updatedAt: new Date().toISOString(),
+          } as Location)
+        )
+      );
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      showSuccess(`Standardiserte annoteringsfarger for ${candidates.length} lokasjoner`, 3000);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error normalizing annotation colors:', error);
+      showError('Kunne ikke standardisere annoteringsfarger');
+    }
+  };
+
   const generateLocationsHTML = (project: any, locations: any[]): string => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('nb-NO', {
@@ -576,7 +1761,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     const totalLocations = locations.length;
     const locationsWithScenes = locations.filter(loc => loc.assignedScenes.length > 0).length;
 
-    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4caf50" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    const locationIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
       <circle cx="12" cy="10" r="3"/>
     </svg>`;
@@ -591,16 +1776,16 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.7; padding: 0; background: #fff; font-size: 14px; }
     .page { padding: 50px 60px 80px 60px; max-width: 210mm; margin: 0 auto; min-height: 297mm; position: relative; }
-    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #4caf50; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .title { font-size: 36px; font-weight: 800; color: #4caf50; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
+    .header { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-bottom: 5px solid #a855f7; padding: 30px 35px; margin: -50px -60px 40px -60px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .title { font-size: 36px; font-weight: 800; color: #a855f7; margin-bottom: 10px; letter-spacing: -1px; line-height: 1.2; display: flex; align-items: center; gap: 12px; }
     .title svg { flex-shrink: 0; }
     .subtitle { color: #64748b; font-size: 15px; font-weight: 500; margin-top: 5px; }
-    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #4caf50; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .summary-title { font-size: 20px; font-weight: 700; color: #4caf50; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
+    .summary { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-left: 6px solid #a855f7; padding: 30px; margin-bottom: 45px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .summary-title { font-size: 20px; font-weight: 700; color: #a855f7; margin-bottom: 25px; letter-spacing: -0.3px; display: flex; align-items: center; gap: 12px; }
     .summary-title svg { flex-shrink: 0; }
     .summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 25px; }
     .summary-item { background: white; padding: 25px 20px; border-radius: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
-    .summary-number { font-size: 36px; font-weight: 800; color: #4caf50; display: block; margin-bottom: 8px; line-height: 1; }
+    .summary-number { font-size: 36px; font-weight: 800; color: #a855f7; display: block; margin-bottom: 8px; line-height: 1; }
     .summary-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; display: block; }
     .section { margin-bottom: 50px; page-break-inside: avoid; }
     .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; padding-bottom: 15px; border-bottom: 3px solid #e2e8f0; }
@@ -610,7 +1795,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     .section-count { font-size: 13px; font-weight: 600; color: #64748b; background: #f1f5f9; padding: 6px 14px; border-radius: 20px; border: 1px solid #e2e8f0; }
     .section-content { background: #fafbfc; padding: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
     table { width: 100%; border-collapse: collapse; }
-    th { background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
+    th { background: linear-gradient(135deg, #a855f7 0%, #6d28d9 100%); color: white; font-weight: 700; padding: 18px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; border: none; }
     th:first-child { border-top-left-radius: 10px; }
     th:last-child { border-top-right-radius: 10px; }
     td { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; color: #334155; font-size: 14px; font-weight: 400; vertical-align: top; }
@@ -732,6 +1917,129 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     setExpandedCards(newExpanded);
   };
 
+  const getProSectionState = (locationId: string): ProSectionState => ({
+    ...DEFAULT_PRO_SECTION_STATE,
+    ...(proSectionStates[locationId] ?? {}),
+  });
+
+  const toggleProSection = (locationId: string, section: ProSectionKey) => {
+    setProSectionStates((prev) => {
+      const current = {
+        ...DEFAULT_PRO_SECTION_STATE,
+        ...(prev[locationId] ?? {}),
+      };
+      return {
+        ...prev,
+        [locationId]: {
+          ...current,
+          [section]: !current[section],
+        },
+      };
+    });
+  };
+
+  const handleGoToConsistencyFinding = (finding: ConsistencyFinding) => {
+    const totalLocations = Math.max(locations.length, 24);
+    const locationForFinding = locations.find((location) => location.id === finding.locationId);
+    const expandedAll: ProSectionState = {
+      summary: true,
+      loadFlow: true,
+      sceneLinks: true,
+      media: true,
+      contact: true,
+    };
+    const applyConsistencyTarget = (openSummaryEditor: boolean) => {
+      setConsistencyIndicator({
+        locationId: finding.locationId,
+        section: finding.targetSection,
+        activatedAt: Date.now(),
+      });
+      setProSectionStates((prev) => ({
+        ...prev,
+        [finding.locationId]: expandedAll,
+      }));
+      if (!locationForFinding) return;
+      if (finding.targetSection === 'summary') {
+        if (openSummaryEditor) {
+          handleOpenDialog(locationForFinding);
+        }
+      } else if (finding.targetSection === 'loadFlow') {
+        setLoadFlowDrafts((prev) => {
+          if (prev[locationForFinding.id]) return prev;
+          return {
+            ...prev,
+            [locationForFinding.id]: buildProLoadFlowDraft(locationForFinding),
+          };
+        });
+        setEditingLoadFlowIds((prev) => {
+          const next = new Set(prev);
+          next.add(finding.locationId);
+          return next;
+        });
+      } else if (finding.targetSection === 'sceneLinks') {
+        setSceneLinkDrafts((prev) => {
+          if (prev[locationForFinding.id]) return prev;
+          return {
+            ...prev,
+            [locationForFinding.id]: normalizeSceneIds(locationForFinding.assignedScenes),
+          };
+        });
+        setEditingSceneLinkIds((prev) => {
+          const next = new Set(prev);
+          next.add(finding.locationId);
+          return next;
+        });
+      } else if (finding.targetSection === 'media') {
+        setMediaDrafts((prev) => {
+          if (prev[locationForFinding.id]) return prev;
+          return {
+            ...prev,
+            [locationForFinding.id]: buildProMediaDraft(locationForFinding),
+          };
+        });
+        setEditingMediaIds((prev) => {
+          const next = new Set(prev);
+          next.add(finding.locationId);
+          return next;
+        });
+      } else if (finding.targetSection === 'contact') {
+        setProContactDrafts((prev) => {
+          if (prev[locationForFinding.id]) return prev;
+          return {
+            ...prev,
+            [locationForFinding.id]: buildProContactDraft(locationForFinding),
+          };
+        });
+        setEditingProContactIds((prev) => {
+          const next = new Set(prev);
+          next.add(finding.locationId);
+          return next;
+        });
+      }
+    };
+    setViewMode('pro');
+    setSelectedProViewId('custom');
+    setProPreset('all');
+    setOperationalFilter('all');
+    setSearchQuery('');
+    setFilterType('all');
+    setSortField('name');
+    setSortDirection('asc');
+    setProPageSize((current) => Math.max(current, totalLocations));
+    setActiveMapLocationId(finding.locationId);
+    applyConsistencyTarget(true);
+
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        applyConsistencyTarget(false);
+        const targetElement = document.getElementById(`location-pro-card-${finding.locationId}`);
+        if (targetElement) {
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
+    });
+  };
+
   const handleFacilityToggle = (facility: string) => {
     const currentFacilities = formData.facilities || [];
     const newFacilities = currentFacilities.includes(facility)
@@ -799,6 +2107,590 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
     }
   };
 
+  const handleToggleProContactEditing = (location: Location) => {
+    setProSectionStates((prev) => ({
+      ...prev,
+      [location.id]: {
+        ...DEFAULT_PRO_SECTION_STATE,
+        ...(prev[location.id] ?? {}),
+        contact: true,
+      },
+    }));
+    setProContactDrafts((prev) => {
+      if (prev[location.id]) return prev;
+      return {
+        ...prev,
+        [location.id]: buildProContactDraft(location),
+      };
+    });
+    setEditingProContactIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(location.id)) {
+        next.delete(location.id);
+      } else {
+        next.add(location.id);
+      }
+      return next;
+    });
+  };
+
+  const handleProContactDraftChange = (
+    locationId: string,
+    field: keyof ProContactDraft,
+    value: string
+  ) => {
+    setProContactDrafts((prev) => ({
+      ...prev,
+      [locationId]: {
+        ...(prev[locationId] ?? { name: '', phone: '', email: '' }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCancelProContactEditing = (location: Location) => {
+    setEditingProContactIds((prev) => {
+      const next = new Set(prev);
+      next.delete(location.id);
+      return next;
+    });
+    setProContactDrafts((prev) => {
+      const next = { ...prev };
+      delete next[location.id];
+      return next;
+    });
+  };
+
+  const handleSaveProContact = async (location: Location) => {
+    if (savingProContactIds.has(location.id)) return;
+    const draft = proContactDrafts[location.id] ?? buildProContactDraft(location);
+    const name = draft.name.trim();
+    const phone = draft.phone.trim();
+    const email = draft.email.trim();
+
+    const existingContactInfo = (location.contactInfo ?? {}) as Record<string, unknown>;
+    const previousName = typeof existingContactInfo.name === 'string' ? existingContactInfo.name.trim() : '';
+    const previousPhone = typeof existingContactInfo.phone === 'string' ? existingContactInfo.phone.trim() : '';
+    const previousEmail = typeof existingContactInfo.email === 'string' ? existingContactInfo.email.trim() : '';
+
+    if (name === previousName && phone === previousPhone && email === previousEmail) {
+      setEditingProContactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      showInfo('Ingen endringer i kontaktinfo', 2200);
+      return;
+    }
+
+    const { name: _oldName, phone: _oldPhone, email: _oldEmail, ...rest } = existingContactInfo;
+    const nextContactInfo: Record<string, unknown> = { ...rest };
+    if (name) nextContactInfo.name = name;
+    if (phone) nextContactInfo.phone = phone;
+    if (email) nextContactInfo.email = email;
+
+    const updatedLocation: Location = {
+      ...location,
+      contactInfo: Object.keys(nextContactInfo).length > 0 ? nextContactInfo : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    setSavingProContactIds((prev) => {
+      const next = new Set(prev);
+      next.add(location.id);
+      return next;
+    });
+
+    try {
+      await castingService.saveLocation(projectId, updatedLocation);
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      setEditingProContactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      setProContactDrafts((prev) => {
+        const next = { ...prev };
+        delete next[location.id];
+        return next;
+      });
+      showSuccess(`Kontaktinfo oppdatert for ${location.name}`, 2600);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating pro contact info:', error);
+      showError('Kunne ikke oppdatere kontaktinfo');
+    } finally {
+      setSavingProContactIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleBasecamp = async (location: Location) => {
+    if (savingBasecampIds.has(location.id)) return;
+    const current = Boolean((location as any).isBasecamp);
+    setSavingBasecampIds((prev) => new Set(prev).add(location.id));
+    try {
+      await castingService.saveLocation(projectId, {
+        ...location,
+        isBasecamp: !current,
+        updatedAt: new Date().toISOString(),
+      } as Location);
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      showSuccess(!current ? `Basecamp aktivert for ${location.name}` : `Basecamp fjernet for ${location.name}`, 2400);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error toggling basecamp:', error);
+      showError('Kunne ikke oppdatere basecamp-markering');
+    } finally {
+      setSavingBasecampIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleLoadFlowEditing = (location: Location) => {
+    setProSectionStates((prev) => ({
+      ...prev,
+      [location.id]: {
+        ...DEFAULT_PRO_SECTION_STATE,
+        ...(prev[location.id] ?? {}),
+        loadFlow: true,
+      },
+    }));
+    setLoadFlowDrafts((prev) => {
+      if (prev[location.id]) return prev;
+      return {
+        ...prev,
+        [location.id]: buildProLoadFlowDraft(location),
+      };
+    });
+    setEditingLoadFlowIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(location.id)) {
+        next.delete(location.id);
+      } else {
+        next.add(location.id);
+      }
+      return next;
+    });
+  };
+
+  const handleLoadFlowDraftChange = (
+    locationId: string,
+    field: keyof ProLoadFlowDraft,
+    value: string
+  ) => {
+    setLoadFlowDrafts((prev) => ({
+      ...prev,
+      [locationId]: {
+        ...(prev[locationId] ?? {
+          loadInAt: '',
+          shootStartAt: '',
+          wrapAt: '',
+          loadOutAt: '',
+          status: 'planned' as LoadFlowStatus,
+          notes: '',
+        }),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleCancelLoadFlowEditing = (location: Location) => {
+    setEditingLoadFlowIds((prev) => {
+      const next = new Set(prev);
+      next.delete(location.id);
+      return next;
+    });
+    setLoadFlowDrafts((prev) => {
+      const next = { ...prev };
+      delete next[location.id];
+      return next;
+    });
+  };
+
+  const handleSaveLoadFlow = async (location: Location) => {
+    if (savingLoadFlowIds.has(location.id)) return;
+    const draft = loadFlowDrafts[location.id] ?? buildProLoadFlowDraft(location);
+    const toPersist = {
+      loadInAt: toIsoOrRawDateTime(draft.loadInAt),
+      shootStartAt: toIsoOrRawDateTime(draft.shootStartAt),
+      wrapAt: toIsoOrRawDateTime(draft.wrapAt),
+      loadOutAt: toIsoOrRawDateTime(draft.loadOutAt),
+      status: draft.status,
+      notes: draft.notes.trim() || undefined,
+    };
+    const hasAnyValue = Object.values(toPersist).some((value) => value !== undefined && value !== '');
+    setSavingLoadFlowIds((prev) => new Set(prev).add(location.id));
+    try {
+      await castingService.saveLocation(projectId, {
+        ...location,
+        loadFlow: hasAnyValue ? toPersist : undefined,
+        updatedAt: new Date().toISOString(),
+      } as Location);
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      setEditingLoadFlowIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      setLoadFlowDrafts((prev) => {
+        const next = { ...prev };
+        delete next[location.id];
+        return next;
+      });
+      showSuccess(`Load-in / load-out oppdatert for ${location.name}`, 2600);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating load flow:', error);
+      showError('Kunne ikke oppdatere load-in/load-out flyt');
+    } finally {
+      setSavingLoadFlowIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleSceneLinkEditing = (location: Location) => {
+    setProSectionStates((prev) => ({
+      ...prev,
+      [location.id]: {
+        ...DEFAULT_PRO_SECTION_STATE,
+        ...(prev[location.id] ?? {}),
+        sceneLinks: true,
+      },
+    }));
+    setSceneLinkDrafts((prev) => {
+      if (prev[location.id]) return prev;
+      return {
+        ...prev,
+        [location.id]: normalizeSceneIds(location.assignedScenes),
+      };
+    });
+    setEditingSceneLinkIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(location.id)) {
+        next.delete(location.id);
+      } else {
+        next.add(location.id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSceneLink = (locationId: string, sceneId: string) => {
+    setSceneLinkDrafts((prev) => {
+      const existing = new Set(prev[locationId] ?? []);
+      if (existing.has(sceneId)) {
+        existing.delete(sceneId);
+      } else {
+        existing.add(sceneId);
+      }
+      return {
+        ...prev,
+        [locationId]: Array.from(existing),
+      };
+    });
+  };
+
+  const handleCancelSceneLinkEditing = (location: Location) => {
+    setEditingSceneLinkIds((prev) => {
+      const next = new Set(prev);
+      next.delete(location.id);
+      return next;
+    });
+    setSceneLinkDrafts((prev) => {
+      const next = { ...prev };
+      delete next[location.id];
+      return next;
+    });
+  };
+
+  const handleSaveSceneLinks = async (location: Location) => {
+    if (savingSceneLinkIds.has(location.id)) return;
+    const nextSceneIds = normalizeSceneIds(sceneLinkDrafts[location.id] ?? location.assignedScenes);
+    const previousSceneIds = normalizeSceneIds(location.assignedScenes);
+    const hasChanged =
+      nextSceneIds.length !== previousSceneIds.length ||
+      nextSceneIds.some((sceneId) => !previousSceneIds.includes(sceneId));
+    if (!hasChanged) {
+      setEditingSceneLinkIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      showInfo('Ingen endring i scene-kobling', 2200);
+      return;
+    }
+    setSavingSceneLinkIds((prev) => new Set(prev).add(location.id));
+    try {
+      await castingService.saveLocation(projectId, {
+        ...location,
+        assignedScenes: nextSceneIds,
+        updatedAt: new Date().toISOString(),
+      } as Location);
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      setEditingSceneLinkIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      setSceneLinkDrafts((prev) => {
+        const next = { ...prev };
+        delete next[location.id];
+        return next;
+      });
+      showSuccess(`Scene-kobling oppdatert for ${location.name}`, 2600);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating scene links:', error);
+      showError('Kunne ikke oppdatere scene-koblinger');
+    } finally {
+      setSavingSceneLinkIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  };
+
+  const handleToggleMediaEditing = (location: Location) => {
+    setProSectionStates((prev) => ({
+      ...prev,
+      [location.id]: {
+        ...DEFAULT_PRO_SECTION_STATE,
+        ...(prev[location.id] ?? {}),
+        media: true,
+      },
+    }));
+    setMediaDrafts((prev) => {
+      if (prev[location.id]) return prev;
+      return {
+        ...prev,
+        [location.id]: buildProMediaDraft(location),
+      };
+    });
+    setEditingMediaIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(location.id)) {
+        next.delete(location.id);
+      } else {
+        next.add(location.id);
+      }
+      return next;
+    });
+  };
+
+  const handleCancelMediaEditing = (location: Location) => {
+    setEditingMediaIds((prev) => {
+      const next = new Set(prev);
+      next.delete(location.id);
+      return next;
+    });
+    setMediaDrafts((prev) => {
+      const next = { ...prev };
+      delete next[location.id];
+      return next;
+    });
+  };
+
+  const handleMediaDraftFieldChange = (
+    locationId: string,
+    field: keyof ProMediaDraft,
+    value: string | string[] | ProMediaAsset[]
+  ) => {
+    setMediaDrafts((prev) => ({
+      ...prev,
+      [locationId]: {
+        ...(prev[locationId] ?? {
+          locationImages: [],
+          storyboardImages: [],
+          locationImageUrlInput: '',
+          locationImageCaptionInput: '',
+          storyboardImageUrlInput: '',
+          storyboardImageCaptionInput: '',
+          storyboardSceneIds: [],
+        }),
+        [field]: value as never,
+      },
+    }));
+  };
+
+  const handleAddMediaFromUrl = (locationId: string, type: 'location' | 'storyboard') => {
+    const draft = mediaDrafts[locationId];
+    if (!draft) return;
+    const url =
+      type === 'location' ? draft.locationImageUrlInput.trim() : draft.storyboardImageUrlInput.trim();
+    const caption =
+      type === 'location' ? draft.locationImageCaptionInput : draft.storyboardImageCaptionInput;
+    if (!url) {
+      showInfo('Legg inn en gyldig URL først', 2200);
+      return;
+    }
+    const targetList = type === 'location' ? draft.locationImages : draft.storyboardImages;
+    if (targetList.some((asset) => asset.url === url)) {
+      showInfo('Bildet er allerede lagt til', 2200);
+      return;
+    }
+    const asset = buildProMediaAsset(
+      url,
+      caption,
+      type === 'storyboard' ? draft.storyboardSceneIds : [],
+      'url'
+    );
+    if (type === 'location') {
+      handleMediaDraftFieldChange(locationId, 'locationImages', [...draft.locationImages, asset]);
+      handleMediaDraftFieldChange(locationId, 'locationImageUrlInput', '');
+      handleMediaDraftFieldChange(locationId, 'locationImageCaptionInput', '');
+    } else {
+      handleMediaDraftFieldChange(locationId, 'storyboardImages', [...draft.storyboardImages, asset]);
+      handleMediaDraftFieldChange(locationId, 'storyboardImageUrlInput', '');
+      handleMediaDraftFieldChange(locationId, 'storyboardImageCaptionInput', '');
+    }
+  };
+
+  const handleAddMediaFromFile = async (
+    locationId: string,
+    type: 'location' | 'storyboard',
+    file: File
+  ) => {
+    if (!file.type.startsWith('image/')) {
+      showError('Kun bilde-filer støttes her');
+      return;
+    }
+    if (file.size > MAX_MEDIA_FILE_SIZE_BYTES) {
+      showError('Filen er for stor (maks 8MB)');
+      return;
+    }
+    const draft = mediaDrafts[locationId];
+    if (!draft) return;
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const caption =
+        type === 'location' ? draft.locationImageCaptionInput : draft.storyboardImageCaptionInput;
+      const asset = buildProMediaAsset(
+        dataUrl,
+        caption || file.name.replace(/\.[a-z0-9]+$/i, ''),
+        type === 'storyboard' ? draft.storyboardSceneIds : [],
+        'upload'
+      );
+      if (type === 'location') {
+        handleMediaDraftFieldChange(locationId, 'locationImages', [...draft.locationImages, asset]);
+        handleMediaDraftFieldChange(locationId, 'locationImageCaptionInput', '');
+      } else {
+        handleMediaDraftFieldChange(locationId, 'storyboardImages', [...draft.storyboardImages, asset]);
+        handleMediaDraftFieldChange(locationId, 'storyboardImageCaptionInput', '');
+      }
+    } catch (error) {
+      console.error('Error reading media file:', error);
+      showError('Kunne ikke lese bilde-filen');
+    }
+  };
+
+  const handleRemoveMediaAsset = (
+    locationId: string,
+    type: 'locationImages' | 'storyboardImages',
+    assetId: string
+  ) => {
+    const draft = mediaDrafts[locationId];
+    if (!draft) return;
+    const nextAssets = draft[type].filter((asset) => asset.id !== assetId);
+    handleMediaDraftFieldChange(locationId, type, nextAssets);
+  };
+
+  const handleToggleMediaStoryboardScene = (
+    locationId: string,
+    assetId: string,
+    sceneId: string
+  ) => {
+    const draft = mediaDrafts[locationId];
+    if (!draft) return;
+    const next = draft.storyboardImages.map((asset) => {
+      if (asset.id !== assetId) return asset;
+      const sceneSet = new Set(asset.sceneIds ?? []);
+      if (sceneSet.has(sceneId)) {
+        sceneSet.delete(sceneId);
+      } else {
+        sceneSet.add(sceneId);
+      }
+      return {
+        ...asset,
+        sceneIds: Array.from(sceneSet),
+      };
+    });
+    handleMediaDraftFieldChange(locationId, 'storyboardImages', next);
+  };
+
+  const handleToggleStoryboardSceneDraftSelection = (locationId: string, sceneId: string) => {
+    const draft = mediaDrafts[locationId];
+    if (!draft) return;
+    const next = new Set(draft.storyboardSceneIds);
+    if (next.has(sceneId)) {
+      next.delete(sceneId);
+    } else {
+      next.add(sceneId);
+    }
+    handleMediaDraftFieldChange(locationId, 'storyboardSceneIds', Array.from(next));
+  };
+
+  const handleSaveMedia = async (location: Location) => {
+    if (savingMediaIds.has(location.id)) return;
+    const draft = mediaDrafts[location.id] ?? buildProMediaDraft(location);
+    setSavingMediaIds((prev) => new Set(prev).add(location.id));
+    try {
+      const existingMedia =
+        (location as any).media && typeof (location as any).media === 'object'
+          ? ((location as any).media as Record<string, unknown>)
+          : {};
+      const payloadMedia = {
+        ...existingMedia,
+        locationImages: draft.locationImages,
+        storyboardImages: draft.storyboardImages,
+      };
+      await castingService.saveLocation(projectId, {
+        ...location,
+        media: payloadMedia,
+        locationImages: draft.locationImages,
+        storyboardImages: draft.storyboardImages,
+        updatedAt: new Date().toISOString(),
+      } as Location);
+      const updated = await castingService.getLocations(projectId);
+      setLocations(Array.isArray(updated) ? updated : []);
+      setEditingMediaIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+      setMediaDrafts((prev) => {
+        const next = { ...prev };
+        delete next[location.id];
+        return next;
+      });
+      showSuccess(`Media oppdatert for ${location.name}`, 2600);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error saving location media:', error);
+      showError('Kunne ikke lagre lokasjonsbilder/storyboard');
+    } finally {
+      setSavingMediaIds((prev) => {
+        const next = new Set(prev);
+        next.delete(location.id);
+        return next;
+      });
+    }
+  };
+
   return (
     <Box
       component="section"
@@ -830,22 +2722,22 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               width: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               height: { xs: 48, sm: 56, md: 52, lg: 60, xl: 68 },
               borderRadius: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
-              background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.25) 0%, rgba(76, 175, 80, 0.15) 100%)',
-              border: '2px solid rgba(76, 175, 80, 0.4)',
+              background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.28) 0%, rgba(34, 211, 238, 0.2) 100%)',
+              border: `2px solid ${ROLE_ROOM_COLORS.accentBorder}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76, 175, 80, 0.2)',
+              boxShadow: '0 4px 14px rgba(168,85,247,0.26)',
               transition: 'all 0.2s ease',
               '&:hover': {
                 transform: 'scale(1.05)',
-                boxShadow: '0 6px 16px rgba(76, 175, 80, 0.3)',
+                boxShadow: '0 6px 18px rgba(168,85,247,0.35)',
               },
             }}
           >
             <PlaceIcon
               sx={{
-                color: '#81c784',
+                color: '#c4b5fd',
                 fontSize: { xs: 26, sm: 32, md: 30, lg: 36, xl: 42 },
                 filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
               }}
@@ -863,7 +2755,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 lineHeight: 1.2,
                 letterSpacing: '-0.5px',
                 textShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                background: 'linear-gradient(135deg, #fff 0%, #81c784 100%)',
+                background: 'linear-gradient(135deg, #fff 0%, #c4b5fd 100%)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -926,8 +2818,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                color: showStats ? '#4caf50' : 'rgba(255,255,255,0.7)',
-                borderColor: showStats ? '#4caf50' : 'rgba(255,255,255,0.2)',
+                color: showStats ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.7)',
+                borderColor: showStats ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.2)',
                 fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
@@ -938,14 +2830,35 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             </Button>
           </Tooltip>
 
-          <Tooltip title="Legg til lokasjon (Ctrl+N)">
+          <Tooltip title="Aapne guide (G)">
+            <Button
+              variant="outlined"
+              onClick={() => setLocationGuideOpen(true)}
+              aria-label="Aapne guide for location management"
+              startIcon={<HelpIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: 'rgba(255,255,255,0.87)',
+                borderColor: 'rgba(255,255,255,0.2)',
+                fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                px: { xs: 1, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
+                py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
+                ...focusVisibleStyles,
+              }}
+            >
+              {!isMobile && 'Guide'}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Ny lokasjon (Ctrl+N)">
             <Button
               variant="contained"
               onClick={() => handleOpenDialog()}
-              aria-label="Legg til ny lokasjon"
+              aria-label="Ny lokasjon"
               startIcon={<AddIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
               sx={{
-                bgcolor: '#4caf50',
+                bgcolor: ROLE_ROOM_COLORS.accent,
                 color: '#fff',
                 fontWeight: 600,
                 minHeight: TOUCH_TARGET_SIZE,
@@ -954,10 +2867,10 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
                 flex: { xs: 1, sm: 'none' },
                 ...focusVisibleStyles,
-                '&:hover': { bgcolor: '#43a047' },
+                '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
               }}
             >
-              {isMobile ? '' : 'Legg til'}
+              {isMobile ? '' : 'Ny lokasjon'}
             </Button>
           </Tooltip>
         </Box>
@@ -980,18 +2893,18 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         >
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <LocationIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#4caf50' }} />
+              <LocationIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#a855f7' }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: '#a855f7', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.total}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Totalt</Typography>
           </Box>
           <Box sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
-              <GroupIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#2196f3' }} />
+              <GroupIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: ROLE_ROOM_COLORS.secondary }} />
             </Box>
-            <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
+            <Typography variant="h4" sx={{ color: ROLE_ROOM_COLORS.secondary, fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem', md: '1.6rem', lg: '1.85rem', xl: '2.5rem' } }}>
               {stats.totalCapacity}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' } }}>Total kapasitet</Typography>
@@ -1016,6 +2929,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           </Box>
           {!isMobile && Object.entries(stats.typeCount).slice(0, 3).map(([type, count]) => (
             <Box key={type} sx={{ textAlign: 'center', p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
+                {getTypeStatIcon(type)}
+              </Box>
               <Typography variant="h5" sx={{ color: getTypeColor(type as Location['type']), fontWeight: 600, fontSize: { xs: '1.25rem', sm: '1.5rem', md: '1.375rem', lg: '1.625rem', xl: '2rem' } }}>
                 {count}
               </Typography>
@@ -1058,7 +2974,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               height: { xs: 36, sm: 40, md: 42, lg: 48, xl: 60 },
               '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
               '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.4)' },
-              '&.Mui-focused fieldset': { borderColor: '#4caf50' },
+              '&.Mui-focused fieldset': { borderColor: ROLE_ROOM_COLORS.accent },
             },
           }}
         />
@@ -1072,9 +2988,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: showFilters ? 'rgba(76,175,80,0.2)' : 'transparent',
-                color: showFilters ? '#4caf50' : 'rgba(255,255,255,0.7)',
-                borderColor: showFilters ? '#4caf50' : 'rgba(255,255,255,0.2)',
+                bgcolor: showFilters ? ROLE_ROOM_COLORS.accentSoft : 'transparent',
+                color: showFilters ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.7)',
+                borderColor: showFilters ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -1090,9 +3006,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'grid' ? 'rgba(76,175,80,0.2)' : 'transparent',
-                color: viewMode === 'grid' ? '#4caf50' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'grid' ? '#4caf50' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'grid' ? ROLE_ROOM_COLORS.accentSoft : 'transparent',
+                color: viewMode === 'grid' ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'grid' ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
@@ -1108,13 +3024,31 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
                 minWidth: TOUCH_TARGET_SIZE,
-                bgcolor: viewMode === 'table' ? 'rgba(76,175,80,0.2)' : 'transparent',
-                color: viewMode === 'table' ? '#4caf50' : 'rgba(255,255,255,0.7)',
-                borderColor: viewMode === 'table' ? '#4caf50' : 'rgba(255,255,255,0.2)',
+                bgcolor: viewMode === 'table' ? ROLE_ROOM_COLORS.accentSoft : 'transparent',
+                color: viewMode === 'table' ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'table' ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.2)',
                 ...focusVisibleStyles,
               }}
             >
               <TableViewIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Pro-visning">
+            <Button
+              variant={viewMode === 'pro' ? 'contained' : 'outlined'}
+              onClick={() => setViewMode('pro')}
+              aria-pressed={viewMode === 'pro'}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                bgcolor: viewMode === 'pro' ? ROLE_ROOM_COLORS.secondarySoft : 'transparent',
+                color: viewMode === 'pro' ? ROLE_ROOM_COLORS.secondary : 'rgba(255,255,255,0.7)',
+                borderColor: viewMode === 'pro' ? ROLE_ROOM_COLORS.secondary : 'rgba(255,255,255,0.2)',
+                ...focusVisibleStyles,
+              }}
+            >
+              <AssessmentIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
             </Button>
           </Tooltip>
 
@@ -1211,9 +3145,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           severity="info"
           sx={{
             mb: 2,
-            bgcolor: 'rgba(76,175,80,0.1)',
+            bgcolor: 'rgba(168,85,247,0.1)',
             color: '#fff',
-            '& .MuiAlert-icon': { color: '#4caf50' },
+            '& .MuiAlert-icon': { color: '#a855f7' },
           }}
         >
           Viser {filteredAndSortedLocations.length} av {locations.length} lokasjoner
@@ -1226,7 +3160,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
           iconSrc={locationPng}
           title="Ingen lokasjoner ennå"
           subtitle="Legg til lokasjoner for å organisere produksjonssteder"
-          color="#4caf50"
+          color="#a855f7"
         />
       ) : filteredAndSortedLocations.length === 0 ? (
         <Box role="status" sx={{ textAlign: 'center', py: 6, color: 'rgba(255,255,255,0.87)' }}>
@@ -1254,7 +3188,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     indeterminate={selectedIds.size > 0 && selectedIds.size < filteredAndSortedLocations.length}
                     onChange={handleSelectAll}
                     aria-label="Velg alle lokasjoner"
-                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#4caf50' } }}
+                    sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
                   />
                 </TableCell>
                 <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -1262,7 +3196,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
                     onClick={() => handleSort('name')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#4caf50' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
                     Navn
                   </TableSortLabel>
@@ -1272,7 +3206,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     active={sortField === 'type'}
                     direction={sortField === 'type' ? sortDirection : 'asc'}
                     onClick={() => handleSort('type')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#4caf50' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
                     Type
                   </TableSortLabel>
@@ -1283,7 +3217,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     active={sortField === 'capacity'}
                     direction={sortField === 'capacity' ? sortDirection : 'asc'}
                     onClick={() => handleSort('capacity')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#4caf50' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
                     Kapasitet
                   </TableSortLabel>
@@ -1293,7 +3227,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     active={sortField === 'scenes'}
                     direction={sortField === 'scenes' ? sortDirection : 'asc'}
                     onClick={() => handleSort('scenes')}
-                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#4caf50' } }}
+                    sx={{ color: '#fff', fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' }, '&:hover': { color: '#a855f7' } }}
                   >
                     Scener
                   </TableSortLabel>
@@ -1306,7 +3240,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 <TableRow
                   key={location.id}
                   sx={{
-                    bgcolor: selectedIds.has(location.id) ? 'rgba(76,175,80,0.1)' : 'transparent',
+                    bgcolor: selectedIds.has(location.id) ? 'rgba(168,85,247,0.1)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' },
                   }}
                 >
@@ -1314,7 +3248,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                     <Checkbox
                       checked={selectedIds.has(location.id)}
                       onChange={() => handleToggleSelect(location.id)}
-                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#4caf50' } }}
+                      sx={{ color: 'rgba(255,255,255,0.87)', '&.Mui-checked': { color: '#a855f7' } }}
                     />
                   </TableCell>
                   <TableCell sx={{ py: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 } }}>
@@ -1345,7 +3279,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           <IconButton
                             size="small"
                             onClick={() => handleCopyAddress(location.address, location.id)}
-                            sx={{ color: copiedId === location.id ? '#4caf50' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                            sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.3)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                           >
                             {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} /> : <CopyIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 20 } }} />}
                           </IconButton>
@@ -1379,7 +3313,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         </IconButton>
                       </Tooltip>
                       <Tooltip title="Rediger">
-                        <IconButton onClick={() => handleOpenDialog(location)} sx={{ color: '#4caf50', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
+                        <IconButton onClick={() => handleOpenDialog(location)} sx={{ color: '#a855f7', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}>
                           <EditIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />
                         </IconButton>
                       </Tooltip>
@@ -1395,29 +3329,2157 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             </TableBody>
           </Table>
         </TableContainer>
+      ) : viewMode === 'pro' ? (
+        <Stack spacing={{ xs: 1.5, sm: 2, md: 2.5 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, minmax(0, 1fr))',
+                sm: 'repeat(3, minmax(0, 1fr))',
+                lg: 'repeat(6, minmax(0, 1fr))',
+              },
+              gap: { xs: 1, sm: 1.25, md: 1.5 },
+            }}
+          >
+            {([
+              { key: 'ready_today', label: 'Klar i dag', value: operationalStats.readyToday, color: '#34d399' },
+              { key: 'permit_missing', label: 'Mangler tillatelse', value: operationalStats.permitMissing, color: '#fbbf24' },
+              { key: 'high_risk', label: 'Høy risiko', value: operationalStats.highRisk, color: '#f87171' },
+              { key: 'over_budget', label: 'Over budsjett', value: operationalStats.overBudget, color: '#fb7185' },
+              { key: 'with_shots', label: 'Har shotlist', value: operationalStats.withShots, color: '#22d3ee' },
+              { key: 'all', label: 'Totalt i visning', value: operationalStats.total, color: '#c084fc' },
+            ] as Array<{ key: OperationalFilterKey; label: string; value: number; color: string }>).map((item) => (
+              <Button
+                key={item.key}
+                variant="outlined"
+                onClick={() => setOperationalFilter(item.key)}
+                sx={{
+                  justifyContent: 'space-between',
+                  px: { xs: 1, sm: 1.25, md: 1.5 },
+                  py: { xs: 1, sm: 1.25 },
+                  borderRadius: 2,
+                  borderColor: operationalFilter === item.key ? item.color : 'rgba(255,255,255,0.2)',
+                  bgcolor: operationalFilter === item.key ? `${item.color}1f` : 'rgba(255,255,255,0.03)',
+                  color: '#fff',
+                  textTransform: 'none',
+                  minHeight: TOUCH_TARGET_SIZE,
+                }}
+              >
+                <Typography sx={{ color: 'rgba(255,255,255,0.85)', fontSize: { xs: '0.72rem', sm: '0.8rem' } }}>
+                  {item.label}
+                </Typography>
+                <Typography sx={{ color: item.color, fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.2rem' } }}>
+                  {item.value}
+                </Typography>
+              </Button>
+            ))}
+          </Box>
+
+          <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+            <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+              <Stack spacing={1.25}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {(['all', 'tech_scout', 'permits', 'night_shoot', 'low_budget'] as ProPresetId[]).map((presetId) => (
+                    <Chip
+                      key={presetId}
+                      label={PRO_PRESET_LABELS[presetId]}
+                      onClick={() => setProPreset(presetId)}
+                      color={proPreset === presetId ? 'primary' : 'default'}
+                      sx={{
+                        bgcolor: proPreset === presetId ? ROLE_ROOM_COLORS.accentSoft : 'rgba(255,255,255,0.05)',
+                        color: proPreset === presetId ? ROLE_ROOM_COLORS.accent : 'rgba(255,255,255,0.82)',
+                        border: `1px solid ${proPreset === presetId ? ROLE_ROOM_COLORS.accentBorder : 'rgba(255,255,255,0.18)'}`,
+                        fontWeight: 600,
+                      }}
+                    />
+                  ))}
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 220px 220px auto auto' },
+                    gap: 1,
+                    alignItems: 'center',
+                  }}
+                >
+                  <TextField
+                    size="small"
+                    label="Navn på visning"
+                    placeholder="F.eks. Tech scout uke 2"
+                    value={proViewName}
+                    onChange={(event) => setProViewName(event.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.25)' } },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                    }}
+                  />
+                  <FormControl size="small">
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Lagrede visninger</InputLabel>
+                    <Select
+                      value={selectedProViewId}
+                      label="Lagrede visninger"
+                      onChange={(event) => {
+                        const next = String(event.target.value);
+                        if (next === 'custom') {
+                          setSelectedProViewId('custom');
+                          return;
+                        }
+                        const existing = savedProViews.find((view) => view.id === next);
+                        if (existing) {
+                          applySavedProView(existing);
+                        }
+                      }}
+                      sx={{
+                        color: '#fff',
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                      }}
+                    >
+                      <MenuItem value="custom">Custom / Nåværende</MenuItem>
+                      {savedProViews.map((view) => (
+                        <MenuItem key={view.id} value={view.id}>
+                          {view.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <FormControl size="small">
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Operativt filter</InputLabel>
+                    <Select
+                      value={operationalFilter}
+                      label="Operativt filter"
+                      onChange={(event) => setOperationalFilter(event.target.value as OperationalFilterKey)}
+                      sx={{
+                        color: '#fff',
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                      }}
+                    >
+                      {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilterKey[]).map((key) => (
+                        <MenuItem key={key} value={key}>
+                          {OPERATIONAL_FILTER_LABELS[key]}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Button
+                    variant="contained"
+                    startIcon={<SaveIcon />}
+                    onClick={handleSaveCurrentProView}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE, bgcolor: ROLE_ROOM_COLORS.accent, '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong } }}
+                  >
+                    Lagre view
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    onClick={handleDeleteSavedProView}
+                    disabled={selectedProViewId === 'custom'}
+                    sx={{ minHeight: TOUCH_TARGET_SIZE }}
+                  >
+                    Slett view
+                  </Button>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+
+          {selectedIds.size > 0 && (
+            <Card sx={{ bgcolor: 'rgba(20,16,46,0.82)', border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+              <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: '200px repeat(4, minmax(0, 1fr))' },
+                    gap: 1,
+                    alignItems: 'center',
+                  }}
+                >
+                  <FormControl size="small">
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Status</InputLabel>
+                    <Select
+                      value={bulkWorkflowStatus}
+                      label="Status"
+                      onChange={(event) => setBulkWorkflowStatus(event.target.value as BulkWorkflowStatus)}
+                      sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' } }}
+                    >
+                      <MenuItem value="ready">Klar</MenuItem>
+                      <MenuItem value="hold">På vent</MenuItem>
+                      <MenuItem value="blocked">Blokkert</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <Button variant="outlined" onClick={handleBulkSetWorkflowStatus} startIcon={<VerifiedIcon />}>
+                    Sett status
+                  </Button>
+                  <Button variant="outlined" onClick={handleBulkAssignTechnicalTeam} startIcon={<EngineeringIcon />}>
+                    Tildel team
+                  </Button>
+                  <Button variant="outlined" onClick={handleBulkCopyFacilitiesFromActive} startIcon={<DuplicateIcon />}>
+                    Kopier tags
+                  </Button>
+                  <Button variant="outlined" onClick={handleExportSelectedCallSheet} startIcon={<ExportIcon />}>
+                    Eksporter call sheet
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          )}
+
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', xl: 'minmax(0,1.6fr) minmax(330px,1fr)' },
+              gap: { xs: 2, sm: 2.5, md: 2.75, lg: 3 },
+            }}
+          >
+            <Stack spacing={{ xs: 1.5, sm: 2 }}>
+              <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                  <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>
+                    Kart + kort (60/40)
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', md: 'minmax(0,1.6fr) minmax(0,1fr)' },
+                      gap: { xs: 1.25, sm: 1.5 },
+                      alignItems: 'stretch',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        position: 'relative',
+                        borderRadius: 2,
+                        minHeight: { xs: 220, sm: 260 },
+                        border: '1px solid rgba(255,255,255,0.16)',
+                        background: 'rgba(10,8,27,0.9)',
+                        overflow: 'hidden',
+                        '& .leaflet-container': {
+                          width: '100%',
+                          height: '100%',
+                          minHeight: { xs: 220, sm: 260 },
+                          background: '#0f172a',
+                        },
+                      }}
+                    >
+                      {mapLocations.length === 0 ? (
+                        <Box sx={{ height: '100%', display: 'grid', placeItems: 'center' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.72)', fontSize: '0.9rem' }}>
+                            Ingen koordinater tilgjengelig i gjeldende visning.
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <>
+                          <MapContainer
+                            center={[activeMapLocation?.lat ?? mapLocations[0].lat, activeMapLocation?.lng ?? mapLocations[0].lng]}
+                            zoom={13}
+                            scrollWheelZoom
+                            style={{ height: '100%', minHeight: isMobile ? 220 : 260, width: '100%' }}
+                          >
+                            <TileLayer
+                              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                            />
+                            <LocationLeafletSync bounds={mapBounds} activeLocation={activeMapLocation} />
+                            {mapLocations.map((pin) => {
+                              const active = activeMapLocationId === pin.locationId;
+                              return (
+                                <CircleMarker
+                                  key={pin.locationId}
+                                  center={[pin.lat, pin.lng]}
+                                  radius={active ? 10 : 8}
+                                  pathOptions={{
+                                    color: '#ffffff',
+                                    weight: active ? 2 : 1.5,
+                                    fillColor: pin.typeColor,
+                                    fillOpacity: active ? 0.95 : 0.8,
+                                  }}
+                                  eventHandlers={{
+                                    mouseover: () => setActiveMapLocationId(pin.locationId),
+                                    click: () => setActiveMapLocationId(pin.locationId),
+                                  }}
+                                >
+                                  <LeafletMapTooltip direction="top" offset={[0, -10]} opacity={1}>
+                                    {pin.name}
+                                  </LeafletMapTooltip>
+                                </CircleMarker>
+                              );
+                            })}
+                          </MapContainer>
+                          {activeMapExternalUrl ? (
+                            <Box sx={{ position: 'absolute', right: 8, top: 8, zIndex: 800 }}>
+                              <Button
+                                component="a"
+                                href={activeMapExternalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                size="small"
+                                variant="outlined"
+                                sx={{
+                                  textTransform: 'none',
+                                  minHeight: 30,
+                                  fontSize: '0.75rem',
+                                  bgcolor: 'rgba(10,8,27,0.65)',
+                                  borderColor: 'rgba(255,255,255,0.35)',
+                                  color: '#fff',
+                                  '&:hover': {
+                                    bgcolor: 'rgba(10,8,27,0.82)',
+                                    borderColor: 'rgba(255,255,255,0.55)',
+                                  },
+                                }}
+                              >
+                                Åpne kart
+                              </Button>
+                            </Box>
+                          ) : null}
+                          {activeMapLocation ? (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: 8,
+                                bottom: 8,
+                                px: 1,
+                                py: 0.5,
+                                borderRadius: 1,
+                                bgcolor: 'rgba(10,8,27,0.72)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                zIndex: 800,
+                              }}
+                            >
+                              <Typography sx={{ color: 'rgba(255,255,255,0.92)', fontSize: '0.7rem', fontWeight: 600 }}>
+                                Aktiv: {activeMapLocation.name}
+                              </Typography>
+                            </Box>
+                          ) : null}
+                        </>
+                      )}
+                    </Box>
+
+                    <Stack spacing={1} sx={{ maxHeight: { xs: 'none', md: 260 }, overflow: 'auto', pr: { md: 0.5 } }}>
+                      {proFilteredAndSortedLocations.slice(0, 8).map((location) => {
+                        const metric = locationMetricsById[location.id];
+                        const isActive = activeMapLocationId === location.id;
+                        const hasCoordinates = Boolean(
+                          typeof location.coordinates?.lat === 'number' && typeof location.coordinates?.lng === 'number'
+                        );
+                        return (
+                          <Button
+                            key={location.id}
+                            variant="outlined"
+                            onClick={() => {
+                              if (hasCoordinates) {
+                                setActiveMapLocationId(location.id);
+                              }
+                            }}
+                            disabled={!hasCoordinates}
+                            sx={{
+                              justifyContent: 'space-between',
+                              textTransform: 'none',
+                              borderColor: isActive && hasCoordinates ? ROLE_ROOM_COLORS.secondary : 'rgba(255,255,255,0.2)',
+                              bgcolor: isActive && hasCoordinates ? ROLE_ROOM_COLORS.secondarySoft : 'rgba(255,255,255,0.02)',
+                              color: hasCoordinates ? '#fff' : 'rgba(255,255,255,0.5)',
+                              minHeight: TOUCH_TARGET_SIZE,
+                            }}
+                          >
+                            <Typography sx={{ fontSize: '0.85rem', maxWidth: '75%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {location.name}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              label={hasCoordinates ? (metric ? `${metric.readinessScore}%` : '-') : 'Ingen koordinater'}
+                              sx={{
+                                bgcolor: hasCoordinates ? 'rgba(255,255,255,0.12)' : 'rgba(248,113,113,0.16)',
+                                color: hasCoordinates ? '#fff' : '#fca5a5',
+                              }}
+                            />
+                          </Button>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                </CardContent>
+              </Card>
+
+              <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
+                    <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                      Pro-arbeidsliste
+                    </Typography>
+                    <Chip
+                      label={`${proFilteredAndSortedLocations.length} lokasjoner`}
+                      size="small"
+                      sx={{
+                        bgcolor: ROLE_ROOM_COLORS.accentSoft,
+                        color: ROLE_ROOM_COLORS.accent,
+                        border: `1px solid ${ROLE_ROOM_COLORS.accentBorder}`,
+                        fontWeight: 700,
+                      }}
+                    />
+                  </Box>
+                  <Stack spacing={1.25}>
+                    {proVisibleLocations.map((location) => {
+                      const metric = locationMetricsById[location.id];
+                      const typeColor = getTypeColor(location.type);
+                      const hasCoordinates = Boolean(
+                        typeof location.coordinates?.lat === 'number' && typeof location.coordinates?.lng === 'number'
+                      );
+                      const riskColor =
+                        metric?.riskLevel === 'hoy' ? '#f87171' : metric?.riskLevel === 'moderat' ? '#fbbf24' : '#34d399';
+                      const isEditingProContact = editingProContactIds.has(location.id);
+                      const isSavingProContact = savingProContactIds.has(location.id);
+                      const proContactDraft = proContactDrafts[location.id] ?? buildProContactDraft(location);
+                      const proContactName = proContactDraft.name.trim();
+                      const proContactPhone = proContactDraft.phone.trim();
+                      const proContactEmail = proContactDraft.email.trim();
+                      const isBasecamp = Boolean((location as any).isBasecamp);
+                      const isSavingBasecamp = savingBasecampIds.has(location.id);
+                      const loadFlow = ((location as any).loadFlow ?? {}) as Record<string, unknown>;
+                      const loadFlowStatusRaw = String(loadFlow.status ?? 'planned').toLowerCase();
+                      const loadFlowStatus: LoadFlowStatus =
+                        loadFlowStatusRaw === 'ready' ||
+                        loadFlowStatusRaw === 'in_progress' ||
+                        loadFlowStatusRaw === 'completed'
+                          ? (loadFlowStatusRaw as LoadFlowStatus)
+                          : 'planned';
+                      const loadFlowStatusMeta: Record<LoadFlowStatus, { label: string; color: string }> = {
+                        planned: { label: 'Planlagt', color: '#c084fc' },
+                        ready: { label: 'Klar', color: '#34d399' },
+                        in_progress: { label: 'Pågår', color: '#22d3ee' },
+                        completed: { label: 'Ferdig', color: '#86efac' },
+                      };
+                      const isEditingLoadFlow = editingLoadFlowIds.has(location.id);
+                      const isSavingLoadFlow = savingLoadFlowIds.has(location.id);
+                      const loadFlowDraft = loadFlowDrafts[location.id] ?? buildProLoadFlowDraft(location);
+                      const isEditingSceneLinks = editingSceneLinkIds.has(location.id);
+                      const isSavingSceneLinks = savingSceneLinkIds.has(location.id);
+                      const sceneDraftIds = sceneLinkDrafts[location.id] ?? normalizeSceneIds(location.assignedScenes);
+                      const linkedSceneIds = normalizeSceneIds(location.assignedScenes);
+                      const linkedSceneInsights = linkedSceneIds.map((sceneId) => {
+                        const insight = proSceneInsightsById[sceneId];
+                        if (insight) return insight;
+                        const option = proSceneOptions.find((scene) => scene.id === sceneId);
+                        return {
+                          sceneId,
+                          sceneLabel: option?.label ?? `Scene ${sceneId}`,
+                          shotCount: 0,
+                          shotListCount: 0,
+                          callbackCount: 0,
+                          crewTouchpoints: 0,
+                          equipment: [],
+                          storyboardCount: 0,
+                        } as ProSceneInsight;
+                      });
+                      const linkedSceneSummary = linkedSceneInsights.reduce(
+                        (acc, scene) => {
+                          acc.shots += scene.shotCount;
+                          acc.callbacks += scene.callbackCount;
+                          acc.storyboard += scene.storyboardCount;
+                          acc.equipment += scene.equipment.length;
+                          acc.crew += scene.crewTouchpoints;
+                          acc.shotLists += scene.shotListCount;
+                          return acc;
+                        },
+                        { shots: 0, callbacks: 0, storyboard: 0, equipment: 0, crew: 0, shotLists: 0 }
+                      );
+                      const isEditingMedia = editingMediaIds.has(location.id);
+                      const isSavingMedia = savingMediaIds.has(location.id);
+                      const mediaDraft = mediaDrafts[location.id] ?? buildProMediaDraft(location);
+                      const locationMediaImages = mediaDraft.locationImages;
+                      const storyboardMediaImages = mediaDraft.storyboardImages;
+                      const mediaSceneIdsSource =
+                        sceneDraftIds.length > 0
+                          ? sceneDraftIds
+                          : linkedSceneIds.length > 0
+                            ? linkedSceneIds
+                            : proSceneOptions.map((scene) => scene.id);
+                      const mediaSceneOptions = mediaSceneIdsSource.slice(0, 24).map((sceneId) => ({
+                        id: sceneId,
+                        label: proSceneLabelById.get(sceneId) ?? `Scene ${sceneId}`,
+                      }));
+                      const mediaSceneOverflowCount = Math.max(
+                        mediaSceneIdsSource.length - mediaSceneOptions.length,
+                        0
+                      );
+                      const isConsistencyHighlighted = consistencyIndicator?.locationId === location.id;
+                      const consistencySection = isConsistencyHighlighted
+                        ? consistencyIndicator?.section ?? null
+                        : null;
+                      const proSectionState = getProSectionState(location.id);
+                      const summaryExpanded = proSectionState.summary;
+                      const loadFlowExpanded = proSectionState.loadFlow;
+                      const sceneLinksExpanded = proSectionState.sceneLinks;
+                      const mediaExpanded = proSectionState.media;
+                      const contactExpanded = proSectionState.contact;
+                      return (
+                        <Card
+                          key={location.id}
+                          id={`location-pro-card-${location.id}`}
+                          sx={{
+                            bgcolor: isConsistencyHighlighted
+                              ? 'rgba(251,191,36,0.12)'
+                              : activeMapLocationId === location.id
+                                ? 'rgba(34,211,238,0.12)'
+                                : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${
+                              isConsistencyHighlighted
+                                ? 'rgba(251,191,36,0.62)'
+                                : activeMapLocationId === location.id
+                                  ? 'rgba(34,211,238,0.45)'
+                                  : 'rgba(255,255,255,0.14)'
+                            }`,
+                            borderRadius: 2.25,
+                            boxShadow: isConsistencyHighlighted
+                              ? '0 0 0 1px rgba(251,191,36,0.45), 0 0 18px rgba(251,191,36,0.35)'
+                              : 'none',
+                            animation: isConsistencyHighlighted
+                              ? 'locationConsistencyPulse 1.35s ease-out 2'
+                              : 'none',
+                            '@keyframes locationConsistencyPulse': {
+                              '0%': {
+                                boxShadow: '0 0 0 0 rgba(251,191,36,0.45)',
+                              },
+                              '70%': {
+                                boxShadow: '0 0 0 10px rgba(251,191,36,0)',
+                              },
+                              '100%': {
+                                boxShadow: '0 0 0 0 rgba(251,191,36,0)',
+                              },
+                            },
+                          }}
+                        >
+                          <CardContent sx={{ p: { xs: 1.25, sm: 1.5 } }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
+                                <Checkbox
+                                  checked={selectedIds.has(location.id)}
+                                  onChange={() => handleToggleSelect(location.id)}
+                                  sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: ROLE_ROOM_COLORS.accent } }}
+                                />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                  <Typography sx={{ color: '#fff', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {location.name}
+                                  </Typography>
+                                  <Stack direction="row" spacing={0.75} sx={{ mt: 0.75, flexWrap: 'wrap' }}>
+                                    <Chip size="small" label={getTypeLabel(location.type)} sx={{ bgcolor: `${typeColor}2b`, color: typeColor }} />
+                                    <Chip size="small" label={`${metric?.readinessScore ?? 0}% klar`} sx={{ bgcolor: 'rgba(34,211,238,0.2)', color: '#67e8f9' }} />
+                                    <Chip size="small" label={`Risiko ${metric?.riskScore ?? 0}`} sx={{ bgcolor: `${riskColor}26`, color: riskColor }} />
+                                  </Stack>
+                                </Box>
+                              </Box>
+                              <Stack direction="row" spacing={0.5}>
+                                <Tooltip title={favorites.has(location.id) ? 'Fjern favoritt' : 'Favoritt'}>
+                                  <IconButton onClick={() => toggleFavorite(location.id)} sx={{ color: favorites.has(location.id) ? '#facc15' : 'rgba(255,255,255,0.35)' }}>
+                                    {favorites.has(location.id) ? <StarIcon /> : <StarBorderIcon />}
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Analyser lokasjon">
+                                  <IconButton onClick={() => handleOpenAnalysisDialog(location)} sx={{ color: ROLE_ROOM_COLORS.secondary }}>
+                                    <AnalyticsIcon />
+                                  </IconButton>
+                                </Tooltip>
+                              </Stack>
+                            </Box>
+
+                            <Box sx={{ mt: 1.1, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexWrap: 'wrap' }}>
+                                <Typography sx={{ color: 'rgba(255,255,255,0.84)', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                  Oversikt
+                                </Typography>
+                                {consistencySection === 'summary' ? (
+                                  <Chip
+                                    size="small"
+                                    icon={<ExploreIcon sx={{ fontSize: 14 }} />}
+                                    label="Fra konsistenssjekk"
+                                    sx={{
+                                      bgcolor: 'rgba(251,191,36,0.22)',
+                                      color: '#fde68a',
+                                      border: '1px solid rgba(251,191,36,0.45)',
+                                    }}
+                                  />
+                                ) : null}
+                              </Box>
+                              <Button
+                                size="small"
+                                endIcon={summaryExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
+                                onClick={() => toggleProSection(location.id, 'summary')}
+                                sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
+                              >
+                                {summaryExpanded ? 'Skjul' : 'Vis'}
+                              </Button>
+                            </Box>
+                            <Collapse in={summaryExpanded}>
+                              <Box
+                                sx={{
+                                  mt: 0.8,
+                                  display: 'grid',
+                                  gridTemplateColumns: {
+                                    xs: '1fr',
+                                    sm: 'repeat(2, minmax(0, 1fr))',
+                                    lg: 'repeat(4, minmax(0, 1fr))',
+                                  },
+                                  gap: 1,
+                                }}
+                              >
+                                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Logistikk</Typography>
+                                  <Typography sx={{ color: '#fff', fontSize: '0.82rem', mt: 0.4 }}>
+                                    {hasCoordinates ? 'Koordinater klare' : 'Mangler koordinater'}
+                                  </Typography>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.secondary, fontWeight: 700, fontSize: '0.8rem' }}>
+                                    {location.capacity || 0} kapasitet
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Tillatelser</Typography>
+                                  <Typography sx={{ color: metric?.permitMissing ? '#fbbf24' : '#34d399', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
+                                    {metric?.permitMissing ? 'Mangler dokumentasjon' : 'Dokumentert'}
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.76rem' }}>
+                                    {location.facilities?.length || 0} fasiliteter
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Teknisk</Typography>
+                                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
+                                    {metric?.technicalCoverage ?? 0}% dekning
+                                  </Typography>
+                                  <Typography sx={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.76rem' }}>
+                                    {metric?.missingTechnicalRoles.length ?? 0} roller mangler
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                                  <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.7rem', textTransform: 'uppercase' }}>Kost</Typography>
+                                  <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.82rem', mt: 0.4 }}>
+                                    {new Intl.NumberFormat('nb-NO').format(metric?.estimatedCost ?? 0)} kr
+                                  </Typography>
+                                  <Typography sx={{ color: metric?.overBudget ? '#f87171' : '#34d399', fontSize: '0.76rem' }}>
+                                    {metric?.overBudget ? 'Over budsjettgrense' : 'Innenfor budsjett'}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            </Collapse>
+
+                            <Box
+                              sx={{
+                                mt: 1.1,
+                                p: 1,
+                                borderRadius: 1.5,
+                                bgcolor: 'rgba(34,211,238,0.08)',
+                                border: '1px solid rgba(34,211,238,0.24)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <BasecampIcon sx={{ fontSize: 16, color: '#67e8f9' }} />
+                                  <Typography sx={{ color: '#67e8f9', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                    Basecamp + load-in/out
+                                  </Typography>
+                                  {consistencySection === 'loadFlow' ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<ExploreIcon sx={{ fontSize: 14 }} />}
+                                      label="Fra konsistenssjekk"
+                                      sx={{
+                                        bgcolor: 'rgba(251,191,36,0.22)',
+                                        color: '#fde68a',
+                                        border: '1px solid rgba(251,191,36,0.45)',
+                                      }}
+                                    />
+                                  ) : null}
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  <Button
+                                    size="small"
+                                    onClick={() => void handleToggleBasecamp(location)}
+                                    disabled={isSavingBasecamp}
+                                    sx={{
+                                      color: isBasecamp ? '#34d399' : '#67e8f9',
+                                      textTransform: 'none',
+                                      minWidth: 0,
+                                      px: 1,
+                                    }}
+                                  >
+                                    {isSavingBasecamp ? 'Lagrer...' : isBasecamp ? 'Basecamp aktiv' : 'Sett basecamp'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    onClick={() =>
+                                      isEditingLoadFlow ? handleCancelLoadFlowEditing(location) : handleToggleLoadFlowEditing(location)
+                                    }
+                                    sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {isEditingLoadFlow ? 'Lukk flow' : 'Rediger flow'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    endIcon={loadFlowExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
+                                    onClick={() => toggleProSection(location.id, 'loadFlow')}
+                                    sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {loadFlowExpanded ? 'Skjul' : 'Vis'}
+                                  </Button>
+                                </Box>
+                              </Box>
+
+                              <Collapse in={loadFlowExpanded}>
+                                <Box sx={{ mt: 1, display: 'flex', gap: 0.65, flexWrap: 'wrap' }}>
+                                  <Chip
+                                    size="small"
+                                    icon={<BasecampIcon sx={{ fontSize: 15 }} />}
+                                    label={isBasecamp ? 'Basecamp' : 'Ikke basecamp'}
+                                    sx={{
+                                      bgcolor: isBasecamp ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.08)',
+                                      color: isBasecamp ? '#86efac' : 'rgba(255,255,255,0.72)',
+                                    }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    icon={<LoadFlowIcon sx={{ fontSize: 15 }} />}
+                                    label={loadFlowStatusMeta[loadFlowStatus].label}
+                                    sx={{
+                                      bgcolor: `${loadFlowStatusMeta[loadFlowStatus].color}22`,
+                                      color: loadFlowStatusMeta[loadFlowStatus].color,
+                                    }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    label={`Load-in ${formatDateTimeShort(loadFlow.loadInAt)}`}
+                                    sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.84)' }}
+                                  />
+                                  <Chip
+                                    size="small"
+                                    label={`Load-out ${formatDateTimeShort(loadFlow.loadOutAt)}`}
+                                    sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.84)' }}
+                                  />
+                                </Box>
+
+                                {isEditingLoadFlow ? (
+                                  <Box
+                                    sx={{
+                                      mt: 1,
+                                      display: 'grid',
+                                      gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))', xl: 'repeat(3, minmax(0, 1fr))' },
+                                      gap: 1,
+                                    }}
+                                  >
+                                    <TextField
+                                      size="small"
+                                      type="datetime-local"
+                                      label="Load-in"
+                                      InputLabelProps={{ shrink: true }}
+                                      value={loadFlowDraft.loadInAt}
+                                      onChange={(event) => handleLoadFlowDraftChange(location.id, 'loadInAt', event.target.value)}
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' } },
+                                        '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                      }}
+                                    />
+                                    <TextField
+                                      size="small"
+                                      type="datetime-local"
+                                      label="Start opptak"
+                                      InputLabelProps={{ shrink: true }}
+                                      value={loadFlowDraft.shootStartAt}
+                                      onChange={(event) => handleLoadFlowDraftChange(location.id, 'shootStartAt', event.target.value)}
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' } },
+                                        '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                      }}
+                                    />
+                                    <TextField
+                                      size="small"
+                                      type="datetime-local"
+                                      label="Wrap"
+                                      InputLabelProps={{ shrink: true }}
+                                      value={loadFlowDraft.wrapAt}
+                                      onChange={(event) => handleLoadFlowDraftChange(location.id, 'wrapAt', event.target.value)}
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' } },
+                                        '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                      }}
+                                    />
+                                    <TextField
+                                      size="small"
+                                      type="datetime-local"
+                                      label="Load-out"
+                                      InputLabelProps={{ shrink: true }}
+                                      value={loadFlowDraft.loadOutAt}
+                                      onChange={(event) => handleLoadFlowDraftChange(location.id, 'loadOutAt', event.target.value)}
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' } },
+                                        '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                      }}
+                                    />
+                                    <FormControl size="small">
+                                      <InputLabel sx={{ color: 'rgba(255,255,255,0.72)' }}>Status</InputLabel>
+                                      <Select
+                                        value={loadFlowDraft.status}
+                                        label="Status"
+                                        onChange={(event) =>
+                                          handleLoadFlowDraftChange(location.id, 'status', String(event.target.value))
+                                        }
+                                        sx={{
+                                          color: '#fff',
+                                          '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.25)' },
+                                        }}
+                                      >
+                                        <MenuItem value="planned">Planlagt</MenuItem>
+                                        <MenuItem value="ready">Klar</MenuItem>
+                                        <MenuItem value="in_progress">Pågår</MenuItem>
+                                        <MenuItem value="completed">Ferdig</MenuItem>
+                                      </Select>
+                                    </FormControl>
+                                    <TextField
+                                      size="small"
+                                      label="Flow-notat"
+                                      value={loadFlowDraft.notes}
+                                      onChange={(event) => handleLoadFlowDraftChange(location.id, 'notes', event.target.value)}
+                                      sx={{
+                                        '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' } },
+                                        '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                      }}
+                                    />
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', gridColumn: { xs: '1 / -1' } }}>
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
+                                        onClick={() => void handleSaveLoadFlow(location)}
+                                        disabled={isSavingLoadFlow}
+                                        sx={{ textTransform: 'none', bgcolor: ROLE_ROOM_COLORS.secondary, '&:hover': { bgcolor: '#06b6d4' } }}
+                                      >
+                                        {isSavingLoadFlow ? 'Lagrer...' : 'Lagre flow'}
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        onClick={() => handleCancelLoadFlowEditing(location)}
+                                        disabled={isSavingLoadFlow}
+                                        sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
+                                      >
+                                        Avbryt
+                                      </Button>
+                                    </Box>
+                                  </Box>
+                                ) : null}
+                              </Collapse>
+                            </Box>
+
+                            <Box
+                              sx={{
+                                mt: 1.1,
+                                p: 1,
+                                borderRadius: 1.5,
+                                bgcolor: 'rgba(192,132,252,0.08)',
+                                border: '1px solid rgba(192,132,252,0.26)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <LinkIcon sx={{ fontSize: 16, color: '#d8b4fe' }} />
+                                  <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                    Scene-kobling (crew/callback/shot/utstyr/storyboard)
+                                  </Typography>
+                                  {consistencySection === 'sceneLinks' ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<ExploreIcon sx={{ fontSize: 14 }} />}
+                                      label="Fra konsistenssjekk"
+                                      sx={{
+                                        bgcolor: 'rgba(251,191,36,0.22)',
+                                        color: '#fde68a',
+                                        border: '1px solid rgba(251,191,36,0.45)',
+                                      }}
+                                    />
+                                  ) : null}
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  <Button
+                                    size="small"
+                                    onClick={() =>
+                                      isEditingSceneLinks
+                                        ? handleCancelSceneLinkEditing(location)
+                                        : handleToggleSceneLinkEditing(location)
+                                    }
+                                    sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {isEditingSceneLinks ? 'Lukk kobling' : 'Koble scener'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    endIcon={sceneLinksExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
+                                    onClick={() => toggleProSection(location.id, 'sceneLinks')}
+                                    sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {sceneLinksExpanded ? 'Skjul' : 'Vis'}
+                                  </Button>
+                                </Box>
+                              </Box>
+
+                              <Collapse in={sceneLinksExpanded}>
+                                <Box sx={{ mt: 1, display: 'flex', gap: 0.65, flexWrap: 'wrap' }}>
+                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneIds.length} scener`} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#fff' }} />
+                                  <Chip size="small" icon={<TimelineIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.shots} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                  <Chip size="small" icon={<CallbackIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.callbacks} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                  <Chip size="small" icon={<CrewLinkIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.crew} crew-touchpoints`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
+                                  <Chip size="small" icon={<EquipmentIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.equipment} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
+                                  <Chip size="small" icon={<StoryboardIcon sx={{ fontSize: 15 }} />} label={`${linkedSceneSummary.storyboard} storyboard`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                </Box>
+
+                                {isEditingSceneLinks ? (
+                                  <Box sx={{ mt: 1, maxHeight: 230, overflow: 'auto', pr: 0.5 }}>
+                                    {proSceneOptions.length === 0 ? (
+                                      <Typography sx={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.8rem' }}>
+                                        Ingen scener funnet i prosjektet ennå.
+                                      </Typography>
+                                    ) : (
+                                      <Stack spacing={0.75}>
+                                        {proSceneOptions.map((scene) => {
+                                          const selected = sceneDraftIds.includes(scene.id);
+                                          const insight = proSceneInsightsById[scene.id];
+                                          const storyboardCoverage =
+                                            insight && insight.shotCount > 0
+                                              ? Math.round((insight.storyboardCount / insight.shotCount) * 100)
+                                              : 0;
+                                          return (
+                                            <Box
+                                              key={scene.id}
+                                              sx={{
+                                                p: 0.8,
+                                                borderRadius: 1.25,
+                                                bgcolor: selected ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)',
+                                                border: `1px solid ${selected ? 'rgba(168,85,247,0.38)' : 'rgba(255,255,255,0.16)'}`,
+                                              }}
+                                            >
+                                              <FormControlLabel
+                                                control={
+                                                  <Checkbox
+                                                    checked={selected}
+                                                    onChange={() => handleToggleSceneLink(location.id, scene.id)}
+                                                    sx={{ color: 'rgba(255,255,255,0.72)', '&.Mui-checked': { color: ROLE_ROOM_COLORS.accent } }}
+                                                  />
+                                                }
+                                                label={
+                                                  <Box>
+                                                    <Typography sx={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>
+                                                      {scene.label}
+                                                    </Typography>
+                                                    <Box sx={{ mt: 0.35, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                      <Chip size="small" label={`${insight?.shotCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                                                      <Chip size="small" label={`${insight?.callbackCount ?? 0} callback`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                                      <Chip size="small" label={`${insight?.equipment.length ?? 0} utstyr`} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
+                                                      <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                                    </Box>
+                                                  </Box>
+                                                }
+                                                sx={{ alignItems: 'flex-start', m: 0 }}
+                                              />
+                                            </Box>
+                                          );
+                                        })}
+                                      </Stack>
+                                    )}
+                                    <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                                      <Button
+                                        size="small"
+                                        variant="contained"
+                                        startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
+                                        onClick={() => void handleSaveSceneLinks(location)}
+                                        disabled={isSavingSceneLinks}
+                                        sx={{
+                                          textTransform: 'none',
+                                          bgcolor: ROLE_ROOM_COLORS.accent,
+                                          '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
+                                        }}
+                                      >
+                                        {isSavingSceneLinks ? 'Lagrer...' : 'Lagre scene-kobling'}
+                                      </Button>
+                                      <Button
+                                        size="small"
+                                        onClick={() => handleCancelSceneLinkEditing(location)}
+                                        disabled={isSavingSceneLinks}
+                                        sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
+                                      >
+                                        Avbryt
+                                      </Button>
+                                    </Box>
+                                  </Box>
+                                ) : (
+                                  <Box sx={{ mt: 1 }}>
+                                    {linkedSceneInsights.length === 0 ? (
+                                      <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.78rem' }}>
+                                        Ingen scener koblet til denne lokasjonen ennå.
+                                      </Typography>
+                                    ) : (
+                                      <Stack spacing={0.7}>
+                                        {linkedSceneInsights.slice(0, 4).map((scene) => {
+                                          const storyboardCoverage =
+                                            scene.shotCount > 0 ? Math.round((scene.storyboardCount / scene.shotCount) * 100) : 0;
+                                          return (
+                                            <Box
+                                              key={scene.sceneId}
+                                              sx={{
+                                                p: 0.8,
+                                                borderRadius: 1.2,
+                                                bgcolor: 'rgba(255,255,255,0.05)',
+                                                border: '1px solid rgba(255,255,255,0.14)',
+                                              }}
+                                            >
+                                              <Typography sx={{ color: '#fff', fontSize: '0.79rem', fontWeight: 600 }}>
+                                                {scene.sceneLabel}
+                                              </Typography>
+                                              <Box sx={{ mt: 0.45, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                                <Chip size="small" label={`${scene.shotListCount} shotlists`} sx={{ bgcolor: 'rgba(34,211,238,0.15)', color: '#67e8f9' }} />
+                                                <Chip size="small" label={`${scene.callbackCount} callbacks`} sx={{ bgcolor: 'rgba(251,191,36,0.2)', color: '#fcd34d' }} />
+                                                <Chip size="small" label={`${scene.crewTouchpoints} crew`} sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }} />
+                                                <Chip size="small" label={`Storyboard ${storyboardCoverage}%`} sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }} />
+                                              </Box>
+                                              {scene.equipment.length > 0 ? (
+                                                <Box sx={{ mt: 0.5, display: 'flex', gap: 0.45, flexWrap: 'wrap' }}>
+                                                  {scene.equipment.slice(0, 4).map((item) => (
+                                                    <Chip
+                                                      key={`${scene.sceneId}-${item}`}
+                                                      size="small"
+                                                      icon={<EquipmentIcon sx={{ fontSize: 14 }} />}
+                                                      label={item}
+                                                      sx={{ bgcolor: 'rgba(248,113,113,0.16)', color: '#fca5a5' }}
+                                                    />
+                                                  ))}
+                                                  {scene.equipment.length > 4 ? (
+                                                    <Chip
+                                                      size="small"
+                                                      label={`+${scene.equipment.length - 4}`}
+                                                      sx={{ bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.8)' }}
+                                                    />
+                                                  ) : null}
+                                                </Box>
+                                              ) : null}
+                                            </Box>
+                                          );
+                                        })}
+                                      </Stack>
+                                    )}
+                                  </Box>
+                                )}
+                              </Collapse>
+                            </Box>
+
+                            <Box
+                              sx={{
+                                mt: 1.1,
+                                p: 1,
+                                borderRadius: 1.5,
+                                bgcolor: 'rgba(34,211,238,0.08)',
+                                border: '1px solid rgba(34,211,238,0.24)',
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                  <ImageIcon sx={{ fontSize: 16, color: '#67e8f9' }} />
+                                  <Typography
+                                    sx={{
+                                      color: '#67e8f9',
+                                      fontSize: '0.74rem',
+                                      textTransform: 'uppercase',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    Lokasjonsbilder + storyboard
+                                  </Typography>
+                                  {consistencySection === 'media' ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<ExploreIcon sx={{ fontSize: 14 }} />}
+                                      label="Fra konsistenssjekk"
+                                      sx={{
+                                        bgcolor: 'rgba(251,191,36,0.22)',
+                                        color: '#fde68a',
+                                        border: '1px solid rgba(251,191,36,0.45)',
+                                      }}
+                                    />
+                                  ) : null}
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  <Button
+                                    size="small"
+                                    onClick={() =>
+                                      isEditingMedia ? handleCancelMediaEditing(location) : handleToggleMediaEditing(location)
+                                    }
+                                    sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {isEditingMedia ? 'Lukk media' : 'Rediger media'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    endIcon={mediaExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
+                                    onClick={() => toggleProSection(location.id, 'media')}
+                                    sx={{ color: ROLE_ROOM_COLORS.secondary, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {mediaExpanded ? 'Skjul' : 'Vis'}
+                                  </Button>
+                                </Box>
+                              </Box>
+
+                              <Collapse in={mediaExpanded}>
+                              <Box sx={{ mt: 1, display: 'flex', gap: 0.65, flexWrap: 'wrap' }}>
+                                <Chip
+                                  size="small"
+                                  icon={<ImageIcon sx={{ fontSize: 15 }} />}
+                                  label={`${locationMediaImages.length} lokasjonsbilder`}
+                                  sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }}
+                                />
+                                <Chip
+                                  size="small"
+                                  icon={<StoryboardIcon sx={{ fontSize: 15 }} />}
+                                  label={`${storyboardMediaImages.length} storyboard-bilder`}
+                                  sx={{ bgcolor: 'rgba(192,132,252,0.2)', color: '#d8b4fe' }}
+                                />
+                                {mediaDraft.storyboardSceneIds.length > 0 ? (
+                                  <Chip
+                                    size="small"
+                                    icon={<LinkIcon sx={{ fontSize: 15 }} />}
+                                    label={`${mediaDraft.storyboardSceneIds.length} scener valgt`}
+                                    sx={{ bgcolor: 'rgba(134,239,172,0.18)', color: '#86efac' }}
+                                  />
+                                ) : null}
+                              </Box>
+
+                              {isEditingMedia ? (
+                                <Box
+                                  sx={{
+                                    mt: 1,
+                                    display: 'grid',
+                                    gridTemplateColumns: { xs: '1fr', xl: 'repeat(2, minmax(0, 1fr))' },
+                                    gap: 1,
+                                  }}
+                                >
+                                  <Box
+                                    sx={{
+                                      p: 0.9,
+                                      borderRadius: 1.4,
+                                      bgcolor: 'rgba(255,255,255,0.05)',
+                                      border: '1px solid rgba(255,255,255,0.14)',
+                                    }}
+                                  >
+                                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.8rem' }}>
+                                      Lokasjonsbilder
+                                    </Typography>
+                                    <Box
+                                      sx={{
+                                        mt: 0.75,
+                                        display: 'grid',
+                                        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                                        gap: 0.75,
+                                      }}
+                                    >
+                                      <TextField
+                                        size="small"
+                                        label="Bilde-URL"
+                                        value={mediaDraft.locationImageUrlInput}
+                                        onChange={(event) =>
+                                          handleMediaDraftFieldChange(
+                                            location.id,
+                                            'locationImageUrlInput',
+                                            event.target.value
+                                          )
+                                        }
+                                        sx={{
+                                          '& .MuiOutlinedInput-root': {
+                                            color: '#fff',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                          },
+                                          '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                        }}
+                                      />
+                                      <TextField
+                                        size="small"
+                                        label="Bildetekst"
+                                        value={mediaDraft.locationImageCaptionInput}
+                                        onChange={(event) =>
+                                          handleMediaDraftFieldChange(
+                                            location.id,
+                                            'locationImageCaptionInput',
+                                            event.target.value
+                                          )
+                                        }
+                                        sx={{
+                                          '& .MuiOutlinedInput-root': {
+                                            color: '#fff',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                          },
+                                          '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                        }}
+                                      />
+                                      <Box
+                                        sx={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 0.75,
+                                          flexWrap: 'wrap',
+                                          gridColumn: { xs: '1 / -1' },
+                                        }}
+                                      >
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          startIcon={<AddPhotoIcon sx={{ fontSize: 15 }} />}
+                                          onClick={() => handleAddMediaFromUrl(location.id, 'location')}
+                                          sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
+                                        >
+                                          Legg til URL
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          component="label"
+                                          startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
+                                          sx={{ textTransform: 'none', color: '#67e8f9', borderColor: 'rgba(34,211,238,0.45)' }}
+                                        >
+                                          Last opp bilde
+                                          <input
+                                            type="file"
+                                            hidden
+                                            accept="image/*"
+                                            onChange={(event) => {
+                                              const file = event.target.files?.[0];
+                                              if (file) {
+                                                void handleAddMediaFromFile(location.id, 'location', file);
+                                              }
+                                              event.target.value = '';
+                                            }}
+                                          />
+                                        </Button>
+                                      </Box>
+                                    </Box>
+
+                                    <Box
+                                      sx={{
+                                        mt: 0.9,
+                                        display: 'grid',
+                                        gridTemplateColumns: {
+                                          xs: 'repeat(2, minmax(0, 1fr))',
+                                          md: 'repeat(3, minmax(0, 1fr))',
+                                        },
+                                        gap: 0.7,
+                                      }}
+                                    >
+                                      {locationMediaImages.length === 0 ? (
+                                        <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.76rem' }}>
+                                          Ingen lokasjonsbilder lagt til ennå.
+                                        </Typography>
+                                      ) : (
+                                        locationMediaImages.map((asset, index) => (
+                                          <Box
+                                            key={`${asset.url}-${index}`}
+                                            sx={{
+                                              p: 0.55,
+                                              borderRadius: 1.2,
+                                              bgcolor: 'rgba(255,255,255,0.04)',
+                                              border: '1px solid rgba(255,255,255,0.16)',
+                                            }}
+                                          >
+                                            <Box
+                                              component="a"
+                                              href={asset.url}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              sx={{
+                                                display: 'block',
+                                                borderRadius: 1,
+                                                overflow: 'hidden',
+                                                border: '1px solid rgba(34,211,238,0.28)',
+                                              }}
+                                            >
+                                              <Box
+                                                component="img"
+                                                src={asset.url}
+                                                alt={asset.caption || `Lokasjonsbilde ${index + 1}`}
+                                                sx={{
+                                                  width: '100%',
+                                                  height: 88,
+                                                  objectFit: 'cover',
+                                                  display: 'block',
+                                                }}
+                                              />
+                                            </Box>
+                                            <Box
+                                              sx={{
+                                                mt: 0.55,
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                gap: 0.5,
+                                              }}
+                                            >
+                                              <Typography
+                                                sx={{
+                                                  color: 'rgba(255,255,255,0.84)',
+                                                  fontSize: '0.7rem',
+                                                  overflow: 'hidden',
+                                                  textOverflow: 'ellipsis',
+                                                  whiteSpace: 'nowrap',
+                                                }}
+                                              >
+                                                {asset.caption || 'Lokasjonsbilde'}
+                                              </Typography>
+                                              <IconButton
+                                                size="small"
+                                                onClick={() =>
+                                                  handleRemoveMediaAsset(location.id, 'locationImages', asset.id)
+                                                }
+                                                sx={{ color: '#fca5a5' }}
+                                              >
+                                                <DeleteIcon sx={{ fontSize: 16 }} />
+                                              </IconButton>
+                                            </Box>
+                                          </Box>
+                                        ))
+                                      )}
+                                    </Box>
+                                  </Box>
+
+                                  <Box
+                                    sx={{
+                                      p: 0.9,
+                                      borderRadius: 1.4,
+                                      bgcolor: 'rgba(255,255,255,0.05)',
+                                      border: '1px solid rgba(255,255,255,0.14)',
+                                    }}
+                                  >
+                                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.8rem' }}>
+                                      Storyboard-bilder
+                                    </Typography>
+                                    <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.62)', fontSize: '0.72rem' }}>
+                                      Koble bilder til relevante scener for crew, callback, shotlist og utstyr.
+                                    </Typography>
+                                    <Box sx={{ mt: 0.7 }}>
+                                      <Typography sx={{ color: '#d8b4fe', fontSize: '0.7rem', fontWeight: 700 }}>
+                                        Scener for neste storyboard-bilde
+                                      </Typography>
+                                      {mediaSceneOptions.length === 0 ? (
+                                        <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
+                                          Koble scener til lokasjonen først.
+                                        </Typography>
+                                      ) : (
+                                        <Box sx={{ mt: 0.5, display: 'flex', gap: 0.45, flexWrap: 'wrap' }}>
+                                          {mediaSceneOptions.map((scene) => {
+                                            const selected = mediaDraft.storyboardSceneIds.includes(scene.id);
+                                            return (
+                                              <Chip
+                                                key={`${location.id}-draft-scene-${scene.id}`}
+                                                size="small"
+                                                clickable
+                                                onClick={() =>
+                                                  handleToggleStoryboardSceneDraftSelection(location.id, scene.id)
+                                                }
+                                                label={scene.label}
+                                                sx={{
+                                                  bgcolor: selected ? 'rgba(168,85,247,0.24)' : 'rgba(255,255,255,0.08)',
+                                                  color: selected ? '#e9d5ff' : 'rgba(255,255,255,0.78)',
+                                                  border: `1px solid ${
+                                                    selected ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.18)'
+                                                  }`,
+                                                }}
+                                              />
+                                            );
+                                          })}
+                                          {mediaSceneOverflowCount > 0 ? (
+                                            <Chip
+                                              size="small"
+                                              label={`+${mediaSceneOverflowCount}`}
+                                              sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.78)' }}
+                                            />
+                                          ) : null}
+                                        </Box>
+                                      )}
+                                    </Box>
+                                    <Box
+                                      sx={{
+                                        mt: 0.75,
+                                        display: 'grid',
+                                        gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                                        gap: 0.75,
+                                      }}
+                                    >
+                                      <TextField
+                                        size="small"
+                                        label="Storyboard URL"
+                                        value={mediaDraft.storyboardImageUrlInput}
+                                        onChange={(event) =>
+                                          handleMediaDraftFieldChange(
+                                            location.id,
+                                            'storyboardImageUrlInput',
+                                            event.target.value
+                                          )
+                                        }
+                                        sx={{
+                                          '& .MuiOutlinedInput-root': {
+                                            color: '#fff',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                          },
+                                          '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                        }}
+                                      />
+                                      <TextField
+                                        size="small"
+                                        label="Storyboard-tekst"
+                                        value={mediaDraft.storyboardImageCaptionInput}
+                                        onChange={(event) =>
+                                          handleMediaDraftFieldChange(
+                                            location.id,
+                                            'storyboardImageCaptionInput',
+                                            event.target.value
+                                          )
+                                        }
+                                        sx={{
+                                          '& .MuiOutlinedInput-root': {
+                                            color: '#fff',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                          },
+                                          '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                        }}
+                                      />
+                                      <Box
+                                        sx={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 0.75,
+                                          flexWrap: 'wrap',
+                                          gridColumn: { xs: '1 / -1' },
+                                        }}
+                                      >
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          startIcon={<AddPhotoIcon sx={{ fontSize: 15 }} />}
+                                          onClick={() => handleAddMediaFromUrl(location.id, 'storyboard')}
+                                          sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
+                                        >
+                                          Legg til URL
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          component="label"
+                                          startIcon={<UploadFileIcon sx={{ fontSize: 15 }} />}
+                                          sx={{ textTransform: 'none', color: '#d8b4fe', borderColor: 'rgba(168,85,247,0.45)' }}
+                                        >
+                                          Last opp bilde
+                                          <input
+                                            type="file"
+                                            hidden
+                                            accept="image/*"
+                                            onChange={(event) => {
+                                              const file = event.target.files?.[0];
+                                              if (file) {
+                                                void handleAddMediaFromFile(location.id, 'storyboard', file);
+                                              }
+                                              event.target.value = '';
+                                            }}
+                                          />
+                                        </Button>
+                                      </Box>
+                                    </Box>
+
+                                    <Box
+                                      sx={{
+                                        mt: 0.9,
+                                        display: 'grid',
+                                        gridTemplateColumns: {
+                                          xs: 'repeat(2, minmax(0, 1fr))',
+                                          md: 'repeat(3, minmax(0, 1fr))',
+                                        },
+                                        gap: 0.7,
+                                      }}
+                                    >
+                                      {storyboardMediaImages.length === 0 ? (
+                                        <Typography sx={{ color: 'rgba(255,255,255,0.58)', fontSize: '0.76rem' }}>
+                                          Ingen storyboard-bilder lagt til ennå.
+                                        </Typography>
+                                      ) : (
+                                        storyboardMediaImages.map((asset, index) => {
+                                          const selectedSceneIds = normalizeSceneIds(asset.sceneIds);
+                                          return (
+                                            <Box
+                                              key={`${asset.url}-${index}`}
+                                              sx={{
+                                                p: 0.55,
+                                                borderRadius: 1.2,
+                                                bgcolor: 'rgba(255,255,255,0.04)',
+                                                border: '1px solid rgba(255,255,255,0.16)',
+                                              }}
+                                            >
+                                              <Box
+                                                component="a"
+                                                href={asset.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                sx={{
+                                                  display: 'block',
+                                                  borderRadius: 1,
+                                                  overflow: 'hidden',
+                                                  border: '1px solid rgba(168,85,247,0.35)',
+                                                }}
+                                              >
+                                                <Box
+                                                  component="img"
+                                                  src={asset.url}
+                                                  alt={asset.caption || `Storyboard ${index + 1}`}
+                                                  sx={{
+                                                    width: '100%',
+                                                    height: 88,
+                                                    objectFit: 'cover',
+                                                    display: 'block',
+                                                  }}
+                                                />
+                                              </Box>
+                                              <Box
+                                                sx={{
+                                                  mt: 0.55,
+                                                  display: 'flex',
+                                                  justifyContent: 'space-between',
+                                                  alignItems: 'center',
+                                                  gap: 0.5,
+                                                }}
+                                              >
+                                                <Typography
+                                                  sx={{
+                                                    color: 'rgba(255,255,255,0.84)',
+                                                    fontSize: '0.7rem',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                  }}
+                                                >
+                                                  {asset.caption || 'Storyboard'}
+                                                </Typography>
+                                                <IconButton
+                                                  size="small"
+                                                  onClick={() =>
+                                                    handleRemoveMediaAsset(location.id, 'storyboardImages', asset.id)
+                                                  }
+                                                  sx={{ color: '#fca5a5' }}
+                                                >
+                                                  <DeleteIcon sx={{ fontSize: 16 }} />
+                                                </IconButton>
+                                              </Box>
+                                              {mediaSceneOptions.length > 0 ? (
+                                                <Box sx={{ mt: 0.55, display: 'flex', gap: 0.4, flexWrap: 'wrap' }}>
+                                                  {mediaSceneOptions.map((scene) => {
+                                                    const selected = selectedSceneIds.includes(scene.id);
+                                                    return (
+                                                      <Chip
+                                                        key={`${asset.id}-${scene.id}`}
+                                                        size="small"
+                                                        clickable
+                                                        onClick={() =>
+                                                          handleToggleMediaStoryboardScene(
+                                                            location.id,
+                                                            asset.id,
+                                                            scene.id
+                                                          )
+                                                        }
+                                                        label={scene.label}
+                                                        sx={{
+                                                          bgcolor: selected
+                                                            ? 'rgba(168,85,247,0.24)'
+                                                            : 'rgba(255,255,255,0.08)',
+                                                          color: selected
+                                                            ? '#e9d5ff'
+                                                            : 'rgba(255,255,255,0.76)',
+                                                          border: `1px solid ${
+                                                            selected
+                                                              ? 'rgba(168,85,247,0.5)'
+                                                              : 'rgba(255,255,255,0.16)'
+                                                          }`,
+                                                        }}
+                                                      />
+                                                    );
+                                                  })}
+                                                  {mediaSceneOverflowCount > 0 ? (
+                                                    <Chip
+                                                      size="small"
+                                                      label={`+${mediaSceneOverflowCount}`}
+                                                      sx={{
+                                                        bgcolor: 'rgba(255,255,255,0.1)',
+                                                        color: 'rgba(255,255,255,0.78)',
+                                                      }}
+                                                    />
+                                                  ) : null}
+                                                </Box>
+                                              ) : null}
+                                            </Box>
+                                          );
+                                        })
+                                      )}
+                                    </Box>
+                                  </Box>
+
+                                  <Box
+                                    sx={{
+                                      gridColumn: { xs: '1 / -1' },
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: 0.75,
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
+                                      onClick={() => void handleSaveMedia(location)}
+                                      disabled={isSavingMedia}
+                                      sx={{
+                                        textTransform: 'none',
+                                        bgcolor: ROLE_ROOM_COLORS.secondary,
+                                        '&:hover': { bgcolor: '#06b6d4' },
+                                      }}
+                                    >
+                                      {isSavingMedia ? 'Lagrer...' : 'Lagre media'}
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      onClick={() => handleCancelMediaEditing(location)}
+                                      disabled={isSavingMedia}
+                                      sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
+                                    >
+                                      Avbryt
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              ) : (
+                                <Box
+                                  sx={{
+                                    mt: 1,
+                                    display: 'grid',
+                                    gridTemplateColumns: { xs: '1fr', lg: 'repeat(2, minmax(0, 1fr))' },
+                                    gap: 1,
+                                  }}
+                                >
+                                  <Box sx={{ p: 0.8, borderRadius: 1.2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)' }}>
+                                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem' }}>
+                                      Lokasjonsbilder
+                                    </Typography>
+                                    {locationMediaImages.length === 0 ? (
+                                      <Typography sx={{ mt: 0.45, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
+                                        Ingen lokasjonsbilder lagt inn.
+                                      </Typography>
+                                    ) : (
+                                      <Box sx={{ mt: 0.55, display: 'flex', gap: 0.55, flexWrap: 'wrap' }}>
+                                        {locationMediaImages.slice(0, 4).map((asset, index) => (
+                                          <Box
+                                            key={`${asset.url}-${index}`}
+                                            component="a"
+                                            href={asset.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            sx={{
+                                              width: 72,
+                                              height: 52,
+                                              borderRadius: 1,
+                                              overflow: 'hidden',
+                                              border: '1px solid rgba(34,211,238,0.35)',
+                                              display: 'block',
+                                            }}
+                                          >
+                                            <Box
+                                              component="img"
+                                              src={asset.url}
+                                              alt={asset.caption || `Lokasjonsbilde ${index + 1}`}
+                                              sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                            />
+                                          </Box>
+                                        ))}
+                                        {locationMediaImages.length > 4 ? (
+                                          <Chip
+                                            size="small"
+                                            label={`+${locationMediaImages.length - 4}`}
+                                            sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
+                                          />
+                                        ) : null}
+                                      </Box>
+                                    )}
+                                  </Box>
+
+                                  <Box sx={{ p: 0.8, borderRadius: 1.2, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.14)' }}>
+                                    <Typography sx={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem' }}>
+                                      Storyboard-bilder
+                                    </Typography>
+                                    {storyboardMediaImages.length === 0 ? (
+                                      <Typography sx={{ mt: 0.45, color: 'rgba(255,255,255,0.58)', fontSize: '0.74rem' }}>
+                                        Ingen storyboard-bilder lagt inn.
+                                      </Typography>
+                                    ) : (
+                                      <Stack spacing={0.7} sx={{ mt: 0.55 }}>
+                                        {storyboardMediaImages.slice(0, 3).map((asset, index) => {
+                                          const labels = normalizeSceneIds(asset.sceneIds)
+                                            .slice(0, 3)
+                                            .map((sceneId) => proSceneLabelById.get(sceneId) ?? `Scene ${sceneId}`);
+                                          return (
+                                            <Box
+                                              key={`${asset.url}-${index}`}
+                                              sx={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 0.55,
+                                              }}
+                                            >
+                                              <Box
+                                                component="a"
+                                                href={asset.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                sx={{
+                                                  width: 72,
+                                                  height: 52,
+                                                  borderRadius: 1,
+                                                  overflow: 'hidden',
+                                                  border: '1px solid rgba(168,85,247,0.4)',
+                                                  display: 'block',
+                                                  flexShrink: 0,
+                                                }}
+                                              >
+                                                <Box
+                                                  component="img"
+                                                  src={asset.url}
+                                                  alt={asset.caption || `Storyboard ${index + 1}`}
+                                                  sx={{
+                                                    width: '100%',
+                                                    height: '100%',
+                                                    objectFit: 'cover',
+                                                    display: 'block',
+                                                  }}
+                                                />
+                                              </Box>
+                                              <Box sx={{ minWidth: 0, flex: 1 }}>
+                                                <Typography
+                                                  sx={{
+                                                    color: 'rgba(255,255,255,0.86)',
+                                                    fontSize: '0.72rem',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap',
+                                                  }}
+                                                >
+                                                  {asset.caption || 'Storyboard'}
+                                                </Typography>
+                                                <Box sx={{ mt: 0.35, display: 'flex', gap: 0.35, flexWrap: 'wrap' }}>
+                                                  {labels.length > 0 ? (
+                                                    labels.map((label) => (
+                                                      <Chip
+                                                        key={`${asset.id}-${label}`}
+                                                        size="small"
+                                                        label={label}
+                                                        sx={{
+                                                          bgcolor: 'rgba(168,85,247,0.2)',
+                                                          color: '#e9d5ff',
+                                                        }}
+                                                      />
+                                                    ))
+                                                  ) : (
+                                                    <Chip
+                                                      size="small"
+                                                      label="Ingen scene-kobling"
+                                                      sx={{
+                                                        bgcolor: 'rgba(255,255,255,0.08)',
+                                                        color: 'rgba(255,255,255,0.72)',
+                                                      }}
+                                                    />
+                                                  )}
+                                                </Box>
+                                              </Box>
+                                            </Box>
+                                          );
+                                        })}
+                                        {storyboardMediaImages.length > 3 ? (
+                                          <Chip
+                                            size="small"
+                                            label={`+${storyboardMediaImages.length - 3} flere storyboard-bilder`}
+                                            sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
+                                          />
+                                        ) : null}
+                                      </Stack>
+                                    )}
+                                  </Box>
+                                </Box>
+                              )}
+                              </Collapse>
+                            </Box>
+
+                            <Box
+                              sx={{
+                                mt: 1.1,
+                                p: 1,
+                                borderRadius: 1.5,
+                                bgcolor: 'rgba(168,85,247,0.08)',
+                                border: '1px solid rgba(168,85,247,0.24)',
+                              }}
+                            >
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                <Typography sx={{ color: '#e9d5ff', fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 700 }}>
+                                  Kontaktinfo
+                                </Typography>
+                                {consistencySection === 'contact' ? (
+                                  <Chip
+                                    size="small"
+                                    icon={<ExploreIcon sx={{ fontSize: 14 }} />}
+                                    label="Fra konsistenssjekk"
+                                    sx={{
+                                      bgcolor: 'rgba(251,191,36,0.22)',
+                                      color: '#fde68a',
+                                      border: '1px solid rgba(251,191,36,0.45)',
+                                    }}
+                                  />
+                                ) : null}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                                  <Button
+                                    size="small"
+                                    onClick={() =>
+                                      isEditingProContact ? handleCancelProContactEditing(location) : handleToggleProContactEditing(location)
+                                    }
+                                    sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {isEditingProContact ? 'Lukk' : 'Rediger kontakt'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    endIcon={contactExpanded ? <CollapseIcon sx={{ fontSize: 16 }} /> : <ExpandIcon sx={{ fontSize: 16 }} />}
+                                    onClick={() => toggleProSection(location.id, 'contact')}
+                                    sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none', minWidth: 0, px: 1 }}
+                                  >
+                                    {contactExpanded ? 'Skjul' : 'Vis'}
+                                  </Button>
+                                </Box>
+                              </Box>
+
+                              <Collapse in={contactExpanded}>
+                              {isEditingProContact ? (
+                                <Box
+                                  sx={{
+                                    mt: 1,
+                                    display: 'grid',
+                                    gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' },
+                                    gap: 1,
+                                  }}
+                                >
+                                  <TextField
+                                    size="small"
+                                    label="Navn"
+                                    value={proContactDraft.name}
+                                    onChange={(event) => handleProContactDraftChange(location.id, 'name', event.target.value)}
+                                    sx={{
+                                      '& .MuiOutlinedInput-root': {
+                                        color: '#fff',
+                                        '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                      },
+                                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                    }}
+                                  />
+                                  <TextField
+                                    size="small"
+                                    label="Telefon"
+                                    value={proContactDraft.phone}
+                                    onChange={(event) => handleProContactDraftChange(location.id, 'phone', event.target.value)}
+                                    sx={{
+                                      '& .MuiOutlinedInput-root': {
+                                        color: '#fff',
+                                        '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                      },
+                                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                    }}
+                                  />
+                                  <TextField
+                                    size="small"
+                                    type="email"
+                                    label="E-post"
+                                    value={proContactDraft.email}
+                                    onChange={(event) => handleProContactDraftChange(location.id, 'email', event.target.value)}
+                                    sx={{
+                                      '& .MuiOutlinedInput-root': {
+                                        color: '#fff',
+                                        '& fieldset': { borderColor: 'rgba(255,255,255,0.22)' },
+                                      },
+                                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.72)' },
+                                    }}
+                                  />
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', gridColumn: { xs: '1 / -1' } }}>
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      startIcon={<SaveIcon sx={{ fontSize: 16 }} />}
+                                      onClick={() => handleSaveProContact(location)}
+                                      disabled={isSavingProContact}
+                                      sx={{
+                                        textTransform: 'none',
+                                        bgcolor: ROLE_ROOM_COLORS.accent,
+                                        '&:hover': { bgcolor: ROLE_ROOM_COLORS.accentStrong },
+                                      }}
+                                    >
+                                      {isSavingProContact ? 'Lagrer...' : 'Lagre kontakt'}
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      onClick={() => handleCancelProContactEditing(location)}
+                                      disabled={isSavingProContact}
+                                      sx={{ color: 'rgba(255,255,255,0.75)', textTransform: 'none' }}
+                                    >
+                                      Avbryt
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              ) : (
+                                <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                                  {proContactName ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<PersonIcon sx={{ fontSize: 15 }} />}
+                                      label={proContactName}
+                                      sx={{ bgcolor: 'rgba(77,208,225,0.18)', color: '#67e8f9' }}
+                                    />
+                                  ) : null}
+                                  {proContactPhone ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<PhoneIcon sx={{ fontSize: 15 }} />}
+                                      label={proContactPhone}
+                                      sx={{ bgcolor: 'rgba(192,132,252,0.22)', color: '#e9d5ff' }}
+                                    />
+                                  ) : null}
+                                  {proContactEmail ? (
+                                    <Chip
+                                      size="small"
+                                      icon={<EmailIcon sx={{ fontSize: 15 }} />}
+                                      label={proContactEmail}
+                                      sx={{ bgcolor: 'rgba(34,211,238,0.16)', color: '#67e8f9' }}
+                                    />
+                                  ) : null}
+                                  {!proContactName && !proContactPhone && !proContactEmail ? (
+                                    <Typography sx={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.76rem' }}>
+                                      Ingen kontaktinfo lagt inn.
+                                    </Typography>
+                                  ) : null}
+                                </Box>
+                              )}
+                              </Collapse>
+                            </Box>
+
+                            <Box sx={{ mt: 1.1, display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                              <Chip size="small" icon={<TimelineIcon />} label={`${metric?.shotsCount ?? 0} shots`} sx={{ bgcolor: 'rgba(34,211,238,0.18)', color: '#67e8f9' }} />
+                              {(metric?.missingTechnicalRoles ?? []).slice(0, 2).map((role) => (
+                                <Chip key={role} size="small" label={getRoleLabel(role)} sx={{ bgcolor: 'rgba(248,113,113,0.18)', color: '#fca5a5' }} />
+                              ))}
+                              <Button
+                                size="small"
+                                onClick={() => {
+                                  if (hasCoordinates) {
+                                    setActiveMapLocationId(location.id);
+                                  }
+                                }}
+                                disabled={!hasCoordinates}
+                                sx={{
+                                  color: hasCoordinates ? ROLE_ROOM_COLORS.secondary : 'rgba(255,255,255,0.35)',
+                                  textTransform: 'none',
+                                }}
+                              >
+                                Vis i kart
+                              </Button>
+                              <Button size="small" onClick={() => handleOpenDialog(location)} sx={{ color: ROLE_ROOM_COLORS.accent, textTransform: 'none' }}>
+                                Rediger
+                              </Button>
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+
+                    {proFilteredAndSortedLocations.length > proVisibleLocations.length && (
+                      <Button variant="outlined" onClick={() => setProPageSize((current) => current + 24)}>
+                        Last inn flere ({proVisibleLocations.length}/{proFilteredAndSortedLocations.length})
+                      </Button>
+                    )}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Stack>
+
+            <Stack spacing={{ xs: 1.5, sm: 2 }}>
+              {projectContextLoading ? (
+                <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                  <CardContent>
+                    <Skeleton variant="text" sx={{ bgcolor: 'rgba(255,255,255,0.15)' }} />
+                    <Skeleton variant="rectangular" height={140} sx={{ bgcolor: 'rgba(255,255,255,0.1)', borderRadius: 2 }} />
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                    <CardContent>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>Crew + ShotList kobling</Typography>
+                      <Stack spacing={1}>
+                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(34,211,238,0.12)', border: '1px solid rgba(34,211,238,0.25)' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Teknisk crew tilgjengelig</Typography>
+                          <Typography sx={{ color: '#67e8f9', fontWeight: 800, fontSize: '1.1rem' }}>{technicalCrewPool.length}</Typography>
+                        </Box>
+                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Shots koblet til lokasjoner</Typography>
+                          <Typography sx={{ color: '#d8b4fe', fontWeight: 800, fontSize: '1.1rem' }}>{allShots.filter((shot) => shot.locationId).length}</Typography>
+                        </Box>
+                        <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)' }}>
+                          <Typography sx={{ color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>Lokasjoner med tekniske hull</Typography>
+                          <Typography sx={{ color: '#fca5a5', fontWeight: 800, fontSize: '1.1rem' }}>
+                            {locationProMetrics.filter((metric) => metric.missingTechnicalRoles.length > 0).length}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                    <CardContent>
+                      <Typography sx={{ color: '#fff', fontWeight: 700, mb: 1.25 }}>Budsjett-intelligens</Typography>
+                      <Stack spacing={1}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Prosjektbudsjett</Typography>
+                          <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                            {new Intl.NumberFormat('nb-NO').format(projectContext?.budget ?? 0)} {projectContext?.currency || 'NOK'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Estimert kost (scope)</Typography>
+                          <Typography sx={{ color: '#fff', fontWeight: 700 }}>
+                            {new Intl.NumberFormat('nb-NO').format(
+                              proFilteredAndSortedLocations.reduce(
+                                (sum, location) => sum + (locationMetricsById[location.id]?.estimatedCost ?? 0),
+                                0
+                              )
+                            )}{' '}
+                            kr
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography sx={{ color: ROLE_ROOM_COLORS.mutedText, fontSize: '0.8rem' }}>Over budsjett</Typography>
+                          <Typography sx={{ color: '#f87171', fontWeight: 700 }}>{operationalStats.overBudget}</Typography>
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ bgcolor: ROLE_ROOM_COLORS.panel, border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`, borderRadius: 2.5 }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25 }}>
+                        <Typography sx={{ color: '#fff', fontWeight: 700 }}>Konsistenssjekk</Typography>
+                        <Button size="small" variant="outlined" onClick={handleNormalizeAnnotationColors}>
+                          Standardiser farger
+                        </Button>
+                      </Box>
+                      <Stack spacing={0.75}>
+                        {consistencyFindings.length === 0 ? (
+                          <Typography sx={{ color: '#86efac', fontSize: '0.85rem' }}>Ingen avvik funnet i nåværende datasett.</Typography>
+                        ) : (
+                          consistencyFindings.slice(0, 6).map((finding, index) => {
+                            const location = locations.find((item) => item.id === finding.locationId);
+                            return (
+                              <Box key={`${finding.locationId}-${index}`} sx={{ p: 1, borderRadius: 1.5, bgcolor: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.28)' }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                                  <Typography sx={{ color: '#fecaca', fontWeight: 700, fontSize: '0.78rem' }}>
+                                    {location?.name || 'Ukjent lokasjon'}
+                                  </Typography>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<ExploreIcon sx={{ fontSize: 15 }} />}
+                                    onClick={() => handleGoToConsistencyFinding(finding)}
+                                    sx={{
+                                      textTransform: 'none',
+                                      borderColor: 'rgba(248,113,113,0.5)',
+                                      color: '#fecaca',
+                                      '&:hover': {
+                                        borderColor: '#fca5a5',
+                                        bgcolor: 'rgba(248,113,113,0.16)',
+                                      },
+                                    }}
+                                  >
+                                    {finding.ctaLabel}
+                                  </Button>
+                                </Box>
+                                <Typography sx={{ mt: 0.35, color: 'rgba(255,255,255,0.82)', fontSize: '0.76rem' }}>
+                                  {finding.warning}
+                                </Typography>
+                              </Box>
+                            );
+                          })
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </Stack>
+          </Box>
+        </Stack>
       ) : (
         /* Grid View - Enhanced Responsive cards */
-        <Grid container spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }} role="list" aria-label="Liste over lokasjoner">
+        <Box
+          sx={{
+            border: `1px solid ${ROLE_ROOM_COLORS.panelBorder}`,
+            borderRadius: 2.5,
+            bgcolor: 'rgba(16, 12, 36, 0.52)',
+            backdropFilter: 'blur(6px)',
+            p: { xs: 0.25, sm: 0.5, md: 0.75, lg: 0.875 },
+          }}
+        >
+        <Box
+          role="list"
+          aria-label="Liste over lokasjoner"
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              md: 'repeat(3, minmax(0, 1fr))',
+              lg: 'repeat(4, minmax(0, 1fr))',
+            },
+            gap: { xs: 2.5, sm: 3, md: 3.25, lg: 3.5, xl: 4 },
+            alignItems: 'stretch',
+          }}
+        >
           {filteredAndSortedLocations.map((location) => {
             const typeColor = getTypeColor(location.type);
             return (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={location.id} role="listitem">
+            <Box
+              key={location.id}
+              role="listitem"
+              sx={{
+                display: 'flex',
+                p: { xs: 0.5, sm: 0.75, md: 0.875, lg: 1 },
+              }}
+            >
               <Card
                 component="article"
                 aria-labelledby={`location-name-${location.id}`}
                 sx={{
+                  width: '100%',
                   height: '100%',
                   display: 'flex',
                   flexDirection: 'column',
-                  bgcolor: selectedIds.has(location.id) ? 'rgba(76,175,80,0.08)' : 'rgba(255,255,255,0.03)',
-                  border: selectedIds.has(location.id) ? '2px solid #4caf50' : '2px solid rgba(76,175,80,0.2)',
+                  bgcolor: selectedIds.has(location.id) ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.03)',
+                  border: selectedIds.has(location.id) ? '1.5px solid #a855f7' : '1.5px solid rgba(168,85,247,0.2)',
                   borderRadius: 3,
                   overflow: 'hidden',
                   transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                   ...focusVisibleStyles,
                   '&:hover': {
-                    borderColor: 'rgba(76,175,80,0.6)',
-                    boxShadow: '0 8px 24px rgba(76,175,80,0.25)',
+                    borderColor: 'rgba(168,85,247,0.6)',
+                    boxShadow: '0 8px 24px rgba(168,85,247,0.25)',
                     transform: 'translateY(-2px)',
                   },
                 }}
@@ -1425,7 +5487,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 {/* Gradient Header */}
                 <Box
                   sx={{
-                    background: `linear-gradient(135deg, ${typeColor}25 0%, rgba(76,175,80,0.15) 100%)`,
+                    background: `linear-gradient(135deg, ${typeColor}25 0%, rgba(168,85,247,0.15) 100%)`,
                     borderBottom: `1px solid ${typeColor}40`,
                     p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 },
                   }}
@@ -1438,7 +5500,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         sx={{
                           p: 0.5,
                           color: 'rgba(255,255,255,0.87)',
-                          '&.Mui-checked': { color: '#4caf50' },
+                          '&.Mui-checked': { color: '#a855f7' },
                         }}
                       />
                       <Box
@@ -1528,8 +5590,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         p: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         borderRadius: 2,
-                        bgcolor: 'rgba(76,175,80,0.1)',
-                        border: '1px solid rgba(76,175,80,0.25)',
+                        bgcolor: 'rgba(168,85,247,0.1)',
+                        border: '1px solid rgba(168,85,247,0.25)',
                       }}
                     >
                       <Box
@@ -1537,13 +5599,13 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           width: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
                           height: { xs: 40, sm: 44, md: 42, lg: 50, xl: 58 },
                           borderRadius: 1.5,
-                          bgcolor: 'rgba(76,175,80,0.25)',
+                          bgcolor: 'rgba(168,85,247,0.25)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
                       >
-                        <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#81c784' }} />
+                        <LocationIcon sx={{ fontSize: { xs: 20, sm: 24, md: 22, lg: 26, xl: 30 }, color: '#c4b5fd' }} />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
@@ -1576,7 +5638,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         <IconButton
                           size="small"
                           onClick={() => handleCopyAddress(location.address, location.id)}
-                          sx={{ color: copiedId === location.id ? '#4caf50' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
+                          sx={{ color: copiedId === location.id ? '#a855f7' : 'rgba(255,255,255,0.4)', minWidth: TOUCH_TARGET_SIZE, minHeight: TOUCH_TARGET_SIZE }}
                         >
                           {copiedId === location.id ? <CheckIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} /> : <CopyIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
                         </IconButton>
@@ -1622,7 +5684,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           flexShrink: 0,
                         }}
                       >
-                        <Typography sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 } }}>📍</Typography>
+                        <LocationIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#a78bfa' }} />
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ 
@@ -1681,12 +5743,12 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                             label={`+${location.facilities.length - 4}`}
                             size="small"
                             sx={{
-                              bgcolor: 'rgba(76,175,80,0.2)',
-                              color: '#81c784',
+                              bgcolor: 'rgba(168,85,247,0.2)',
+                              color: '#c4b5fd',
                               fontSize: { xs: '0.7rem', sm: '0.75rem', md: '0.72rem', lg: '0.8rem', xl: '0.9rem' },
                               height: { xs: 22, sm: 24, md: 23, lg: 26, xl: 30 },
                               fontWeight: 600,
-                              border: '1px solid rgba(76,175,80,0.4)',
+                              border: '1px solid rgba(168,85,247,0.4)',
                             }}
                           />
                         )}
@@ -1704,8 +5766,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         p: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 },
                         mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                         borderRadius: 1.5,
-                        bgcolor: 'rgba(76,175,80,0.1)',
-                        border: '1px solid rgba(76,175,80,0.3)',
+                        bgcolor: 'rgba(168,85,247,0.1)',
+                        border: '1px solid rgba(168,85,247,0.3)',
                       }}
                     >
                       <Box
@@ -1713,15 +5775,15 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           width: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           height: { xs: 28, sm: 32, md: 30, lg: 36, xl: 42 },
                           borderRadius: 1,
-                          bgcolor: 'rgba(76,175,80,0.25)',
+                          bgcolor: 'rgba(168,85,247,0.25)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
                       >
-                        <Typography sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 } }}>🎬</Typography>
+                        <AssessmentIcon sx={{ fontSize: { xs: 14, sm: 16, md: 15, lg: 18, xl: 20 }, color: '#c4b5fd' }} />
                       </Box>
-                      <Typography sx={{ color: '#81c784', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
+                      <Typography sx={{ color: '#c4b5fd', fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.85rem', lg: '0.88rem', xl: '1rem' }, fontWeight: 600 }}>
                         {location.assignedScenes.length} scene{location.assignedScenes.length !== 1 ? 'r' : ''} tildelt
                       </Typography>
                     </Box>
@@ -1729,7 +5791,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
 
                   {/* Expandable section */}
                   <Collapse in={expandedCards.has(location.id)}>
-                    <Box sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, borderTop: '2px solid rgba(76,175,80,0.2)' }}>
+                    <Box sx={{ mt: { xs: 1, sm: 1.25, md: 1.125, lg: 1.25, xl: 1.5 }, pt: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, borderTop: '2px solid rgba(168,85,247,0.2)' }}>
                       {location.notes && (
                         <Box
                           sx={{
@@ -1846,7 +5908,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       alignItems: 'center',
                       pt: { xs: 2, sm: 2.5 },
                       mt: 'auto',
-                      borderTop: '2px solid rgba(76,175,80,0.2)',
+                      borderTop: '2px solid rgba(168,85,247,0.2)',
                     }}
                   >
                     <Button
@@ -1858,9 +5920,9 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       aria-label={expandedCards.has(location.id) ? 'Skjul info' : 'Vis info'}
                       sx={{
                         bgcolor: expandedCards.has(location.id) 
-                          ? 'rgba(76,175,80,0.2)' 
-                          : 'rgba(76,175,80,0.12)',
-                        color: expandedCards.has(location.id) ? '#81c784' : '#fff',
+                          ? 'rgba(168,85,247,0.2)' 
+                          : 'rgba(168,85,247,0.12)',
+                        color: expandedCards.has(location.id) ? '#c4b5fd' : '#fff',
                         fontSize: { xs: '0.875rem', sm: '0.9375rem', md: '0.90625rem', lg: '0.96875rem', xl: '1.0625rem' },
                         fontWeight: 600,
                         letterSpacing: '0.01em',
@@ -1868,21 +5930,21 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         px: { xs: 2.5, sm: 3, md: 2.75, lg: 3, xl: 3.5 },
                         py: { xs: 0.875, sm: 1, md: 0.9375, lg: 1, xl: 1.25 },
                         border: expandedCards.has(location.id) 
-                          ? '1.5px solid rgba(76,175,80,0.4)' 
-                          : '1.5px solid rgba(76,175,80,0.25)',
+                          ? '1.5px solid rgba(168,85,247,0.4)' 
+                          : '1.5px solid rgba(168,85,247,0.25)',
                         borderRadius: 2.5,
                         textTransform: 'none',
                         boxShadow: expandedCards.has(location.id) 
-                          ? '0 2px 8px rgba(76,175,80,0.25)' 
-                          : '0 1px 4px rgba(76,175,80,0.15)',
+                          ? '0 2px 8px rgba(168,85,247,0.25)' 
+                          : '0 1px 4px rgba(168,85,247,0.15)',
                         transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                         '&:hover': {
                           bgcolor: expandedCards.has(location.id)
-                            ? 'rgba(76,175,80,0.3)'
-                            : 'rgba(76,175,80,0.2)',
-                          borderColor: 'rgba(76,175,80,0.5)',
+                            ? 'rgba(168,85,247,0.3)'
+                            : 'rgba(168,85,247,0.2)',
+                          borderColor: 'rgba(168,85,247,0.5)',
                           transform: 'translateY(-2px)',
-                          boxShadow: '0 4px 12px rgba(76,175,80,0.35)',
+                          boxShadow: '0 4px 12px rgba(168,85,247,0.35)',
                         },
                         '&:active': {
                           transform: 'translateY(0px)',
@@ -1946,8 +6008,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                           sx={{
                             minWidth: TOUCH_TARGET_SIZE,
                             minHeight: TOUCH_TARGET_SIZE,
-                            color: '#81c784',
-                            '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
+                            color: '#c4b5fd',
+                            '&:hover': { bgcolor: 'rgba(168,85,247,0.1)' },
                             ...focusVisibleStyles,
                           }}
                         >
@@ -1973,10 +6035,11 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           );
           })}
-        </Grid>
+        </Box>
+        </Box>
       )}
 
       {/* Location Analysis Dialog */}
@@ -1990,6 +6053,11 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         onAnalysisComplete={handleAnalysisComplete}
       />
 
+      <LocationManagementGuide
+        open={locationGuideOpen}
+        onClose={() => setLocationGuideOpen(false)}
+      />
+
       {/* Undo Delete Snackbar */}
       <Snackbar
         open={undoSnackbarOpen}
@@ -1997,7 +6065,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
         onClose={() => setUndoSnackbarOpen(false)}
         message={`"\${deletedLocation?.name}" slettet`}
         action={
-          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#4caf50' }}>
+          <Button color="primary" size="small" onClick={handleUndoDelete} sx={{ color: '#a855f7' }}>
             Angre
           </Button>
         }
@@ -2096,7 +6164,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&.Mui-focused fieldset': { borderColor: '#4caf50' },
+                  '&.Mui-focused fieldset': { borderColor: '#a855f7' },
                   '& input': {
                     py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
                   },
@@ -2105,7 +6173,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                   color: 'rgba(255,255,255,0.87)',
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                 },
-                '& .MuiInputLabel-root.Mui-focused': { color: '#4caf50' },
+                '& .MuiInputLabel-root.Mui-focused': { color: '#a855f7' },
               }}
             />
 
@@ -2145,19 +6213,19 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                 disabled={validatingAddress || !formData.address?.trim()}
                 size="small"
                 sx={{
-                  color: '#4caf50',
-                  borderColor: 'rgba(76,175,80,0.5)',
+                  color: '#a855f7',
+                  borderColor: 'rgba(168,85,247,0.5)',
                   minHeight: TOUCH_TARGET_SIZE,
                   fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
                   px: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 },
                   py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
-                  '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
+                  '&:hover': { borderColor: '#a855f7', bgcolor: 'rgba(168,85,247,0.1)' },
                 }}
               >
                 {validatingAddress ? 'Validerer...' : 'Valider adresse'}
               </Button>
               {formData.coordinates && (
-                <Typography variant="caption" sx={{ color: '#4caf50', display: 'block', mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
+                <Typography variant="caption" sx={{ color: '#a855f7', display: 'block', mt: { xs: 0.5, sm: 0.75, md: 0.625, lg: 0.75, xl: 1 }, fontSize: { xs: '0.75rem', sm: '0.8125rem', md: '0.78125rem', lg: '0.875rem', xl: '1rem' } }}>
                   Koordinater: {formData.coordinates.lat.toFixed(6)}, {formData.coordinates.lng.toFixed(6)}
                 </Typography>
               )}
@@ -2178,8 +6246,8 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                         color: '#fff',
                         maxHeight: 300,
                         '& .MuiMenuItem-root': {
-                          '&:hover': { bgcolor: 'rgba(76,175,80,0.1)' },
-                          '&.Mui-selected': { bgcolor: 'rgba(76,175,80,0.2)' },
+                          '&:hover': { bgcolor: 'rgba(168,85,247,0.1)' },
+                          '&.Mui-selected': { bgcolor: 'rgba(168,85,247,0.2)' },
                         },
                       },
                     },
@@ -2245,7 +6313,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
                       <Checkbox
                         checked={(formData.facilities || []).includes(facility)}
                         onChange={() => handleFacilityToggle(facility)}
-                        sx={{ color: '#4caf50', '&.Mui-checked': { color: '#4caf50' } }}
+                        sx={{ color: '#a855f7', '&.Mui-checked': { color: '#a855f7' } }}
                       />
                     }
                     label={getFacilityLabel(facility)}
@@ -2288,6 +6356,29 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               fullWidth
               value={formData.contactInfo?.phone || ''}
               onChange={(e) => setFormData({ ...formData, contactInfo: { ...formData.contactInfo, phone: e.target.value } })}
+              sx={{
+                '& .MuiOutlinedInput-root': { 
+                  color: '#fff', 
+                  minHeight: { xs: 40, sm: 44, md: 48, lg: 52, xl: 60 },
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
+                  '& input': {
+                    py: { xs: 1, sm: 1.25, md: 1.375, lg: 1.5, xl: 1.75 },
+                  },
+                },
+                '& .MuiInputLabel-root': { 
+                  color: 'rgba(255,255,255,0.87)',
+                  fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
+                },
+              }}
+            />
+
+            <TextField
+              label="Kontaktperson e-post"
+              fullWidth
+              type="email"
+              value={formData.contactInfo?.email || ''}
+              onChange={(e) => setFormData({ ...formData, contactInfo: { ...formData.contactInfo, email: e.target.value } })}
               sx={{
                 '& .MuiOutlinedInput-root': { 
                   color: '#fff', 
@@ -2361,7 +6452,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
             startIcon={<SaveIcon sx={{ fontSize: { xs: 18, sm: 20, md: 19, lg: 21, xl: 24 } }} />}
             fullWidth={isMobile}
             sx={{
-              bgcolor: '#4caf50',
+              bgcolor: '#a855f7',
               color: '#fff',
               fontWeight: 600,
               fontSize: { xs: '0.875rem', sm: '1rem', md: '0.95rem', lg: '1.05rem', xl: '1.125rem' },
@@ -2369,7 +6460,7 @@ export function LocationManagementPanel({ projectId, onUpdate }: LocationManagem
               py: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 },
               minHeight: TOUCH_TARGET_SIZE,
               ...focusVisibleStyles,
-              '&:hover': { bgcolor: '#43a047' },
+              '&:hover': { bgcolor: '#9333ea' },
             }}
           >
             {editingLocation ? 'Lagre' : 'Opprett'}

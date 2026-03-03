@@ -1551,7 +1551,7 @@ export const RESUME_TEMPLATES = {
     category: 'professional',
     layout: 'single-column',
     isPremium: false,
-  } 'professional-two-column': {
+  }, 'professional-two-column': {
     id: 'professional-two-column',
     name: 'Profesjonell to-kolonne',
     description: 'Moderne design med farget sidebar',
@@ -1623,7 +1623,7 @@ export const RESUME_TEMPLATES = {
     category: 'executive',
     layout: 'single-column',
     isPremium: false,
-  }'sales-professional': {
+  }, 'sales-professional': {
     id: 'sales-professional',
     name: 'Salgsprofil',
     description: 'Dynamisk mal for salgsrepresentanter og -ledere',
@@ -1896,4 +1896,3 @@ export const RESUME_TEMPLATE_SEED_DATA = [
     isActive: true,
   },
 ];
-

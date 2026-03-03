@@ -143,7 +143,7 @@ import UniversalDashboardIntegrationTest from './UniversalDashboardIntegrationTe
 import EvendiTimelineAdmin from '../wedding/WeddingTimelineAdmin';
 
 // Import Academy Dashboard
-import AcademyDashboard from '../academy/AcademyDashboard';
+import AcademyDashboard from '../academy/AcademyDashboardCinematic';
 // Import Universal Showcase
 import UniversalShowcase from './UniversalShowcase';
 // Import CreatorHub Icons

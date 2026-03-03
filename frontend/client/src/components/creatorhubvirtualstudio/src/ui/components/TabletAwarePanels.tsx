@@ -30,7 +30,7 @@ import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 // TouchSlider - Larger touch targets for tablet
 // ============================================================================
 
-interface TouchSliderProps extends Omit<SliderProps, 'onChange, '> {
+interface TouchSliderProps extends Omit<SliderProps, 'onChange'> {
   label?: string;
   showValue?: boolean;
   valueFormat?: (value: number) => string;
@@ -133,7 +133,8 @@ export function TouchIconButton({
     <IconButton
       sx={{
         width: size.button,
-        height: size.button'& .MuiSvgIcon-root': {
+        height: size.button,
+        '& .MuiSvgIcon-root': {
           fontSize: size.icon,
         },
         ...sx}}
@@ -508,7 +509,8 @@ export function TouchContextMenu({
         anchorPosition={menuAnchor ? { top: menuAnchor.y, left: menuAnchor.x } : undefined}
         PaperProps={{
           sx: {
-            minWidth: isTouch ? 220 : 180'& .MuiMenuItem-root': {
+            minWidth: isTouch ? 220 : 180,
+            '& .MuiMenuItem-root': {
               minHeight: isTouch ? 48 : 40,
             },
           }}}
@@ -771,4 +773,3 @@ export default {
   TouchSwipeListItem,
   TouchPinchZoom,
 };
-

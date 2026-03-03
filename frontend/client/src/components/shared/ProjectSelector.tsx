@@ -77,10 +77,11 @@ export default function ProjectSelector({
   });
 
   // Filter projects based on search
+  const normalizedSearch = searchQuery.toLowerCase();
   const filteredProjects = projects.filter(
     (project: Project) =>
-      project.name.toLowerCase().includes(searchQuery.toLowerCase() ||
-      project.clientName?.toLowerCase().includes(searchQuery.toLowerCase(),
+      project.name.toLowerCase().includes(normalizedSearch) ||
+      project.clientName?.toLowerCase().includes(normalizedSearch),
   );
 
   // Get selected project details

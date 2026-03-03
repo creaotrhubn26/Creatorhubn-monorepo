@@ -270,7 +270,7 @@ export const useComponentLibrary = (options: UseComponentLibraryOptions = {}): U
     getComponentsByCategory,
     getComponentsByTag,
     state,
-    currentConfig,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -313,6 +313,5 @@ export const useComponentLibrary = (options: UseComponentLibraryOptions = {}): U
 };
 
 export default useComponentLibrary;
-
 
 

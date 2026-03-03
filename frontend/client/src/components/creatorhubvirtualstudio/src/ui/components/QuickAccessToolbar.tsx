@@ -428,7 +428,10 @@ export function MiniToolbar({
   onTransformModeChange,
   onDelete,
   onDuplicate,
-}: Pick<QuickAccessToolbarProps'transformMode' | 'onTransformModeChange' | 'onDelete' | 'onDuplicate'>) {
+}: Pick<
+  QuickAccessToolbarProps,
+  'transformMode' | 'onTransformModeChange' | 'onDelete' | 'onDuplicate'
+>) {
   const selection = useSelection('mini-toolbar');
 
   return (
@@ -484,4 +487,3 @@ export function MiniToolbar({
 }
 
 export default QuickAccessToolbar;
-

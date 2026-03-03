@@ -326,10 +326,10 @@ export default function WhatsNewModal({
                               bgcolor: '#ff8c00'}} />
                         )}
                       </Box>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontWeight: nnouncement.is_read ? 400 : 600,
+                        <Typography
+                          variant="body2"
+                          sx={{
+                          fontWeight: announcement.is_read ? 400 : 600,
                           fontSize: '0.875rem',
                           lineHeight: 1.4 }}>
                         {announcement.title}

@@ -19,26 +19,26 @@ import {
 // Project schemas
 export const insertProjectSchema = createInsertSchema(editorProjects);
 export const selectProjectSchema = createSelectSchema(editorProjects);
-export type InsertProject = z.infer<typeof insertProjectSchema>;
-export type SelectProject = z.infer<typeof selectProjectSchema>;
+export type InsertProject = typeof editorProjects.$inferInsert;
+export type SelectProject = typeof editorProjects.$inferSelect;
 
 // Element schemas
 export const insertElementSchema = createInsertSchema(editorElements);
 export const selectElementSchema = createSelectSchema(editorElements);
-export type InsertElement = z.infer<typeof insertElementSchema>;
-export type SelectElement = z.infer<typeof selectElementSchema>;
+export type InsertElement = typeof editorElements.$inferInsert;
+export type SelectElement = typeof editorElements.$inferSelect;
 
 // Animation schemas
 export const insertAnimationSchema = createInsertSchema(animations);
 export const selectAnimationSchema = createSelectSchema(animations);
-export type InsertAnimation = z.infer<typeof insertAnimationSchema>;
-export type SelectAnimation = z.infer<typeof selectAnimationSchema>;
+export type InsertAnimation = typeof animations.$inferInsert;
+export type SelectAnimation = typeof animations.$inferSelect;
 
 // Comment schemas
 export const insertCommentSchema = createInsertSchema(comments);
 export const selectCommentSchema = createSelectSchema(comments);
-export type InsertComment = z.infer<typeof insertCommentSchema>;
-export type SelectComment = z.infer<typeof selectCommentSchema>;
+export type InsertComment = typeof comments.$inferInsert;
+export type SelectComment = typeof comments.$inferSelect;
 
 // ============================================================================
 // FRONTEND TYPES (matches VisualEditorContext.tsx)
@@ -66,8 +66,8 @@ export const EditorElementFrontendSchema = z.object({
   width: z.number().positive(),
   height: z.number().positive(),
   position: PositionSchema.optional(),
-  styles: z.record(z.any()),
-  props: z.record(z.any()),
+  styles: z.record(z.string(), z.unknown()),
+  props: z.record(z.string(), z.unknown()),
   children: z.array(z.string()).optional(),
   parent: z.string().optional(),
   icon: z.string().optional(),
@@ -126,6 +126,11 @@ export function frontendElementToDb(element: EditorElementFrontend): InsertEleme
  * Convert database element to frontend element
  */
 export function dbElementToFrontend(element: SelectElement): EditorElementFrontend {
+  const toRecord = (value: unknown): Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
   return {
     id: element.id,
     type: element.elementType as EditorElementFrontend['type'],
@@ -133,8 +138,8 @@ export function dbElementToFrontend(element: SelectElement): EditorElementFronte
     y: element.yPosition,
     width: element.width,
     height: element.height,
-    styles: (element.styles as Record<string, any>) || {},
-    props: (element.props as Record<string, any>) || {},
+    styles: toRecord(element.styles),
+    props: toRecord(element.props),
     children: (element.children as string[]) || [],
     parent: element.parentId || undefined,
     icon: element.icon || undefined,
@@ -158,20 +163,26 @@ export function frontendProjectToDb(project: ProjectFrontend): InsertProject {
  * Convert database project to frontend project
  */
 export function dbProjectToFrontend(project: SelectProject): ProjectFrontend {
-  const elements = (project.elements as any) || [];
-  const settings = (project.pageSettings as any) || {
+  const defaultSettings: ProjectFrontend['settings'] = {
     width: 1200,
     height: 800,
     backgroundColor: '#ffffff',
     gridSize: 20,
     snapToGrid: true,
   };
+  const elements =
+    Array.isArray(project.elements) ? (project.elements as ProjectFrontend['elements']) : [];
+  const settingsCandidate = project.pageSettings;
+  const settings =
+    typeof settingsCandidate === 'object' && settingsCandidate !== null
+      ? (settingsCandidate as ProjectFrontend['settings'])
+      : defaultSettings;
 
   return {
     id: project.id,
     name: project.name,
     description: undefined,
-    elements: Array.isArray(elements) ? elements : [],
+    elements,
     settings,
     metadata: {
       createdBy: project.userId,

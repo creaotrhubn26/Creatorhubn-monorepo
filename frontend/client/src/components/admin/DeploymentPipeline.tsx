@@ -4,9 +4,9 @@
  */
 
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
@@ -20,10 +20,6 @@ import {
   DialogActions,
   LinearProgress,
   Grid,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Alert,
   Chip,
   IconButton,
@@ -45,20 +41,11 @@ import {
 } from '@mui/material';
 import {
   CloudUpload as DeployIcon,
-  Backup as BackupIcon,
   History as RollbackIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
   PlayArrow as PlayIcon,
-  Pause as PauseIcon,
-  Stop as StopIcon,
   Refresh as RefreshIcon,
   Timeline as TimelineIcon,
   Storage as DatabaseIcon,
-  Api as ApiIcon,
-  Security as SecurityIcon,
-  Speed as PerformanceIcon,
   MonitorHeart as MonitorIcon,
   Code as CodeIcon,
   BugReport as TestIcon,
@@ -103,7 +90,15 @@ interface EnvironmentHealth {
     database: 'healthy' | 'warning' | 'critical';
     apis: 'healthy' | 'warning' | 'critical';
     frontend: 'healthy' | 'warning' | 'critical';
-};
+  };
+}
+
+interface DeploymentsResponse {
+  deployments: Deployment[];
+}
+
+interface DeploymentHealthResponse {
+  environments: EnvironmentHealth[];
 }
 
 export default function DeploymentPipeline() {
@@ -117,7 +112,7 @@ export default function DeploymentPipeline() {
   const { auth } = useEnhancedMasterIntegration();
 
   // State management
-  const [selectedEnvironment, setSelectedEnvironment] = useState('staging,');
+  const [selectedEnvironment, setSelectedEnvironment] = useState('staging');
   const [deploymentDialogOpen, setDeploymentDialogOpen] = useState(false);
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [selectedDeployment, setSelectedDeployment] = useState<string | null>(null);
@@ -129,7 +124,7 @@ export default function DeploymentPipeline() {
   };
 
   // Fetch deployments
-  const { data: deploymentsData, isLoading: deploymentsLoading } = useQuery({
+  const { data: deploymentsData, isLoading: deploymentsLoading } = useQuery<DeploymentsResponse>({
     queryKey: ['/api/admin/deployment/history', ],
     queryFn: () => fetchWithAuth('/api/admin/deployment/history'),
     staleTime: 1000,
@@ -137,7 +132,7 @@ export default function DeploymentPipeline() {
 });
 
   // Fetch environment health
-  const { data: healthData, isLoading: healthLoading } = useQuery({
+  const { data: healthData, isLoading: healthLoading } = useQuery<DeploymentHealthResponse>({
     queryKey: ['/api/admin/deployment/health', ],
     queryFn: () => fetchWithAuth('/api/admin/deployment/health'),
     staleTime: 1000,
@@ -152,8 +147,9 @@ export default function DeploymentPipeline() {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/admin/deployment/start', {
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
-      },
+          ...headers,
+          'Content-Type': 'application/json',
+        },
         method: 'POST',
         body: JSON.stringify({ environment, version })
     });
@@ -264,10 +260,16 @@ export default function DeploymentPipeline() {
         </Box>
       </Box>
 
+      {(deploymentsLoading || healthLoading) && (
+        <Box sx={{ mb: 2 }}>
+          <LinearProgress />
+        </Box>
+      )}
+
       {/* Environment Health Status */}
-      <Grid container spacing={3}, sx={{ mb:  4 }}>
+      <Grid container spacing={3} sx={{ mb:  4 }}>
         {(healthData?.environments || []).map((health) => (
-          <Grid size={{ xs: 12 }} md={4} key={health.environment}>
+          <Grid item xs={12} md={4} key={health.environment}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
@@ -282,13 +284,13 @@ export default function DeploymentPipeline() {
                 </Box>
                 
                 <Grid container spacing={2}>
-                  <Grid size={{ xs:  6 }}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">Uptime</Typography>
-                    <Typography variant="h6" sx={{ color: health.uptime  sx={{ color: theming.colors.primary }}> 99 ? '#4caf50' : '#ff9800' }}>
+                    <Typography variant="h6" sx={{ color: health.uptime > 99 ? '#4caf50' : '#ff9800' }}>
                       {health.uptime}%
                     </Typography>
                   </Grid>
-                  <Grid size={{ xs:  6 }}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">Response</Typography>
                     <Typography variant="h6" sx={{  color: health.responseTime < 200 ? '#4caf50' : '#ff9800' }}>
                       {health.responseTime}ms
@@ -325,7 +327,7 @@ export default function DeploymentPipeline() {
       </Grid>
 
       {/* Recent Deployments */}
-      <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
+      <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
           <Typography variant="h6" sx={{  mb:  3  }}>
             📊 Recent Deployments
@@ -427,14 +429,14 @@ export default function DeploymentPipeline() {
 
       {/* Deployment Steps Timeline */}
       {selectedDeployment && (
-        <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
+        <Card sx={{ mb: 4, ...theming.getThemedCardSx() }}>
           <CardContent sx={theming.getThemedCardSx()}>
             <Typography variant="h6" sx={{  mb:  3  }}>
               📋 Deployment Steps - {(deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.version}
             </Typography>
             
             <Stepper orientation="vertical">
-              {((deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.steps || []).map((step, index) => (
+              {((deploymentsData?.deployments || []).find(d => d.id === selectedDeployment)?.steps || []).map((step) => (
                 <Step key={step.id} active={step.status !== 'pending'} completed={step.status === 'completed'}>
                   <StepLabel 
                     error={step.status === 'failed'}
@@ -494,8 +496,8 @@ export default function DeploymentPipeline() {
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={3}, sx={{ mt:  1 }}>
-            <Grid size={{ xs: 12 }}>
+          <Grid container spacing={3} sx={{ mt:  1 }}>
+            <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel>Environment</InputLabel>
                 <Select
@@ -509,7 +511,7 @@ export default function DeploymentPipeline() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }}>
+            <Grid item xs={12}>
               <Alert severity="info">
                 Deployment vil automatisk kjøre alle nødvendige tester og health checks.
               </Alert>

@@ -3,92 +3,53 @@
  * Handles bidirectional sync between visual editor and TSX/MDX code
  */
 
-import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Alert,
   CircularProgress,
-  Tabs,
-  Tab,
-  TextField,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  Select,
-  MenuItem,
-  FormControl,
   InputLabel,
+  MenuItem,
+  Select,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Code,
-  Sync,
-  Download,
-  Upload,
   CheckCircle,
-  Error,
-  Warning,
+  Code,
+  Compare,
+  Download,
+  Error as ErrorIcon,
+  Settings,
+  Sync,
+  Upload,
   Visibility,
   VisibilityOff,
-  Settings,
-  Refresh,
-  Compare,
-  AccountTree,
-  Commit,
-  Merge,
-  History,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../../utils/theming-helper';
+import { useTheming } from '@/utils/theming-helper';
 import { EditorElement, Project } from './VisualEditorContext';
-
-// Code generation and parsing utilities
-interface CodeGenerator {
-  generateTSX: (project: Project) => string;
-  generateMDX: (project: Project) => string;
-  generateImports: (project: Project) => string[];
-  generateTypes: (project: Project) => string; 
-}
-
-interface CodeParser {
-  parseTSX: (code: string) => Project;
-  parseMDX: (code: string) => Project;
-  validateCode: (code: string) => { valid: boolean; errors: string[] };
-  extractImports: (code: string) => string[]; 
-}
 
 interface CodeSyncState {
   lastSync: Date | null;
   hasChanges: boolean;
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
-  conflicts: ConflictItem[];
-  codeStyle: CodeStyleSettings; 
-}
-
-interface ConflictItem {
-  id: string;
-  type: 'element' | 'style' | 'prop' | 'import';
-  elementId?: string;
-  visualValue: unknown;
-  codeValue: unknown;
-  resolution: 'keep_visual' | 'keep_code' | 'manual';
-  description: string; 
+  codeStyle: CodeStyleSettings;
 }
 
 interface CodeStyleSettings {
@@ -98,30 +59,72 @@ interface CodeStyleSettings {
   semicolons: boolean;
   trailingCommas: boolean;
   maxLineLength: number;
-  importOrder: string[]; 
+  importOrder: string[];
+}
+
+interface GeneratedCode {
+  tsx: string;
+  mdx: string;
+  imports: string[];
+  types: string;
 }
 
 interface CodeSyncSystemProps {
   project: Project;
   onProjectUpdate: (project: Project) => void;
-  onCodeUpdate: (code: string, type: 'tsx' | 'mdx') => void; 
+  onCodeUpdate: (code: string, type: 'tsx' | 'mdx') => void;
 }
+
+const toComponentName = (name: string): string => {
+  const normalized = name
+    .trim()
+    .replace(/[^A-Za-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join('');
+  return normalized || 'GeneratedProject';
+};
+
+const getElementText = (element: EditorElement, fallback: string): string => {
+  const textValue = element.props.text;
+  return typeof textValue === 'string' && textValue.trim().length > 0 ? textValue : fallback;
+};
+
+const getImageSrc = (element: EditorElement): string => {
+  const srcValue = element.props.src;
+  if (typeof srcValue === 'string' && srcValue.trim().length > 0) {
+    return srcValue;
+  }
+  return '';
+};
+
+const serializeStyleValue = (value: unknown, quote: "'" | '"'): string => {
+  if (typeof value === 'string') {
+    return `${quote}${value}${quote}`;
+  }
+  return JSON.stringify(value);
+};
+
+const serializePropValue = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  return `{${JSON.stringify(value)}}`;
+};
 
 export const CodeSyncSystem: React.FC<CodeSyncSystemProps> = ({
   project,
   onProjectUpdate,
-  onCodeUpdate
+  onCodeUpdate,
 }) => {
   const { analytics, lifecycle, performance, debugging } = useEnhancedMasterIntegration();
-  
-  // Theming system
   const theming = useTheming('prototype_tester');
-  
+
   const [syncState, setSyncState] = useState<CodeSyncState>({
     lastSync: null,
     hasChanges: false,
     syncStatus: 'idle',
-    conflicts: [],
     codeStyle: {
       indentSize: 2,
       useSpaces: true,
@@ -129,171 +132,202 @@ export const CodeSyncSystem: React.FC<CodeSyncSystemProps> = ({
       semicolons: true,
       trailingCommas: true,
       maxLineLength: 100,
-      importOrder: ['react','@mui/material','@mui/icons-material','./components','./utils']
-    }
+      importOrder: ['react', '@mui/material', '@mui/icons-material', './components', './utils'],
+    },
   });
-
   const [activeTab, setActiveTab] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
-  const [showConflicts, setShowConflicts] = useState(false);
   const [importText, setImportText] = useState('');
-  const [generatedCode, setGeneratedCode] = useState({
-
-    tsx: ',',
+  const [generatedCode, setGeneratedCode] = useState<GeneratedCode>({
+    tsx: '',
     mdx: '',
-    imports: [] as string[],
-    types: ''
+    imports: [],
+    types: '',
   });
 
-  // Component registration
   useEffect(() => {
-    lifecycle.registerComponent('code-sync-system', {
-      capabilities: [
-        'code:generate','code:parse','code:sync','code:validate','code:format'
-      ],
-      metadata: {
-        version: '1.0.0',
-        dependencies: ['typescript','mdx','ast-parser']
-      }
+    lifecycle.registerComponent({
+      id: 'code-sync-system',
+      type: 'code-sync',
+      version: '1.0.0',
+      capabilities: {
+        data: ['code:generate', 'code:parse', 'code:validate'],
+        events: ['code:generated', 'code:imported', 'code:synced'],
+        actions: ['code:sync-to', 'code:sync-from'],
+        ui: ['code:tabs', 'code:settings'],
+        system: ['analytics:track', 'performance:monitor'],
+      },
+      dependencies: ['@mui/material'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0,
+      },
     });
 
     analytics.trackEvent('code_sync_system_mounted', {
       projectId: project.id,
-      elementsCount: Object.keys(project.elements).length,
-      timestamp: Date.now()
+      elementsCount: project.elements.length,
+      timestamp: Date.now(),
     });
 
     return () => {
       lifecycle.unregisterComponent('code-sync-system');
       analytics.trackEvent('code_sync_system_unmounted', {
         projectId: project.id,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     };
-  }, [lifecycle, analytics, project]);
+  }, [analytics, lifecycle, project.elements.length, project.id]);
 
-  // Code generation functions
-  const generateElementCode = useCallback((element: EditorElement): string => {
-    const indent = ', '.repeat(syncState.codeStyle.indentSize);
-    const quote = syncState.codeStyle.quoteStyle === 'single' ? "'" : '"';
-    
-    const styles = Object.entries(element.styles)
-      .filter(([_, value]) => value !== undefined && value !== null && value !== '')
-      .map(([key, value]) => `${key}: ${typeof value === 'string' ? `${quote}${value}${quote}` : value}`)
-      .join('');
-
-    const props = Object.entries(element.props)
-      .filter(([_, value]) => value !== undefined && value !== null)
-      .map(([key, value]) => `${key}={${JSON.stringify(value)}}`)
-      .join('');
-
-    const styleProps = styles ? ` sx={{${styles}}}` : '';
-    const elementProps = props ? ` ${props}` : '';
-
-    switch (element.type) {
-      case 'button':
-        return `${indent}<Button${styleProps}${elementProps}>\n${indent}  ${element.props.text || 'Button'}\n${indent}</Button>`;
-      case 'text':
-        return `${indent}<Typography${styleProps}${elementProps}>\n${indent}  ${element.props.text || 'Text'}\n${indent}</Typography>`;
-      case 'image':
-        return `${indent}<Box component="img"${styleProps} src="${element.props.src || ', '}, "${elementProps} />`;
-      case 'card':
-        return `${indent}<Card${styleProps}${elementProps} sx={theming.getThemedCardSx()}>\n${indent}  <CardContent sx={theming.getThemedCardSx()}>\n${indent}    {/* Card content */}\n${indent}  </CardContent>\n${indent}</Card>`;
-      case 'container':
-        return `${indent}<Box${styleProps}${elementProps}>\n${indent}  {/* Container content */}\n${indent}</Box>`;
-      case 'grid':
-        return `${indent}<Grid container${styleProps}${elementProps}>\n${indent}  {/* Grid items */}\n${indent}</Grid>`;
-      default:
-        return `${indent}<Box${styleProps}${elementProps}>\n${indent}  {/* ${element.type} */}\n${indent}</Box>`;
-    }
-  }, [syncState.codeStyle]);
-
-  const generateProjectTSX = useCallback((project: Project): string => {
-    const imports = generateImports(project);
-    const elements = Object.values(project.elements).map(generateElementCode).join('\n');
-    
-    return `${imports}
-
-interface ${project.name.replace(/\s+/g, ', ')}Props {
-  // Component props
-}
-
-const ${project.name.replace(/\s+/g, ', ')}: React.FC<${project.name.replace(/\s+/g, ', ')}Props> = (props) => {
-  return (
-    <Box
-      sx={{
-        width: ${project.settings.width},
-        height: ${project.settings.height},
-        backgroundColor: '${project.settings.backgroundColor},',
-        position: 'relative'
-      }}
-    >
-      ${elements}
-    </Box>
+  const quoteCharacter = syncState.codeStyle.quoteStyle === 'single' ? "'" : '"';
+  const indent = useMemo(
+    () => (syncState.codeStyle.useSpaces ? ' ' : '\t').repeat(syncState.codeStyle.indentSize),
+    [syncState.codeStyle.indentSize, syncState.codeStyle.useSpaces],
   );
-};
+  const lineEnd = syncState.codeStyle.semicolons ? ';' : '';
 
-export default ${project.name.replace(/\s+/g, ', ')};`;
-}, [generateElementCode]);
+  const generateImports = useCallback((currentProject: Project): string[] => {
+    const muiImports = new Set<string>(['Box']);
 
-  const generateProjectMDX = useCallback((project: Project): string => {
-    const imports = generateImports(project);
-    const elements = Object.values(project.elements).map(generateElementCode).join('\n');
-    
-    return `${imports}
-
-# ${project.name}
-
-${project.description || ''}
-
-${elements}`;
-}, [generateElementCode]);
-
-  const generateImports = useCallback((project: Project): string[] => {
-    const imports = new Set(['React']);
-    
-    // Add imports based on element types
-    Object.values(project.elements).forEach(element => {
+    currentProject.elements.forEach((element) => {
       switch (element.type) {
         case 'button':
+          muiImports.add('Button');
+          break;
         case 'text':
+          muiImports.add('Typography');
+          break;
         case 'card':
-        case 'container':
+          muiImports.add('Card');
+          muiImports.add('CardContent');
+          break;
         case 'grid':
-          imports.add('@mui/material');
+          muiImports.add('Grid');
           break;
+        case 'container':
         case 'image':
-          imports.add('@mui/material');
+        case 'audio':
+        case 'video':
+          muiImports.add('Box');
           break;
+        default:
+          muiImports.add('Box');
       }
     });
 
-    // Add specific component imports
-    if (Object.values(project.elements).some(el => el.type === 'button')) {
-      imports.add('Button');
-    }
-    if (Object.values(project.elements).some(el => el.type === 'text')) {
-      imports.add('Typography');
-    }
-    if (Object.values(project.elements).some(el => el.type === 'card')) {
-      imports.add('Card, CardContent');
-    }
-    if (Object.values(project.elements).some(el => el.type === 'container' || el.type === 'grid' || el.type === 'image')) {
-      imports.add('Box');
-    }
-    if (Object.values(project.elements).some(el => el.type === 'grid')) {
-      imports.add('Grid');
-    }
+    return Array.from(muiImports).sort();
+  }, []);
 
-    return Array.from(imports);
-}, []);
+  const generateImportBlock = useCallback(
+    (currentProject: Project): string => {
+      const muiImports = generateImports(currentProject);
+      return [
+        "import React from 'react';",
+        `import { ${muiImports.join(', ')} } from '@mui/material';`,
+      ].join('\n');
+    },
+    [generateImports],
+  );
 
-  const generateTypes = useCallback((project: Project): string => {
-    const elementTypes = Array.from(new Set(Object.values(project.elements).map(el => el.type)));
-    
+  const generateElementCode = useCallback(
+    (element: EditorElement): string => {
+      const styleEntries = Object.entries(element.styles)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([key, value]) => `${key}: ${serializeStyleValue(value, quoteCharacter)}`);
+
+      const styleProp = styleEntries.length > 0 ? ` sx={{ ${styleEntries.join(', ')} }}` : '';
+
+      const propEntries = Object.entries(element.props).filter(
+        ([key, value]) => key !== 'text' && key !== 'src' && value !== undefined && value !== null,
+      );
+      const propsString = propEntries
+        .map(([key, value]) => ` ${key}=${serializePropValue(value)}`)
+        .join('');
+
+      switch (element.type) {
+        case 'button':
+          return `${indent}<Button${styleProp}${propsString}>${getElementText(element, 'Button')}</Button>`;
+        case 'text':
+          return `${indent}<Typography${styleProp}${propsString}>${getElementText(element, 'Text')}</Typography>`;
+        case 'image':
+          return `${indent}<Box component="img"${styleProp}${propsString} src=${JSON.stringify(getImageSrc(element))} />`;
+        case 'card':
+          return `${indent}<Card${styleProp}${propsString}>\n${indent.repeat(2)}<CardContent>\n${indent.repeat(3)}${getElementText(
+            element,
+            'Card content',
+          )}\n${indent.repeat(2)}</CardContent>\n${indent}</Card>`;
+        case 'grid':
+          return `${indent}<Grid container${styleProp}${propsString}>{/* Grid items */}</Grid>`;
+        case 'container':
+          return `${indent}<Box${styleProp}${propsString}>{/* Container content */}</Box>`;
+        case 'audio':
+          return `${indent}<Box component="audio"${styleProp}${propsString} controls />`;
+        case 'video':
+          return `${indent}<Box component="video"${styleProp}${propsString} controls />`;
+        default:
+          return `${indent}<Box${styleProp}${propsString}>{/* ${element.type} */}</Box>`;
+      }
+    },
+    [indent, quoteCharacter],
+  );
+
+  const generateProjectTSX = useCallback(
+    (currentProject: Project): string => {
+      const componentName = toComponentName(currentProject.name);
+      const imports = generateImportBlock(currentProject);
+      const body = currentProject.elements.map(generateElementCode).join('\n');
+      const canvas = currentProject.settings;
+
+      return `${imports}
+
+interface ${componentName}Props {}
+
+const ${componentName}: React.FC<${componentName}Props> = () => {
+  return (
+    <Box
+      sx={{
+        width: ${canvas.width},
+        height: ${canvas.height},
+        backgroundColor: ${JSON.stringify(canvas.backgroundColor)},
+        position: 'relative',
+      }}
+    >
+${body || `${indent}{/* No elements yet */}`}
+    </Box>
+  )${lineEnd}
+}
+
+export default ${componentName}${lineEnd}
+`;
+    },
+    [generateElementCode, generateImportBlock, indent, lineEnd],
+  );
+
+  const generateProjectMDX = useCallback(
+    (currentProject: Project): string => {
+      const imports = generateImportBlock(currentProject);
+      const body = currentProject.elements.map(generateElementCode).join('\n');
+      return `${imports}
+
+# ${currentProject.name}
+
+${currentProject.description ?? ''}
+
+${body}
+`;
+    },
+    [generateElementCode, generateImportBlock],
+  );
+
+  const generateTypes = useCallback((currentProject: Project): string => {
+    const elementTypes = Array.from(new Set(currentProject.elements.map((element) => element.type)));
+    const projectName = toComponentName(currentProject.name);
+
     return `export interface EditorElement {
   id: string;
-  type: ${elementTypes.map(type => `'${type},'`).join(' | ')};
+  type: ${elementTypes.map((type) => `'${type}'`).join(' | ')};
   x: number;
   y: number;
   width: number;
@@ -304,91 +338,94 @@ ${elements}`;
   parent?: string;
 }
 
-export interface ${project.name.replace(/\s+/g, ', ')}Project {
+export interface ${projectName}Project {
   id: string;
   name: string;
-  elements: Record<string, EditorElement>;
+  elements: EditorElement[];
   settings: {
     width: number;
     height: number;
     backgroundColor: string;
+    gridSize: number;
+    snapToGrid: boolean;
   };
-}`;
-}, []);
+}
+`;
+  }, []);
 
-  // Code parsing functions
-  const parseTSX = useCallback((code: string): Project => {
-    // Simplified TSX parser - in production, use proper AST parsing
-    const lines = code.split('\n');
-    const newProject: Project = {
-      id: project.id,
-      name: project.name,
-      elements: {},
-      settings: {
-        width: 1200,
-        height: 800,
-        backgroundColor: '#ffffff'
-      },
-      metadata: {
-        createdBy: 'system',
-        createdAt: new Date(),
-        lastModified: new Date(),
-        version: project.metadata.version + 1
-      },
-      status: 'draft'
-    };
+  const parseTSX = useCallback(
+    (code: string): Project => {
+      const lines = code.split('\n');
+      const parsedElements: EditorElement[] = [];
 
-    // Parse elements from code (simplified)
-    let elementId = 0;
-    lines.forEach((line, index) => {
-      if (line.includes('<Button') || line.includes('<Typography') || line.includes('<Card')) {
-        const element: EditorElement = {
-          id: `element_${elementId++}`,
-          type: line.includes('<Button') ? 'button' : 
-                line.includes('<Typography') ? 'text' : 'card',
-          x: 0,
-          y: index * 50,
-          width: 100,
-          height: 40,
-          styles: {},
-          props: {}
-        };
-        newProject.elements[element.id] = element;
-      }
-    });
+      lines.forEach((line, index) => {
+        if (line.includes('<Button') || line.includes('<Typography') || line.includes('<Card')) {
+          const elementType: EditorElement['type'] = line.includes('<Button')
+            ? 'button'
+            : line.includes('<Typography')
+              ? 'text'
+              : 'card';
 
-    return newProject;
-  }, [project]);
+          parsedElements.push({
+            id: `element_${index}`,
+            type: elementType,
+            x: 0,
+            y: index * 50,
+            width: 220,
+            height: 60,
+            styles: {},
+            props: {},
+          });
+        }
+      });
+
+      return {
+        ...project,
+        elements: parsedElements,
+        settings: {
+          width: project.settings.width,
+          height: project.settings.height,
+          backgroundColor: project.settings.backgroundColor,
+          gridSize: project.settings.gridSize,
+          snapToGrid: project.settings.snapToGrid,
+        },
+        metadata: {
+          ...project.metadata,
+          lastModified: new Date(),
+          version: project.metadata.version + 1,
+        },
+        status: 'draft',
+      };
+    },
+    [project],
+  );
 
   const validateCode = useCallback((code: string): { valid: boolean; errors: string[] } => {
     const errors: string[] = [];
-    
-    // Basic validation
-    if (!code.includes('React')) {
+
+    if (!code.includes('import React')) {
       errors.push('Missing React import');
     }
-    
+
     if (!code.includes('export default')) {
       errors.push('Missing default export');
     }
-    
-    // Check for syntax errors (simplified)
-    const openTags = (code.match(/</g) || []).length;
-    const closeTags = (code.match(/>/g) || []).length;
-    if (openTags !== closeTags) {
-      errors.push('Mismatched JSX tags');
+
+    const openTagCount = (code.match(/</g) || []).length;
+    const closeTagCount = (code.match(/>/g) || []).length;
+    if (openTagCount !== closeTagCount) {
+      errors.push('Mismatched JSX tag delimiters');
     }
 
     return {
       valid: errors.length === 0,
-      errors
+      errors,
     };
   }, []);
 
-  // Sync operations
   const handleGenerateCode = useCallback(() => {
     const endTiming = performance.startTiming('code_generation');
-    
+
     try {
       const tsx = generateProjectTSX(project);
       const mdx = generateProjectMDX(project);
@@ -396,153 +433,142 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
       const types = generateTypes(project);
 
       setGeneratedCode({ tsx, mdx, imports, types });
-      
+      setSyncState((prev) => ({
+        ...prev,
+        lastSync: new Date(),
+        hasChanges: false,
+        syncStatus: 'success',
+      }));
+
       analytics.trackEvent('code_generated', {
         projectId: project.id,
-        elementsCount: Object.keys(project.elements).length,
+        elementsCount: project.elements.length,
         codeLength: tsx.length,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
-
-      setSyncState(prev => ({
-        ...prev,
-        lastSync: new Date(),
-        hasChanges: false,
-        syncStatus: 'success'
-      }));
     } catch (error) {
-      setSyncState(prev => ({
-        ...prev,
-        syncStatus: 'error'
-      }));
-      
-      debugging.logIntegration('error','Code generation failed', { error });
+      debugging.logIntegration('error', 'Code generation failed', { error });
+      setSyncState((prev) => ({ ...prev, syncStatus: 'error' }));
     } finally {
       endTiming();
-  }
-}, [project, generateProjectTSX, generateProjectMDX, generateImports, generateTypes, performance, analytics, debugging]);
+    }
+  }, [analytics, debugging, generateImports, generateProjectMDX, generateProjectTSX, generateTypes, performance, project]);
 
-  const handleImportCode = useCallback((code: string, type: 'tsx' | 'mdx') => {
-    const endTiming = performance.startTiming('code_import');
-    
-    try {
-      const validation = validateCode(code);
-      if (!validation.valid) {
-        throw new Error(`Code validation failed: ${validation.errors.join(', ')}`);
+  const handleImportCode = useCallback(
+    (code: string, type: 'tsx' | 'mdx') => {
+      const endTiming = performance.startTiming('code_import');
+
+      try {
+        const validation = validateCode(code);
+        if (!validation.valid) {
+          throw new globalThis.Error(`Code validation failed: ${validation.errors.join(', ')}`);
+        }
+
+        const parsedProject = type === 'tsx' ? parseTSX(code) : project;
+        onProjectUpdate(parsedProject);
+
+        setSyncState((prev) => ({
+          ...prev,
+          lastSync: new Date(),
+          hasChanges: false,
+          syncStatus: 'success',
+        }));
+
+        analytics.trackEvent('code_imported', {
+          projectId: project.id,
+          codeType: type,
+          elementsCount: parsedProject.elements.length,
+          timestamp: Date.now(),
+        });
+      } catch (error) {
+        debugging.logIntegration('error', 'Code import failed', { error });
+        setSyncState((prev) => ({ ...prev, syncStatus: 'error' }));
+      } finally {
+        endTiming();
       }
-
-      const parsedProject = type === 'tsx' ? parseTSX(code) : project;
-      onProjectUpdate(parsedProject);
-      
-      analytics.trackEvent('code_imported', {
-        projectId: project.id,
-        codeType: type,
-        elementsCount: Object.keys(parsedProject.elements).length,
-        timestamp: Date.now()
-      });
-
-      setSyncState(prev => ({
-        ...prev,
-        lastSync: new Date(),
-        hasChanges: false,
-        syncStatus: 'success'
-      }));
-    } catch (error) {
-      setSyncState(prev => ({
-        ...prev,
-        syncStatus: 'error'
-      }));
-      
-      debugging.logIntegration('error', 'Code import failed', { error });
-    } finally {
-      endTiming();
-  }
-}, [project, parseTSX, validateCode, onProjectUpdate, performance, analytics, debugging]);
+    },
+    [analytics, debugging, onProjectUpdate, parseTSX, performance, project, validateCode],
+  );
 
   const handleSyncToCode = useCallback(() => {
-    setSyncState(prev => ({ ...prev, syncStatus: 'syncing' }));
-    
+    setSyncState((prev) => ({ ...prev, syncStatus: 'syncing' }));
     try {
       const code = generateProjectTSX(project);
-      onCodeUpdate(code'tsx');
-      
-      analytics.trackEvent('code_sync_visual_to_code', {
-        projectId: project.id,
-        timestamp: Date.now()
-      });
-      
-      setSyncState(prev => ({
+      onCodeUpdate(code, 'tsx');
+      setSyncState((prev) => ({
         ...prev,
+        syncStatus: 'success',
         lastSync: new Date(),
         hasChanges: false,
-        syncStatus: 'success'
       }));
+      analytics.trackEvent('code_sync_visual_to_code', { projectId: project.id, timestamp: Date.now() });
     } catch (error) {
-      setSyncState(prev => ({
-        ...prev,
-        syncStatus: 'error'
-      }));
+      debugging.logIntegration('error', 'Sync visual to code failed', { error });
+      setSyncState((prev) => ({ ...prev, syncStatus: 'error' }));
     }
-  }, [project, generateProjectTSX, onCodeUpdate, analytics]);
+  }, [analytics, debugging, generateProjectTSX, onCodeUpdate, project]);
 
-  const handleSyncFromCode = useCallback((code: string) => {
-    setSyncState(prev => ({ ...prev, syncStatus: 'syncing' }));
-    
-    try {
-      const parsedProject = parseTSX(code);
-      onProjectUpdate(parsedProject);
-      
-      analytics.trackEvent('code_sync_code_to_visual', {
-        projectId: project.id,
-        timestamp: Date.now()
-      });
-      
-      setSyncState(prev => ({
-        ...prev,
-        lastSync: new Date(),
-        hasChanges: false,
-        syncStatus: 'success'
-      }));
-    } catch (error) {
-      setSyncState(prev => ({
-        ...prev,
-        syncStatus: 'error'
-      }));
-    }
-  }, [parseTSX, onProjectUpdate, analytics]);
+  const handleSyncFromCode = useCallback(
+    (code: string) => {
+      setSyncState((prev) => ({ ...prev, syncStatus: 'syncing' }));
+      try {
+        const parsedProject = parseTSX(code);
+        onProjectUpdate(parsedProject);
+        setSyncState((prev) => ({
+          ...prev,
+          syncStatus: 'success',
+          lastSync: new Date(),
+          hasChanges: false,
+        }));
+        analytics.trackEvent('code_sync_code_to_visual', { projectId: project.id, timestamp: Date.now() });
+      } catch (error) {
+        debugging.logIntegration('error', 'Sync code to visual failed', { error });
+        setSyncState((prev) => ({ ...prev, syncStatus: 'error' }));
+      }
+    },
+    [analytics, debugging, onProjectUpdate, parseTSX, project.id],
+  );
 
-  // Render status indicator
-  const renderSyncStatus = () => {
-    switch (syncState.syncStatus) {
-      case 'syncing':
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CircularProgress size={16} />
-            <Typography variant="body2">Syncing...</Typography>
-          </Box>
-        );
-      case 'success':
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CheckCircle color="success" fontSize="small" />
-            <Typography variant="body2" color="success.main">Synced</Typography>
-          </Box>
-        );
-      case 'error':
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Error color="error" fontSize="small" />
-            <Typography variant="body2" color="error.main">Sync failed</Typography>
-          </Box>
-        );
-      default:
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Warning color="warning" fontSize="small" />
-            <Typography variant="body2" color="warning.main">Pending sync</Typography>
-          </Box>
-        );
+  const renderSyncStatus = (): React.ReactElement => {
+    if (syncState.syncStatus === 'syncing') {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CircularProgress size={16} />
+          <Typography variant="body2">Syncing...</Typography>
+        </Box>
+      );
     }
+
+    if (syncState.syncStatus === 'success') {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CheckCircle color="success" fontSize="small" />
+          <Typography variant="body2" color="success.main">
+            Synced
+          </Typography>
+        </Box>
+      );
+    }
+
+    if (syncState.syncStatus === 'error') {
+      return (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ErrorIcon color="error" fontSize="small" />
+          <Typography variant="body2" color="error.main">
+            Sync failed
+          </Typography>
+        </Box>
+      );
+    }
+
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <WarningIcon color="warning" fontSize="small" />
+        <Typography variant="body2" color="warning.main">
+          Pending sync
+        </Typography>
+      </Box>
+    );
   };
 
   return (
@@ -553,10 +579,10 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
             <Code color="primary" />
             Code Synchronization
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {renderSyncStatus()}
             <IconButton size="small" onClick={() => setShowSettings(true)}>
-              {theming.getThemedIcon('settings')}
+              <Settings fontSize="small" />
             </IconButton>
           </Box>
         </Box>
@@ -567,31 +593,23 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
           </Alert>
         )}
 
-        <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_, nextValue: number) => setActiveTab(nextValue)} sx={{ mb: 2 }}>
           <Tab label="Generate" icon={<Download />} />
           <Tab label="Import" icon={<Upload />} />
           <Tab label="Sync" icon={<Sync />} />
           <Tab label="Compare" icon={<Compare />} />
         </Tabs>
 
-        {/* Generate Tab */}
         {activeTab === 0 && (
           <Box>
             <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <Button variant="contained"
-                startIcon={<Code />}
-                onClick={handleGenerateCode}
-                fullWidth
-              >
+              <Button variant="contained" startIcon={<Code />} onClick={handleGenerateCode} fullWidth>
                 Generate TSX
               </Button>
               <Button
                 variant="outlined"
                 startIcon={<Code />}
-                onClick={() => {
-                  const mdx = generateProjectMDX(project);
-                  setGeneratedCode(prev => ({ ...prev, mdx }));
-              }}
+                onClick={() => setGeneratedCode((prev) => ({ ...prev, mdx: generateProjectMDX(project) }))}
                 fullWidth
               >
                 Generate MDX
@@ -599,26 +617,20 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
             </Box>
 
             {generatedCode.tsx && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Generated TSX Code:
-                </Typography>
-                <TextField
-                  multiline
-                  rows={10}
-                  value={generatedCode.tsx}
-                  variant="outlined"
-                  fullWidth
-                  size="small"
-                  sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
-                  InputProps={{ readOnly: true }}
-                />
-              </Box>
+              <TextField
+                multiline
+                rows={10}
+                value={generatedCode.tsx}
+                variant="outlined"
+                fullWidth
+                size="small"
+                sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+                InputProps={{ readOnly: true }}
+              />
             )}
           </Box>
         )}
 
-        {/* Import Tab */}
         {activeTab === 1 && (
           <Box>
             <TextField
@@ -628,7 +640,7 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
               variant="outlined"
               fullWidth
               value={importText}
-              onChange={(e) => setImportText(e.target.value)}
+              onChange={(event) => setImportText(event.target.value)}
               sx={{ fontFamily: 'monospace', fontSize: '0.8rem', mb: 2 }}
             />
             <Button
@@ -643,7 +655,6 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
           </Box>
         )}
 
-        {/* Sync Tab */}
         {activeTab === 2 && (
           <Box>
             <Grid container spacing={2}>
@@ -656,18 +667,18 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                   disabled={syncState.syncStatus === 'syncing'}
                   sx={theming.getThemedButtonSx()}
                 >
-                  Visual → Code
+                  Visual to Code
                 </Button>
               </Grid>
               <Grid item xs={6}>
                 <Button
                   variant="outlined"
                   startIcon={<VisibilityOff />}
-                  onClick={() => handleSyncFromCode(generatedCode.tsx || '')}
+                  onClick={() => handleSyncFromCode(generatedCode.tsx)}
                   fullWidth
-                  disabled={syncState.syncStatus === 'syncing'}
+                  disabled={syncState.syncStatus === 'syncing' || generatedCode.tsx.length === 0}
                 >
-                  Code → Visual
+                  Code to Visual
                 </Button>
               </Grid>
             </Grid>
@@ -682,24 +693,17 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
           </Box>
         )}
 
-        {/* Compare Tab */}
         {activeTab === 3 && (
           <Box>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Compare visual changes with code changes
             </Typography>
-            <Button
-              variant="outlined"
-              startIcon={<Compare />}
-              fullWidth
-              disabled
-            >
+            <Button variant="outlined" startIcon={<Compare />} fullWidth disabled>
               Compare Changes
             </Button>
           </Box>
         )}
 
-        {/* Settings Dialog */}
         <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
           <DialogTitle>Code Style Settings</DialogTitle>
           <DialogContent>
@@ -709,10 +713,13 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                   <InputLabel>Indent Size</InputLabel>
                   <Select
                     value={syncState.codeStyle.indentSize}
-                    onChange={(e) => setSyncState(prev => ({
-                      ...prev,
-                      codeStyle: { ...prev.codeStyle, indentSize: Number(e.target.value) }
-                    }))}
+                    label="Indent Size"
+                    onChange={(event) =>
+                      setSyncState((prev) => ({
+                        ...prev,
+                        codeStyle: { ...prev.codeStyle, indentSize: Number(event.target.value) },
+                      }))
+                    }
                   >
                     <MenuItem value={2}>2 spaces</MenuItem>
                     <MenuItem value={4}>4 spaces</MenuItem>
@@ -725,10 +732,16 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                   <InputLabel>Quote Style</InputLabel>
                   <Select
                     value={syncState.codeStyle.quoteStyle}
-                    onChange={(e) => setSyncState(prev => ({
-                      ...prev,
-                      codeStyle: { ...prev.codeStyle, quoteStyle: e.target.value as 'single' |'double' }
-                    }))}
+                    label="Quote Style"
+                    onChange={(event) =>
+                      setSyncState((prev) => ({
+                        ...prev,
+                        codeStyle: {
+                          ...prev.codeStyle,
+                          quoteStyle: event.target.value as CodeStyleSettings['quoteStyle'],
+                        },
+                      }))
+                    }
                   >
                     <MenuItem value="single">Single quotes</MenuItem>
                     <MenuItem value="double">Double quotes</MenuItem>
@@ -740,10 +753,12 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                   control={
                     <Switch
                       checked={syncState.codeStyle.semicolons}
-                      onChange={(e) => setSyncState(prev => ({
-                        ...prev,
-                        codeStyle: { ...prev.codeStyle, semicolons: e.target.checked }
-                      }))}
+                      onChange={(event) =>
+                        setSyncState((prev) => ({
+                          ...prev,
+                          codeStyle: { ...prev.codeStyle, semicolons: event.target.checked },
+                        }))
+                      }
                     />
                   }
                   label="Use semicolons"
@@ -754,12 +769,14 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
                   control={
                     <Switch
                       checked={syncState.codeStyle.trailingCommas}
-                      onChange={(e) => setSyncState(prev => ({
-                        ...prev,
-                        codeStyle: { ...prev.codeStyle, trailingCommas: e.target.checked }
-                      }))}
+                      onChange={(event) =>
+                        setSyncState((prev) => ({
+                          ...prev,
+                          codeStyle: { ...prev.codeStyle, trailingCommas: event.target.checked },
+                        }))
+                      }
                     />
-                }
+                  }
                   label="Trailing commas"
                 />
               </Grid>
@@ -767,11 +784,7 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setShowSettings(false)}>Close</Button>
-            <Button
-              variant="contained"
-              onClick={() => setShowSettings(false)}
-              sx={theming.getThemedButtonSx()}
-            >
+            <Button variant="contained" onClick={() => setShowSettings(false)} sx={theming.getThemedButtonSx()}>
               Save Settings
             </Button>
           </DialogActions>
@@ -782,4 +795,3 @@ export interface ${project.name.replace(/\s+/g, ', ')}Project {
 };
 
 export default CodeSyncSystem;
-

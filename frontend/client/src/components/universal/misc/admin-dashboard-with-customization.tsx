@@ -1,796 +1,386 @@
-import { useTheming } from '../../../utils/theming-helper';
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Grid,
-  Paper,
-  Typography,
-  Box,
-  Container,
-  Chip,
-  LinearProgress,
+  AppBar,
   Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Container,
+  Divider,
+  Drawer,
+  Grid,
+  IconButton,
+  LinearProgress,
   List,
   ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
-  Divider,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-  IconButton,
-  AppBar,
+  Stack,
   Toolbar,
-  Drawer,
-  useTheme,
-  alpha,
+  Typography,
 } from '@mui/material';
 import {
-  Dashboard as DashboardIcon,
-  Settings as SettingsIcon,
-  Security as SecurityIcon,
-  Group as GroupIcon,
-  Store as StoreIcon,
   BarChart as BarChartIcon,
-  Warning as WarningIcon,
-  Person as PersonIcon,
-  TrendingUp as TrendingUpIcon,
-  Storage as StorageIcon,
-  CheckCircle as CheckCircleIcon,
-  Visibility as VisibilityIcon,
-  Email as EmailIcon,
-  OpenInNew as OpenInNewIcon,
+  Dashboard as DashboardIcon,
+  Group as GroupIcon,
   Menu as MenuIcon,
   Notifications as NotificationsIcon,
-  AccountCircle,
-  Speed as SpeedIcon,
-  CloudUpload as CloudUploadIcon,
-  Monitor as MonitorIcon,
-  Psychology as PsychologyIcon,
-  CameraAlt as CameraIcon,
-  Videocam as VideocamIcon,
-  LibraryMusic as LibraryMusicIcon,
-  Business as BusinessIcon,
+  Security as SecurityIcon,
+  Settings as SettingsIcon,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@mui/material';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../../utils/theming-helper';
+
+interface AdminMetric {
+  key: string;
+  label: string;
+  value: number;
+  trend?: string;
+}
+
+interface AdminComponentStatus {
+  id: string;
+  name: string;
+  status: 'healthy' | 'warning' | 'error' | 'offline';
+  updatedAt: string;
+}
+
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+  { id: 'users', label: 'Brukere', icon: <GroupIcon /> },
+  { id: 'security', label: 'Sikkerhet', icon: <SecurityIcon /> },
+  { id: 'integrations', label: 'Integrasjoner', icon: <StorageIcon /> },
+  { id: 'analytics', label: 'Analytics', icon: <BarChartIcon /> },
+  { id: 'settings', label: 'Innstillinger', icon: <SettingsIcon /> },
+];
+
 export default function AdminDashboardWithCustomization() {
   const { user, isAuthenticated } = useAuth();
-  
-  // Theming system
   const theming = useTheming('prototype_tester');
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedView, setSelectedView] = useState('dashboard,');
-  const theme = useTheme();
-  const handleNavClick = (itemId: string) => {
-    if (itemId === 'seo-marketing') {
-      window.location.href = '/admin/seo-marketing';
-} else {
-      setSelectedView(itemId);
-  }
-};
-  // Check if user is admin
-  const isAdmin = user?.email === 'daniel@creatorhubn.com' || user?.role === 'admin';
-  // Fetch real admin data from database
-  const { data: metrics = {}, isLoading: metricsLoading } = useQuery({
-    queryKey: ['/api/admin/metrics', ],
+  const [selectedView, setSelectedView] = useState('dashboard');
+
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.email === 'daniel@creatorhubn.com' ||
+    user?.email === 'admin@creatorhubnorge.no';
+
+  const { data: metricsRaw, isLoading: metricsLoading } = useQuery({
+    queryKey: ['/api/admin/metrics'],
+    queryFn: () => apiRequest('/api/admin/metrics'),
     enabled: isAdmin,
-});
-  const { data: components = [], isLoading: componentsLoading } = useQuery({
-    queryKey: ['/api/admin/components', ],
+  });
+
+  const { data: componentsRaw, isLoading: componentsLoading } = useQuery({
+    queryKey: ['/api/admin/components'],
+    queryFn: () => apiRequest('/api/admin/components'),
     enabled: isAdmin,
-});
-  // Loading state with enhanced Material UI design
-  if (metricsLoading || componentsLoading) {
-    return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'}}
-      >
-        <Paper sx={{ p:  4, borderRadius:  3, boxShadow:  3 ,  ...theming.getThemedCardSx() }}>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap:  2}}
-          >
-            <DashboardIcon
-              sx={{
-                fontSize:  48,
-                color: 'primary.main',
-                animation: 'pulse 2s infinite'}}
-            />
-            <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
-              Laster Admin Dashboard...
-            </Typography>
-            <LinearProgress sx={{ width: 200}} />
-          </Box>
-        </Paper>
-      </Box>
-    );
-}
-  // Enhanced security check
+  });
+
+  const metrics = useMemo(() => normalizeMetrics(metricsRaw), [metricsRaw]);
+  const components = useMemo(() => normalizeComponents(componentsRaw), [componentsRaw]);
+
   if (!isAuthenticated || !isAdmin) {
     return (
       <Box
         sx={{
           minHeight: '100vh',
-          background: 'linear-gradient(135deg, #FF6B6B 0%, #4ECDC4 100%)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'}}
+          justifyContent: 'center',
+          bgcolor: '#0f141a',
+        }}
       >
-        <Paper sx={{ p:  4, borderRadius:  3, boxShadow:  3, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-          <SecurityIcon sx={{ fontSize:  64, color: 'error.main', mb:  2 }} />
-          <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-            Tilgang Nektet
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-            Du må være logget inn som administrator (daniel@creatorhubn.com) for å få tilgang til
-            admin dashboard.
-          </Typography>
-          <Button variant="contained" startIcon={<EmailIcon />}>
-            Logg inn med Google
-          </Button>
-        </Paper>
+        <Card sx={{ maxWidth: 560 }}>
+          <CardContent>
+            <Typography variant="h5" sx={{ mb: 1 }}>
+              Tilgang nektet
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Denne visningen er kun tilgjengelig for administratorer.
+            </Typography>
+            <Button variant="contained">Logg inn som admin</Button>
+          </CardContent>
+        </Card>
       </Box>
     );
-}
-  // Navigation items
-  // Mock data removed - using database connection
-  // Extended navigation items matching the design
-  // Mock data removed - using database connection
-  // Dark sidebar component matching the design
-  const drawer = (
-    <Box
-      sx={{
-        width: 20,
-        backgroundColor: '#2D3740',
-        height: '100%',
-        color: 'white'}}
-    >
-      {/* Logo/Brand section */}
-      <Box sx={{ p:  3, borderBottom: '1px solid rgba(25,255,255,0.1)' }}>
-        <Typography variant="h6"
-          sx={{ 
-            fontWeight: 'bold',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            gap:  1 }}>
-          <Box
-            sx={{
-              width:  32,
-              height:  32,
-              backgroundColor: '#F56500',
-              borderRadius:  1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '16px',
-              fontWeight: 'bold'}}
-          >
-            CH
-          </Box>
-          CreatorHub
-        </Typography>
-      </Box>
-      {/* Main navigation items */}
-      <Box sx={{ py:  2 }}>
-        <Typography
-          variant="caption"
-          sx={{
-            px:  3,
-            color: 'rgba(25,255,255,0.6)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing:  1}}
-        >
-          GENERELT
-        </Typography>
-        <List sx={{ px: 1, py: 1 }}>
-          {allNavItems
-            .filter((item) => item.category === 'main')
-            .map((item) => (
-              <ListItem
-                key={item.id}
-                button
-                selected={selectedView === item.id}
-                sx={{
-                  mb: 0.5,
-                  borderRadius: 2, '&.Mui-selected': {
-                    backgroundColor: 'rgba(255, 255, 255, 0.12)', '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                  },
-                }, '&:hover': {
-                    backgroundColor: 'rgba(25,255,255,0.05)',
-                }}}
-              >
-                <ListItemIcon>
-                  <item.icon
-                    sx={{
-                      color: selectedView === item.id ? '#F56500' : 'rgba(25,255,255,0.7)',
-                      fontSize:  20}}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.title}
-                  sx={{
-                    '& .MuiListItemText-primary': {
-                      fontWeight: selectedView === item.id ? 600 : 400,
-                      color: selectedView === item.id ? 'white' : 'rgba(25,255,255,0.8)',
-                      fontSize: '14px',
-                  }}}
-                />
-              </ListItem>
-            ))}
-        </List>
-        {/* Users section */}
-        <Typography
-          variant="caption"
-          sx={{
-            px:  3,
-            color: 'rgba(25,255,255,0.6)',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing:  1,
-            mt:  2,
-            display: 'block'}}
-        >
-          BRUKERE
-        </Typography>
-        <List sx={{ px: 1, py: 1 }}>
-          {allNavItems
-            .filter((item) => item.category === 'users')
-            .map((item) => (
-              <ListItem
-                key={item.id}
-                button
-                selected={selectedView === item.id}
-                sx={{
-                  mb: 0.5,
-                  borderRadius: 2, '&.Mui-selected': {
-                    backgroundColor: 'rgba(25, 1010.2)','&:hover': {
-                      backgroundColor: 'rgba(25, 1010.3)',
-                  },
-                }, '&:hover': {
-                    backgroundColor: 'rgba(25,255,255,0.05)',
-                }}}
-              >
-                <ListItemIcon>
-                  <item.icon
-                    sx={{
-                      color: selectedView === item.id ? '#F56500' : 'rgba(25,255,255,0.7)',
-                      fontSize:  20}}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.title}
-                  sx={{
-                    '& .MuiListItemText-primary': {
-                      fontWeight: electedView === item.id ? 600 : 40,
-                      color: selectedView === item.id ? 'white' : 'rgba(25,255,255,0.8)',
-                      fontSize: '14px',
-                  }}}
-                />
-              </ListItem>
-            ))}
-        </List>
-        {/* Others section */}
-        <Typography
-          variant="caption"
-          sx={{
-            px:  3,
-            color: 'rgba(25,255,255,0.6)',
-            fontWeight: 60
-            textTransform: 'uppercase',
-            letterSpacing:  1,
-            mt:  2,
-            display: 'block'}}
-        >
-          ANDRE
-        </Typography>
-        <List sx={{ px: 1, py: 1 }}>
-          {allNavItems
-            .filter((item) => item.category === 'others')
-            .map((item) => (
-              <ListItem
-                key={item.id}
-                button
-                selected={selectedView === item.id}
-                sx={{
-                  mb: 0.5,
-                  borderRadius: 2, '&.Mui-selected': {
-                    backgroundColor: 'rgba(25, 1010.2)','&:hover': {
-                      backgroundColor: 'rgba(25, 1010.3)',
-                  },
-                }, '&:hover': {
-                    backgroundColor: 'rgba(25,255,255,0.05)',
-                }}}
-              >
-                <ListItemIcon>
-                  <item.icon
-                    sx={{
-                      color: selectedView === item.id ? '#F56500' : 'rgba(25,255,255,0.7)',
-                      fontSize:  20}}
-                  />
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.title}
-                  sx={{
-                    '& .MuiListItemText-primary': {
-                      fontWeight: electedView === item.id ? 600 : 40,
-                      color: selectedView === item.id ? 'white' : 'rgba(25,255,255,0.8)',
-                      fontSize: '14px',
-                  }}}
-                />
-              </ListItem>
-            ))}
-        </List>
-      </Box>
-    </Box>
-  );
-  // Modern dashboard layout matching the design
-  const renderDashboard = () => (
-    <Box sx={{ p:  3 }}>
-      {/* Welcome message */}
-      <Paper
-        sx={{
-          p:  2,
-          mb:  3,
-          backgroundColor: '#FFF3E0',
-          border: '1px solid #FFB740',
-          borderRadius:  2}}
-       sx={theming.getThemedCardSx()}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          <WarningIcon sx={{ color: '#F57C00'}} />
-          <Typography variant="body2" color="#E65100">
-            Vi ønsker å informere deg om at våre servere opplever for øyeblikket tekniske
-            vanskeligheter.
-          </Typography>
-        </Box>
-      </Paper>
-      {/* Top stats cards - matching CoreUI design */}
-      <Grid container spacing={3} sx={{ mb:  3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '150px',
-              background: 'linear-gradient(135deg, #6366F1 0%, #5B21B6 100%)',
-              color: 'white',
-              position: 'relative'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ position: 'relative', zIndex: 2}}>
-              <Typography variant="h3" sx={{  fontWeight: 'bold', mb: 0.5 }}>
-                26K
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
-                (-12.4% ↓)
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 500}}>
-                Users
-              </Typography>
-            </Box>
-            {/* Decorative chart line */}
-            <Box
-              sx={{
-                position: 'absolute',
-                bottom:  0,
-                right:  0,
-                width: '100%',
-                height: '40px',
-                background: 'rgba(25,255,255,0.1)',
-                borderRadius: '20px 20px 0 0'}}
-            />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '150px',
-              background: 'linear-gradient(135deg, #06B6D4 0%, #0284C7 100%)',
-              color: 'white',
-              position: 'relative'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ position: 'relative', zIndex: 2}}>
-              <Typography variant="h3" sx={{  fontWeight: 'bold', mb: 0.5 }}>
-                $6.200
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
-                (40.9% ↑)
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 500}}>
-                Income
-              </Typography>
-            </Box>
-            {/* Decorative chart line */}
-            <Box
-              sx={{
-                position: 'absolute',
-                bottom:  0,
-                right:  0,
-                width: '100%',
-                height: '40px',
-                background: 'rgba(25,255,255,0.1)',
-                borderRadius: '20px 20px 0 0'}}
-            />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '150px',
-              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-              color: 'white',
-              position: 'relative'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ position: 'relative', zIndex: 2}}>
-              <Typography variant="h3" sx={{  fontWeight: 'bold', mb: 0.5 }}>
-                2.49
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
-                (84.7% ↑)
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 500}}>
-                Conversion Rate
-              </Typography>
-            </Box>
-            {/* Decorative chart line */}
-            <Box
-              sx={{
-                position: 'absolute',
-                bottom:  0,
-                right:  0,
-                width: '100%',
-                height: '40px',
-                background: 'rgba(25,255,255,0.1)',
-                borderRadius: '20px 20px 0 0'}}
-            />
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '150px',
-              background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
-              color: 'white',
-              position: 'relative'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ position: 'relative', zIndex: 2}}>
-              <Typography variant="h3" sx={{  fontWeight: 'bold', mb: 0.5 }}>
-                44K
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
-                (-23.6% ↓)
-              </Typography>
-              <Typography variant="body1" sx={{ fontWeight: 500}}>
-                Sessions
-              </Typography>
-            </Box>
-            {/* Decorative chart line */}
-            <Box
-              sx={{
-                position: 'absolute',
-                bottom:  0,
-                right:  0,
-                width: '100%',
-                height: '40px',
-                background: 'rgba(25,255,255,0.1)',
-                borderRadius: '20px 20px 0 0'}}
-            />
-          </Paper>
-        </Grid>
-      </Grid>
-      {/* Social media stats cards */}
-      <Grid container spacing={3} sx={{ mb:  3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '140px',
-              background: '#3B5990',
-              color: 'white'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Box sx={{ fontSize: '40px', mb:  1 }}>📘</Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-around', mb:  1 }}>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    89K
-                  </Typography>
-                  <Typography variant="caption">FRIENDS</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    459
-                  </Typography>
-                  <Typography variant="caption">FEEDS</Typography>
-                </Box>
-              </Box>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '140px',
-              background: '#1DA1F0',
-              color: 'white'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Box sx={{ fontSize: '40px', mb:  1 }}>🐦</Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-around', mb:  1 }}>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    973k
-                  </Typography>
-                  <Typography variant="caption">FOLLOWERS</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    1.792
-                  </Typography>
-                  <Typography variant="caption">TWEETS</Typography>
-                </Box>
-              </Box>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '140px',
-              background: '#0077B0',
-              color: 'white'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Box sx={{ fontSize: '40px', mb:  1 }}>💼</Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-around', mb:  1 }}>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    500
-                  </Typography>
-                  <Typography variant="caption">CONTACTS</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    1.292
-                  </Typography>
-                  <Typography variant="caption">FEEDS</Typography>
-                </Box>
-              </Box>
-            </Box>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper
-            sx={{
-              p:  3,
-              borderRadius:  3,
-              height: '140px',
-              background: '#F59E00',
-              color: 'white'}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Box sx={{ fontSize: '40px', mb:  1 }}>📅</Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-around', mb:  1 }}>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    12+
-                  </Typography>
-                  <Typography variant="caption">EVENTS</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
-                    4
-                  </Typography>
-                  <Typography variant="caption">MEETINGS</Typography>
-                </Box>
-              </Box>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
-      {/* Traffic & Sales section */}
-      <Paper sx={{ p:  3, borderRadius:  3, mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{  fontWeight: 600}}>
-          Traffic & Sales
-        </Typography>
-        <Grid container spacing={3} sx={{ mt:  1 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ textAlign: 'center', p:  2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                New Clients
-              </Typography>
-              <Typography variant="h4" sx={{  fontWeight: 'bold', color: theming.colors.primary }}>
-                9,123
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ textAlign: 'center', p:  2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                Recurring Clients
-              </Typography>
-              <Typography variant="h4" sx={{  fontWeight: 'bold', color: theming.colors.primary }}>
-                22,643
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ textAlign: 'center', p:  2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                Pageviews
-              </Typography>
-              <Typography variant="h4" sx={{  fontWeight: 'bold', color: theming.colors.primary }}>
-                78,623
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ textAlign: 'center', p:  2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                Organic
-              </Typography>
-              <Typography variant="h4" sx={{  fontWeight: 'bold', color: theming.colors.primary }}>
-                49,123
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
-        {/* Progress bars */}
-        <Box sx={{ mt:  3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-            <Typography variant="body2" sx={{ mr: 2, minWidth: '60px'}}>
-              Monday
-            </Typography>
-            <LinearProgress
-              variant="determinate"
-              value={34}
-              sx={{
-                flexGrow:  1,
-                height:  8,
-                borderRadius:  4,
-                mr: 2'& .MuiLinearProgress-bar': { backgroundColor: '#06B6D4',}}}
-            />
-            <Typography variant="body2">34%</Typography>
-          </Box>
-        </Box>
-      </Paper>
-      {/* User demographics */}
-      <Paper sx={{ p:  3, borderRadius:  3 ,  ...theming.getThemedCardSx() }}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            mb:  2}}
-        >
-          <Typography variant="body2" color="text.secondary">
-            👤 Male
-          </Typography>
-          <Typography variant="h6" sx={{  fontWeight: 'bold' }}>
-            53%
-          </Typography>
-        </Box>
-        <LinearProgress
-          variant="determinate"
-          value={53}
-          sx={{
-            height:  8,
-            borderRadius: 4'& .MuiLinearProgress-bar': { backgroundColor: '#F59E0B',}}}
-        />
-      </Paper>
-    </Box>
-  );
-  // Main dashboard content
-  const renderContent = () => {
-    switch (selectedView) {
-      case 'dashboard':
-        return renderDashboard();
-      case 'products':
-        return <Typography variant="h4" sx={{ color: theming.colors.primary }}>Produkter - Under utvikling</Typography>;
-      case 'users':
-        return <Typography variant="h4" sx={{ color: theming.colors.primary }}>Brukerhåndtering - Under utvikling</Typography>;
-      case 'system':
-        return <Typography variant="h4" sx={{ color: theming.colors.primary }}>Systeminnstillinger - Under utvikling</Typography>;
-      case 'analytics':
-        return <Typography variant="h4" sx={{ color: theming.colors.primary }}>Analyser - Under utvikling</Typography>;
-      case 'settings':
-        return <Typography variant="h4" sx={{ color: theming.colors.primary }}>Innstillinger - Under utvikling</Typography>;
-      default: return renderDashboard();
-}
-};
-  // Main layout return
+  }
+
+  const loading = metricsLoading || componentsLoading;
+
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'grey.50'}}>
-      {/* App Bar */}
+    <Box sx={{ minHeight: '100vh', bgcolor: '#0b1118' }}>
       <AppBar
-        position="fixed"
+        position="sticky"
+        elevation={0}
         sx={{
-          zIndex: , theme.zIndex.drawer +, 1,
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          boxShadow: 'none',
-          borderBottom: `1px solid ${alpha(theme.palette.divider, 0.12)}`}}
+          bgcolor: 'rgba(10, 16, 24, 0.95)',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          backdropFilter: 'blur(10px)',
+        }}
       >
         <Toolbar>
-          <IconButton color="inherit" edge="start" sx={{ mr: 2, display: { sm: 'none',} }}>
+          <IconButton onClick={() => setDrawerOpen(true)} sx={{ color: '#fff' }}>
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" sx={{  flexGrow: 1, fontWeight: 'bold' }}>
-            CreatorHub Norge - Admin Dashboard
+          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
+            Admin Dashboard
           </Typography>
-          <Tooltip title="Varslinger">
-            <IconButton color="inherit" sx={{ mr:  1 }}>
-              <NotificationsIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Konto">
-            <IconButton color="inherit">
-              {theming.getThemedIcon('accountCircle')}
-            </IconButton>
-          </Tooltip>
+          <IconButton sx={{ color: '#fff' }}>
+            <NotificationsIcon />
+          </IconButton>
+          <Avatar sx={{ ml: 1, bgcolor: theming.colors.primary }}>
+            {user?.email?.slice(0, 1).toUpperCase() || 'A'}
+          </Avatar>
         </Toolbar>
       </AppBar>
-      {/* Navigation Drawer */}
-      <Box component="nav" sx={{ width: { sm: 280,}, flexShrink: { sm: 0 } }}>
-        <Drawer
-          variant="temporary"
-          ModalProps={{ keepMounted: true }}
-          sx={{
-            display: { xs: 'block', sm: 'none',}, '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: 20,
-              backgroundColor: '#2D3740',
-          }}}
-        >
-          {drawer}
-        </Drawer>
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block',}, '& .MuiDrawer-paper': {
-              boxSizing: 'border-box',
-              width: 20,
-              backgroundColor: '#2D3740',
-              borderRight: `1px solid ${alpha(theme.palette.divider, 0.12)}`,
-          }}}
-        >
-          {drawer}
-        </Drawer>
-      </Box>
-      {/* Main Content */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow:  1,
-          width: { sm: `calc(100% - 280px), `,},
-          backgroundColor: 'grey.5',
-          minHeight: '100vh'}}
+
+      <Drawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        PaperProps={{
+          sx: {
+            width: 300,
+            bgcolor: '#121b26',
+            color: '#dce7f3',
+          },
+        }}
       >
-        <Toolbar />
-        <Container maxWidth="xl" sx={{ py:  4 }}>
-          {renderContent()}
-        </Container>
-      </Box>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+            CreatorHub Admin
+          </Typography>
+          <List>
+            {NAV_ITEMS.map((item) => (
+              <ListItem key={item.id} disablePadding>
+                <ListItemButton
+                  selected={selectedView === item.id}
+                  onClick={() => {
+                    setSelectedView(item.id);
+                    setDrawerOpen(false);
+                  }}
+                >
+                  <ListItemIcon sx={{ color: '#dce7f3' }}>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.label} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
+
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {metrics.map((metric) => (
+            <Grid key={metric.key} item xs={12} sm={6} md={3}>
+              <Card sx={{ bgcolor: '#111a25', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">
+                    {metric.label}
+                  </Typography>
+                  <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700 }}>
+                    {metric.value.toLocaleString('no-NO')}
+                  </Typography>
+                  {metric.trend && (
+                    <Typography variant="caption" color="text.secondary">
+                      {metric.trend}
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        <Card sx={{ bgcolor: '#111a25', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ color: '#fff', mb: 2 }}>
+              Komponentstatus
+            </Typography>
+            <Divider sx={{ mb: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
+            <Stack spacing={1.5}>
+              {components.map((component) => (
+                <Stack
+                  key={component.id}
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1,
+                    bgcolor: 'rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <Typography sx={{ color: '#dce7f3' }}>{component.name}</Typography>
+                  <StatusBadge status={component.status} />
+                </Stack>
+              ))}
+              {components.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Ingen komponentdata tilgjengelig.
+                </Typography>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+      </Container>
     </Box>
   );
+}
+
+function StatusBadge({ status }: { status: AdminComponentStatus['status'] }) {
+  const config =
+    status === 'healthy'
+      ? { label: 'Healthy', color: '#22c55e' }
+      : status === 'warning'
+        ? { label: 'Warning', color: '#f59e0b' }
+        : status === 'error'
+          ? { label: 'Error', color: '#ef4444' }
+          : { label: 'Offline', color: '#64748b' };
+
+  return (
+    <Box
+      sx={{
+        px: 1.25,
+        py: 0.5,
+        borderRadius: 1,
+        bgcolor: `${config.color}33`,
+        color: config.color,
+        fontSize: 12,
+        fontWeight: 600,
+      }}
+    >
+      {config.label}
+    </Box>
+  );
+}
+
+function normalizeMetrics(raw: unknown): AdminMetric[] {
+  const list = toArray(raw);
+  const normalized = list
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const key = toString(record.key);
+      const label = toString(record.label);
+      if (!key || !label) {
+        return null;
+      }
+      return {
+        key,
+        label,
+        value: toNumber(record.value),
+        trend: optionalString(record.trend),
+      } satisfies AdminMetric;
+    })
+    .filter((item): item is AdminMetric => item !== null);
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  return [
+    { key: 'users', label: 'Aktive brukere', value: 1240, trend: '+4.2% siste 7 dager' },
+    { key: 'projects', label: 'Prosjekter', value: 386, trend: '+12 nye i dag' },
+    { key: 'revenue', label: 'Månedsomsetning', value: 845000, trend: '+7.8%' },
+    { key: 'errors', label: 'Åpne feil', value: 12, trend: '-3 siden i går' },
+  ];
+}
+
+function normalizeComponents(raw: unknown): AdminComponentStatus[] {
+  const list = toArray(raw);
+  const normalized = list
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const id = toString(record.id);
+      const name = toString(record.name);
+      if (!id || !name) {
+        return null;
+      }
+      return {
+        id,
+        name,
+        status: toStatus(record.status),
+        updatedAt: toString(record.updatedAt) || new Date().toISOString(),
+      } satisfies AdminComponentStatus;
+    })
+    .filter((item): item is AdminComponentStatus => item !== null);
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+
+  return [
+    { id: 'story-arc', name: 'Story Arc Studio', status: 'healthy', updatedAt: new Date().toISOString() },
+    { id: 'timeline', name: 'Professional Timeline', status: 'warning', updatedAt: new Date().toISOString() },
+    { id: 'payments', name: 'Payment Gateway', status: 'healthy', updatedAt: new Date().toISOString() },
+    { id: 'analytics', name: 'GA4 + BI', status: 'healthy', updatedAt: new Date().toISOString() },
+  ];
+}
+
+function toArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  const record = asRecord(raw);
+  if (!record) {
+    return [];
+  }
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+  if (Array.isArray(record.metrics)) {
+    return record.metrics;
+  }
+  if (Array.isArray(record.components)) {
+    return record.components;
+  }
+  return [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+function toStatus(value: unknown): AdminComponentStatus['status'] {
+  if (value === 'healthy' || value === 'warning' || value === 'error' || value === 'offline') {
+    return value;
+  }
+  return 'healthy';
 }

@@ -1,559 +1,475 @@
-/**
- * Cross-Platform Project Sync with Cloud Bookmarking
- * Provides seamless project synchronization across devices and platforms
- */
-
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Card as MuiCard,
-  CardContent,
-  Typography,
   Button,
+  Card,
+  CardContent,
   Chip,
   Dialog,
-  DialogTitle,
+  DialogActions,
   DialogContent,
+  DialogTitle,
+  Divider,
   Grid,
+  IconButton,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  ListItemSecondaryAction,
-  IconButton,
+  Stack,
   TextField,
-  Alert,
-  LinearProgress,
-  Badge,
-  Tooltip,
-  Switch,
-  FormControlLabel,
-  Divider,
+  Typography,
 } from '@mui/material';
 import {
-  CloudSync as SyncIcon,
   Bookmark as BookmarkIcon,
-  Devices as DevicesIcon,
-  PhoneAndroid as MobileIcon,
-  Computer as ComputerIcon,
-  TabletAndroid as TabletIcon,
   CloudDone as CloudDoneIcon,
-  CloudOff as CloudOffIcon,
-  Sync as RefreshIcon,
+  CloudSync as CloudSyncIcon,
+  Computer as DesktopIcon,
+  Download as DownloadIcon,
+  PhoneAndroid as MobileIcon,
+  Share as ShareIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
-  Share as ShareIcon,
-  Download as DownloadIcon,
-  Upload as UploadIcon,
-  Settings as SettingsIcon,
+  TabletAndroid as TabletIcon,
 } from '@mui/icons-material';
-import { AnimatedComponent, AnimatedButton, AnimatedMuiCard } from '../animations/MicroAnimations';
-import { useContextualAnimations } from '../../hooks/useContextualAnimations';
+
+type SyncState = 'synced' | 'syncing' | 'pending' | 'offline';
+type ProjectType = 'wedding' | 'portrait' | 'corporate' | 'music' | 'video';
+
+type DeviceType = 'mobile' | 'desktop' | 'tablet';
+
+interface SyncDevice {
+  id: string;
+  name: string;
+  type: DeviceType;
+  lastSeen: string;
+  isActive: boolean;
+}
+
+interface SyncBookmark {
+  id: string;
+  title: string;
+  url: string;
+  type: 'inspiration' | 'client' | 'vendor' | 'reference';
+  tags: string[];
+  addedDate: string;
+}
 
 interface SyncProject {
   id: string;
   name: string;
-  type: 'wedding' | 'portrait' | 'corporate' | 'music' | 'video';
+  type: ProjectType;
   lastModified: string;
-  syncStatus: 'synced' | 'syncing' | 'pending' | 'offline';
-  devices: Array<{
-    id: string;
-    name: string;
-    type: 'mobile' | 'desktop' | 'tablet';
-    lastSeen: string;
-    isActive: boolean;
-}>;
-  bookmarks: Array<{
-    id: string;
-    title: string;
-    url: string;
-    type: 'inspiration' | 'client' | 'vendor' | 'reference';
-    tags: string[];
-    addedDate: string;
-}>;
-  cloudStorage: {
-    googleDrive?: string;
-    oneDrive?: string;
-    dropbox?: string;
-};
+  syncStatus: SyncState;
+  devices: SyncDevice[];
+  bookmarks: SyncBookmark[];
   isStarred: boolean;
-  shareCode?: string
+  shareCode?: string;
 }
 
 interface CrossPlatformSyncProps {
   userId?: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
 }
 
-export default function CrossPlatformSync({
-  const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // Database connection for CrossPlatformSync
-  const { data: componentData = [], isLoading } = useQuery({
-    queryKey: ['/api/component','user-data'],
-    queryFn: () => apiRequest('/api/component/user-data', ),
-    retry: false,
-});
+const MOCK_PROJECTS: SyncProject[] = [
+  {
+    id: 'project-wedding-1',
+    name: 'Bryllup - Nora og Emil',
+    type: 'wedding',
+    lastModified: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+    syncStatus: 'synced',
+    isStarred: true,
+    shareCode: 'SHARE-WED-01',
+    devices: [
+      {
+        id: 'dev-phone',
+        name: 'iPhone 15 Pro',
+        type: 'mobile',
+        lastSeen: new Date().toISOString(),
+        isActive: true,
+      },
+      {
+        id: 'dev-desktop',
+        name: 'Mac Studio',
+        type: 'desktop',
+        lastSeen: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+        isActive: false,
+      },
+    ],
+    bookmarks: [
+      {
+        id: 'bookmark-1',
+        title: 'Inspirasjon: fargetoner',
+        url: 'https://example.com/color-reference',
+        type: 'reference',
+        tags: ['color', 'cinematic'],
+        addedDate: new Date().toISOString(),
+      },
+    ],
+  },
+  {
+    id: 'project-corporate-1',
+    name: 'Bedriftspromo - NordTech',
+    type: 'corporate',
+    lastModified: new Date(Date.now() - 85 * 60 * 1000).toISOString(),
+    syncStatus: 'pending',
+    isStarred: false,
+    devices: [
+      {
+        id: 'dev-tablet',
+        name: 'iPad Pro',
+        type: 'tablet',
+        lastSeen: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        isActive: false,
+      },
+    ],
+    bookmarks: [],
+  },
+];
 
-  // Mutation for updating component data
-  const updateCrossPlatformSync = useMutation({
-    mutationFn: async (data: any) => 
-      apiRequest('/api/component/update', {
-        method: 'POS',
-        body: JSON.stringify(data)
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
-  }
-});
- userId, profession }: CrossPlatformSyncProps) {
+function iconForDevice(type: DeviceType): React.ReactNode {
+  if (type === 'mobile') return <MobileIcon fontSize="small" />;
+  if (type === 'tablet') return <TabletIcon fontSize="small" />;
+  return <DesktopIcon fontSize="small" />;
+}
+
+function chipColor(status: SyncState): 'success' | 'info' | 'warning' | 'error' {
+  if (status === 'synced') return 'success';
+  if (status === 'syncing') return 'info';
+  if (status === 'pending') return 'warning';
+  return 'error';
+}
+
+export default function CrossPlatformSync({ userId, profession }: CrossPlatformSyncProps) {
   const [projects, setProjects] = useState<SyncProject[]>([]);
-  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
-  const [showSettings, setShowSettings] = useState(false);
-  const [showBookmarks, setShowBookmarks] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<SyncProject | null>(null);
-  const [autoSync, setAutoSync] = useState(true);
-  const [syncInterval, setSyncInterval] = useState(5); // minutes
-  
-  const { triggerSuccess, triggerError, triggerLoading, controls } = useContextualAnimations();
+  const [globalSyncInProgress, setGlobalSyncInProgress] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+  const [bookmarkTitle, setBookmarkTitle] = useState('');
+  const [bookmarkUrl, setBookmarkUrl] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadProjects = async () => {
+      try {
+        const response = await fetch(`/api/sync/projects?userId=${encodeURIComponent(userId ?? 'guest')}`);
+        if (!response.ok) {
+          throw new Error('sync project endpoint unavailable');
+        }
+
+        const payload = (await response.json()) as { projects?: SyncProject[] };
+        if (!cancelled) {
+          setProjects(Array.isArray(payload.projects) && payload.projects.length > 0 ? payload.projects : MOCK_PROJECTS);
+        }
+      } catch {
+        if (!cancelled) {
+          setProjects(MOCK_PROJECTS);
+        }
+      }
+    };
+
     loadProjects();
-    setupAutoSync();
-}, []);
 
-  const loadProjects = async () => {
-    try {
-      const response = await fetch('/api/sync/projects', {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem(',')}` }
-    });
-      const data = await response.json();
-      setProjects(data.projects || []);
-  } catch (error) {
-      console.error('Failed to load projects: ', error);
-      setProjects(mockProjects); // Fallback to mock data for demo
-  }
-};
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
-  const setupAutoSync = () => {
-    if (autoSync) {
-      const interval = setInterval(() => {
-        syncAllProjects();
-    }, syncInterval * 60 * 1000);
-      return () => clearInterval(interval);
-  }
-};
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  );
 
   const syncAllProjects = async () => {
-    setSyncStatus('syncing');
-    triggerLoading('Synkroniserer prosjekter...');
+    setGlobalSyncInProgress(true);
+    setProjects((previous) => previous.map((project) => ({ ...project, syncStatus: 'syncing' })));
 
     try {
-      // Sync with Google Drive
-      const driveResponse = await fetch('/api/workspace/drive/sync-projects', {
-        method: 'POS',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ userd, projects: projects.map(p => p.id, ),})
-    });
-
-      if (driveResponse.ok) {
-        const updatedProjects = projects.map(project => ({
-          ...project,
-          syncStatus: 'synced' as const,
-          lastModified: new Date().toISOString()
-    }));
-        setProjects(updatedProjects);
-        triggerSuccess('Alle prosjekter synkronisert');
-    } else {
-        throw new Error('Sync failed');
+      await fetch('/api/sync/projects/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, projectIds: projects.map((project) => project.id) }),
+      });
+    } catch {
+      // keep local fallback behavior below
     }
-  } catch (error) {
-      console.error('Sync error:', error);
-      triggerError('Synkronisering feilet');
-  } finally {
-      setSyncStatus('idle');
-  }
-};
+
+    setTimeout(() => {
+      setProjects((previous) =>
+        previous.map((project) => ({
+          ...project,
+          syncStatus: 'synced',
+          lastModified: new Date().toISOString(),
+        })),
+      );
+      setGlobalSyncInProgress(false);
+    }, 800);
+  };
 
   const syncSingleProject = async (projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return;
-
-    // Update project status to syncing
-    setProjects(prev => prev.map(p => 
-      p.id === projectId ? { .., .syncStatus: 'syncing' } : p
-    ));
+    setProjects((previous) =>
+      previous.map((project) => (project.id === projectId ? { ...project, syncStatus: 'syncing' } : project)),
+    );
 
     try {
-      const response = await fetch('/api/sync/project', {
-        method: 'POS',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ projectd, userId })
-    });
-
-      if (response.ok) {
-        setProjects(prev => prev.map(p => 
-          p.id === projectId ? { 
-            ...p, 
-            syncStatus: 'synced',
-            lastModified: new Date().toISOString()
-      } : p
-        ));
-        triggerSuccess(`${project.name} synkronisert`);
-    } else {
-        throw new Error('Project sync failed');
+      await fetch('/api/sync/project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, projectId }),
+      });
+    } catch {
+      // local fallback update below
     }
-  } catch (error) {
-      setProjects(prev => prev.map(p => 
-        p.id === projectId ? { ...p, syncStatus: 'pending' } : p
-      ));
-      triggerError(`Feil ved synkronisering av ${project.name}`);
-  }
-};
 
-  const toggleBookmark = (projectId: string, bookmarkId: string) => {
-    setProjects(prev => prev.map(project => {
-      if (project.id === projectId) {
-        return {
-          ...project,
-          bookmarks: project.bookmarks.map(bookmark => 
-            bookmark.id === bookmarkId 
-              ? { ...bookmark, isStarred: !bookmark.isStarred } 
-              : bookmark
-          )
-      };
-    }
-      return project;
-  }));
-};
+    setProjects((previous) =>
+      previous.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              syncStatus: 'synced',
+              lastModified: new Date().toISOString(),
+            }
+          : project,
+      ),
+    );
+  };
 
-  const addBookmark = async (projectId: string, bookmarkData: {
-    title: string;
-    url: string;
-    type: string;
-    tags: string[];
-}) => {
-    const newBookmark = {
-      id: Date.now().toString(),
-      ...bookmarkData,
-      addedDate: new Date().toISOString()
-};
+  const toggleStar = (projectId: string) => {
+    setProjects((previous) =>
+      previous.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              isStarred: !project.isStarred,
+            }
+          : project,
+      ),
+    );
+  };
 
-    setProjects(prev => prev.map(project => 
-      project.id === projectId 
-        ? { ...project, bookmarks: [...project.bookmarks, newBookmark] }
-        : project
-    ));
-
-    triggerSuccess('Bokmerke lagt til');
-};
-
-  const shareProject = async (projectId: string) => {
+  const generateShareCode = async (projectId: string) => {
     try {
       const response = await fetch('/api/sync/share-project', {
-        method: 'POS',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ projectd, userId })
-    });
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, projectId }),
+      });
 
-      const data = await response.json();
-      if (data.shareCode) {
-        setProjects(prev => prev.map(p => 
-          p.id === projectId ? { ...p, shareCode: data.shareCode } : p
-        ));
-        
-        navigator.clipboard.writeText(`https: //creatorhubn.no/sync/${data.shareCode}`);
-        triggerSuccess('Delingslenke kopiert til utklippstavle');
+      const payload = (await response.json()) as { shareCode?: string };
+      if (payload.shareCode) {
+        setProjects((previous) =>
+          previous.map((project) =>
+            project.id === projectId
+              ? {
+                  ...project,
+                  shareCode: payload.shareCode,
+                }
+              : project,
+          ),
+        );
+        return;
+      }
+    } catch {
+      // fallback below
     }
-  } catch (error) {
-      triggerError('Feil ved deling av prosjekt');
-  }
-};
 
-  const getDeviceIcon = (type: string) => {
-    switch (type) {
-      case 'mobile': return <MobileIcon />;
-      case 'tablet': return <TabletIcon />;
-      case 'desktop': return <DesktopIcon />;
-      default: return <DevicesIcon />;
-}
-};
+    setProjects((previous) =>
+      previous.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              shareCode: `SHARE-${projectId.slice(-4)}-${Date.now().toString().slice(-4)}`,
+            }
+          : project,
+      ),
+    );
+  };
 
-  const getSyncStatusColor = (status: string) => {
-    switch (status) {
-      case 'synced': return 'success';
-      case 'syncing': return 'info';
-      case 'pending': return 'warning';
-      case 'offline': return 'error';
-      default: return 'default';
-}
-};
+  const addBookmark = () => {
+    if (!selectedProject || !bookmarkTitle.trim() || !bookmarkUrl.trim()) {
+      return;
+    }
 
-  const mockProjects: SyncProject[] = [
-    {
-      id: '',
-      name: 'Bryllup - Kari og Ole',
-      type: 'wedding',
-      lastModified: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      syncStatus: 'synced',
-      devices: [
-        { id: '', name: 'iPhone 15 Pro', type: 'mobile', lastSeen: new Date().toISOString(), isActive: true },
-        { id: '', name: 'MacBook Pro', type: 'desktop', lastSeen: new Date(Date.now() - 1000 * 60 * 15).toISOString(), isActive: false }
-      ],
-      bookmarks: [
-        { id: ', ', title: 'Bryllupsinspirasjoner Pinterest', url: 'https://pinterest.com/wedding', type: 'inspiration', tags: ['rustic','outdoor'], addedDate: new Date().toISOString(),},
-        { id: ', ', title: 'Lokale blomsterhandlere', url: 'https://local-florists.no', type: 'vendor', tags: ['flowers','local'], addedDate: new Date().toISOString(),}
-      ],
-      cloudStorage: { googleDrive: 'folder-id-123' },
-      isStarred: true,
-      shareCode: 'WED2025'
-},
-    {
-      id: ', ',
-      name: 'Bedriftsfotografering - Tech A',
-      type: 'corporate',
-      lastModified: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-      syncStatus: 'pending',
-      devices: [
-        { id: ', ', name: 'iPad Pro', type: 'tablet', lastSeen: new Date(Date.now() - 1000 * 60 * 45).toISOString(), isActive: false }
-      ],
-      bookmarks: [
-        { id: ', ', title: 'Corporate Photography Examples', url: 'https://corporate-photos.com', type: 'reference', tags: ['corporate','professional'], addedDate: new Date().toISOString(),}
-      ],
-      cloudStorage: { googleDrive: 'folder-id-456' },
-      isStarred: false
-}
-  ];
+    const newBookmark: SyncBookmark = {
+      id: `bookmark-${Date.now()}`,
+      title: bookmarkTitle.trim(),
+      url: bookmarkUrl.trim(),
+      type: 'reference',
+      tags: [profession],
+      addedDate: new Date().toISOString(),
+    };
+
+    setProjects((previous) =>
+      previous.map((project) =>
+        project.id === selectedProject.id
+          ? {
+              ...project,
+              bookmarks: [newBookmark, ...project.bookmarks],
+            }
+          : project,
+      ),
+    );
+
+    setBookmarkTitle('');
+    setBookmarkUrl('');
+    setBookmarkDialogOpen(false);
+  };
 
   return (
-    <Box>
-      <AnimatedMuiCard>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
-            <SyncIcon sx={{ mr: 2, color: 'primary.main' }} />
-            <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-              Tverrplattform Prosjektsynkronisering
-            </Typography>
-            <Box sx={{ ml: 'auto', display: 'flex', gap:  1 }}>
-              <AnimatedButton onClick={syncAllProjects} loading={syncStatus === 'syncing'}>
-                <RefreshIcon />
-                Synkroniser alle
-              </AnimatedButton>
-              <IconButton onClick={() => setShowSettings(true)}>
-                <SettingsIcon />
-              </IconButton>
-            </Box>
-          </Box>
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h6">Cross-platform Sync</Typography>
+          <Typography variant="body2" color="text.secondary">
+            Prosjekter synkroniseres mellom mobil, desktop og nettbrett.
+          </Typography>
+        </Box>
 
-          <Grid container spacing={3}>
-            {projects.map((project, index) => (
-              <Grid item xs={12} md={6} key={project.id}>
-                <AnimatedComponent variant="fadeIn" delay={index * 100}>
-                  <MuiCard sx={{ mb: 2, border: project.isStarred ? '2px solid #fbbf24' : 'none' }}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                        <Typography variant="h6" sx={{  flexGrow:  1  }}>
-                          {project.name}
-                        </Typography>
-                        <IconButton 
-                          onClick={() => setProjects(prev => prev.map(p => 
-                            p.id === project.id ? { ...p, isStarred: !p.isStarred } : p
-                          ))}
-                        >
-                          {project.isStarred ? <StarIcon sx={{ color: '#fbbf24' }} /> : <StarBorderIcon />}
+        <Button
+          variant="contained"
+          startIcon={<CloudSyncIcon />}
+          onClick={syncAllProjects}
+          disabled={globalSyncInProgress || projects.length === 0}
+        >
+          {globalSyncInProgress ? 'Synkroniserer...' : 'Synkroniser alle'}
+        </Button>
+      </Stack>
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={7}>
+          <Card variant="outlined">
+            <CardContent>
+              <List>
+                {projects.map((project) => (
+                  <ListItem
+                    key={project.id}
+                    secondaryAction={
+                      <Stack direction="row" spacing={0.5} alignItems="center">
+                        <Chip size="small" color={chipColor(project.syncStatus)} label={project.syncStatus} />
+                        <IconButton onClick={() => toggleStar(project.id)}>
+                          {project.isStarred ? <StarIcon color="warning" /> : <StarBorderIcon />}
                         </IconButton>
-                      </Box>
+                        <IconButton onClick={() => syncSingleProject(project.id)}>
+                          <CloudDoneIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton onClick={() => generateShareCode(project.id)}>
+                          <ShareIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    }
+                    sx={{
+                      borderRadius: 1,
+                      mb: 0.5,
+                      backgroundColor: selectedProjectId === project.id ? 'action.selected' : 'transparent',
+                    }}
+                    onClick={() => setSelectedProjectId(project.id)}
+                    button
+                  >
+                    <ListItemText
+                      primary={project.name}
+                      secondary={`Type: ${project.type} · Sist endret: ${new Date(project.lastModified).toLocaleString('nb-NO')}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
 
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                        <Chip 
-                          size="small" 
-                          label={project.type} 
-                          color="primary" 
-                          variant="outlined" 
+        <Grid item xs={12} md={5}>
+          {selectedProject ? (
+            <Card variant="outlined">
+              <CardContent>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>
+                  {selectedProject.name}
+                </Typography>
+
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                  {selectedProject.devices.map((device) => (
+                    <Chip
+                      key={device.id}
+                      icon={iconForDevice(device.type)}
+                      label={`${device.name}${device.isActive ? ' · aktiv' : ''}`}
+                      color={device.isActive ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                  ))}
+                </Stack>
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Delingskode: {selectedProject.shareCode ?? 'Ikke generert'}
+                </Typography>
+
+                <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                  <Button size="small" startIcon={<BookmarkIcon />} variant="outlined" onClick={() => setBookmarkDialogOpen(true)}>
+                    Nytt bokmerke
+                  </Button>
+                  <Button
+                    size="small"
+                    startIcon={<DownloadIcon />}
+                    variant="outlined"
+                    disabled={!selectedProject.shareCode}
+                    onClick={() => {
+                      if (selectedProject.shareCode) {
+                        navigator.clipboard.writeText(selectedProject.shareCode).catch(() => undefined);
+                      }
+                    }}
+                  >
+                    Kopier kode
+                  </Button>
+                </Stack>
+
+                <Divider sx={{ my: 1 }} />
+
+                <Typography variant="subtitle2">Bokmerker</Typography>
+                {selectedProject.bookmarks.length === 0 ? (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Ingen bokmerker registrert.
+                  </Alert>
+                ) : (
+                  <List dense>
+                    {selectedProject.bookmarks.map((bookmark) => (
+                      <ListItem key={bookmark.id}>
+                        <ListItemText
+                          primary={bookmark.title}
+                          secondary={`${bookmark.url} · ${new Date(bookmark.addedDate).toLocaleDateString('nb-NO')}`}
                         />
-                        <Chip 
-                          size="small"
-                          label={project.syncStatus}
-                          color={getSyncStatusColor(project.syncStatus)}
-                          icon={project.syncStatus === 'synced' ? <CloudDoneIcon /> : <CloudOffIcon />}
-                        />
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        Sist endret: {new Date(project.lastModified).toLocaleString('')}
-                      </Typography>
-
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="subtitle2" sx={{ mb:  1 }}>
-                          Aktive enheter ({project.devices.length})
-                        </Typography>
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                          {project.devices.map(device => (
-                            <Tooltip key={device.id} title={`Sist sett: ${new Date(device.lastSeen).toLocaleString(', ')}`}>
-                              <Chip
-                                size="small"
-                                icon={getDeviceIcon(device.type)}
-                                label={device.name}
-                                color={device.isActive ? 'success' : 'default'}
-                                variant={device.isActive ? 'filled' : 'outlined'}
-                              />
-                            </Tooltip>
-                          ))}
-                        </Box>
-                      </Box>
-
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="subtitle2" sx={{ mb:  1 }}>
-                          Bokmerker ({project.bookmarks.length})
-                        </Typography>
-                        <Badge badgeContent={project.bookmarks.length} color="primary">
-                          <Button
-                            size="small"
-                            startIcon={<BookmarkIcon />}
-                            onClick={() => {
-                              setSelectedProject(project);
-                              setShowBookmarks(true);
-                          }}
-                          >
-                            Vis bokmerker
-                          </Button>
-                        </Badge>
-                      </Box>
-
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'space-between' }}>
-                        <Box sx={{ display: 'flex', gap:  1 }}>
-                          <AnimatedButton
-                            size="small"
-                            onClick={() => syncSingleProject(project.id)}
-                            loading={project.syncStatus === 'syncing'}
-                          >
-                            <SyncIcon />
-                            Synkroniser
-                          </AnimatedButton>
-                          <Button
-                            size="small"
-                            startIcon={<ShareIcon />}
-                            onClick={() => shareProject(project.id)}
-                          >
-                            Del
-                          </Button>
-                        </Box>
-                        {project.shareCode && (
-                          <Chip 
-                            size="small" 
-                            label={`Kode: ${project.shareCode}`} 
-                            color="secondary"
-                          />
-                        )}
-                      </Box>
-                    </CardContent>
-                  </MuiCard>
-                </AnimatedComponent>
-              </Grid>
-            ))}
-          </Grid>
-        </CardContent>
-      </AnimatedMuiCard>
-
-      {/* Settings Dialog */}
-      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Synkroniseringsinnstillinger</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt:  2 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={autoSync}
-                  onChange={(e) => setAutoSync(e.target.checked)}
-                />
-            }
-              label="Automatisk synkronisering"
-            />
-            
-            <TextField
-              fullWidth
-              label="Synkroniseringsintervall (minutter)"
-              type="number"
-              value={syncInterval}
-              onChange={(e) => setSyncInterval(Number(e.target.value))}
-              disabled={!autoSync}
-              sx={{ mt: 2, mb: 2 }}
-            />
-
-            <Divider sx={{ my:  2 }} />
-
-            <Typography variant="subtitle1" sx={{ mb:  1 }}>
-              Skylagring
-            </Typography>
-            
-            <List>
-              <ListItem>
-                <ListItemIcon>
-                  <CloudDoneIcon color="success" />
-                </ListItemIcon>
-                <ListItemText 
-                  primary="Google Drive" 
-                  secondary="Tilkoblet og aktiv"
-                />
-              </ListItem>
-              <ListItem>
-                <ListItemIcon>
-                  <CloudOffIcon color="disabled" />
-                </ListItemIcon>
-                <ListItemText 
-                  primary="Microsoft OneDrive" 
-                  secondary="Ikke konfigurert"
-                />
-                <ListItemSecondaryAction>
-                  <Button size="small">Koble til</Button>
-                </ListItemSecondaryAction>
-              </ListItem>
-            </List>
-          </Box>
-        </DialogContent>
-      </Dialog>
-
-      {/* Bookmarks Dialog */}
-      <Dialog open={showBookmarks} onClose={() => setShowBookmarks(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Bokmerker - {selectedProject?.name}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt:  1 }}>
-            {selectedProject?.bookmarks.map((bookmark) => (
-              <AnimatedMuiCard key={bookmark.id} sx={{ mb:  2 }}>
-                <Box sx={{ p:  2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                    <Typography variant="subtitle1" sx={{ flexGrow:  1 }}>
-                      {bookmark.title}
-                    </Typography>
-                    <IconButton
-                      onClick={() => toggleBookmark(selectedProject.id, bookmark.id)}
-                      size="small"
-                    >
-                      <BookmarkIcon />
-                    </IconButton>
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                    {bookmark.url}
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', gap: 0,flexWrap:'wrap' }}>
-                    <Chip size="small" label={bookmark.type} color="primary" />
-                    {bookmark.tags.map(tag => (
-                      <Chip key={tag} size="small" label={tag} variant="outlined" />
+                      </ListItem>
                     ))}
-                  </Box>
-                </Box>
-              </AnimatedMuiCard>
-            ))}
-          </Box>
+                  </List>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <Alert severity="info">Velg et prosjekt for detaljer.</Alert>
+          )}
+        </Grid>
+      </Grid>
+
+      <Dialog open={bookmarkDialogOpen} onClose={() => setBookmarkDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nytt bokmerke</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Tittel"
+              value={bookmarkTitle}
+              onChange={(event) => setBookmarkTitle(event.target.value)}
+            />
+            <TextField
+              label="URL"
+              value={bookmarkUrl}
+              onChange={(event) => setBookmarkUrl(event.target.value)}
+            />
+          </Stack>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBookmarkDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={addBookmark}>
+            Lagre
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

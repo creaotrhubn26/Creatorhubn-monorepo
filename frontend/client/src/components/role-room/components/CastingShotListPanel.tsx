@@ -39,7 +39,6 @@ import {
   InputLabel,
   Chip,
   Stack,
-  Grid,
   Paper,
   Tooltip,
   Collapse,
@@ -65,6 +64,7 @@ import {
   Divider as MuiDivider,
   LinearProgress,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -101,9 +101,10 @@ import {
   Lock as ReserveIcon,
   LockOpen as UnreserveIcon,
   ArrowForward as NextIcon,
+  Storage as StorageIcon,
 } from '@mui/icons-material';
 import { TeamIcon, DashboardCustomIcon as DashboardIcon, StatsIcon } from './icons/CastingIcons';
-import { TeamDashboard } from './TeamDashboard';
+import { TeamDashboard, type TeamDashboardCrewSegment } from './TeamDashboard';
 import type { ShotList, CastingShot, ShotType, CameraAngle, CameraMovement, Role, ProductionDay, MediaType, ShotPriority, CrewMember, ShotComment, ShotStatus, UserRoleType, ProductionContext } from '../models/casting';
 import { PRODUCTION_PRESETS } from '../models/casting';
 import { castingService } from '../services/castingService';
@@ -127,6 +128,7 @@ const ShotPlannerPanel = lazy(() =>
 );
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import scenesPng from './icons/Keep/roleroom_scenes.png';
+import MemoryCardBackupControlDialog from './MemoryCardBackupControlDialog';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px
 const TOUCH_TARGET_SIZE = 44;
@@ -137,6 +139,16 @@ const focusVisibleStyles = {
     outline: '3px solid #e91e63',
     outlineOffset: 2,
   },
+};
+
+const SHOT_COLOR_TAG_MAP: Record<string, string> = {
+  red: '#f44336',
+  orange: '#9333ea',
+  yellow: '#ffeb3b',
+  green: '#4caf50',
+  blue: '#2196f3',
+  purple: '#9c27b0',
+  gray: '#9e9e9e',
 };
 
 type SortField = 'scene' | 'shots' | 'updated';
@@ -211,9 +223,17 @@ interface CastingShotListPanelProps {
   projectId: string;
   onUpdate?: () => void;
   profession?: 'photographer' | 'videographer' | null;
+  teamDashboardOpenSignal?: number;
+  teamDashboardDefaultSegment?: TeamDashboardCrewSegment;
 }
 
-export function CastingShotListPanel({ projectId, onUpdate, profession }: CastingShotListPanelProps) {
+export function CastingShotListPanel({
+  projectId,
+  onUpdate,
+  profession,
+  teamDashboardOpenSignal = 0,
+  teamDashboardDefaultSegment = 'all',
+}: CastingShotListPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -340,9 +360,20 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [showStats, setShowStats] = useState(false);
   const [showTeamDashboard, setShowTeamDashboard] = useState(false);
+  const [teamDashboardCrewSegment, setTeamDashboardCrewSegment] = useState<TeamDashboardCrewSegment>(teamDashboardDefaultSegment);
   const [showStoryboardManager, setShowStoryboardManager] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [memoryCardControlOpen, setMemoryCardControlOpen] = useState(false);
   const [exportSceneId, setExportSceneId] = useState<string | null>(null);
+  const lastTeamDashboardOpenSignalRef = useRef(0);
+
+  useEffect(() => {
+    if (teamDashboardOpenSignal > lastTeamDashboardOpenSignalRef.current) {
+      setTeamDashboardCrewSegment(teamDashboardDefaultSegment);
+      setShowTeamDashboard(true);
+    }
+    lastTeamDashboardOpenSignalRef.current = teamDashboardOpenSignal;
+  }, [teamDashboardOpenSignal, teamDashboardDefaultSegment]);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -573,7 +604,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     return sceneById.get(sceneId)?.name || sceneId;
   };
 
-  const getRoleName = (roleId: string): string => {
+  const getRoleName = (roleId?: string): string => {
+    if (!roleId) return '';
     return roleById.get(roleId)?.name || roleId;
   };
 
@@ -607,7 +639,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const getProfileById = (profileId?: string): { name: string; email?: string; avatar?: string } | null => {
     if (!profileId) return null;
     if (user && profileId === user.id) {
-      return { name: user.name || 'Meg', email: user.email, avatar: user.avatar };
+      return { name: user.name || 'Meg', email: user.email, avatar: getUserAvatarUrl() };
     }
     const crewMember = crewMembers.find((member) => member.id === profileId);
     if (crewMember) {
@@ -638,6 +670,26 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       .join('');
   };
 
+  const getUserAvatarUrl = (): string | undefined => {
+    const avatarCandidate = user as { avatar?: unknown; picture?: unknown } | null;
+    if (typeof avatarCandidate?.avatar === 'string' && avatarCandidate.avatar.trim()) {
+      return avatarCandidate.avatar;
+    }
+    if (typeof avatarCandidate?.picture === 'string' && avatarCandidate.picture.trim()) {
+      return avatarCandidate.picture;
+    }
+    return undefined;
+  };
+
+  const getCommentText = (comment: ShotComment): string => {
+    if (typeof comment.text === 'string' && comment.text.trim()) return comment.text;
+    return typeof comment.message === 'string' ? comment.message : '';
+  };
+
+  const formatOptionalDate = (value?: string): string => {
+    return value ? new Date(value).toLocaleDateString('nb-NO') : '—';
+  };
+
   // Find related storyboard for a shot list
   const findRelatedStoryboard = useCallback((shotList: ShotList) => {
     const sceneName = getSceneName(shotList.sceneId, shotList.sceneName);
@@ -660,7 +712,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
     if (storyboardFrameImage) return storyboardFrameImage.thumbnailUrl || storyboardFrameImage.imageUrl;
 
     const shotImage = shotList.shots.find((shot) => shot.imageUrl);
-    return shotImage?.imageUrl;
+    return typeof shotImage?.imageUrl === 'string' ? shotImage.imageUrl : undefined;
   };
 
   const getShotTypeLabel = (type: ShotType): string => {
@@ -978,8 +1030,9 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
   const handleAddComment = () => {
     if (!commentDraft.trim()) return;
     const authorProfile = user
-      ? { name: user.name || 'Team', email: user.email, avatar: user.avatar }
+      ? { name: user.name || 'Team', email: user.email, avatar: getUserAvatarUrl() }
       : null;
+    const trimmedComment = commentDraft.trim();
     const newComment: ShotComment = {
       id: `shot-comment-${Date.now()}`,
       authorId: user?.id,
@@ -987,7 +1040,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       authorEmail: authorProfile?.email,
       authorAvatar: authorProfile?.avatar,
       authorRole: currentUserRole || undefined,
-      message: commentDraft.trim(),
+      text: trimmedComment,
+      message: trimmedComment,
       resolved: false,
       createdAt: new Date().toISOString(),
     };
@@ -1010,14 +1064,19 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
 
   const handleStartEditComment = (comment: ShotComment) => {
     setEditingCommentId(comment.id);
-    setEditingCommentDraft(comment.message);
+    setEditingCommentDraft(getCommentText(comment));
   };
 
   const handleSaveEditedComment = () => {
     if (!editingCommentId) return;
     const updatedComments = (shotFormData.comments || []).map((comment) =>
       comment.id === editingCommentId
-        ? { ...comment, message: editingCommentDraft.trim(), updatedAt: new Date().toISOString() }
+        ? {
+            ...comment,
+            text: editingCommentDraft.trim(),
+            message: editingCommentDraft.trim(),
+            updatedAt: new Date().toISOString(),
+          }
         : comment
     );
     setShotFormData({ ...shotFormData, comments: updatedComments });
@@ -1375,9 +1434,10 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
       pdf.setTextColor(50, 50, 50);
       pdf.text(`Shot ${i + 1}: ${getShotTypeLabel(shot.shotType)}`, margin + 5, yPos + 8);
 
-      if (shot.imageUrl && !shot.imageUrl.startsWith('data:')) {
+      const shotImageUrl = typeof shot.imageUrl === 'string' ? shot.imageUrl : undefined;
+      if (shotImageUrl && !shotImageUrl.startsWith('data:')) {
         try {
-          const response = await fetch(shot.imageUrl);
+          const response = await fetch(shotImageUrl);
           const blob = await response.blob();
           const base64 = await new Promise<string>((resolve) => {
             const reader = new FileReader();
@@ -1392,9 +1452,9 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           pdf.setFontSize(8);
           pdf.text('Bilde ikke tilgjengelig', margin + 15, yPos + 35);
         }
-      } else if (shot.imageUrl?.startsWith('data:')) {
+      } else if (shotImageUrl?.startsWith('data:')) {
         try {
-          pdf.addImage(shot.imageUrl, 'PNG', margin + 5, yPos + 12, imageWidth, imageHeight);
+          pdf.addImage(shotImageUrl, 'PNG', margin + 5, yPos + 12, imageWidth, imageHeight);
         } catch (error) {
           console.error('Error adding base64 image to PDF:', error);
         }
@@ -2365,7 +2425,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
               <td>${sl.shots.length}</td>
               <td>${sl.shots.map((s) => getShotTypeLabel(s.shotType)).join(', ') || '-'}</td>
               <td>${sl.notes || '-'}</td>
-              <td>${new Date(sl.updatedAt).toLocaleDateString('nb-NO')}</td>
+              <td>${formatOptionalDate(sl.updatedAt)}</td>
             </tr>`
               )
               .join('')}
@@ -2544,7 +2604,10 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           <Tooltip title="Åpne Team Dashboard">
             <Button
               variant="outlined"
-              onClick={() => setShowTeamDashboard(true)}
+              onClick={() => {
+                setTeamDashboardCrewSegment('all');
+                setShowTeamDashboard(true);
+              }}
               aria-label="Åpne team dashboard"
               sx={{
                 minHeight: TOUCH_TARGET_SIZE,
@@ -2598,6 +2661,26 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
             >
               <PdfIcon />
               {!isMobile && <Box component="span" sx={{ ml: 1 }}>Eksporter</Box>}
+            </Button>
+          </Tooltip>
+
+          <Tooltip title="Backup kontroll system (3-2-1 + loggbok)">
+            <Button
+              variant="outlined"
+              onClick={() => setMemoryCardControlOpen(true)}
+              aria-label="Åpne minnekort backup-kontroll"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: '#4fc3f7',
+                borderColor: '#4fc3f7',
+                px: { xs: 1, sm: 2 },
+                ...focusVisibleStyles,
+                '&:hover': { bgcolor: 'rgba(79,195,247,0.12)' },
+              }}
+            >
+              <StorageIcon />
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Kortkontroll</Box>}
             </Button>
           </Tooltip>
 
@@ -3127,7 +3210,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                   </TableCell>
                   <TableCell>
                     <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      {new Date(shotList.updatedAt).toLocaleDateString('nb-NO')}
+                      {formatOptionalDate(shotList.updatedAt)}
                     </Typography>
                   </TableCell>
                   <TableCell align="right">
@@ -3240,8 +3323,9 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                         const unassigned = shotList.shots.filter(s => !s.assigneeId && !s.reservedBy).length;
                         const noEst = shotList.shots.filter(s => !s.estimatedTime).length;
                         const productionDay = shotListProductionDays.get(shotList.id);
-                        const daysUntil = productionDay
-                          ? Math.ceil((new Date(productionDay.date).getTime() - Date.now()) / 86_400_000)
+                        const productionDate = productionDay?.date;
+                        const daysUntil = productionDate
+                          ? Math.ceil((new Date(productionDate).getTime() - Date.now()) / 86_400_000)
                           : null;
                         const nearDeadline = daysUntil !== null && daysUntil >= 0 && daysUntil <= 3;
                         const notStartedCount = shotList.shots.filter(s => (s.status || 'not_started') === 'not_started').length;
@@ -3574,15 +3658,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                                         width: 4,
                                         height: 28,
                                         borderRadius: 1,
-                                        bgcolor: {
-                                          red: '#f44336',
-                                          orange: '#9333ea',
-                                          yellow: '#ffeb3b',
-                                          green: '#4caf50',
-                                          blue: '#2196f3',
-                                          purple: '#9c27b0',
-                                          gray: '#9e9e9e',
-                                        }[shot.colorTag],
+                                        bgcolor: SHOT_COLOR_TAG_MAP[shot.colorTag] ?? '#9e9e9e',
                                         flexShrink: 0,
                                       }}
                                     />
@@ -5303,7 +5379,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                             textDecoration: comment.resolved ? 'line-through' : 'none',
                           }}
                         >
-                          {comment.message}
+                          {getCommentText(comment)}
                         </Typography>
                       )}
                     </Box>
@@ -6235,6 +6311,8 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
               crewMembers={crewMembers}
               currentUserId={user?.id}
               projectId={projectId}
+              crewSegment={teamDashboardCrewSegment}
+              onCrewSegmentChange={setTeamDashboardCrewSegment}
               scenes={[]}
               onShotUpdate={async (shotList, shot) => {
                 // Optimistic update: Update state immediately
@@ -6259,6 +6337,7 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
                   if (onUpdate) onUpdate();
                 } catch (error) {
                   console.error('Error saving shot update:', error);
+                  toast.showWarning('Lagring feilet. Endringen ble rullet tilbake.');
                   // Revert optimistic update on error
                   const lists = await castingService.getShotLists(projectId);
                   setShotLists(Array.isArray(lists) ? lists : []);
@@ -6625,6 +6704,18 @@ export function CastingShotListPanel({ projectId, onUpdate, profession }: Castin
           )}
         </DialogActions>
       </Dialog>
+
+      <MemoryCardBackupControlDialog
+        open={memoryCardControlOpen}
+        onClose={() => setMemoryCardControlOpen(false)}
+        projectId={projectId}
+        shotLists={shotLists}
+        crewOptions={crewMembers.map((member) => ({
+          id: member.id,
+          name: member.name,
+          role: member.role,
+        }))}
+      />
 
       {/* Bulk Delete Confirmation Dialog */}
       <Dialog

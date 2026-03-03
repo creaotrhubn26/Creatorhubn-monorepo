@@ -338,7 +338,7 @@ export const LIGHT_ANIMATION_PRESETS: Record<string, CameraAnimationPreset> = {
     name: 'Color Cycle',
     duration: 5,
     parameters: {
-      colors: ['#ff0000','#00ff00''#0000ff'],
+      colors: ['#ff0000', '#00ff00', '#0000ff'],
     },
     tracks: [
       {
@@ -912,4 +912,3 @@ export class AnimationBlendingService {
 export const animationBlendingService = new AnimationBlendingService();
 
 export default animationBlendingService;
-

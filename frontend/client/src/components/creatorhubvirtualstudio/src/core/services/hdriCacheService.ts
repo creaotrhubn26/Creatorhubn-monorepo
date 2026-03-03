@@ -238,7 +238,7 @@ class HDRICacheService {
     if (!this.db) return null;
 
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction(this.config.storeName'readwrite');
+      const transaction = this.db!.transaction(this.config.storeName, 'readwrite');
       const store = transaction.objectStore(this.config.storeName);
       const request = store.get(id);
 
@@ -287,7 +287,7 @@ class HDRICacheService {
     // Check local cache
     if (this.db) {
       return new Promise((resolve) => {
-        const transaction = this.db!.transaction(this.config.storeName'readonly');
+        const transaction = this.db!.transaction(this.config.storeName, 'readonly');
         const store = transaction.objectStore(this.config.storeName);
         const request = store.count(id);
         request.onsuccess = () => resolve(request.result > 0);
@@ -329,7 +329,7 @@ class HDRICacheService {
       };
 
       await new Promise<void>((resolve, reject) => {
-        const transaction = this.db!.transaction(this.config.storeName'readwrite');
+        const transaction = this.db!.transaction(this.config.storeName, 'readwrite');
         const store = transaction.objectStore(this.config.storeName);
         const request = store.put(cached);
         request.onsuccess = () => resolve();
@@ -400,7 +400,7 @@ class HDRICacheService {
     if (!this.db) return;
 
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction(this.config.storeName'readwrite');
+      const transaction = this.db!.transaction(this.config.storeName, 'readwrite');
       const store = transaction.objectStore(this.config.storeName);
       const index = store.index('lastAccessedAt');
       const request = index.openCursor();
@@ -447,7 +447,7 @@ class HDRICacheService {
     if (!this.db) return defaultStats;
 
     return new Promise((resolve) => {
-      const transaction = this.db!.transaction(this.config.storeName'readonly');
+      const transaction = this.db!.transaction(this.config.storeName, 'readonly');
       const store = transaction.objectStore(this.config.storeName);
       const request = store.openCursor();
 
@@ -483,7 +483,7 @@ class HDRICacheService {
     // Clear local
     if (this.db) {
       await new Promise<void>((resolve, reject) => {
-        const transaction = this.db!.transaction(this.config.storeName'readwrite');
+        const transaction = this.db!.transaction(this.config.storeName, 'readwrite');
         const store = transaction.objectStore(this.config.storeName);
         const request = store.clear();
         request.onsuccess = () => resolve();
@@ -515,7 +515,7 @@ class HDRICacheService {
     
     if (this.db) {
       await new Promise<void>((resolve) => {
-        const transaction = this.db!.transaction(this.config.storeName'readonly');
+        const transaction = this.db!.transaction(this.config.storeName, 'readonly');
         const store = transaction.objectStore(this.config.storeName);
         const request = store.getAllKeys();
         request.onsuccess = () => {

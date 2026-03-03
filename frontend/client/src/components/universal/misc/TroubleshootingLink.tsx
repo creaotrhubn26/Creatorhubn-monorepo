@@ -1,22 +1,34 @@
-import { useTheming } from '../../../utils/theming-helper';
 import React from 'react';
-import { Button } from '@mui/material';
-import { Link } from'wouter';
-import { SettingsOutlined, TrendingUp } from '@mui/icons-material';
-export function TroubleshootingLink() { return (
-  // Theming system
+import { Button, Tooltip } from '@mui/material';
+import { Link } from 'wouter';
+import { TrendingUp } from '@mui/icons-material';
+import { useTheming } from '../../../utils/theming-helper';
+
+export function TroubleshootingLink() {
   const theming = useTheming('photographer');
-    <div className="flex flex-col items-center justify-center min-h-screen">
+
+  return (
+    <Tooltip title="Apne feilsoking og systemstatus">
       <Link href="/troubleshooting">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95  backdrop-blur-lg hover: bg-gradient-to-br from-white/95 via-amber-50/20 to-white/95  border-amber-200/50 shadow-lg"
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<TrendingUp />}
+          sx={{
+            borderColor: theming.colors.accent,
+            color: theming.colors.primary,
+            '&:hover': {
+              borderColor: theming.colors.primary,
+              backgroundColor: `${theming.colors.light}66`,
+            },
+          }}
         >
-          <TrendingUp className="w-4 h-4 mr-2" />
           System Status
         </Button>
       </Link>
-    </div>
-  ) }
+    </Tooltip>
+  );
+}
+
 export default TroubleshootingLink;
+

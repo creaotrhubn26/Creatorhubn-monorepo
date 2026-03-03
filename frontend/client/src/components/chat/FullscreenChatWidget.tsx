@@ -137,6 +137,43 @@ interface ChatMessage {
 }>;
 }
 
+interface GoogleProjectSpace {
+  spaced: string;
+  spaceName: string;
+  projectType: string;
+  status: string;
+  projectName: string;
+  clientName: string;
+  lastActivity: string;
+  unreadCount: number;
+  milestones?: unknown;
+  memberCount?: number;
+}
+
+interface AdminUserListItem {
+  status?: 'online' | 'away' | 'offline';
+  name: string;
+  firstName?: string;
+  lastName?: string;
+  isVip?: boolean;
+  isPremium?: boolean;
+  email?: string;
+  messages?: number;
+}
+
+interface LeadListItem {
+  name: string;
+  messages: number;
+  value: string;
+  score: number;
+}
+
+interface SaleListItem {
+  project: string;
+  client: string;
+  value: string;
+}
+
 export default function FullscreenChatWidget({ 
   open, 
   onClose, 
@@ -160,7 +197,7 @@ export default function FullscreenChatWidget({
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showContactInfo, setShowContactInfo] = useState(false);
-  const [activeTab, setActiveTab] = useState(initialChatType === 'support,' ? 2 : 0); // Default to support tab if support ticket
+  const [activeTab, setActiveTab] = useState(initialChatType === 'support' ? 2 : 0); // Default to support tab if support ticket
 
   // Evendi Chat Bridge State
   const [evendiConvs, setEvendiConvs] = useState<any[]>([]);
@@ -405,7 +442,7 @@ export default function FullscreenChatWidget({
         .then(response => response.json())
         .then(data => {
           if (data.success) {
-            const formattedSpaces = data.spaces.map(space => ({
+            const formattedSpaces = (Array.isArray(data.spaces) ? data.spaces : []).map((space: GoogleProjectSpace) => ({
               id: space.spaced,
               name: space.spaceName,
               spaceName: space.spaceName,
@@ -778,7 +815,7 @@ export default function FullscreenChatWidget({
                     sx={{
                       width:  8,
                       height:  8,
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#',
                       border: '1px solid white'
               }}
@@ -924,7 +961,7 @@ export default function FullscreenChatWidget({
                         sx={{
                           width:  8,
                           height:  8,
-                          borderRadius: '50, %',
+                          borderRadius: '50%',
                           backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#f44336'
                   }}
                       />
@@ -1261,7 +1298,7 @@ export default function FullscreenChatWidget({
                     </Typography>
                     
                     {/* Unread indicator for chat */}
-	                    {activeTab !== 0 && selectedContact?.unreadCount > 0 && (
+		                    {activeTab !== 0 && (selectedContact?.unreadCount ?? 0) > 0 && (
 	                      <Box
 	                        sx={{
 	                          width: 8,
@@ -1943,7 +1980,7 @@ export default function FullscreenChatWidget({
                                         width:  8,
                                         height:  8,
                                         bgcolor: activeTab === 0 ? '#4CAF50' : '#',
-                                        borderRadius: '50, %',
+                                        borderRadius: '50%',
                                         border: '1px solid white'
                                 }} />
                                     )}
@@ -2004,7 +2041,7 @@ export default function FullscreenChatWidget({
                       </Box>
 
                       <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        Smart analyse av kundens melding: "{needsHelpMessage?.content?.slice, (80)}..."
+	                        Smart analyse av kundens melding: "{needsHelpMessage?.content?.slice(0, 80)}..."
                       </Typography>
 
                       {analyzeMessageMutation.data.suggestions?.map((suggestion: any, index: number) => (
@@ -2110,7 +2147,7 @@ export default function FullscreenChatWidget({
               <Box sx={{ 
                 width: 10, 
                 height: 10, 
-                borderRadius: '50, %',
+                borderRadius: '50%',
                 bgcolor: `${getProfessionColor()}20`,
                 display: 'flex',
                 alignItems: 'center',
@@ -3298,7 +3335,7 @@ export default function FullscreenChatWidget({
                   </Typography>
 
                   <List sx={{ maxHeight: '400px', overflow: 'auto'}}>
-                    {(adminUsers?.data || []).map((user, index) => (
+                    {(adminUsers?.data || []).map((user: AdminUserListItem, index: number) => (
                       <ListItem
                         key={index}
                         sx={{ 
@@ -3547,7 +3584,7 @@ export default function FullscreenChatWidget({
                     🔥 Hottest Leads (Chat-basert)
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1}}>
-                    {(leadsData?.hotLeads || []).map((lead, index) => (
+                    {(leadsData?.hotLeads || []).map((lead: LeadListItem, index: number) => (
                       <Paper key={index} sx={{ p: 2, bgcolor: '#', borderRadius: 1, border: '1px solid #4CAF50',  ...theming.getThemedCardSx() }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                           <Box>
@@ -3724,7 +3761,7 @@ export default function FullscreenChatWidget({
                     🏆 Top Chat Salg (denne måneden)
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap:  1 }}>
-                    {(salesData?.topSales || []).map((sale, index) => (
+                    {(salesData?.topSales || []).map((sale: SaleListItem, index: number) => (
                       <Box key={index} sx={{ 
                         display: 'flex', 
                         justifyContent: 'space-between', 
@@ -4645,7 +4682,7 @@ export default function FullscreenChatWidget({
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap:  3 }}>
                 {/* Language Detection */}
                 <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600,  ...{ color: theming.colors.primary  }}}>
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600 }}>
                     🔍 Automatisk Språkdeteksjon
                   </Typography>
                   
@@ -4656,7 +4693,7 @@ export default function FullscreenChatWidget({
                     <Box sx={{  display: 'flex', flexDirection: 'column', gap:  1,  ...{ color: theming.colors.primary  }}}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between'}}>
                         <Typography variant="body2">🇳🇴 Norsk (bokmål):</Typography>
-                        <Typography variant="body2" sx={{  fontWeight: 600, color: '#673AB7',  ...{ color: theming.colors.primary  }}}>{chatStats?.translationAccuracy || '78%'}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#673AB7' }}>{chatStats?.translationAccuracy || '78%'}</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between'}}>
                         <Typography variant="body2">🇬🇧 Engelsk: </Typography>
@@ -4691,7 +4728,7 @@ export default function FullscreenChatWidget({
 
                 {/* Translation Service */}
                 <Paper sx={{ p:  3, border: '1px solid #', borderRadius:  2,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6" sx={{  mb: 2, color: '#', fontWeight: 600,  ...{ color: theming.colors.primary  }}}>
+                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary, fontWeight: 600 }}>
                     🔄 Live Oversettelsestjeneste
                   </Typography>
                   
@@ -4702,11 +4739,11 @@ export default function FullscreenChatWidget({
                     <Box sx={{  display: 'flex', flexDirection: 'column', gap:  1,  ...{ color: theming.colors.primary  }}}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between'}}>
                         <Typography variant="body2">Meldinger oversatt i dag: </Typography>
-                        <Typography variant="body2" sx={{  fontWeight: 600, color: '#2196F3',  ...{ color: theming.colors.primary  }}}>247</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196F3' }}>247</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between'}}>
                         <Typography variant="body2">Oversettelsesnøyaktighet: </Typography>
-                        <Typography variant="body2" sx={{  fontWeight: 600, color: '#4CAF50',  ...{ color: theming.colors.primary  }}} >0.8 sek</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: '#4CAF50' }}>0.8 sek</Typography>
                       </Box>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between'}}>
                         <Typography variant="body2">Gj.snitt responstid: </Typography>

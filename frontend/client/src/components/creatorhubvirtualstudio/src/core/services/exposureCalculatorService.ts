@@ -80,31 +80,48 @@ export interface SceneExposureAnalysis {
 
 export const MODIFIER_LIGHT_LOSS: Record<string, number> = {
   // Direct/Bare
-  'bare': 0'standard': 0'reflector': 0,
+  bare: 0,
+  standard: 0,
+  reflector: 0,
   
   // Softboxes
-  'softbox': 1.5'softbox-small': 1.3'softbox-large': 1.7'stripbox': 1.5'octabox': 1.5,
+  softbox: 1.5,
+  'softbox-small': 1.3,
+  'softbox-large': 1.7,
+  stripbox: 1.5,
+  octabox: 1.5,
   
   // Umbrellas
-  'umbrella': 1.0'umbrella-shoot-through': 1.5'umbrella-reflective': 0.8'umbrella-white': 1.2'umbrella-silver': 0.8,
+  umbrella: 1.0,
+  'umbrella-shoot-through': 1.5,
+  'umbrella-reflective': 0.8,
+  'umbrella-white': 1.2,
+  'umbrella-silver': 0.8,
   
   // Dishes
-  'beautydish': 0.7'beauty-dish': 0.7,
+  beautydish: 0.7,
+  'beauty-dish': 0.7,
   
   // Grids/Snoots (don't lose light, just focus it)
-  'grid': 0.5'snoot': 0.3'spot': 0.3,
+  grid: 0.5,
+  snoot: 0.3,
+  spot: 0.3,
   
   // Diffusion
-  'scrim': 1.0'silk': 1.5'diffusion': 1.0,
+  scrim: 1.0,
+  silk: 1.5,
+  diffusion: 1.0,
   
   // Panels
-  'panel': 0'led-panel': 0,
+  panel: 0,
+  'led-panel': 0,
   
   // Flash
-  'flash': 0'speedlite': 0,
+  flash: 0,
+  speedlite: 0,
   
   // Ring
-  'ring': 0.5,
+  ring: 0.5,
 };
 
 // =============================================================================
@@ -113,25 +130,35 @@ export const MODIFIER_LIGHT_LOSS: Record<string, number> = {
 
 export const FLASH_SYNC_SPEEDS: Record<string, number> = {
   // Canon
-  'canon': 1/200'canon-r5': 1/200'canon-r6': 1/200'canon-r3': 1/200'canon-5d': 1/200,
+  canon: 1 / 200,
+  'canon-r5': 1 / 200,
+  'canon-r6': 1 / 200,
+  'canon-r3': 1 / 200,
+  'canon-5d': 1 / 200,
   
   // Sony
-  'sony': 1/250'sony-a7': 1/250'sony-a9': 1/250'sony-a1': 1/400,  // Electronic shutter
+  sony: 1 / 250,
+  'sony-a7': 1 / 250,
+  'sony-a9': 1 / 250,
+  'sony-a1': 1 / 400,  // Electronic shutter
   
   // Nikon
-  'nikon': 1/250'nikon-z9': 1/200'nikon-z8': 1/200,
+  nikon: 1 / 250,
+  'nikon-z9': 1 / 200,
+  'nikon-z8': 1 / 200,
   
   // Fujifilm
-  'fujifilm': 1/250'fujifilm-gfx': 1/125, // Medium format
+  fujifilm: 1 / 250,
+  'fujifilm-gfx': 1 / 125, // Medium format
   
   // Panasonic
-  'panasonic': 1/250,
+  panasonic: 1 / 250,
   
   // Leica
-  'leica': 1/180,
+  leica: 1 / 180,
   
   // Default
-  'default': 1/200,
+  default: 1 / 200,
 };
 
 // =============================================================================
@@ -140,34 +167,37 @@ export const FLASH_SYNC_SPEEDS: Record<string, number> = {
 
 export const MOUNT_COMPATIBILITY: Record<string, string[]> = {
   // Canon RF cameras accept
-  'rf': ['rf']'rf-adapter': ['rf','ef'],
+  rf: ['rf'],
+  'rf-adapter': ['rf', 'ef'],
   
   // Canon EF cameras accept
-  'ef': ['ef','ef-s'],
+  ef: ['ef', 'ef-s'],
   
   // Sony E-mount accepts
-  'fe': ['fe','e']'e': ['e'],
+  fe: ['fe', 'e'],
+  e: ['e'],
   
   // Nikon Z accepts
-  'z': ['z']'z-adapter': ['z','f'],
+  z: ['z'],
+  'z-adapter': ['z', 'f'],
   
   // Nikon F accepts
-  'f': ['f','f-dx'],
+  f: ['f', 'f-dx'],
   
   // Fujifilm X accepts
-  'x': ['x'],
+  x: ['x'],
   
   // Fujifilm GFX accepts
-  'gfx': ['gfx','g'],
+  gfx: ['gfx', 'g'],
   
   // Panasonic/Leica L-mount
-  'l': ['l'],
+  l: ['l'],
   
   // Micro Four Thirds
-  'mft': ['mft'],
+  mft: ['mft'],
   
   // Universal (manual lenses)
-  'universal': ['universal','ef','f','a','sa'],
+  universal: ['universal', 'ef', 'f', 'a', 'sa'],
 };
 
 // =============================================================================
@@ -365,7 +395,7 @@ class ExposureCalculatorService {
     let iso = 100;
     
     // Calculate what EV we have
-    let currentEV = this.calculateEV(aperture, shutter, iso);
+    const currentEV = this.calculateEV(aperture, shutter, iso);
     const evDiff = targetEV - currentEV;
     
     // Adjust based on priority
@@ -426,7 +456,7 @@ class ExposureCalculatorService {
    */
   getFlashSyncSpeed(cameraBrand?: string, cameraModel?: string): number {
     if (cameraModel) {
-      const modelKey = cameraModel.toLowerCase().replace(/\s+/g'-');
+      const modelKey = cameraModel.toLowerCase().replace(/\s+/g, '-');
       if (FLASH_SYNC_SPEEDS[modelKey]) {
         return FLASH_SYNC_SPEEDS[modelKey];
       }
@@ -697,4 +727,3 @@ class ExposureCalculatorService {
 // Export singleton
 export const exposureCalculator = new ExposureCalculatorService();
 export default exposureCalculator;
-

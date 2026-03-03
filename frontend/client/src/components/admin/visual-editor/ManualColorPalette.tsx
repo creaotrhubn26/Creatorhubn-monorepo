@@ -142,7 +142,7 @@ export const ManualColorPalette: React.FC<ManualColorPaletteProps> = ({
   };
 
   // Popular preset palettes
-  const presets = [
+  const presets: Array<{ name: string; palette: ColorPalette }> = [
     {
       name: 'Ocean Blue',
       palette: {
@@ -301,7 +301,7 @@ export const ManualColorPalette: React.FC<ManualColorPaletteProps> = ({
                           cursor: 'pointer',
                           borderRadius: 4}} />
                     ),
-                  }
+                  }}
                 />
               </Box>
               <Tooltip title={copied === 'primary' ? 'Copied!' : 'Copy'}>

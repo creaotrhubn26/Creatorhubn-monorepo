@@ -199,7 +199,7 @@ const TouchGestures: React.FC<TouchGesturesProps> = ({
         setGestureFeedback('Tap Detected');
         onTap?.(end.x, end.y);
         onGesture?.(event);
-        lastTapRef.current = { x: end, .y: end, .time: now };
+        lastTapRef.current = { x: end.x, y: end.y, time: now };
     }
   } else if (distance >= gestures.threshold) {
       // Swipe
@@ -486,4 +486,3 @@ const TouchGestures: React.FC<TouchGesturesProps> = ({
 };
 
 export default TouchGestures;
-

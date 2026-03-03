@@ -30,7 +30,9 @@ export class BackgroundAnalysisService {
     // Detect all objects in the scene
     const segmentation = await sam2Service.segmentImageFromUrl(
       imageUrl,
-      undefined'auto','small'
+      undefined,
+      'auto',
+      'small',
     );
 
     // Identify background vs foreground
@@ -149,7 +151,6 @@ function generateBackgroundSuggestions(
 }
 
 export const backgroundAnalysisService = new BackgroundAnalysisService();
-
 
 
 

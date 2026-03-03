@@ -36,6 +36,7 @@ import {
   MenuItem,
   Alert,
   Snackbar,
+  ChipProps,
 } from '@mui/material';
 import {
   Psychology,
@@ -63,6 +64,55 @@ interface MLOptimizationDashboardProps {
   onTrainingClick: () => void;
 }
 
+type ModelStatus = 'active' | 'training' | 'error' | 'inactive';
+type ImpactLevel = 'high' | 'medium' | 'low';
+type EffortLevel = 'high' | 'medium' | 'low';
+type OptimizationStatus = 'pending' | 'applied' | 'rejected';
+
+interface MLModel {
+  id: string;
+  name: string;
+  type: string;
+  accuracy: number;
+  status: ModelStatus;
+  lastTrained: number;
+}
+
+interface MLPrediction {
+  id: string;
+  modelId: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  confidence: number;
+  timestamp: number;
+}
+
+interface MLOptimization {
+  id: string;
+  type: string;
+  description: string;
+  impact: ImpactLevel;
+  effort: EffortLevel;
+  status: OptimizationStatus;
+}
+
+interface TrackedEvent {
+  event: string;
+  data?: Record<string, unknown>;
+  timestamp: number;
+}
+
+interface MLDashboardAnalytics {
+  trackEvent: (event: string, data?: Record<string, unknown>) => void;
+  totalModels: number;
+  activeModels: number;
+  totalPredictions: number;
+  averageConfidence: number;
+  totalOptimizations: number;
+  appliedOptimizations: number;
+  averageAccuracy: number;
+}
+
 const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
   onSettingsClick,
   onModelsClick,
@@ -82,18 +132,22 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
     colors: { primary: '#1976d2' }
 };
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [trainingData, setTrainingData] = useState<Record<string, unknown>[]>([]);
+  const [trainingData, setTrainingData] = useState<Array<Record<string, unknown>>>([]);
   const [isTraining, setIsTraining] = useState(false);
   const [showTrainingDialog, setShowTrainingDialog] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: ', ', severity: 'success' as 'success' | 'error' | 'warning' | 'info' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'warning' | 'info',
+  });
   const [mlError, setMlError] = useState<string | null>(null);
-  const [trackedEvents, setTrackedEvents] = useState<Record<string, unknown>[]>([]);
+  const [trackedEvents, setTrackedEvents] = useState<TrackedEvent[]>([]);
 
   // Mock useMLOptimizer hook
-  const models: Record<string, unknown>[] = [];
-  const predictions: Record<string, unknown>[] = [];
-  const optimizations: Record<string, unknown>[] = [];
-  const analytics = { 
+  const models: MLModel[] = [];
+  const predictions: MLPrediction[] = [];
+  const optimizations: MLOptimization[] = [];
+  const analytics: MLDashboardAnalytics = {
     trackEvent: (event: string, data?: Record<string, unknown>) => {
       setTrackedEvents(prev => [...prev, { event, data, timestamp: Date.now() }]);
     },
@@ -107,14 +161,32 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
 };
   const isLoading = false;
   const error = mlError;
-  const trainModel = (modelId: string, data: unknown[]) => Promise.resolve();
-  const predictPerformance = (modelId: string) => Promise.resolve();
-  const analyzeUserBehavior = (userId: string) => Promise.resolve();
-  const applyOptimization = (id: string) => Promise.resolve();
-  const rejectOptimization = (id: string) => Promise.resolve();
-  const refreshData = () => Promise.resolve();
-  const exportData = () => Promise.resolve();
-  const importData = (data: unknown) => Promise.resolve();
+  const trainModel = async (modelId: string, data: Array<Record<string, unknown>>): Promise<void> => {
+    void modelId;
+    void data;
+  };
+  const predictPerformance = async (modelId: string): Promise<void> => {
+    void modelId;
+  };
+  const analyzeUserBehavior = async (userId: string): Promise<void> => {
+    void userId;
+  };
+  const applyOptimization = async (id: string): Promise<void> => {
+    void id;
+  };
+  const rejectOptimization = async (id: string): Promise<void> => {
+    void id;
+  };
+  const refreshData = async (): Promise<void> => {};
+  const exportData = async (): Promise<Record<string, unknown>> => ({
+    models,
+    predictions,
+    optimizations,
+    trackedEvents,
+  });
+  const importData = async (data: unknown): Promise<void> => {
+    void data;
+  };
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -153,8 +225,8 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
   }
 };
 
-  const handleExportData = () => {
-    const data = exportData();
+  const handleExportData = async () => {
+    const data = await exportData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -183,7 +255,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
     reader.readAsText(file);
 };
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string): ChipProps['color'] => {
     switch (status) {
       case 'active': return 'success';
       case 'training': return 'warning';
@@ -192,7 +264,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
   }
 };
 
-  const getImpactColor = (impact: string) => {
+  const getImpactColor = (impact: string): ChipProps['color'] => {
     switch (impact) {
       case 'high': return 'error';
       case 'medium': return 'warning';
@@ -201,7 +273,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
   }
 };
 
-  const getEffortColor = (effort: string) => {
+  const getEffortColor = (effort: string): ChipProps['color'] => {
     switch (effort) {
       case 'high': return 'error';
       case 'medium': return 'warning';
@@ -664,7 +736,7 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
             <InputLabel>Select Model</InputLabel>
             <Select
               value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
+              onChange={(e) => setSelectedModel(String(e.target.value))}
             >
               {models.map((model) => (
                 <MenuItem key={model.id} value={model.id}>
@@ -681,7 +753,10 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
             value={JSON.stringify(trainingData, null, 2)}
             onChange={(e) => {
               try {
-                setTrainingData(JSON.parse(e.target.value));
+                const parsed = JSON.parse(e.target.value);
+                if (Array.isArray(parsed)) {
+                  setTrainingData(parsed as Array<Record<string, unknown>>);
+                }
             } catch (err) {
                 // Invalid JSON, keep current value
             }
@@ -717,7 +792,6 @@ const MLOptimizationDashboard: React.FC<MLOptimizationDashboardProps> = ({
 };
 
 export default MLOptimizationDashboard;
-
 
 
 

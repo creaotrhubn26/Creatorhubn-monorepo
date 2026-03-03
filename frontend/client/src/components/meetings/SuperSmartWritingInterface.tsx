@@ -225,7 +225,7 @@ export function SuperSmartWritingInterface({
       });
     } else {
         return apiRequest('/api/smart-meeting-notes', {
-          method: 'POS',
+          method: 'POST',
           body: JSON.stringify({
             ...data,
             profession,
@@ -258,7 +258,7 @@ export function SuperSmartWritingInterface({
   const syncToTimelineMutation = useMutation({
     mutationFn: async () => {
       return apiRequest(`/api/smart-meeting-notes/${meetingd}/sync-wedding-timeline`, {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           timelineUpdates: currentNote.timelineUpdates,
           practicalInfo: currentNote.practicalInfo,

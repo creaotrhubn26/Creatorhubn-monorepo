@@ -358,11 +358,11 @@ class AIIntegrationManager {
     if (!this.state.isEnabled) throw new Error('AI integration is not enabled');
 
     const prompt = this.state.prompts.get(promptId);
-    if (!prompt) throw new Error(`Prompt not found: ${promptd}`);
+    if (!prompt) throw new Error(`Prompt not found: ${promptId}`);
 
     const response: AIResponse = {
       id: this.generateId(),
-      promptId: promptd,
+      promptId,
       input: input,
       output: ', ',
       context: context || [],
@@ -806,4 +806,3 @@ class AIIntegrationManager {
 export const aiIntegrationManager = new AIIntegrationManager();
 
 export default aiIntegrationManager;
-

@@ -106,11 +106,12 @@ export function usePushNotifications(userId?: string, contextId?: string) {
       if (!vapidPublicKey) {
         throw new Error('VAPID public key not configured');
       }
+      const applicationServerKey = Uint8Array.from(urlBase64ToUint8Array(vapidPublicKey));
 
       // Subscribe to push notifications
       const newSubscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        applicationServerKey,
       });
 
       const subscriptionData: PushSubscription = {
@@ -194,7 +195,6 @@ export function usePushNotifications(userId?: string, contextId?: string) {
     toggle,
   };
 }
-
 
 
 

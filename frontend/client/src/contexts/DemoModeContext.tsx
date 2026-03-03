@@ -368,7 +368,9 @@ export function DemoModeProvider({ children }: { children: React.ReactNode }) {
 
 const getDemoData = <T,>(dataType: string): T[] => {
   if (!localDemoMode) return [];
-  return (demoData as Record<string, T[]>)?.[dataType] ?? [];
+  const demoDataMap = demoData as unknown as Record<string, unknown>;
+  const candidate = demoDataMap[dataType];
+  return Array.isArray(candidate) ? (candidate as T[]) : [];
 };
 
 

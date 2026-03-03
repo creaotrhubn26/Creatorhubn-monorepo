@@ -68,7 +68,7 @@ export const ModelVersionComparison: React.FC = () => {
     try {
       const response = await fetch('/api/ai/research/versions/compare, ', {
         method: 'POST',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ versionId1: v1, versionId2: v2 }),
       });
 
@@ -95,7 +95,7 @@ export const ModelVersionComparison: React.FC = () => {
     try {
       await fetch(`/api/ai/research/versions/${versionId}/traffic`, {
         method: 'POST',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ percentage }),
       });
 

@@ -1,341 +1,296 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
   Box,
-  Typography,
+  Button,
+  Card,
+  CardContent,
   Chip,
-  Grid,
-  Paper,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
-  Select,
-  MenuItem,
   LinearProgress,
-  Card as MuiCard,
-  CardContent,
-  Divider,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
   AutoFixHigh,
+  CheckCircle,
   CompareArrows,
   ContentCopy,
-  CheckCircle,
   Psychology,
-  TuneRounded,
   SpellcheckRounded,
+  TuneRounded,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
+
+type EnhancementType = 'professional' | 'concise' | 'friendly' | 'formal';
 
 interface QuillBotEnhancerProps {
   open: boolean;
   onClose: () => void;
   originalText: string;
   onTextEnhanced: (enhancedText: string) => void;
-  profession: string
+  profession: string;
 }
 
-export function QuillBotEnhancer({ 
-  open, 
-  onClose, 
-  originalText, 
-  onTextEnhanced, 
-  profession 
-}: QuillBotEnhancerProps) {
-  const [enhancementType, setEnhancementType] = useState<string>('professional');
-  const [enhancedText, setEnhancedText] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
-  const [isEnhancing, setIsEnhancing] = useState(false);
-  const [enhancementStats, setEnhancementStats] = useState({
-    wordsChanged:  0,
-    readabilityScore:  0,
-    originalLength:  0,
-    enhancedLength: 0 });
+interface EnhancementStats {
+  wordsChanged: number;
+  readabilityScore: number;
+  originalLength: number;
+  enhancedLength: number;
+}
 
-  // Mock data removed - using database connection
+const enhancementLabels: Record<EnhancementType, string> = {
+  professional: 'Profesjonell',
+  concise: 'Kortfattet',
+  friendly: 'Vennlig',
+  formal: 'Formell',
+};
 
-  const handleEnhance = async () => {
-    if (!originalText.trim()) return;
-    
-    setIsEnhancing(true);
-    
-    try {
-      const response = await fetch('/api/meeting-notes/enhance-text', {
-        headers: {
-          ...auth'Content-Type' : 'application/json'
-      },
-        method: 'POS',
-        body: JSON.stringify({
-          text: originalText,
-          enhancementType,
-          profession,
-          targetAudience: 'client'
-    })
-    });
-      
-      const data = await response.json();
-      if (data.success) {
-        setEnhancedText(data.enhancedText);
-        setEnhancementStats({
-          wordsChanged: Math.abs(data.wordsChanged || 0),
-          readabilityScore: data.readabilityScore || 75,
-          originalLength: originalText.length,
-          enhancedLength: data.enhancedText.length
-    });
+async function requestEnhancement(
+  originalText: string,
+  enhancementType: EnhancementType,
+  profession: string,
+): Promise<{ enhancedText: string; wordsChanged: number; readabilityScore: number }> {
+  const response = await fetch('/api/meeting-notes/enhance-text', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      text: originalText,
+      enhancementType,
+      profession,
+      targetAudience: 'client',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Enhancement request failed');
+  }
+
+  const data = (await response.json()) as {
+    success?: boolean;
+    enhancedText?: string;
+    wordsChanged?: number;
+    readabilityScore?: number;
+  };
+
+  if (data.success && typeof data.enhancedText === 'string') {
+    return {
+      enhancedText: data.enhancedText,
+      wordsChanged: Math.abs(data.wordsChanged ?? 0),
+      readabilityScore: data.readabilityScore ?? 75,
+    };
+  }
+
+  throw new Error('Invalid enhancement response');
+}
+
+function localFallbackEnhancement(text: string, mode: EnhancementType): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return normalized;
+  }
+
+  const lines = normalized.split('. ');
+  const polished = lines.map((line) => {
+    const sentence = line.trim();
+    if (!sentence) return sentence;
+
+    switch (mode) {
+      case 'concise':
+        return sentence
+          .replace(/\bveldig\b/gi, '')
+          .replace(/\bfaktisk\b/gi, '')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      case 'friendly':
+        return sentence.replace(/\bskal\b/gi, 'kan').replace(/\bmå\b/gi, 'bør');
+      case 'formal':
+        return sentence.replace(/\bhei\b/gi, 'god dag').replace(/\bdu\b/gi, 'De');
+      case 'professional':
+      default:
+        return sentence
+          .replace(/\bbra\b/gi, 'solid')
+          .replace(/\bkult\b/gi, 'relevant')
+          .trim();
     }
-  } catch (error) {
-      console.error('Enhancement failed: ', error);
-  } finally {
+  });
+
+  return polished.filter(Boolean).join('. ').trim();
+}
+
+export function QuillBotEnhancer({
+  open,
+  onClose,
+  originalText,
+  onTextEnhanced,
+  profession,
+}: QuillBotEnhancerProps): JSX.Element {
+  const theming = useTheming('prototype_tester');
+  const [enhancementType, setEnhancementType] = useState<EnhancementType>('professional');
+  const [enhancedText, setEnhancedText] = useState<string>('');
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<EnhancementStats>({
+    wordsChanged: 0,
+    readabilityScore: 0,
+    originalLength: 0,
+    enhancedLength: 0,
+  });
+
+  const originalWordCount = useMemo(() => {
+    const trimmed = originalText.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
+  }, [originalText]);
+
+  const enhancedWordCount = useMemo(() => {
+    const trimmed = enhancedText.trim();
+    return trimmed ? trimmed.split(/\s+/).length : 0;
+  }, [enhancedText]);
+
+  const handleEnhance = async (): Promise<void> => {
+    if (!originalText.trim()) {
+      return;
+    }
+
+    setIsEnhancing(true);
+    setError(null);
+
+    try {
+      const response = await requestEnhancement(originalText, enhancementType, profession);
+      setEnhancedText(response.enhancedText);
+      setStats({
+        wordsChanged: response.wordsChanged,
+        readabilityScore: response.readabilityScore,
+        originalLength: originalText.length,
+        enhancedLength: response.enhancedText.length,
+      });
+    } catch {
+      const fallback = localFallbackEnhancement(originalText, enhancementType);
+      setEnhancedText(fallback);
+      setStats({
+        wordsChanged: Math.abs(originalWordCount - (fallback.trim() ? fallback.trim().split(/\s+/).length : 0)),
+        readabilityScore: 70,
+        originalLength: originalText.length,
+        enhancedLength: fallback.length,
+      });
+      setError('Live forbedring utilgjengelig. Viste lokal fallback-forbedring i stedet.');
+    } finally {
       setIsEnhancing(false);
-  }
-};
+    }
+  };
 
-  const handleAcceptEnhancement = () => {
-    if (enhancedText) {
-      onTextEnhanced(enhancedText);
-      onClose();
-  }
-};
+  const handleAcceptEnhancement = (): void => {
+    if (!enhancedText.trim()) {
+      return;
+    }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-};
+    onTextEnhanced(enhancedText);
+    onClose();
+  };
+
+  const copyToClipboard = async (text: string): Promise<void> => {
+    await navigator.clipboard.writeText(text);
+  };
 
   return (
-    <Dialog 
-      open={open}
-      onClose={onClose}
-      maxWidth="lg" 
-      fullWidth
-      PaperProps={{
-        sx: { 
-          minHeight: '80vh',
-          borderRadius:  2,
-          background: 'linear-gradient(135deg, rgba(25,118,210,0.05) 0%, rgba(1, 5, 6,39,176,0.05) 100%)'
-      }
-    }}
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={2}>
           <AutoFixHigh color="primary" />
-          <Typography variant="h5" sx={{ color: theming.colors.primary }}>
-            Intelligent Tekstforbedring (QuillBot-stil)
+          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+            Intelligent Tekstforbedring
           </Typography>
-          <Chip 
-            label={profession}
-            color="secondary" 
-            variant="outlined" 
-            size="small"
-          />
+          <Chip label={profession} size="small" variant="outlined" />
         </Box>
       </DialogTitle>
 
       <DialogContent>
-        <Grid container spacing={3}>
-          {/* Enhancement Options */}
-          <Grid size={{ xs: 12 }} md={4}>
-            <Paper elevation={1} sx={{ p: 2, height: 'fit-content' ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <TuneRounded sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Forbedringsstil
+        {isEnhancing && <LinearProgress sx={{ mb: 2 }} />}
+
+        <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="subtitle1" gutterBottom sx={{ color: theming.colors.primary }}>
+                Original tekst
               </Typography>
-              
-              <FormControl fullWidth margin="normal">
-                <InputLabel>Velg stil</InputLabel>
-                <Select
-                  value={enhancementType}
-                  onChange={(e) => setEnhancementType(e.target.value)}
-                  label="Velg stil"
-                >
-                  {enhancementOptions.map(option => (
-                    <MenuItem key={option.value} value={option.value}>
-                      <Box>
-                        <Typography variant="body1">{option.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {option.description}
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <TextField
+                fullWidth
+                multiline
+                minRows={10}
+                value={originalText}
+                InputProps={{ readOnly: true }}
+              />
+            </CardContent>
+          </Card>
 
-              <Button fullWidth
-                variant="contained"
-                onClick={handleEnhance}
-                disabled={isEnhancing || !originalText.trim()}
-                startIcon={<Psychology />}
-                sx={{ mt:  2 }}
-              >
-                {isEnhancing ? 'Forbedrer...' : 'Forbedre Tekst'}
-              </Button>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <Typography variant="subtitle1" gutterBottom sx={{ color: theming.colors.primary }}>
+                Forbedret tekst
+              </Typography>
+              <TextField fullWidth multiline minRows={10} value={enhancedText} onChange={(event) => setEnhancedText(event.target.value)} />
+            </CardContent>
+          </Card>
+        </Box>
 
-              {/* Enhancement Stats */}
-              {enhancedText && (
-                <MuiCard sx={{ mt:  2 }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="subtitle2" gutterBottom>
-                      <SpellcheckRounded sx={{ mr: 1, fontSize: '1rem' }} />
-                      Statistikk
-                    </Typography>
-                    <Box display="flex" flexDirection="column" gap={1}>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="caption">Ord endret: </Typography>
-                        <Chip label={enhancementStats.wordsChanged} size="small" />
-                      </Box>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="caption">Lesbarhet: </Typography>
-                        <Chip 
-                          label={`${enhancementStats.readabilityScore}/100`}
-                          size="small" 
-                          color={enhancementStats.readabilityScore > 80 ? 'success' : 'warning'}
-                        />
-                      </Box>
-                      <Box display="flex" justifyContent="space-between">
-                        <Typography variant="caption">Lengde: </Typography>
-                        <Typography variant="caption">
-                          {enhancementStats.originalLength} → {enhancementStats.enhancedLength}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </CardContent>
-                </MuiCard>
-              )}
-            </Paper>
-          </Grid>
+        <Box mt={2} display="flex" gap={2} alignItems="center" flexWrap="wrap">
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel id="enhancement-type-label">Forbedringsmodus</InputLabel>
+            <Select
+              labelId="enhancement-type-label"
+              label="Forbedringsmodus"
+              value={enhancementType}
+              onChange={(event) => setEnhancementType(event.target.value as EnhancementType)}
+            >
+              {Object.entries(enhancementLabels).map(([value, label]) => (
+                <MenuItem key={value} value={value}>
+                  {label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
 
-          {/* Text Comparison */}
-          <Grid size={{ xs: 12 }} md={8}>
-            <Box>
-              <Box display="flex" alignItems="center" gap={2} mb={2}>
-                <CompareArrows color="primary" />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                  Sammenligning
-                </Typography>
-              </Box>
+          <Button variant="contained" onClick={() => void handleEnhance()} disabled={isEnhancing} startIcon={<Psychology />}>
+            Forbedre tekst
+          </Button>
 
-              {isEnhancing && (
-                <Box sx={{ mb:  2 }}>
-                  <LinearProgress />
-                  <Typography variant="caption" color="text.secondary" align="center" display="block" mt={1}>
-                    Intelligent arbeider med tekstforbedring...
-                  </Typography>
-                </Box>
-              )}
+          <Button variant="outlined" onClick={() => void copyToClipboard(enhancedText)} startIcon={<ContentCopy />} disabled={!enhancedText.trim()}>
+            Kopier
+          </Button>
+        </Box>
 
-              <Grid container spacing={2}>
-                {/* Original Text */}
-                <Grid size={{ xs: 12 }} md={6}>
-                  <Paper elevation={1} sx={{ p: 2, height: '400px' ,  ...theming.getThemedCardSx() }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle1" color="text.secondary">
-                        Original Tekst
-                      </Typography>
-                      <Button
-                        size="small"
-                        startIcon={theming.getThemedIcon('contentCopy')}
-                        onClick={() => copyToClipboard(originalText)}
-                      >
-                        Kopier
-                      </Button>
-                    </Box>
-                    <Divider sx={{ mb:  2 }} />
-                    <TextField
-                      multiline
-                      fullWidth
-                      rows={12}
-                      value={originalText}
-                      variant="outlined"
-                      InputProps={{ readOnly: true }}
-                      sx={{
-                        '& .MuiInputBase-root': {
-                          fontSize: '13px',
-                          backgroundColor: 'rgba(0,0,0,0.02)'
-                      }
-                    }}
-                    />
-                  </Paper>
-                </Grid>
+        <Box mt={2} display="flex" gap={1} flexWrap="wrap">
+          <Chip icon={<CompareArrows />} label={`Ord endret: ${stats.wordsChanged}`} />
+          <Chip icon={<SpellcheckRounded />} label={`Lesbarhet: ${stats.readabilityScore}`} />
+          <Chip icon={<TuneRounded />} label={`Lengde: ${stats.originalLength} -> ${stats.enhancedLength}`} />
+          <Chip icon={<CheckCircle />} label={`Ord: ${originalWordCount} -> ${enhancedWordCount}`} />
+        </Box>
 
-                {/* Enhanced Text */}
-                <Grid size={{ xs: 12 }} md={6}>
-                  <Paper elevation={1} sx={{ p: 2, height: '400px' ,  ...theming.getThemedCardSx() }}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                      <Typography variant="subtitle1" color="primary">
-                        Forbedret Tekst
-                      </Typography>
-                      <Button
-                        size="small"
-                        startIcon={theming.getThemedIcon('contentCopy')}
-                        onClick={() => copyToClipboard(enhancedText)}
-                        disabled={!enhancedText}
-                      >
-                        Kopier
-                      </Button>
-                    </Box>
-                    <Divider sx={{ mb:  2 }} />
-                    {enhancedText ? (
-                      <TextField
-                        multiline
-                        fullWidth
-                        rows={12}
-                        value={enhancedText}
-                        variant="outlined"
-                        InputProps={{ readOnly: true }}
-                        sx={{
-                          '& .MuiInputBase-root': {
-                            fontSize: '13px',
-                            backgroundColor: 'rgba(5,118,210,0.05)',
-                            border: '2px solid',
-                            borderColor:'primary.200'
-                      }
-                      }}
-                      />
-                    ) : (
-                      <Box 
-                        display="flex" 
-                        alignItems="center" 
-                        justifyContent="center" 
-                        height="300px"
-                        bgcolor="rgba(0,0,0,0.02)"
-                        borderRadius={1}
-                      >
-                        <Typography variant="body2" color="text.secondary" align="center">
-                          Forbedret tekst vil vises her<br/>
-                          Klikk"Forbedre Tekst" for å starte
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
-              </Grid>
-            </Box>
-          </Grid>
-        </Grid>
+        {error && (
+          <Box mt={2}>
+            <Typography variant="body2" color="warning.main">
+              {error}
+            </Typography>
+          </Box>
+        )}
       </DialogContent>
 
-      <DialogActions sx={{ p:  3, gap:  1 }}>
-        <Button onClick={onClose} variant="outlined">
-          Avbryt
-        </Button>
-        <Button variant="contained"
-          onClick={handleAcceptEnhancement}
-          disabled={!enhancedText}
-          startIcon={theming.getThemedIcon('checkCircle')}
-          color="primary"
-         sx={theming.getThemedButtonSx()}>
-          Bruk Forbedret Tekst
+      <DialogActions>
+        <Button onClick={onClose}>Avbryt</Button>
+        <Button variant="contained" onClick={handleAcceptEnhancement} disabled={!enhancedText.trim()}>
+          Bruk forbedret tekst
         </Button>
       </DialogActions>
     </Dialog>
   );
 }
+
+export default QuillBotEnhancer;

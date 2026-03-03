@@ -790,11 +790,9 @@ function AcademyLandingPage() {
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <AcademyLogo3D width={280} height={140} />
                 <Typography 
                   variant="h4" 
                   sx={{ 
-                    mt: 1,
                     background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent',
@@ -1785,7 +1783,7 @@ function AcademyLandingPage() {
       )}
       
       {/* Login Modal */}
-      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} />
+      <LoginModal open={loginModalOpen} onClose={() => setLoginModalOpen(false)} context="academy" />
 
       {/* Footer */}
       <Box

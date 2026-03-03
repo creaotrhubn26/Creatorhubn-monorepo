@@ -248,7 +248,7 @@ export default function AdvancedPortraitEditor({
     });
       
       return apiRequest('/api/advanced-portrait/background-scene', {
-        method: 'POS',
+        method: 'POST',
         body: formData
     ,});
   },
@@ -263,7 +263,7 @@ export default function AdvancedPortraitEditor({
   const applyProfileMutation = useMutation({
     mutationFn: async (profileId: string) => {
       return apiRequest('/api/advanced-portrait/apply-profile-url', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           imageUl,
           profileId
@@ -285,7 +285,7 @@ export default function AdvancedPortraitEditor({
   const createProfileMutation = useMutation({
     mutationFn: async (profileData: { name: string; description: string; style: string }) => {
       return apiRequest('/api/advanced-portrait/profiles', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(profileData)
     ,});
   },

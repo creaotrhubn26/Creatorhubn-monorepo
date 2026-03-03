@@ -355,7 +355,7 @@ function generateClientPresentationSVG(
   });
 
   // Extract content from main SVG (skip wrapping <svg> tags)
-  const svgContent = mainSVG.replace(/<svg[^>]*>/', ').replace(/<\/svg>/', ');
+  const svgContent = mainSVG.replace(/<svg[^>]*>/, '').replace(/<\/svg>/, '');
   svg += `<g transform="translate(0, 120)">${svgContent}</g>`;
 
   // Equipment list

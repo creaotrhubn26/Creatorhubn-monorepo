@@ -341,7 +341,7 @@ const documentationSections: DocumentationSection[] = [
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
             <Card sx={theming.getThemedCardSx()}>
-              <CardHeader title="Frontend" sx={theming.getThemedCardSx()}>
+              <CardHeader title="Frontend" sx={theming.getThemedCardSx()} />
               <CardContent sx={theming.getThemedCardSx()}>
                 <List>
                   <ListItem>
@@ -363,7 +363,7 @@ const documentationSections: DocumentationSection[] = [
           
           <Grid item xs={12} md={4}>
             <Card sx={theming.getThemedCardSx()}>
-              <CardHeader title="Backend" sx={theming.getThemedCardSx()}>
+              <CardHeader title="Backend" sx={theming.getThemedCardSx()} />
               <CardContent sx={theming.getThemedCardSx()}>
                 <List>
                   <ListItem>
@@ -385,7 +385,7 @@ const documentationSections: DocumentationSection[] = [
           
           <Grid item xs={12} md={4}>
             <Card sx={theming.getThemedCardSx()}>
-              <CardHeader title="Infrastructure" sx={theming.getThemedCardSx()}>
+              <CardHeader title="Infrastructure" sx={theming.getThemedCardSx()} />
               <CardContent sx={theming.getThemedCardSx()}>
                 <List>
                   <ListItem>
@@ -1181,4 +1181,3 @@ const CreatorHubNorgeDocumentation: React.FC<CreatorHubNorgeDocumentationProps> 
 };
 
 export default CreatorHubNorgeDocumentation;
-

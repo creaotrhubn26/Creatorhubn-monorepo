@@ -1,47 +1,43 @@
 /**
  * CreatorHub Norge - Quote Creation Modal
- * Quick quote creation from chat context
+ * Quick quote creation from chat context.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  Box,
-  Typography,
   Alert,
-  Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Box,
+  Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  Grid,
   Switch,
   FormControlLabel,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Receipt as ReceiptIcon,
-  Send,
   AttachMoney,
   CalendarToday,
   Person,
   PersonAdd,
+  Receipt as ReceiptIcon,
+  Send,
 } from '@mui/icons-material';
+import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
 interface ClientInfo {
   name: string;
   address: string;
   phoneNumber: string;
-  email: string
+  email: string;
 }
 
 interface QuoteCreationModalProps {
@@ -54,9 +50,48 @@ interface QuoteCreationModalProps {
     profession: string;
     projectType?: string;
     budget?: number;
-};
-  onQuoteCreated?: (quoteData: any) => void
+  };
+  onQuoteCreated?: (quoteData: Record<string, unknown>) => void;
 }
+
+interface QuoteDraft {
+  title: string;
+  description: string;
+  basePrice: number;
+  additionalServices: string[];
+  validUntil: string;
+  notes: string;
+}
+
+type Step = 'quote' | 'client-info' | 'approvers';
+
+const createDefaultValidUntil = (): string => {
+  const date = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  return date.toISOString().split('T')[0];
+};
+
+const generateProjectId = (client: ClientInfo, approvers: ClientInfo[]): string => {
+  const clientInitials = client.name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+
+  const approverInitials = approvers
+    .map((approver) =>
+      approver.name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join('')
+        .toUpperCase(),
+    )
+    .join('');
+
+  const suffix = Date.now().toString().slice(-4);
+  return `${clientInitials || 'CL'}${approverInitials}-${suffix}`;
+};
 
 export default function QuoteCreationModal({
   open,
@@ -65,455 +100,439 @@ export default function QuoteCreationModal({
   onQuoteCreated,
 }: QuoteCreationModalProps) {
   const { user } = useAuth();
-  
-  // Theming system
   const theming = useTheming('photographer');
-  const [quoteData, setQuoteData] = useState({
-    title: `Tilbud for ${clientData.projectType || 'Prosjekt,'}`,
-    description: '',
-    basePrice: clientData.budget || 0,
-    additionalServices: [] as string[],
-    validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[],
-    notes: '',
-});
 
-  // Client information state
+  const [step, setStep] = useState<Step>('quote');
+  const [hasMultipleApprovers, setHasMultipleApprovers] = useState(false);
+
+  const [quoteDraft, setQuoteDraft] = useState<QuoteDraft>({
+    title: `Tilbud for ${clientData.projectType || 'Prosjekt'}`,
+    description: '',
+    basePrice: clientData.budget ?? 0,
+    additionalServices: [],
+    validUntil: createDefaultValidUntil(),
+    notes: '',
+  });
+
   const [clientInfo, setClientInfo] = useState<ClientInfo>({
-    name: clientData.name ||'',
+    name: clientData.name || '',
     address: '',
     phoneNumber: '',
-    email: clientData.email ||'',
-});
+    email: clientData.email || '',
+  });
 
-  // Multiple approvers state
-  const [hasMultipleApprovers, setHasMultipleApprovers] = useState(false);
   const [approvers, setApprovers] = useState<ClientInfo[]>([]);
-  const [currentStep, setCurrentStep] = useState<'quote' | 'client-info' | 'approvers'>('quote');
+
+  const totalPrice = useMemo(
+    () => quoteDraft.basePrice + quoteDraft.additionalServices.filter(Boolean).length * 1000,
+    [quoteDraft.basePrice, quoteDraft.additionalServices],
+  );
 
   const createQuoteMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/quotes/create', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify({
-          ...data,
-          clientId: clientData.d,
-          clientName: clientData.name,
-          clientEmail: clientData.email,
-          profession: clientData.profession,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
+    mutationFn: async (payload: Record<string, unknown>) =>
+      apiRequest('/api/quotes/create', {
+        method: 'POST',
+        body: payload,
       }),
-    });
-  },
-    onSuccess: (data: any) => {
-      onQuoteCreated?.(data);
+    onSuccess: (data) => {
+      if (data && typeof data === 'object') {
+        onQuoteCreated?.(data as Record<string, unknown>);
+      }
       onClose();
-},
-});
-
-  const handleCreateQuote = () => {
-    const projectId = generateProjectId(clientInfo, approvers);
-    const finalQuoteData = {
-      ...quoteData,
-      clientInfo,
-      approvers: hasMultipleApprovers ? approvers : [],
-      projectId,
-      // Store project ID for later project creation
-      projectCreationData: {
-        projectd,
-        clientInfo,
-        approvers: hasMultipleApprovers ? approvers : [],
-        quoteDetails: quoteData,
     },
-  };
-    createQuoteMutation.mutate(finalQuoteData);
-};
+  });
 
-  // Generate project ID based on client and approver information
-  const generateProjectId = (client: ClientInfo, approvers: ClientInfo[]): string => {
-    const clientInitials = client.name.split('').map(n => n[0]).join(',').toUpperCase();
-    const approverInitials = approvers.map(a => a.name.split('').map(n => n[0]).join(', ')).join(', ');
-    const timestamp = Date.now().toString().slice(-4);
-    return `${clientInitials}${approverInitials}-${timestamp}`;
-};
-
-  // Step navigation
-  const handleNextStep = () => {
-    if (currentStep === 'quote') {
-      setCurrentStep('client-info');
-  } else if (currentStep === 'client-info') {
-      setCurrentStep('approvers');
-  }
-};
-
-  const handlePreviousStep = () => {
-    if (currentStep === 'approvers') {
-      setCurrentStep('client-info');
-  } else if (currentStep === 'client-info') {
-      setCurrentStep('quote');
-  }
-};
-
-  // Add approver
   const addApprover = () => {
-    setApprovers(prev => [...prev, { name: ', ', address: ', ', phoneNumber: ', ', email: ', ',}]);
-};
+    setApprovers((previous) => [
+      ...previous,
+      { name: '', address: '', phoneNumber: '', email: '' },
+    ]);
+  };
 
-  // Update approver
   const updateApprover = (index: number, field: keyof ClientInfo, value: string) => {
-    setApprovers(prev => prev.map((approver, i) => 
-      i === index ? { ...approver, [field]: value } : approver
-    ));
-};
+    setApprovers((previous) =>
+      previous.map((approver, currentIndex) =>
+        currentIndex === index ? { ...approver, [field]: value } : approver,
+      ),
+    );
+  };
 
-  // Remove approver
   const removeApprover = (index: number) => {
-    setApprovers(prev => prev.filter((_, i) => i !== index));
-};
+    setApprovers((previous) => previous.filter((_, currentIndex) => currentIndex !== index));
+  };
 
   const addAdditionalService = () => {
-    setQuoteData(prev => ({
-      ...prev,
-      additionalServices: [...prev.additionalServices', '],
-  }));
-};
+    setQuoteDraft((previous) => ({
+      ...previous,
+      additionalServices: [...previous.additionalServices, ''],
+    }));
+  };
 
   const updateAdditionalService = (index: number, value: string) => {
-    setQuoteData(prev => ({
-      ...prev,
-      additionalServices: prev.additionalServices.map((service, i) => 
-        i === index ? value : service
+    setQuoteDraft((previous) => ({
+      ...previous,
+      additionalServices: previous.additionalServices.map((service, currentIndex) =>
+        currentIndex === index ? value : service,
       ),
-  }));
-};
+    }));
+  };
 
   const removeAdditionalService = (index: number) => {
-    setQuoteData(prev => ({
-      ...prev,
-      additionalServices: prev.additionalServices.filter((_, i) => i !== index),
-  }));
-};
+    setQuoteDraft((previous) => ({
+      ...previous,
+      additionalServices: previous.additionalServices.filter((_, currentIndex) => currentIndex !== index),
+    }));
+  };
 
-  const calculateTotal = () => {
-    const additionalTotal = quoteData.additionalServices.length * 1000; // 1000 NOK per additional service
-    return quoteData.basePrice + additionalTotal;
-};
+  const canContinueFromQuote = Boolean(quoteDraft.title && quoteDraft.description);
+  const canContinueFromClientInfo = Boolean(
+    clientInfo.name && clientInfo.email && clientInfo.address && clientInfo.phoneNumber,
+  );
+  const canSubmit =
+    !hasMultipleApprovers ||
+    approvers.every(
+      (approver) =>
+        approver.name && approver.email && approver.address && approver.phoneNumber,
+    );
+
+  const submitQuote = () => {
+    const projectId = generateProjectId(clientInfo, hasMultipleApprovers ? approvers : []);
+
+    createQuoteMutation.mutate({
+      ...quoteDraft,
+      clientId: clientData.id,
+      clientName: clientData.name,
+      clientEmail: clientData.email,
+      clientInfo,
+      approvers: hasMultipleApprovers ? approvers : [],
+      hasMultipleApprovers,
+      profession: clientData.profession,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      createdBy: user && typeof user === 'object' && 'id' in user ? (user as { id?: string }).id : undefined,
+      projectId,
+      projectCreationData: {
+        projectId,
+        clientInfo,
+        approvers: hasMultipleApprovers ? approvers : [],
+        quoteDetails: quoteDraft,
+      },
+    });
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          <ReceiptIcon sx={{ color: 'primary.main'}} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ReceiptIcon color="primary" />
           Opprett tilbud for {clientData.name}
         </Box>
       </DialogTitle>
 
       <DialogContent>
-        <Box sx={{ mt:  2 }}>
-          {/* Step indicator */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb:  3 }}>
-            <Box sx={{ display: 'flex', gap:  1 }}>
-              <Chip 
-                label="1. Tilbud" 
-                color={currentStep === 'quote' ? 'primary' : 'default'}
-                variant={currentStep === 'quote' ? 'filled' : 'outlined'}
-              />
-              <Chip 
-                label="2. Kundeinfo" 
-                color={currentStep === 'client-info' ? 'primary' : 'default'}
-                variant={currentStep === 'client-info' ? 'filled' : 'outlined'}
-              />
-              <Chip 
-                label="3. Godkjennere" 
-                color={currentStep === 'approvers' ? 'primary' : 'default'}
-                variant={currentStep === 'approvers' ? 'filled' : 'outlined'}
-              />
-            </Box>
+        <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3, gap: 1 }}>
+            <Chip
+              label="1. Tilbud"
+              color={step === 'quote' ? 'primary' : 'default'}
+              variant={step === 'quote' ? 'filled' : 'outlined'}
+            />
+            <Chip
+              label="2. Kundeinfo"
+              color={step === 'client-info' ? 'primary' : 'default'}
+              variant={step === 'client-info' ? 'filled' : 'outlined'}
+            />
+            <Chip
+              label="3. Godkjennere"
+              color={step === 'approvers' ? 'primary' : 'default'}
+              variant={step === 'approvers' ? 'filled' : 'outlined'}
+            />
           </Box>
 
-          <Alert severity="info" sx={{ mb:  3 }}>
-            Dette tilbudet vil bli sendt til {clientInfo.email} og du vil få beskjed når kunden svarer.
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Tilbudet sendes til {clientInfo.email || clientData.email}. Du får varsel når kunden svarer.
           </Alert>
 
-          {/* Step 1: Quote Details , *, /}
-          {currentStep === 'quote' && (
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
+          {step === 'quote' && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
                 <TextField
                   fullWidth
                   label="Tilbudstittel"
-                  value={quoteData.title}
-                  onChange={(e) => setQuoteData(prev => ({ ...prev, title: e.target.value }))}
-                  InputProps={{
-                    startAdornment: <ReceiptIcon sx={{ mr: 1, color: 'text.secondary'}} />}}
+                  value={quoteDraft.title}
+                  onChange={(event) =>
+                    setQuoteDraft((previous) => ({
+                      ...previous,
+                      title: event.target.value,
+                    }))
+                  }
                 />
               </Grid>
 
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Beskrivelse av tjenester"
-                multiline
-                rows={3}
-                value={quoteData.description}
-                onChange={(e) => setQuoteData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Beskriv hva som inkluderes i tilbudet..."
-              />
-            </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Beskrivelse av tjenester"
+                  value={quoteDraft.description}
+                  onChange={(event) =>
+                    setQuoteDraft((previous) => ({
+                      ...previous,
+                      description: event.target.value,
+                    }))
+                  }
+                />
+              </Grid>
 
-            <Grid size={{ xs:  12, sm:  6 }}>
-              <TextField
-                fullWidth
-                label="Grunnpris"
-                type="number"
-                value={quoteData.basePrice}
-                onChange={(e) => setQuoteData(prev => ({ ...prev, basePrice: Number(e.target.value, ),}))}
-                InputProps={{
-                  startAdornment: <AttachMoney sx={{ mr: 1, color: 'text.secondary'}} />,
-                  endAdornment: <Typography sx={{ color: 'text.secondary'}}>NOK</Typography>}}
-              />
-            </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Grunnpris"
+                  value={quoteDraft.basePrice}
+                  onChange={(event) =>
+                    setQuoteDraft((previous) => ({
+                      ...previous,
+                      basePrice: Number(event.target.value) || 0,
+                    }))
+                  }
+                  InputProps={{
+                    startAdornment: <AttachMoney sx={{ mr: 1, color: 'text.secondary' }} />,
+                  }}
+                />
+              </Grid>
 
-            <Grid size={{ xs:  12, sm:  6 }}>
-              <TextField
-                fullWidth
-                label="Gyldig til"
-                type="date"
-                value={quoteData.validUntil}
-                onChange={(e) => setQuoteData(prev => ({ ...prev, validUntil: e.target.value }))}
-                InputProps={{
-                  startAdornment: <CalendarToday sx={{ mr: 1, color: 'text.secondary'}} />}}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Gyldig til"
+                  value={quoteDraft.validUntil}
+                  onChange={(event) =>
+                    setQuoteDraft((previous) => ({
+                      ...previous,
+                      validUntil: event.target.value,
+                    }))
+                  }
+                  InputLabelProps={{ shrink: true }}
+                  InputProps={{
+                    startAdornment: <CalendarToday sx={{ mr: 1, color: 'text.secondary' }} />,
+                  }}
+                />
+              </Grid>
 
-            <Grid size={{ xs: 12 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Tilleggstjenester
-              </Typography>
-              {quoteData.additionalServices.map((service, index) => (
-                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                  <TextField
-                    fullWidth
-                    label={`Tilleggstjeneste ${index + 1}`}
-                    value={service}
-                    onChange={(e) => updateAdditionalService(index, e.target.value)}
-                    placeholder="F.eks. Ekstra redigering, utskrift, etc."
-                  />
-                  <Button
-                    variant="outlined"
-                    color="error"
-                    onClick={() => removeAdditionalService(index)}
-                    sx={{ minWidth: 'auto', px:  2 }}
-                  >
-                    Fjern
-                  </Button>
-                </Box>
-              ))}
-              <Button
-                variant="outlined"
-                onClick={addAdditionalService}
-                startIcon={theming.getThemedIcon('money')}
-                sx={{ mt:  1 }}
-              >
-                Legg til tilleggstjeneste
-              </Button>
-            </Grid>
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Tilleggstjenester
+                </Typography>
+                {quoteDraft.additionalServices.map((service, index) => (
+                  <Box key={`service-${index}`} sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                    <TextField
+                      fullWidth
+                      label={`Tilleggstjeneste ${index + 1}`}
+                      value={service}
+                      onChange={(event) => updateAdditionalService(index, event.target.value)}
+                    />
+                    <Button color="error" onClick={() => removeAdditionalService(index)}>
+                      Fjern
+                    </Button>
+                  </Box>
+                ))}
+                <Button variant="outlined" onClick={addAdditionalService} startIcon={<PersonAdd />}>
+                  Legg til tilleggstjeneste
+                </Button>
+              </Grid>
 
-            <Grid size={{ xs: 12 }}>
-              <TextField
-                fullWidth
-                label="Notater til kunden"
-                multiline
-                rows={2}
-                value={quoteData.notes}
-                onChange={(e) => setQuoteData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Eventuelle spesielle betingelser eller notater..."
-              />
-            </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  label="Notater til kunden"
+                  value={quoteDraft.notes}
+                  onChange={(event) =>
+                    setQuoteDraft((previous) => ({
+                      ...previous,
+                      notes: event.target.value,
+                    }))
+                  }
+                />
+              </Grid>
 
-              <Grid size={{ xs: 12 }}>
-                <Divider sx={{ my:  2 }} />
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                    Totalpris: </Typography>
-                  <Typography variant="h5" color="primary" sx={{  fontWeight: 'bold' }}>
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">Totalpris:</Typography>
+                  <Typography variant="h5" color="primary" sx={{ fontWeight: 'bold' }}>
                     {new Intl.NumberFormat('nb-NO', {
                       style: 'currency',
-                      currency: 'NO',
-                  }).format(calculateTotal())}
+                      currency: 'NOK',
+                    }).format(totalPrice)}
                   </Typography>
                 </Box>
               </Grid>
             </Grid>
           )}
 
-          {/* Step 2: Client Information , *, /}
-          {currentStep === 'client-info' && (
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <Person sx={{ color: 'primary.main'}} />
+          {step === 'client-info' && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Person color="primary" />
                   Kundeinformasjon
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                  Fyll ut kundens kontaktinformasjon før tilbudet sendes.
-                </Typography>
               </Grid>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Navn *"
+                  required
+                  label="Navn"
                   value={clientInfo.name}
-                  onChange={(e) => setClientInfo(prev => ({ ...prev, name: e.target.value }))}
-                  required
+                  onChange={(event) =>
+                    setClientInfo((previous) => ({
+                      ...previous,
+                      name: event.target.value,
+                    }))
+                  }
                 />
               </Grid>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="E-post *"
+                  required
                   type="email"
+                  label="E-post"
                   value={clientInfo.email}
-                  onChange={(e) => setClientInfo(prev => ({ ...prev, email: e.target.value }))}
-                  required
+                  onChange={(event) =>
+                    setClientInfo((previous) => ({
+                      ...previous,
+                      email: event.target.value,
+                    }))
+                  }
                 />
               </Grid>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid item xs={12}>
                 <TextField
                   fullWidth
-                  label="Adresse *"
+                  required
+                  label="Adresse"
                   value={clientInfo.address}
-                  onChange={(e) => setClientInfo(prev => ({ ...prev, address: e.target.value }))}
-                  required
-                  multiline
-                  rows={2}
+                  onChange={(event) =>
+                    setClientInfo((previous) => ({
+                      ...previous,
+                      address: event.target.value,
+                    }))
+                  }
                 />
               </Grid>
 
-              <Grid size={{ xs:  12, sm:  6 }}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  label="Telefonnummer *"
-                  value={clientInfo.phoneNumber}
-                  onChange={(e) => setClientInfo(prev => ({ ...prev, phoneNumber: e.target.value }))}
                   required
+                  label="Telefonnummer"
+                  value={clientInfo.phoneNumber}
+                  onChange={(event) =>
+                    setClientInfo((previous) => ({
+                      ...previous,
+                      phoneNumber: event.target.value,
+                    }))
+                  }
                 />
               </Grid>
             </Grid>
           )}
 
-          {/* Step 3: Multiple Approvers , *, /}
-          {currentStep === 'approvers' && (
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
-                <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                  <PersonAdd sx={{ color: 'primary.main'}} />
+          {step === 'approvers' && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <PersonAdd color="primary" />
                   Godkjennere
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                  Er det flere parter som skal godkjenne dette tilbudet?
                 </Typography>
               </Grid>
 
-              <Grid size={{ xs: 12 }}>
+              <Grid item xs={12}>
                 <FormControlLabel
                   control={
                     <Switch
                       checked={hasMultipleApprovers}
-                      onChange={(e) => setHasMultipleApprovers(e.target.checked)}
+                      onChange={(event) => setHasMultipleApprovers(event.target.checked)}
                     />
-                }
-                  label="Ja, det er flere parter som skal godkjenne"
+                  }
+                  label="Flere parter må godkjenne"
                 />
               </Grid>
 
               {hasMultipleApprovers && (
-                <Grid size={{ xs: 12 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Legg til godkjennere: </Typography>
+                <Grid item xs={12}>
                   {approvers.map((approver, index) => (
-                    <Box key={index} sx={{ mb:  3, p: 2, border: 1, borderColor: 'divider', borderRadius:  1 }}>
+                    <Box
+                      key={`approver-${index}`}
+                      sx={{ mb: 2, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}
+                    >
                       <Typography variant="subtitle2" gutterBottom>
-                        Godkjenner {index + 1}:
+                        Godkjenner {index + 1}
                       </Typography>
                       <Grid container spacing={2}>
-                        <Grid size={{ xs:  12, sm:  6 }}>
+                        <Grid item xs={12} sm={6}>
                           <TextField
                             fullWidth
-                            label="Navn *"
+                            required
+                            label="Navn"
                             value={approver.name}
-                            onChange={(e) => updateApprover(index'name', e.target.value)}
-                            required
+                            onChange={(event) => updateApprover(index, 'name', event.target.value)}
                           />
                         </Grid>
-                        <Grid size={{ xs:  12, sm:  6 }}>
+                        <Grid item xs={12} sm={6}>
                           <TextField
                             fullWidth
-                            label="E-post *"
+                            required
                             type="email"
+                            label="E-post"
                             value={approver.email}
-                            onChange={(e) => updateApprover(index'email', e.target.value)}
-                            required
+                            onChange={(event) => updateApprover(index, 'email', event.target.value)}
                           />
                         </Grid>
-                        <Grid size={{ xs: 12 }}>
+                        <Grid item xs={12}>
                           <TextField
                             fullWidth
-                            label="Adresse *"
+                            required
+                            label="Adresse"
                             value={approver.address}
-                            onChange={(e) => updateApprover(index'address', e.target.value)}
-                            required
-                            multiline
-                            rows={2}
+                            onChange={(event) => updateApprover(index, 'address', event.target.value)}
                           />
                         </Grid>
-                        <Grid size={{ xs:  12, sm:  6 }}>
+                        <Grid item xs={12} sm={6}>
                           <TextField
                             fullWidth
-                            label="Telefonnummer *"
-                            value={approver.phoneNumber}
-                            onChange={(e) => updateApprover(index'phoneNumber', e.target.value)}
                             required
+                            label="Telefonnummer"
+                            value={approver.phoneNumber}
+                            onChange={(event) => updateApprover(index, 'phoneNumber', event.target.value)}
                           />
                         </Grid>
-                        <Grid size={{ xs:  12, sm:  6 }}>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            onClick={() => removeApprover(index)}
-                            fullWidth
-                          >
+                        <Grid item xs={12} sm={6}>
+                          <Button color="error" variant="outlined" fullWidth onClick={() => removeApprover(index)}>
                             Fjern godkjenner
                           </Button>
                         </Grid>
                       </Grid>
                     </Box>
                   ))}
-                  <Button
-                    variant="outlined"
-                    onClick={addApprover}
-                    startIcon={<PersonAdd />}
-                  >
+                  <Button variant="outlined" onClick={addApprover} startIcon={<PersonAdd />}>
                     Legg til godkjenner
                   </Button>
                 </Grid>
               )}
 
-              <Grid size={{ xs: 12 }}>
+              <Grid item xs={12}>
                 <Alert severity="info">
-                  <Typography variant="body2">
-                    <strong>Prosjekt-ID: </strong> {generateProjectId(clientInfo, approvers)}
-                  </Typography>
-                  <Typography variant="caption" display="block">
-                    Denne ID-en vil bli knyttet til alle godkjennere og brukes for prosjektoppretting.
-                  </Typography>
+                  Prosjekt-ID: <strong>{generateProjectId(clientInfo, hasMultipleApprovers ? approvers : [])}</strong>
                 </Alert>
               </Grid>
             </Grid>
@@ -522,37 +541,30 @@ export default function QuoteCreationModal({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>
-          Avbryt
-        </Button>
-        
-        {/* Step navigation buttons */}
-        {currentStep !== 'quote' && (
-          <Button onClick={handlePreviousStep}>
-            Tilbake
-          </Button>
+        <Button onClick={onClose}>Avbryt</Button>
+
+        {step !== 'quote' && (
+          <Button onClick={() => setStep(step === 'approvers' ? 'client-info' : 'quote')}>Tilbake</Button>
         )}
-        
-        {currentStep !== 'approvers' ? (
-          <Button variant="contained"
-            onClick={handleNextStep}
-            disabled={
-              (currentStep === 'quote' && (!quoteData.title || !quoteData.description)) ||
-              (currentStep === 'client-info' && (!clientInfo.name || !clientInfo.email || !clientInfo.address || !clientInfo.phoneNumber))
-          }
-           sx={theming.getThemedButtonSx()}>
+
+        {step !== 'approvers' ? (
+          <Button
+            variant="contained"
+            onClick={() => setStep(step === 'quote' ? 'client-info' : 'approvers')}
+            disabled={(step === 'quote' && !canContinueFromQuote) || (step === 'client-info' && !canContinueFromClientInfo)}
+            sx={theming.getThemedButtonSx()}
+          >
             Neste
           </Button>
         ) : (
-          <Button variant="contained"
-            onClick={handleCreateQuote}
-            disabled={
-              createQuoteMutation.isPending ||
-              (hasMultipleApprovers && approvers.some(a = sx={theming.getThemedButtonSx()}> !a.name || !a.email || !a.address || !a.phoneNumber))
-          }
+          <Button
+            variant="contained"
+            onClick={submitQuote}
+            disabled={createQuoteMutation.isPending || !canSubmit}
             startIcon={<Send />}
+            sx={theming.getThemedButtonSx()}
           >
-            {createQuoteMutation.isPending ? 'Oppretter...': 'Opprett og send tilbud'}
+            {createQuoteMutation.isPending ? 'Oppretter...' : 'Opprett og send tilbud'}
           </Button>
         )}
       </DialogActions>

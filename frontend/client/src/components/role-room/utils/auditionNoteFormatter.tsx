@@ -89,6 +89,7 @@ export function formatNotesToReactNodes(notes: string): ReactNode {
       return (
         <Typography
           key={i}
+          component="div"
           sx={{
             fontWeight: 800,
             fontSize: { xs: '1rem', sm: '1.125rem' },
@@ -109,7 +110,7 @@ export function formatNotesToReactNodes(notes: string): ReactNode {
       return (
         <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5, mb: 0.5 }}>
           <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#ffb800', mt: 1, flexShrink: 0 }} />
-          <Typography sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>
+          <Typography component="div" sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>
             {parseInline(line.slice(2))}
           </Typography>
         </Box>
@@ -138,7 +139,7 @@ export function formatNotesToReactNodes(notes: string): ReactNode {
           >
             {numMatch[1]}
           </Box>
-          <Typography sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>
+          <Typography component="div" sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}>
             {parseInline(line.slice(numMatch[0].length))}
           </Typography>
         </Box>
@@ -171,6 +172,7 @@ export function formatNotesToReactNodes(notes: string): ReactNode {
             )}
           </Box>
           <Typography
+            component="div"
             sx={{
               color: isChecked ? 'rgba(255,255,255,0.5)' : '#fff',
               lineHeight: 1.6,
@@ -191,7 +193,7 @@ export function formatNotesToReactNodes(notes: string): ReactNode {
 
     // Plain text
     return (
-      <Typography key={i} sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' }, mb: 0.25 }}>
+      <Typography key={i} component="div" sx={{ color: '#fff', lineHeight: 1.6, fontSize: { xs: '0.8rem', sm: '0.85rem' }, mb: 0.25 }}>
         {parseInline(line)}
       </Typography>
     );

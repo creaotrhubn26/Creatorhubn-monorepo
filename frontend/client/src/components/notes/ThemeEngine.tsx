@@ -254,7 +254,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
 }
 }, [selectedTheme]);
 
-  const handleColorChange = useCallback((colorType: keyof ThemeConfig['colors']value: string) => {
+  const handleColorChange = useCallback((colorType: keyof ThemeConfig['colors'], value: string) => {
     setSelectedTheme(prev => ({
       ...prev,
       colors: {
@@ -264,7 +264,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
   }));
 }, []);
 
-  const handleTypographyChange = useCallback((property: keyof ThemeConfig['typography']value: any) => {
+  const handleTypographyChange = useCallback((property: keyof ThemeConfig['typography'], value: any) => {
     setSelectedTheme(prev => ({
       ...prev,
       typography: {
@@ -274,7 +274,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
   }));
 }, []);
 
-  const handleSpacingChange = useCallback((property: keyof ThemeConfig['spacing']value: number) => {
+  const handleSpacingChange = useCallback((property: keyof ThemeConfig['spacing'], value: number) => {
     setSelectedTheme(prev => ({
       ...prev,
       spacing: {
@@ -284,7 +284,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
   }));
 }, []);
 
-  const handleBorderRadiusChange = useCallback((property: keyof ThemeConfig['borderRadius']value: number) => {
+  const handleBorderRadiusChange = useCallback((property: keyof ThemeConfig['borderRadius'], value: number) => {
     setSelectedTheme(prev => ({
       ...prev,
       borderRadius: {
@@ -294,7 +294,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
   }));
 }, []);
 
-  const handleAnimationChange = useCallback((property: keyof ThemeConfig['animations']value: any) => {
+  const handleAnimationChange = useCallback((property: keyof ThemeConfig['animations'], value: any) => {
     setSelectedTheme(prev => ({
       ...prev,
       animations: {
@@ -409,7 +409,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
                             width:  20,
                             height:  20,
                             backgroundColor: theme.colors.primary,
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             border: '1px solid #ccc'}}
                         />
                         <Box
@@ -417,7 +417,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
                             width:  20,
                             height:  20,
                             backgroundColor: theme.colors.secondary,
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             border: '1px solid #ccc'}}
                         />
                         <Box
@@ -425,7 +425,7 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
                             width:  20,
                             height:  20,
                             backgroundColor: theme.colors.accent,
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             border: '1px solid #ccc'}}
                         />
                       </Stack>
@@ -798,4 +798,3 @@ const ThemeEngine: React.FC<ThemeEngineProps> = ({
 };
 
 export default ThemeEngine;
-

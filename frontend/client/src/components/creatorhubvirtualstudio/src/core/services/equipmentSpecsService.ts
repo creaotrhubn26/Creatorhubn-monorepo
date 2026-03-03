@@ -131,7 +131,8 @@ export const LIGHT_SPECS_DATABASE: Record<string, LightSpecifications> = {
     lightType: 'cob',
     releaseYear: 2020,
     msrpPrice: 1899,
-  }'godox-sl60w': {
+  },
+  'godox-sl60w': {
     wattage: 60,
     powerConsumption: 65,
     equivalentWattage: 300,
@@ -243,4 +244,3 @@ class EquipmentSpecsService {
 }
 
 export const equipmentSpecsService = new EquipmentSpecsService();
-

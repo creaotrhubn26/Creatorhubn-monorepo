@@ -118,7 +118,7 @@ export default function ContractPricingIntegration({
   const calculatePricingMutation = useMutation({
     mutationFn: (data: any) =>
       apiRequest('/api/pricing/calculate', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: (result) => {

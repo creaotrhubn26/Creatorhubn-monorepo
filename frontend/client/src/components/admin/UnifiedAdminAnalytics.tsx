@@ -34,6 +34,7 @@ import {
   Download as DownloadIcon,
   Visibility as VisibilityIcon,
 } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
 import { useAdmin } from '../../contexts/AdminContext';
 import { adminAPI } from '../../lib/admin-api-client';
 import { CREATOR_HUB_BRANDING } from '../../constants/CreatorHubBranding';
@@ -101,9 +102,20 @@ const UnifiedAdminAnalytics: React.FC = () => {
   }
 };
 
-  const handleExport = async (type: string) => {
+  const handleExport = async (
+    type: 'unified' | 'features' | 'users' | 'profession-types' | 'products',
+  ) => {
     try {
-      const data = await adminAPI.exportData(type as any'json');
+      const data =
+        type === 'unified'
+          ? {
+              analytics,
+              featureAnalytics,
+              userAnalytics,
+              professionTypeAnalytics,
+              productAnalytics,
+            }
+          : await adminAPI.exportData(type, 'json');
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -113,16 +125,16 @@ const UnifiedAdminAnalytics: React.FC = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      notify(`${type} analytics exported successfully`'success');
+      notify(`${type} analytics exported successfully`, 'success');
   } catch (error) {
-      notify(`Failed to export ${type} analytics`'error');
+      notify(`Failed to export ${type} analytics`, 'error');
   }
 };
 
   if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400}}>
-        <CircularProgress size={60}, sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y}} />
+        <CircularProgress size={60} sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY }} />
       </Box>
     );
 }
@@ -149,7 +161,7 @@ const UnifiedAdminAnalytics: React.FC = () => {
             <Typography color="textSecondary" gutterBottom variant="h6" sx={{ color: theming.colors.primary }}>
               {title}
             </Typography>
-            <Typography variant="h4" component="div" sx={{  fontWeight: 'bold', color  }}>
+            <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color }}>
               {value}
             </Typography>
             {trend !== undefined && (
@@ -159,7 +171,8 @@ const UnifiedAdminAnalytics: React.FC = () => {
                   variant="body2"
                   sx={{ color: trend >= 0 ? 'success.main' : 'error.main', ml: 0.5}}
                 >
-                  {trend >= 0 ? '+' : ', '},{trend}%
+                  {trend >= 0 ? '+' : '-'}
+                  {Math.abs(trend)}%
                 </Typography>
               </Box>
             )}
@@ -195,13 +208,13 @@ const UnifiedAdminAnalytics: React.FC = () => {
       </Box>
 
       {/* Overview Stats */}
-      <Grid container spacing={3}, sx={{ mb:  3 }}>
+      <Grid container spacing={3} sx={{ mb:  3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Features"
             value={analytics?.features?.total || 0}
             icon={<SettingsIcon sx={{ fontSize: 40}} />}
-            sx={{ color: CREATOR_HUB_BRANDING.colors.PHOTOGRAPH, Y}}
+            color={CREATOR_HUB_BRANDING.colors.PHOTOGRAPHY}
             trend={featureAnalytics?.trend || 0}
           />
         </Grid>
@@ -599,6 +612,4 @@ const UnifiedAdminAnalytics: React.FC = () => {
 };
 
 export default UnifiedAdminAnalytics;
-
-
 

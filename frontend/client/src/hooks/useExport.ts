@@ -68,7 +68,7 @@ export interface UseExportReturn {
  */
 export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onExportCompleted,
     onExportFailed,
     onExportStarted,
@@ -116,8 +116,8 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
   // Initialize export manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      exportManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      exportManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -183,7 +183,7 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onExportCompleted, onExportFailed, onExportStarted, onExportProgress, onError, onInitialized]);
+}, [optionConfig, onExportCompleted, onExportFailed, onExportStarted, onExportProgress, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -225,7 +225,7 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return exportManager.getConfig();
 }, []);
 
@@ -236,7 +236,7 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
     getExportHistory,
     getActiveExports,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -274,7 +274,7 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
     getExportHistory,
     getActiveExports,
     state,
-    config,
+    currentConfig,
     updateConfig
   ]);
 
@@ -282,7 +282,6 @@ export const useExport = (options: UseExportOptions = {}): UseExportReturn => {
 };
 
 export default useExport;
-
 
 
 

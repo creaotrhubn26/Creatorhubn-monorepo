@@ -76,24 +76,11 @@ export * from './resume-schema';
 export * from './sales-schema';
 export * from './seo-schema';
 export * from './seo-specialist-schema';
-export * from './showcase-admin-schema';
 export * from './smart-timing-schema';
-export * from './story-arc-schema';
-export * from './text-enhancement-schema';
 export * from './theme-schema';
-export * from './trial-management-schema';
 export * from './tutorial-schema';
-export * from './vendor-onboarding-schema';
-export * from './vendor-showcase-schema';
-export * from './video-schema';
-export * from './video-standards-schema';
-export * from './visual-cms-schema';
 export * from './wedding-schema';
 export * from './wedding-timeline-schema';
-
-// Server-side schemas
-export * from '@server/db/schema/feature-management-schema';
-export * from '@server/db/schema/academy-monetization-schema';
 
 // Export Zod schemas for validation
 export { createInsertSchema } from 'drizzle-zod';

@@ -159,7 +159,7 @@ interface StoryboardState {
   updateStoryboard: (id: string, updates: Partial<Storyboard>) => void;
   
   // Frame actions
-  addFrame: (frame: Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | , 'updatedAt, '>) => StoryboardFrame;
+  addFrame: (frame: Omit<StoryboardFrame, 'id' | 'index' | 'createdAt' | 'updatedAt'>) => StoryboardFrame;
   updateFrame: (frameId: string, updates: Partial<StoryboardFrame>) => void;
   deleteFrame: (frameId: string) => void;
   duplicateFrame: (frameId: string) => StoryboardFrame | null;
@@ -632,4 +632,3 @@ export const formatDuration = (seconds: number): string => {
   const secs = seconds % 60;
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 };
-

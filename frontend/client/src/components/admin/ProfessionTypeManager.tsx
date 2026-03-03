@@ -63,6 +63,7 @@ import {
   AttachMoney,
   Event,
 } from '@mui/icons-material';
+import type { ChipProps } from '@mui/material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface ProfessionTypeConfig {
@@ -129,8 +130,8 @@ export default function ProfessionTypeManager() {
   const { analytics, performance, debugging, lifecycle, features, auth } = useEnhancedMasterIntegration();
 
   // Dynamic tab filtering using feature access
-  const activeProfessionsAccess = features.checkFeatureAccess('admin-active-professions,');
-  const templatesAccess = features.checkFeatureAccess('admin-profession-templates,');
+  const activeProfessionsAccess = features.checkFeatureAccess('admin-active-professions');
+  const templatesAccess = features.checkFeatureAccess('admin-profession-templates');
   const ssbDataAccess = features.checkFeatureAccess('admin-ssb-proff-data, ');
   const createProfessionAccess = features.checkFeatureAccess('admin-create-profession');
   
@@ -169,16 +170,22 @@ export default function ProfessionTypeManager() {
   React.useEffect(() => {
     lifecycle.registerComponent({
       id: 'ProfessionTypeManager',
-      name: 'Profession Type Manager',
+      type: 'admin-panel',
       version: '1.0.0',
-      status: 'active',
       capabilities: {
         data: ['profession_types','ssb_data','proff_data'],
         events: ['profession_created','profession_updated','profession_deleted'],
         actions: ['create_profession','update_profession','delete_profession','toggle_profession'],
         ui: ['profession_list','create_form','edit_form','preview'],
         system: ['ssb_integration','proff_integration']
-      }
+      },
+      dependencies: ['auth-system', 'feature-flags', 'analytics'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0,
+      },
     });
 
     analytics.trackEvent('profession_type_manager_opened', {
@@ -200,7 +207,16 @@ export default function ProfessionTypeManager() {
     return () => {
       lifecycle.unregisterComponent('ProfessionTypeManager');
     };
-  }, [availableTabs.length]);
+  }, [
+    lifecycle,
+    analytics,
+    features,
+    availableTabs.length,
+    activeProfessionsAccess.hasAccess,
+    templatesAccess.hasAccess,
+    ssbDataAccess.hasAccess,
+    createProfessionAccess.hasAccess,
+  ]);
 
   // Track tab changes with feature access
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -244,7 +260,7 @@ export default function ProfessionTypeManager() {
   // Create profession mutation
   const createProfessionMutation = useMutation({
     mutationFn: async (professionData: Partial<ProfessionTypeConfig>) => {
-      const perfMarker = performance.markStart('create_profession');
+      const stopTiming = performance.startTiming('create_profession');
 
       try {
         const headers = await auth.getAuthHeader();
@@ -256,7 +272,6 @@ export default function ProfessionTypeManager() {
           }
         });
 
-        performance.markEnd('create_profession', perfMarker);
         analytics.trackEvent('profession_created', {
           professionId: result.id,
           professionName: result.displayName,
@@ -265,10 +280,13 @@ export default function ProfessionTypeManager() {
 
         return result;
       } catch (error) {
-        debugging.logError('profession_creation_failed', error as Error, {
+        debugging.logIntegration('error', 'profession_creation_failed', {
+          error: error instanceof Error ? error.message : String(error),
           professionData
         });
         throw error;
+      } finally {
+        stopTiming();
       }
     },
     onSuccess: () => {
@@ -373,7 +391,7 @@ export default function ProfessionTypeManager() {
     return colors[category] || '#9e9e9e';
   };
 
-  const getDemandChipColor = (demand: string) => {
+  const getDemandChipColor = (demand: string): ChipProps['color'] => {
     switch (demand) {
       case 'high': return 'success';
       case 'medium': return 'warning';
@@ -382,7 +400,7 @@ export default function ProfessionTypeManager() {
     }
   };
 
-  const getCompetitionChipColor = (competition: string) => {
+  const getCompetitionChipColor = (competition: string): ChipProps['color'] => {
     switch (competition) {
       case 'high': return 'error';
       case 'medium': return 'warning';
@@ -594,13 +612,13 @@ export default function ProfessionTypeManager() {
                       <Chip 
                         label={`Etterspørsel: ${profession.demand.toUpperCase()}`}
                         size="small"
-                        color={getDemandChipColor(profession.demand) as any}
+                        color={getDemandChipColor(profession.demand)}
                         icon={<TrendingUp />}
                       />
                       <Chip 
                         label={`Konkurranse: ${profession.competition.toUpperCase()}`}
                         size="small"
-                        color={getCompetitionChipColor(profession.competition) as any}
+                        color={getCompetitionChipColor(profession.competition)}
                       />
                     </Box>
                     
@@ -629,7 +647,7 @@ export default function ProfessionTypeManager() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                       <People sx={{ fontSize: 16, color: 'text.secondary' }} />
                       <Typography variant="caption" color="textSecondary">
-                        {profession.users || 0} brukere
+                        {profession.typicalProjects.length} prosjekt-typer
                       </Typography>
                     </Box>
                     
@@ -726,12 +744,12 @@ export default function ProfessionTypeManager() {
                           <Chip 
                             label={`Etterspørsel: ${template.demand.toUpperCase()}`}
                             size="small"
-                            color={getDemandChipColor(template.demand) as any}
+                            color={getDemandChipColor(template.demand)}
                           />
                           <Chip 
                             label={`Konkurranse: ${template.competition.toUpperCase()}`}
                             size="small"
-                            color={getCompetitionChipColor(template.competition) as any}
+                            color={getCompetitionChipColor(template.competition)}
                           />
                           <Typography variant="caption" sx={{ mt: 1 }}>
                             💰 {template.pricingRange}
@@ -832,7 +850,7 @@ export default function ProfessionTypeManager() {
                         Næringskode: {profession.ssbIndustryCode}
                       </Typography>
                       <Typography variant="caption" display="block" color="textSecondary">
-                        Status: {profession.ssbData ? '✓ Tilkoblet' : '⏳ Henter data...'}
+                        Status: {profession.ssbIndustryCode ? '✓ Tilkoblet' : '⏳ Mangler kode'}
                       </Typography>
                     </Box>
                     
@@ -845,7 +863,7 @@ export default function ProfessionTypeManager() {
                         Bransje: {profession.proffIndustry}
                       </Typography>
                       <Typography variant="caption" display="block" color="textSecondary">
-                        Status: {profession.proffData ? '✓ Tilkoblet' : '⏳ Henter data...'}
+                        Status: {profession.proffIndustry ? '✓ Tilkoblet' : '⏳ Mangler bransje'}
                       </Typography>
                     </Box>
                   </CardContent>
@@ -913,14 +931,14 @@ export default function ProfessionTypeManager() {
                 <Grid item xs={6}>
                   <Chip 
                     label={`Etterspørsel: ${selectedProfession.demand.toUpperCase()}`}
-                    color={getDemandChipColor(selectedProfession.demand) as any}
+                    color={getDemandChipColor(selectedProfession.demand)}
                     size="small"
                   />
                 </Grid>
                 <Grid item xs={6}>
                   <Chip 
                     label={`Konkurranse: ${selectedProfession.competition.toUpperCase()}`}
-                    color={getCompetitionChipColor(selectedProfession.competition) as any}
+                    color={getCompetitionChipColor(selectedProfession.competition)}
                     size="small"
                   />
                 </Grid>

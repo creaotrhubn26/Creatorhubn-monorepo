@@ -48,6 +48,22 @@ interface MediaEditingToolsProps {
   onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
+interface GoogleFont {
+  family: string;
+  category: string;
+  variants?: string[];
+}
+
+const apiRequest = (url: string, init?: RequestInit): Promise<Response> => {
+  return fetch(url, {
+    credentials: 'include',
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+    },
+  });
+};
+
 export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
   selectedProject,
   onProjectUpdate,
@@ -122,7 +138,7 @@ export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
   const [uploadedAssets, setUploadedAssets] = useState<Record<string, unknown>[]>([]);
 
   // Font and icon libraries
-  const [googleFonts, setGoogleFonts] = useState<Record<string, unknown>[]>([]);
+  const [googleFonts, setGoogleFonts] = useState<GoogleFont[]>([]);
   const [fontWeights] = useState(['300','400','500','600','700']);
   const [fontStyles] = useState(['normal','italic']);
 
@@ -150,14 +166,15 @@ export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
       const response = await apiRequest('/api/google/fonts', { headers });
 
       if (response.ok) {
-        const fonts = await response.json();
-        setGoogleFonts(fonts.items || []);
+        const fonts = (await response.json()) as { items?: GoogleFont[] };
+        const fontItems = Array.isArray(fonts.items) ? fonts.items : [];
+        setGoogleFonts(fontItems);
         
         onNotificationCreate?.({
           id: `google_fonts_loaded_${Date.now()}`,
           type: 'project_updated',
           title: 'Google Fonts Loaded',
-          message: `Loaded ${fonts.items?.length || 0} fonts`,
+          message: `Loaded ${fontItems.length} fonts`,
           priority: 'low',
           source: 'media_editor',
           timestamp: new Date().toISOString()
@@ -248,8 +265,10 @@ export const MediaEditingTools: React.FC<MediaEditingToolsProps> = ({
 }, [svgCode, onNotificationCreate]);
 
   // Font management
-  const applyFont = useCallback((fontFamily: string, fontWeight: tring, fontStyle: string) => {
+  const applyFont = useCallback((fontFamily: string, fontWeight: string, fontStyle: string) => {
     // Apply font to selected elements
+    void fontWeight;
+    void fontStyle;
     
     onNotificationCreate?.({
       id: `font_applied_${Date.now()}`,

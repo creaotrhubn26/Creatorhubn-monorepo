@@ -67,6 +67,46 @@ interface WithVisualEditorOptions {
   propsEditable: boolean;
 }
 
+interface PartnerSectionCustomization {
+  enabled?: boolean;
+  title?: string;
+  description?: string;
+  logoUrl?: string;
+  ctaLabel?: string;
+  dialogTitle?: string;
+  dialogBody?: string;
+  dialogBullets?: string;
+}
+
+interface VideoSectionCustomization {
+  enabled?: boolean;
+  showEmbeddedVideo?: boolean;
+  title?: string;
+  description?: string;
+  videoUrl?: string;
+  posterUrl?: string;
+  autoPlay?: boolean;
+  loop?: boolean;
+  showControls?: boolean;
+  showLoadingLogo?: boolean;
+}
+
+interface CinematicCustomization {
+  enabled?: boolean;
+  contrast?: number;
+  saturate?: number;
+  overlayTopOpacity?: number;
+  overlayBottomOpacity?: number;
+  glowWarmOpacity?: number;
+  glowCoolOpacity?: number;
+}
+
+interface VisualCustomizationState extends Record<string, unknown> {
+  partnerSection?: PartnerSectionCustomization;
+  videoSection?: VideoSectionCustomization;
+  cinematic?: CinematicCustomization;
+}
+
 export function withVisualEditor<P extends object>(
   WrappedComponent: React.ComponentType<P>,
   options: WithVisualEditorOptions
@@ -94,20 +134,22 @@ export function withVisualEditor<P extends object>(
     const [showEditDialog, setShowEditDialog] = useState(false);
     const [showFloatingControls, setShowFloatingControls] = useState(false);
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-    const [localCustomizations, setLocalCustomizations] = useState(customizations || {});
+    const [localCustomizations, setLocalCustomizations] = useState<VisualCustomizationState>(
+      customizations as VisualCustomizationState,
+    );
     const [isHovered, setIsHovered] = useState(false);
     const componentRef = useRef<HTMLDivElement>(null);
     const isLandingComponent = componentId === 'landing-desktop' || componentId === 'landing-mobile';
 
-    const updateCustomization = useCallback((path: string[], value: any) => {
-      setLocalCustomizations((prev: Record<string, any> = {}) => {
-        const next = { ...prev };
-        let cursor: Record<string, any> = next;
+    const updateCustomization = useCallback((path: string[], value: unknown) => {
+      setLocalCustomizations((prev) => {
+        const next: VisualCustomizationState = { ...prev };
+        let cursor: Record<string, unknown> = next;
         path.slice(0, -1).forEach((key) => {
           if (!cursor[key] || typeof cursor[key] !== 'object') {
             cursor[key] = {};
           }
-          cursor = cursor[key];
+          cursor = cursor[key] as Record<string, unknown>;
         });
         cursor[path[path.length - 1]] = value;
         return next;
@@ -153,7 +195,7 @@ export function withVisualEditor<P extends object>(
 
     // Handle cancel
     const handleCancel = useCallback(() => {
-      setLocalCustomizations(customizations);
+      setLocalCustomizations(customizations as VisualCustomizationState);
       setShowFloatingControls(false);
       setShowEditDialog(false);
       onCancel?.();
@@ -665,4 +707,3 @@ export const VisualEditorComponents = {
 };
 
 export default withVisualEditor;
-

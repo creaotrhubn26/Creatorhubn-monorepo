@@ -165,7 +165,10 @@ export const SPACING = {
 };
 
 // Prop definitions
-export const PROP_DEFINITIONS: Record<PropType, Omit<ClassPhotoProp, 'id' | 'position' | 'rotation' | , 'assignedStudents, '>> = {
+export const PROP_DEFINITIONS: Record<
+  PropType,
+  Omit<ClassPhotoProp, 'id' | 'position' | 'rotation' | 'assignedStudents'>
+> = {
   floor: {
     type: 'floor',
     name: 'Floor',
@@ -1143,4 +1146,3 @@ export class ClassPhotoService {
 export const classPhotoService = new ClassPhotoService();
 
 export default classPhotoService;
-

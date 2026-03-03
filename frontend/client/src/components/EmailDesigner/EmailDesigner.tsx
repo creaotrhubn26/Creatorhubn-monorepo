@@ -1,7 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import {
   Box,
@@ -59,9 +58,19 @@ import {
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
+type EmailComponentType =
+  | 'header'
+  | 'text'
+  | 'button'
+  | 'image'
+  | 'divider'
+  | 'footer'
+  | 'social'
+  | 'spacer';
+
 interface EmailComponent {
   id: string;
-  type: 'header' | 'text' | 'button' | 'image' | 'divider' | 'footer' | 'social' | 'spacer';
+  type: EmailComponentType;
   content: any;
   styles: any; 
 }
@@ -96,7 +105,7 @@ interface EmailTemplate {
   category: string;
   subject: string;
   preheader: string;
-  context?: 'showcase' | 'wedding-timeline' | 'general';
+  context?: 'showcase' | 'wedding-timeline' | 'general' | 'invitation';
   components: EmailComponent[];
   globalStyles: {
     backgroundColor: string;
@@ -112,11 +121,12 @@ interface EmailTemplate {
 const defaultGlobalStyles = {
   backgroundColor: '#f5f5f0',
   fontFamily: 'Arial, sans-serif',
-  fontSize:  14,
+  fontSize: 14,
   lineHeight: 1.6,
   textColor: '#333330',
   linkColor: '#ff6b30',
-  containerWidth: 60 };
+  containerWidth: 600
+};
 
 const componentTypes = [
   { id: 'header', name: 'Overskrift', icon: <TextFieldsIcon />, color: '#ff6b35',},
@@ -129,14 +139,16 @@ const componentTypes = [
   { id: 'footer', name: 'Bunntekst', icon: <EmailIcon />, color: '#795548',}
 ];
 
+function isEmailComponentType(type: string): type is EmailComponentType {
+  return componentTypes.some((componentType) => componentType.id === type);
+}
+
 const SortableComponent: React.FC<{ 
   component: EmailComponent; 
   onEdit: (component: EmailComponent) => void;
   onDelete: (id: string) => void
 }> = ({ component, onEdit, onDelete }) => {
-  // Converted to @hello-pangea/dnd - component handled by Draggable wrapper
-
-  // Style now handled by @hello-pangea/dnd Draggable component
+  const theming = useTheming('photographer');
 
   const renderComponent = () => {
     switch (component.type) {
@@ -144,9 +156,9 @@ const SortableComponent: React.FC<{
         return (
           <Typography variant="h4" 
             style={{ 
-              color: component.styles?.color || '#33',
+              color: component.styles?.color || '#333333',
               textAlign: component.styles?.textAlign || 'left',
-              fontWeight: omponent.styles?.fontWeight || 'bold',
+              fontWeight: component.styles?.fontWeight || 'bold',
               marginBottom: component.styles?.marginBottom || 16 }}
            sx={{ color: theming.colors.primary }}>
             {component.content?.text || 'Overskrift'}
@@ -157,7 +169,7 @@ const SortableComponent: React.FC<{
           <Typography 
             variant="body1" 
             style={{ 
-              color: component.styles?.color || '#33',
+              color: component.styles?.color || '#333333',
               textAlign: component.styles?.textAlign || 'left',
               marginBottom: component.styles?.marginBottom || 16 }}
           >
@@ -169,11 +181,11 @@ const SortableComponent: React.FC<{
           <Button variant="contained"
             style={{
               backgroundColor: component.styles?.backgroundColor || '#ff6b30',
-              color: component.styles?.color || '#white',
+              color: component.styles?.color || '#ffffff',
               borderRadius: component.styles?.borderRadius || 8,
               padding: `${component.styles?.paddingY || 12}px ${component.styles?.paddingX || 24}px`,
               fontSize: component.styles?.fontSize || 16,
-              fontWeight: omponent.styles?.fontWeight || 'bold',
+              fontWeight: component.styles?.fontWeight || 'bold',
               textTransform: 'none',
               marginBottom: component.styles?.marginBottom || 16
             }}
@@ -227,7 +239,7 @@ const SortableComponent: React.FC<{
           <Typography
             variant="caption"
             style={{
-              color: component.styles?.color || '#66',
+              color: component.styles?.color || '#666666',
               textAlign: component.styles?.textAlign || 'center',
               fontSize: component.styles?.fontSize || 12,
               marginTop: component.styles?.marginTop || 24 }}
@@ -235,28 +247,29 @@ const SortableComponent: React.FC<{
             {component.content?.text || 'CreatorHub Norge - user?.email'}
           </Typography>
         );
-      default: return <Box>Ukjent komponent</Box>;
-}
-};
+      default:
+        return <Box>Ukjent komponent</Box>;
+    }
+  };
 
   return (
     <Paper
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      elevation={isDragging ? 8 : 2}
+      elevation={2}
       sx={{
         ...theming.getThemedCardSx(),
         p: 2,
         mb: 2,
         position: 'relative',
-        border: '2px dashed transparent', '&:hover': {
+        border: '2px dashed transparent',
+        '&:hover': {
           border: '2px dashed #ff6b30',
           backgroundColor: '#fff3e0'
+        },
+        '&:hover .component-actions': {
+          opacity: 1
         }
       }}>
       <Box
-        {...listeners}
         sx={{
           position: 'absolute',
           top:  8,
@@ -285,7 +298,9 @@ const SortableComponent: React.FC<{
           right: 8,
           display: 'flex',
           gap: 1,
-          opacity: 0, '&:hover': { opacity: 1 }, '.MuiPaper-root: hover &': { opacity: 1 }}}
+          opacity: 0
+        }}
+        className="component-actions"
       >
         <IconButton size="small" onClick={() => onEdit(component)}>
           <SettingsIcon fontSize="small" />
@@ -331,7 +346,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
   const queryClient = useQueryClient();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
   
   // Auto-load invitation template when context is 'invitation'
   React.useEffect(() => {
@@ -394,22 +409,15 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
 
   // Load email templates from backend
   const { data: emailTemplates, isLoading: templatesLoading } = useQuery({
-    queryKey: ['/api/email/templates,', ],
-    staleTime: 5 * 60 * 100,
-    queryFn: async () => {
-      return apiRequest('/api/email/templates, ', {
-        headers: auth
+    queryKey: ['/api/email/templates'],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => apiRequest('/api/email/templates'),
   });
-  }, // 5 minutes
-});
 
   // Save template mutation
   const saveTemplateMutation = useMutation({
     mutationFn: async (templateData: EmailTemplate) => {
       return apiRequest('/api/email/templates', {
-        headers: {
-          ...auth, 'Content-Type' : 'application/json',
-        },
         method: 'POST',
         body: JSON.stringify(templateData),
       });
@@ -422,12 +430,16 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
   // @hello-pangea/dnd doesn't need sensors configuration
 
   const addComponent = (type: string) => {
+    if (!isEmailComponentType(type)) {
+      return;
+    }
+
     const newComponent: EmailComponent = {
       id: `${type}-${Date.now()}`,
-      type: type as any,
+      type,
       content: getDefaultContent(type),
       styles: getDefaultStyles(type)
-};
+    };
 
     setTemplate(prev => ({
       ...prev,
@@ -492,7 +504,9 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
       setTemplate(prev => {
         const newComponents = [...prev.components];
         const [movedComponent] = newComponents.splice(sourceIndex, 1);
-        newComponents.splice(destinationIndexmovedComponent);
+        if (movedComponent) {
+          newComponents.splice(destinationIndex, 0, movedComponent);
+        }
         
         return { ...prev, components: newComponents };
     });
@@ -531,7 +545,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
       subject: templateData.subject || 'Emnelinje',
       preheader: templateData.preheader || 'Preheader',
       context: context,
-      components: parseHTMLToComponents(templateData.html_content || '', ),
+      components: parseHTMLToComponents(templateData.html_content || ''),
       globalStyles: defaultGlobalStyles
 };
     
@@ -639,7 +653,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
               border: none;
               background-color: ${component.styles.color};
               height: ${component.styles.height}px;
-              margin: ${component.styles.marginTp}px 0 ${component.styles.marginBottom}px 0;
+              margin: ${component.styles.marginTop}px 0 ${component.styles.marginBottom}px 0;
             ">
           `;
         case 'spacer':
@@ -650,13 +664,14 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
               color: ${component.styles.color};
               text-align: ${component.styles.textAlign};
               font-size: ${component.styles.fontSize}px;
-              margin-top: ${component.styles.marginTp}px;
+              margin-top: ${component.styles.marginTop}px;
               font-family: ${template.globalStyles.fontFamily};
             ">
               ${component.content.text}
             </div>
           `;
-        default: return ', ';
+        default:
+          return '';
   }
   }).join('\n');
 
@@ -774,7 +789,7 @@ export const EmailDesigner: React.FC<EmailDesignerProps> = ({
               </Typography>
               <Grid container spacing={2}>
                 {componentTypes.map((type) => (
-                  <Grid size={{ xs:  6 }} key={type.id}>
+                  <Grid item xs={6} key={type.id}>
                     <MuiCard
                       sx={{ 
                         cursor: 'pointer',
@@ -1097,6 +1112,8 @@ const ComponentEditor: React.FC<{
   component: EmailComponent;
   onChange: (component: EmailComponent) => void
 }> = ({ component, onChange }) => {
+  const theming = useTheming('photographer');
+
   const updateContent = (key: string, value: any) => {
     onChange({
       ...component,
@@ -1124,7 +1141,7 @@ const ComponentEditor: React.FC<{
             label="Tekst"
             multiline={component.type === 'text'}
             rows={component.type === 'text' ? 3 : 1}
-            value={component.content?.text || ', '}
+            value={component.content?.text || ''}
             onChange={(e) => updateContent('text', e.target.value)}
             sx={{ mb:  2 }}
           />
@@ -1134,7 +1151,7 @@ const ComponentEditor: React.FC<{
           <TextField
             fullWidth
             label="Lenke URL"
-            value={component.content?.url || ', '}
+            value={component.content?.url || ''}
             onChange={(e) => updateContent('url', e.target.value)}
           />
         )}
@@ -1144,14 +1161,14 @@ const ComponentEditor: React.FC<{
             <TextField
               fullWidth
               label="Bilde URL"
-              value={component.content?.src || ', '}
+              value={component.content?.src || ''}
               onChange={(e) => updateContent('src', e.target.value)}
               sx={{ mb:  2 }}
             />
             <TextField
               fullWidth
               label="Alt tekst"
-              value={component.content?.alt || ', '}
+              value={component.content?.alt || ''}
               onChange={(e) => updateContent('alt', e.target.value)}
             />
           </>
@@ -1167,7 +1184,7 @@ const ComponentEditor: React.FC<{
         <Grid container spacing={2}>
           {(component.type === 'header' || component.type === 'text' || component.type === 'footer') && (
             <>
-              <Grid size={{ xs:  6 }}>
+              <Grid item xs={6}>
                 <TextField
                   fullWidth
                   label="Farge"
@@ -1176,7 +1193,7 @@ const ComponentEditor: React.FC<{
                   onChange={(e) => updateStyle('color', e.target.value)}
                 />
               </Grid>
-              <Grid size={{ xs:  6 }}>
+              <Grid item xs={6}>
                 <FormControl fullWidth>
                   <InputLabel>Tekstjustering</InputLabel>
                   <Select
@@ -1194,7 +1211,7 @@ const ComponentEditor: React.FC<{
 
           {component.type === 'button' && (
             <>
-              <Grid size={{ xs:  6 }}>
+              <Grid item xs={6}>
                 <TextField
                   fullWidth
                   label="Bakgrunnsfarge"
@@ -1203,7 +1220,7 @@ const ComponentEditor: React.FC<{
                   onChange={(e) => updateStyle('backgroundColor', e.target.value)}
                 />
               </Grid>
-              <Grid size={{ xs:  6 }}>
+              <Grid item xs={6}>
                 <TextField
                   fullWidth
                   label="Tekstfarge"
@@ -1215,13 +1232,13 @@ const ComponentEditor: React.FC<{
             </>
           )}
 
-          <Grid size={{ xs: 12 }}>
+          <Grid item xs={12}>
             <Typography gutterBottom>
               Margin bunn: {component.styles?.marginBottom || 16}px
             </Typography>
             <Slider
               value={component.styles?.marginBottom || 16}
-              onChange={(_, value) => updateStyle('marginBottom', value)}
+              onChange={(_, value) => updateStyle('marginBottom', value as number)}
               min={0}
               max={60}
               step={4}

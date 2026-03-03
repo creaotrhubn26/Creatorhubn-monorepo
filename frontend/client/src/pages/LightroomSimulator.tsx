@@ -159,7 +159,7 @@ const LightroomSimulator: React.FC = () => {
       };
 
         const response = await fetch('/api/gallery/upload', {
-          method: 'POS',
+          method: 'POST',
           headers: {
             'Content-Type' : 'application/json',
             Authorization: 'Bearer test-api-key',

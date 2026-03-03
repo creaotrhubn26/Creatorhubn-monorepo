@@ -321,7 +321,7 @@ export default function AdminCommunicationPanel({
 
       setBroadcastDialogOpen(false);
       setBroadcastTitle('');
-      setBroadcastMessage('');
+      setBroadcastMessage(', ');
       setBroadcastType('info');
     } catch {
       toast({

@@ -301,7 +301,7 @@ export const TabletToolbar: React.FC<TabletToolbarProps> = ({
 
 const SidebarContainer = styled(Box, {
   shouldForwardProp: (prop) => !['position','width','isOpen'].includes(prop as string),
-})<{ position: 'left' | 'right';, width: number; isOpen: boolean }>(
+})<{ position: 'left' | 'right'; width: number; isOpen: boolean }>(
   ({ position, width, isOpen }) => ({
     position: 'fixed',
     top: 0,
@@ -728,4 +728,3 @@ export default {
   TabletContextMenu,
   GestureView,
 };
-

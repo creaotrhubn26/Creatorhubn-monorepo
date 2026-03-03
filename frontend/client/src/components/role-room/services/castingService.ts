@@ -277,7 +277,7 @@ export const castingService = {
       }
       
       return dbProject ?? null;
-    } catch (error) {
+    } catch (_error) {
       // Fall back to storage
       return localProject || null;
     }
@@ -927,6 +927,81 @@ export const castingService = {
     const rest = project.shotLists.filter(l => !orderedIds.includes(l.id));
     project.shotLists = [...reordered, ...rest];
     await this.saveProject(project);
+  },
+
+  // ============================================================================
+  // Team Dashboard Snapshots
+  // ============================================================================
+
+  /**
+   * Get saved team dashboard snapshots for a project.
+   * Falls back to user settings storage if API is unavailable.
+   */
+  async getTeamDashboardSnapshots<T extends object = Record<string, unknown>>(projectId: string): Promise<T[]> {
+    const fallbackKey = `team-dashboard-snapshots-${projectId}`;
+    const userId = getCurrentUserId();
+
+    try {
+      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`);
+      if (response.ok) {
+        const data = await response.json();
+        const snapshots = Array.isArray(data?.snapshots) ? data.snapshots : [];
+        await settingsService.setSetting(fallbackKey, snapshots, { userId });
+        return snapshots as T[];
+      }
+    } catch (error) {
+      console.warn('Failed to fetch team dashboard snapshots from API, using local fallback:', error);
+    }
+
+    const local = await settingsService.getSetting<Array<T>>(fallbackKey, { userId });
+    return Array.isArray(local) ? local : [];
+  },
+
+  /**
+   * Save a team dashboard snapshot.
+   * Attempts API first, then writes to local user settings as fallback.
+   */
+  async saveTeamDashboardSnapshot<T extends object = Record<string, unknown>>(projectId: string, snapshot: T): Promise<T> {
+    const fallbackKey = `team-dashboard-snapshots-${projectId}`;
+    const userId = getCurrentUserId();
+    const payload = {
+      ...(snapshot as Record<string, unknown>),
+      id:
+        typeof (snapshot as Record<string, unknown>).id === 'string'
+          ? (snapshot as Record<string, unknown>).id
+          : `snapshot-${Date.now()}`,
+      projectId,
+      createdAt:
+        typeof (snapshot as Record<string, unknown>).createdAt === 'string'
+          ? (snapshot as Record<string, unknown>).createdAt
+          : new Date().toISOString(),
+    };
+
+    try {
+      const response = await fetch(`/api/casting/projects/${projectId}/team-dashboard/snapshots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const saved = (data?.snapshot ?? payload) as T;
+        return saved;
+      }
+    } catch (error) {
+      console.warn('Failed to save team dashboard snapshot to API, using local fallback:', error);
+    }
+
+    const existing = await settingsService.getSetting<Array<Record<string, unknown>>>(fallbackKey, { userId });
+    const snapshots = Array.isArray(existing) ? [...existing] : [];
+    const index = snapshots.findIndex((item) => item.id === payload.id);
+    if (index >= 0) {
+      snapshots[index] = payload;
+    } else {
+      snapshots.unshift(payload);
+    }
+    await settingsService.setSetting(fallbackKey, snapshots, { userId });
+    return payload as T;
   },
 
   // ============================================================================
@@ -2221,4 +2296,3 @@ export const castingService = {
     }
   },
 };
-

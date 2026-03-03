@@ -613,7 +613,7 @@ interface AspectRatioSelectorProps {
 }
 
 export function AspectRatioSelector({ current, onChange }: AspectRatioSelectorProps) {
-  const ratios: { value: ViewfinderSettings['aspectRatio'];, label: string }[] = [
+  const ratios: { value: ViewfinderSettings['aspectRatio']; label: string }[] = [
     { value: '16:9', label: '16:9' },
     { value: '4:3', label: '4:3' },
     { value: '2.39:1', label: '2.39:1' },
@@ -657,4 +657,3 @@ export function AspectRatioSelector({ current, onChange }: AspectRatioSelectorPr
     </Box>
   );
 }
-

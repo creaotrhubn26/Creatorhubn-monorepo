@@ -11,7 +11,6 @@ import {
   CardContent,
   Typography,
   Button,
-  Grid,
   Table,
   TableBody,
   TableCell,
@@ -50,7 +49,9 @@ import {
   Avatar,
   ListItemAvatar,
   ListItemSecondaryAction,
+  ChipProps,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   ExpandMore as ExpandMoreIcon,
   Refresh as RefreshIcon,
@@ -135,7 +136,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
     logApiCalls: true
 });
 
-  const [tabValue, setTabValue] = useState(false);
+  const [tabValue, setTabValue] = useState(0);
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -204,7 +205,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
 }, [events, searchQuery, filterCategory, filterSeverity, filterAction]);
 
   // Get severity color
-  const getSeverityColor = (severity: string) => {
+  const getSeverityColor = (severity: string): ChipProps['color'] => {
     switch (severity) {
       case 'critical': return 'error';
       case 'high': return 'error';
@@ -562,7 +563,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
                         <ListItemIcon>
                           {getCategoryIcon(category)}
                         </ListItemIcon>
-                        <ListItemText primary={category} secondary={count} />
+                        <ListItemText primary={category} secondary={String(count)} />
                       </ListItem>
                     ))}
                   </List>
@@ -585,7 +586,7 @@ const AuditDashboard: React.FC<AuditDashboardProps> = memo(({
                             size="small"
                           />
                         </ListItemIcon>
-                        <ListItemText primary={severity} secondary={count} />
+                        <ListItemText primary={severity} secondary={String(count)} />
                       </ListItem>
                     ))}
                   </List>

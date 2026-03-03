@@ -5,8 +5,8 @@
 
 declare global {
   interface Window {
-    gtag: (...args: any[]) => void;
-    dataLayer: any[];
+    gtag?: (...args: unknown[]) => void;
+    dataLayer?: unknown[];
   }
 }
 
@@ -45,7 +45,7 @@ export class GoogleAnalyticsService {
    * Track page views
    */
   public trackPageView(pagePath: string, pageTitle?: string): void {
-    if (!this.isInitialized) return;
+    if (!this.isInitialized || typeof window === 'undefined' || !window.gtag) return;
 
     window.gtag('config', this.GA4_PROPERTY_ID, {
       page_path: pagePath,
@@ -58,12 +58,13 @@ export class GoogleAnalyticsService {
   /**
    * Track custom events
    */
-  public trackEvent(eventName: string, parameters?: Record<string, any>): void {
-    if (!this.isInitialized) return;
+  public trackEvent(eventName: string, parameters?: Record<string, unknown>): void {
+    if (!this.isInitialized || typeof window === 'undefined' || !window.gtag) return;
 
     window.gtag('event', eventName, {
       event_category: 'SEO Specialist Management',
-      event_label: parameters?.label || eventName,
+      event_label:
+        typeof parameters?.label === 'string' ? parameters.label : eventName,
       ...parameters,
     });
 
@@ -73,7 +74,11 @@ export class GoogleAnalyticsService {
   /**
    * Track SEO specialist actions
    */
-  public trackSEOSpecialistAction(action: string, specialistId?: string, details?: Record<string, any>): void {
+  public trackSEOSpecialistAction(
+    action: string,
+    specialistId?: string,
+    details?: Record<string, unknown>,
+  ): void {
     this.trackEvent('seo_specialist_action', {
       action,
       specialist_id: specialistId,
@@ -128,7 +133,7 @@ export class GoogleAnalyticsService {
   /**
    * Track Norwegian market specific events
    */
-  public trackNorwegianMarketEvent(eventType: string, details?: Record<string, any>): void {
+  public trackNorwegianMarketEvent(eventType: string, details?: Record<string, unknown>): void {
     this.trackEvent('norwegian_market_event', {
       event_type: eventType,
       market: 'norway',

@@ -393,6 +393,10 @@ class ExternalDataService {
   private readonly LONG_CACHE_DURATION = 60 * 60 * 1000; // 1 hour for static data
   private readonly MAX_CACHE_SIZE = 1000; // Maximum cache entries
   private readonly CACHE_CLEANUP_INTERVAL = 10 * 60 * 1000; // 10 minutes
+  private kartverketEndpointStatus: Record<'property' | 'elevation', 'unknown' | 'available' | 'unavailable'> = {
+    property: 'unknown',
+    elevation: 'unknown',
+  };
   private cacheStats = {
     hits: 0,
     misses: 0,
@@ -1058,6 +1062,22 @@ class ExternalDataService {
       lastAccessed: Date.now(),
       ttl: useLongCache ? this.LONG_CACHE_DURATION : this.CACHE_DURATION
     });
+  }
+
+  /**
+   * Detect backend responses where the endpoint exists in frontend but not implemented in backend yet.
+   */
+  private isEndpointNotImplementedError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    const message = error.message.toLowerCase();
+    return message.includes('404') && message.includes('endpoint not implemented');
+  }
+
+  /**
+   * Heuristic: demo/internal ids often contain no digits and are not valid cadastral ids.
+   */
+  private isSyntheticPropertyId(propertyId: string): boolean {
+    return !/\d/.test(propertyId);
   }
 
   /**
@@ -1737,6 +1757,18 @@ class ExternalDataService {
     const cached = this.getCachedData(cacheKey);
     if (cached) return cached;
 
+    if (this.isSyntheticPropertyId(propertyId)) {
+      const fallback = this.getFallbackKartverketProperty(propertyId);
+      this.setCachedData(cacheKey, fallback);
+      return fallback;
+    }
+
+    if (this.kartverketEndpointStatus.property === 'unavailable') {
+      const fallback = this.getFallbackKartverketProperty(propertyId);
+      this.setCachedData(cacheKey, fallback);
+      return fallback;
+    }
+
     try {
       const response = await apiRequest(`/api/external-data/kartverket/property/${propertyId}`);
       
@@ -1755,15 +1787,25 @@ class ExternalDataService {
           buildingInfo: response.data.buildingInfo,
           source: 'kartverket'
       };
-        
+	        
         this.setCachedData(cacheKey, result);
+        this.kartverketEndpointStatus.property = 'available';
         return result;
     } else {
         throw new Error(response.error || 'Failed to fetch property data');
     }
   } catch (error) {
-      console.warn('Failed to fetch Kartverket property:', error);
-      return this.getFallbackKartverketProperty(propertyId);
+      const fallback = this.getFallbackKartverketProperty(propertyId);
+      this.setCachedData(cacheKey, fallback);
+
+      if (this.isEndpointNotImplementedError(error)) {
+        this.kartverketEndpointStatus.property = 'unavailable';
+        console.debug('Kartverket property endpoint is not implemented in backend. Using fallback data.');
+      } else {
+        console.warn('Failed to fetch Kartverket property:', error);
+      }
+
+      return fallback;
   }
 }
 
@@ -1775,6 +1817,12 @@ class ExternalDataService {
     const cached = this.getCachedData(cacheKey);
     if (cached) return cached;
 
+    if (this.kartverketEndpointStatus.elevation === 'unavailable') {
+      const fallback = this.getFallbackKartverketElevation(coordinates);
+      this.setCachedData(cacheKey, fallback);
+      return fallback;
+    }
+
     try {
       const response = await apiRequest(`/api/external-data/kartverket/elevation/${coordinates.lat}/${coordinates.lng}`);
       
@@ -1785,15 +1833,25 @@ class ExternalDataService {
           accuracy: response.data.accuracy,
           source: 'kartverket'
       };
-        
+	        
         this.setCachedData(cacheKey, result);
+        this.kartverketEndpointStatus.elevation = 'available';
         return result;
     } else {
         throw new Error(response.error || 'Failed to fetch elevation data');
     }
   } catch (error) {
-      console.warn('Failed to fetch Kartverket elevation:', error);
-      return this.getFallbackKartverketElevation(coordinates);
+      const fallback = this.getFallbackKartverketElevation(coordinates);
+      this.setCachedData(cacheKey, fallback);
+
+      if (this.isEndpointNotImplementedError(error)) {
+        this.kartverketEndpointStatus.elevation = 'unavailable';
+        console.debug('Kartverket elevation endpoint is not implemented in backend. Using fallback data.');
+      } else {
+        console.warn('Failed to fetch Kartverket elevation:', error);
+      }
+
+      return fallback;
   }
 }
 
@@ -1840,7 +1898,10 @@ class ExternalDataService {
 
     try {
       const property = await this.getKartverketProperty(propertyId);
-      const elevation = await this.getKartverketElevation(property.coordinates);
+      const elevation =
+        property.source === 'fallback'
+          ? this.getFallbackKartverketElevation(property.coordinates)
+          : await this.getKartverketElevation(property.coordinates);
       
       const analysis: PropertyAnalysis = {
         property,

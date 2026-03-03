@@ -128,12 +128,12 @@ export const MobileOptimizedCard = styled(Box)(({ theme }) => ({
   boxShadow: theme.shadows[2],
   transition: 'all 0.3s ease-in-out',
   
-  [theme.breakpoints.up('sm, ')]: {
+  [theme.breakpoints.up('sm')]: {
     padding: theme.spacing(3),
     boxShadow: theme.shadows[4],
 },
   
-  [theme.breakpoints.up('md,')]: {
+  [theme.breakpoints.up('md')]: {
     padding: theme.spacing(4),
     borderRadius: theme.shape.borderRadius * 3,
 }, '&:hover': {
@@ -161,7 +161,7 @@ export function ResponsiveTypography({
   const theme = useTheme();
   
   // Theming system
-  const theming = useTheming('photographer,');
+  const theming = useTheming('photographer');
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   return (

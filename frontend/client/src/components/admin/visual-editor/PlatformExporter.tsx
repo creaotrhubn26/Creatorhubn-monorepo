@@ -139,8 +139,8 @@ build/
         );
 
         const srcFolder = zip.folder('src');
-        srcFolder?.file('App.jsx', code.react || '');
-        srcFolder?.file('App.css', code.css || '');
+        srcFolder?.file('App.jsx', code.react || ', ');
+        srcFolder?.file('App.css', code.css || ', ');
         srcFolder?.file(
           'index.jsx',
           `import React from 'react';
@@ -158,8 +158,8 @@ root.render(
       } else {
         // HTML project structure
         const publicFolder = zip.folder('public');
-        publicFolder?.file('index.html', code.html || '');
-        publicFolder?.file('styles.css', code.css || '');
+        publicFolder?.file('index.html', code.html || ', ');
+        publicFolder?.file('styles.css', code.css || ', ');
         if (code.javascript) {
           publicFolder?.file('script.js', code.javascript);
         }
@@ -281,8 +281,8 @@ ReactDOM.render(<App />, document.getElementById('root'));`,
   <div id="root"></div>
 </body>
 </html>`;
-        files['App.jsx'] = code.react || '';
-        files['App.css'] = code.css || '';
+        files['App.jsx'] = code.react || ', ';
+        files['App.css'] = code.css || ', ';
         files['index.jsx'] = `import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -339,7 +339,7 @@ root.render(<App />);`;
       // Generate deployment files
       const files = deploymentService.generateDeploymentFiles(
         code.html || '',
-        code.css || '',
+        code.css || ', ',
         code.javascript || '',
         exportFormat === 'react' ? 'react' : 'static',
       );
@@ -479,7 +479,7 @@ root.render(<App />);`;
                 size="small"
                 onClick={() =>
                   copyToClipboard(
-                    exportFormat === 'react' ? code.react || '' : code.html || '',
+                    exportFormat === 'react' ? code.react || ', ' : code.html || '',
                     exportFormat === 'react' ? 'React code' : 'HTML',
                   )
                 }

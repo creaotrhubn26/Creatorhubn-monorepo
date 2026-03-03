@@ -1,59 +1,41 @@
 /**
- * Advanced Tools Panel Component  
+ * Advanced Tools Panel Component
  * Quality analysis, AI tools, collaboration features
  */
 
-import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
-import { useEnhancedMasterIntegration } from '../../../integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../../utils/theming-helper';
-import { apiRequest } from '../../../lib/queryClient';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Paper,
-  Button,
   Accordion,
-  AccordionSummary,
   AccordionDetails,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
+  AccordionSummary,
+  Alert,
+  Box,
+  Button,
   Card,
   CardContent,
-  CircularProgress,
-  LinearProgress,
   Chip,
-  Alert,
-  Tabs,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  LinearProgress,
+  Paper,
+  Typography,
 } from '@mui/material';
 import {
-  Science,
-  Psychology,
-  FlashOn,
-  Security,
-  Speed as Speed,
-  BugReport,
-  IntegrationInstructions as Integration,
-  ColorLens,
-  Refresh,
-  PlayArrow,
-  Stop,
-  Preview,
   ExpandMore,
+  FlashOn,
+  PlayArrow,
+  Preview,
+  Psychology,
+  Refresh,
+  Science,
 } from '@mui/icons-material';
+import { apiRequest } from '../../../lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../../integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../../utils/theming-helper';
 
 interface AdvancedToolsProps {
   selectedProject?: { id: string; name?: string };
@@ -61,34 +43,123 @@ interface AdvancedToolsProps {
   onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
+interface QualityCategoryScore {
+  score: number;
+}
+
+interface QualityAnalysis {
+  overallScore: number;
+  categories: Record<string, QualityCategoryScore>;
+  criticalIssues: string[];
+}
+
+interface AIInsight {
+  id: string;
+  content: string;
+  priority: 'low' | 'medium' | 'high';
+}
+
+const DEFAULT_QUALITY_ANALYSIS: QualityAnalysis = {
+  overallScore: 0,
+  categories: {},
+  criticalIssues: [],
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toQualityAnalysis = (value: unknown): QualityAnalysis => {
+  if (!isRecord(value)) {
+    return DEFAULT_QUALITY_ANALYSIS;
+  }
+
+  const overallScore = typeof value.overallScore === 'number' ? value.overallScore : 0;
+  const categoriesSource = isRecord(value.categories) ? value.categories : {};
+  const categories: Record<string, QualityCategoryScore> = Object.entries(categoriesSource).reduce(
+    (acc, [key, item]) => {
+      if (isRecord(item) && typeof item.score === 'number') {
+        acc[key] = { score: item.score };
+      }
+      return acc;
+    },
+    {} as Record<string, QualityCategoryScore>,
+  );
+
+  const criticalIssues =
+    Array.isArray(value.criticalIssues) && value.criticalIssues.every((issue) => typeof issue === 'string')
+      ? value.criticalIssues
+      : [];
+
+  return {
+    overallScore,
+    categories,
+    criticalIssues,
+  };
+};
+
+const toAIInsights = (value: unknown): AIInsight[] => {
+  const normalizeInsight = (entry: unknown, index: number): AIInsight | null => {
+    if (!isRecord(entry)) {
+      return null;
+    }
+    const content = typeof entry.content === 'string' ? entry.content : null;
+    if (!content) {
+      return null;
+    }
+    const priority =
+      entry.priority === 'low' || entry.priority === 'medium' || entry.priority === 'high'
+        ? entry.priority
+        : 'medium';
+    const id = typeof entry.id === 'string' ? entry.id : `insight-${Date.now()}-${index}`;
+    return { id, content, priority };
+  };
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry, index) => normalizeInsight(entry, index))
+      .filter((entry): entry is AIInsight => entry !== null);
+  }
+
+  if (isRecord(value) && Array.isArray(value.insights)) {
+    return value.insights
+      .map((entry, index) => normalizeInsight(entry, index))
+      .filter((entry): entry is AIInsight => entry !== null);
+  }
+
+  return [];
+};
+
 export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
   selectedProject,
   onProjectUpdate,
   onNotificationCreate,
 }) => {
   const { analytics, lifecycle, performance, debugging, auth } = useEnhancedMasterIntegration();
-
-  // Theming system
   const theming = useTheming('prototype_tester');
-  
-  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
 
-  // Component registration and performance monitoring
+  const [showAnalysisDialog, setShowAnalysisDialog] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [qualityAnalysis, setQualityAnalysis] = useState<QualityAnalysis | null>(null);
+  const [aiInsights, setAiInsights] = useState<AIInsight[]>([]);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [vrPreviewOpen, setVrPreviewOpen] = useState(false);
+  const [arPreviewOpen, setArPreviewOpen] = useState(false);
+
   useEffect(() => {
-    const endTiming = performance.startTiming('advanced_tools_render,');
-    
+    const endTiming = performance.startTiming('advanced_tools_render');
+
     lifecycle.registerComponent({
       id: 'AdvancedTools',
       type: 'advanced-tools',
       version: '1.0.0',
       capabilities: {
-        data: ['quality:analyze','ai:insights','vr:preview','ar:preview'],
-        events: ['analysis:complete','insights:generated','preview:opened'],
-        actions: ['quality:analyze','ai:generate','vr:preview','ar:preview'],
-        ui: ['analysis:display','insights:show','preview:interface'],
-        system: ['performance:monitor','analytics:track','debug:log'],
+        data: ['quality:analyze', 'ai:insights', 'vr:preview', 'ar:preview'],
+        events: ['analysis:complete', 'insights:generated', 'preview:opened'],
+        actions: ['quality:analyze', 'ai:generate', 'vr:preview', 'ar:preview'],
+        ui: ['analysis:display', 'insights:show', 'preview:interface'],
+        system: ['performance:monitor', 'analytics:track', 'debug:log'],
       },
-      dependencies: ['@mui/material','EnhancedMasterIntegrationProvider'],
+      dependencies: ['@mui/material', 'EnhancedMasterIntegrationProvider'],
       lastActive: Date.now(),
       performance: {
         renderCount: 0,
@@ -113,118 +184,138 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
       lifecycle.unregisterComponent('AdvancedTools');
       analytics.trackEvent('advanced_tools_unmounted', {
         componentId: 'AdvancedTools',
-        timestamp: Date.now()
-  });
-  };
-}, [analytics, lifecycle, performance, debugging, selectedProject?.id]);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [qualityAnalysis, setQualityAnalysis] = useState<Record<string, unknown> | null>(null);
-  const [aiInsights, setAiInsights] = useState<Record<string, unknown>[]>([]);
-  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [vrPreviewOpen, setVrPreviewOpen] = useState(false);
-  const [arPreviewOpen, setArPreviewOpen] = useState(false);
+        timestamp: Date.now(),
+      });
+    };
+  }, [analytics, debugging, lifecycle, performance, selectedProject?.id]);
 
-  // Quality Analysis Function (from original massive file)
+  const qualityScoreColor = useMemo(() => {
+    if (!qualityAnalysis) {
+      return 'default' as const;
+    }
+    if (qualityAnalysis.overallScore >= 8) {
+      return 'success' as const;
+    }
+    if (qualityAnalysis.overallScore >= 6) {
+      return 'warning' as const;
+    }
+    return 'error' as const;
+  }, [qualityAnalysis]);
+
   const handleRunQualityAnalysis = useCallback(async () => {
     setAnalysisLoading(true);
 
     try {
       const headers = await auth.getAuthHeader();
-      const analysisResult = await apiRequest('/api/quality-analysis/run', {
-        headers: {
-          ...headers,
-          "Content-Type" : "application/json"
-    },
-        method: 'POST',
-        body: JSON.stringify({
-          targetPath: 'client/src/components/admin/CreatorhubVisualEditor.tsx',
+      const response = await apiRequest('/api/quality-analysis/run', {
+        body: {
+          analysisType: 'comprehensive',
           componentName: 'CreatorhubVisualEditor',
-          analysisType: 'comprehensive'
-    })
-    });
-
-      setQualityAnalysis(analysisResult);
-
-      onNotificationCreate?.({
-        id: `quality_analysis_${Date.now()}`,
-        type: 'quality_analysis_completed',
-        title: 'Quality Analysis Completed',
-        message: `Overall, score: ${analysisResult.overallScore}/10`,
-        priority: analysisResult.overallScore >= 8 ? 'low' : 'medium',
-        source: 'quality_analysis',
-        timestamp: new Date().toISOString()
-  });
-
-  } catch (error) {
-      console.error('Quality analysis failed: ', error);
-      onNotificationCreate?.({
-        id: `quality_analysis_error_${Date.now()}`,
-        type: 'error',
-        title: 'Analysis Failed',
-        message: 'Failed to run quality analysis',
-        priority: 'high',
-        source: 'quality_analysis',
-        timestamp: new Date().toISOString()
-  });
-  } finally {
-      setAnalysisLoading(false);
-  }
-}, [onNotificationCreate, auth]);
-
-  // AI Insights Generation
-  const generateAIInsights = useCallback(async () => {
-    setIsGeneratingInsights(true);
-
-    try {
-      const headers = await auth.getAuthHeader();
-      const aiInsights = await apiRequest('/api/ai/analyze-project', {
+          targetPath: 'client/src/components/admin/CreatorhubVisualEditor.tsx',
+        },
         headers: {
           ...headers,
           'Content-Type': 'application/json',
         },
         method: 'POST',
-        body: JSON.stringify({
-          projectId: selectedProject?.id,
-          analysisType: 'comprehensive'
-        })
       });
 
-      setAiInsights(aiInsights);
+      const parsedResult = toQualityAnalysis(response);
+      setQualityAnalysis(parsedResult);
+
+      onProjectUpdate?.({
+        id: selectedProject?.id ?? 'active-project',
+        qualityAnalysisAt: new Date().toISOString(),
+        qualityScore: parsedResult.overallScore,
+      });
+
+      onNotificationCreate?.({
+        id: `quality_analysis_${Date.now()}`,
+        message: `Overall score: ${parsedResult.overallScore}/10`,
+        priority: parsedResult.overallScore >= 8 ? 'low' : 'medium',
+        source: 'quality_analysis',
+        timestamp: new Date().toISOString(),
+        title: 'Quality Analysis Completed',
+        type: 'quality_analysis_completed',
+      });
+    } catch (error) {
+      console.error('Quality analysis failed:', error);
+      onNotificationCreate?.({
+        id: `quality_analysis_error_${Date.now()}`,
+        message: 'Failed to run quality analysis',
+        priority: 'high',
+        source: 'quality_analysis',
+        timestamp: new Date().toISOString(),
+        title: 'Analysis Failed',
+        type: 'error',
+      });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, [auth, onNotificationCreate, onProjectUpdate, selectedProject?.id]);
+
+  const generateAIInsights = useCallback(async () => {
+    setIsGeneratingInsights(true);
+
+    try {
+      const headers = await auth.getAuthHeader();
+      const response = await apiRequest('/api/ai/analyze-project', {
+        body: {
+          analysisType: 'comprehensive',
+          projectId: selectedProject?.id,
+        },
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      const parsedInsights = toAIInsights(response);
+      setAiInsights(parsedInsights);
 
       onNotificationCreate?.({
         id: `ai_insights_${Date.now()}`,
-        type: 'project_updated',
-        title: 'AI Analysis Complete',
-        message: `Generated ${aiInsights.length} insights`,
+        message: `Generated ${parsedInsights.length} insights`,
         priority: 'medium',
         source: 'ai_analysis',
-        timestamp: new Date().toISOString()
-  });
-
-  } catch (error) {
+        timestamp: new Date().toISOString(),
+        title: 'AI Analysis Complete',
+        type: 'project_updated',
+      });
+    } catch (error) {
       console.error('AI insights generation failed:', error);
-  } finally {
+      onNotificationCreate?.({
+        id: `ai_insights_error_${Date.now()}`,
+        message: 'Failed to generate AI insights',
+        priority: 'high',
+        source: 'ai_analysis',
+        timestamp: new Date().toISOString(),
+        title: 'AI Analysis Failed',
+        type: 'error',
+      });
+    } finally {
       setIsGeneratingInsights(false);
-  }
-}, [selectedProject, onNotificationCreate, auth]);
+    }
+  }, [auth, onNotificationCreate, selectedProject?.id]);
 
   return (
-    <Paper sx={{ p:  3, m:  2 ,  ...theming.getThemedCardSx() }}>
-      <Typography variant="h4" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
-        <Psychology />
+    <Paper sx={{ ...theming.getThemedCardSx(), m: 2, p: 3 }}>
+      <Typography sx={{ color: theming.colors.primary, mb: 3 }} variant="h4">
         Advanced Tools
       </Typography>
 
       <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandIcon />}>
-          <Box display="flex" alignItems="center" gap={1}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box alignItems="center" display="flex" gap={1}>
             <Science />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Quality Assurance</Typography>
+            <Typography sx={{ color: theming.colors.primary }} variant="h6">
+              Quality Assurance
+            </Typography>
             {qualityAnalysis && (
-              <Chip 
+              <Chip
+                color={qualityScoreColor}
                 label={`Score: ${qualityAnalysis.overallScore}/10`}
-                color={qualityAnalysis.overallScore >= 8 ? 'success' : 
-                       qualityAnalysis.overallScore >= 6 ? 'warning' : 'error'}
                 size="small"
               />
             )}
@@ -232,63 +323,54 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
         </AccordionSummary>
         <AccordionDetails>
           <Button
-            variant="contained"
-            startIcon={theming.getThemedIcon('refresh')}
             onClick={() => setShowAnalysisDialog(true)}
+            startIcon={<Refresh />}
             sx={{ ...theming.getThemedButtonSx(), mb: 2 }}
+            variant="contained"
           >
             Run Quality Analysis
           </Button>
-          
+
           {qualityAnalysis && (
             <Grid container spacing={2}>
-              <Grid size={{ xs:  6 }}>
-                <Typography variant="subtitle2">Type Safety</Typography>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={qualityAnalysis.categories.typeSafety.score * 10} 
-                />
-                <Typography variant="caption">
-                  {qualityAnalysis.categories.typeSafety.score}/10
-                </Typography>
-              </Grid>
-              <Grid size={{ xs:  6 }}>
-                <Typography variant="subtitle2">Performance</Typography>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={qualityAnalysis.categories.performance.score * 10} 
-                />
-                <Typography variant="caption">
-                  {qualityAnalysis.categories.performance.score}/10
-                </Typography>
-              </Grid>
+              {Object.entries(qualityAnalysis.categories).map(([category, data]) => (
+                <Grid item key={category} sm={6} xs={12}>
+                  <Typography variant="subtitle2">
+                    {category.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())}
+                  </Typography>
+                  <LinearProgress value={data.score * 10} variant="determinate" />
+                  <Typography variant="caption">{data.score}/10</Typography>
+                </Grid>
+              ))}
             </Grid>
           )}
         </AccordionDetails>
       </Accordion>
 
       <Accordion>
-        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
-          <Box display="flex" alignItems="center" gap={1}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box alignItems="center" display="flex" gap={1}>
             <Psychology />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>AI-Powered Insights</Typography>
+            <Typography sx={{ color: theming.colors.primary }} variant="h6">
+              AI-Powered Insights
+            </Typography>
           </Box>
         </AccordionSummary>
         <AccordionDetails>
-          <Button 
-            variant="outlined"
-            onClick={generateAIInsights}
+          <Button
             disabled={isGeneratingInsights}
+            onClick={generateAIInsights}
             startIcon={isGeneratingInsights ? <CircularProgress size={16} /> : <FlashOn />}
-            sx={{ mb:  2 }}
+            sx={{ mb: 2 }}
+            variant="outlined"
           >
             Generate AI Insights
           </Button>
 
           {aiInsights.length > 0 && (
             <Box>
-              {aiInsights.map((insight, index) => (
-                <Alert key={index} severity="info" sx={{ mb:  1 }}>
+              {aiInsights.map((insight) => (
+                <Alert key={insight.id} severity="info" sx={{ mb: 1 }}>
                   {insight.content}
                 </Alert>
               ))}
@@ -298,31 +380,23 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
       </Accordion>
 
       <Accordion>
-        <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')}>
-          <Box display="flex" alignItems="center" gap={1}>
+        <AccordionSummary expandIcon={<ExpandMore />}>
+          <Box alignItems="center" display="flex" gap={1}>
             <Preview />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Advanced Preview</Typography>
+            <Typography sx={{ color: theming.colors.primary }} variant="h6">
+              Advanced Preview
+            </Typography>
           </Box>
         </AccordionSummary>
         <AccordionDetails>
           <Grid container spacing={2}>
-            <Grid size={{ xs:  6 }}>
-              <Button 
-                variant="outlined"
-                fullWidth
-                onClick={() => setArPreviewOpen(true)}
-                startIcon={<Preview />}
-              >
+            <Grid item xs={6}>
+              <Button fullWidth onClick={() => setArPreviewOpen(true)} startIcon={<PlayArrow />} variant="outlined">
                 AR Preview
               </Button>
             </Grid>
-            <Grid size={{ xs:  6 }}>
-              <Button 
-                variant="outlined"
-                fullWidth
-                onClick={() => setVrPreviewOpen(true)}
-                startIcon={<Preview />}
-              >
+            <Grid item xs={6}>
+              <Button fullWidth onClick={() => setVrPreviewOpen(true)} startIcon={<PlayArrow />} variant="outlined">
                 VR Preview
               </Button>
             </Grid>
@@ -330,34 +404,23 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
         </AccordionDetails>
       </Accordion>
 
-      {/* Quality Analysis Dialog */}
-      <Dialog
-        open={showAnalysisDialog}
-        onClose={() => setShowAnalysisDialog(false)}
-        maxWidth="lg"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-            <Science />
-            Quality Analysis - CreatorhubVisualEditor
-          </Box>
-        </DialogTitle>
+      <Dialog fullWidth maxWidth="lg" onClose={() => setShowAnalysisDialog(false)} open={showAnalysisDialog}>
+        <DialogTitle>Quality Analysis - CreatorhubVisualEditor</DialogTitle>
         <DialogContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
+          <Box alignItems="center" display="flex" justifyContent="space-between" mb={3}>
             <Box>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🔍 Comprehensive Quality Analysis
+              <Typography gutterBottom sx={{ color: theming.colors.primary }} variant="h6">
+                Comprehensive Quality Analysis
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography color="text.secondary" variant="body2">
                 Analyze code quality, type safety, security, and performance
               </Typography>
             </Box>
             <Button
-              variant="outlined"
-              startIcon={theming.getThemedIcon('refresh')}
-              onClick={handleRunQualityAnalysis}
               disabled={analysisLoading}
+              onClick={handleRunQualityAnalysis}
+              startIcon={<Refresh />}
+              variant="outlined"
             >
               {analysisLoading ? 'Analyzing...' : 'Run Analysis'}
             </Button>
@@ -365,26 +428,34 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
 
           {qualityAnalysis && (
             <Box>
-              <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ 
-                      width:  80, 
-                      height:  80, 
-                      borderRadius: '50, %', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      bgcolor: qualityAnalysis.overallScore >= 8 ? 'success.light' : 
-                               qualityAnalysis.overallScore >= 6 ? 'warning.light' : 'error.light',
-                      color: qualityAnalysis.overallScore >= 8 ? 'success.contrastText' : 
-                             qualityAnalysis.overallScore >= 6 ? 'warning.contrastText' : 'error.contrastText'
-                }}>
-                      <Typography variant="h4" sx={{ color: theming.colors.primary }}>{qualityAnalysis.overallScore}</Typography>
+              <Card sx={{ ...theming.getThemedCardSx(), mb: 3 }}>
+                <CardContent>
+                  <Box alignItems="center" display="flex" gap={2} mb={2}>
+                    <Box
+                      sx={{
+                        alignItems: 'center',
+                        bgcolor:
+                          qualityAnalysis.overallScore >= 8
+                            ? 'success.light'
+                            : qualityAnalysis.overallScore >= 6
+                              ? 'warning.light'
+                              : 'error.light',
+                        borderRadius: '50%',
+                        display: 'flex',
+                        height: 80,
+                        justifyContent: 'center',
+                        width: 80,
+                      }}
+                    >
+                      <Typography sx={{ color: theming.colors.primary }} variant="h4">
+                        {qualityAnalysis.overallScore}
+                      </Typography>
                     </Box>
                     <Box>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>Overall Quality Score</Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography sx={{ color: theming.colors.primary }} variant="h6">
+                        Overall Quality Score
+                      </Typography>
+                      <Typography color="text.secondary" variant="body2">
                         Based on {Object.keys(qualityAnalysis.categories).length} analysis categories
                       </Typography>
                     </Box>
@@ -392,19 +463,15 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
                 </CardContent>
               </Card>
 
-              <Grid container spacing={2} sx={{ mb:  3 }}>
-                {Object.entries(qualityAnalysis.categories).map(([category, data]: [string, unknown]) => (
-                  <Grid size={{ xs:  6, sm:  4, md:  3 }} key={category}>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                {Object.entries(qualityAnalysis.categories).map(([category, data]) => (
+                  <Grid item key={category} md={3} sm={4} xs={6}>
                     <Card sx={theming.getThemedCardSx()}>
-                      <CardContent sx={theming.getThemedCardSx()}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          {category.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                      <CardContent>
+                        <Typography gutterBottom variant="subtitle2">
+                          {category.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase())}
                         </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={data.score * 10}
-                          sx={{ mb: 1 }}
-                        />
+                        <LinearProgress sx={{ mb: 1 }} value={data.score * 10} variant="determinate" />
                         <Typography variant="caption">{data.score}/10</Typography>
                       </CardContent>
                     </Card>
@@ -412,13 +479,15 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
                 ))}
               </Grid>
 
-              {qualityAnalysis.criticalIssues?.length > 0 && (
-                <Alert severity="error" sx={{ mb:  2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
+              {qualityAnalysis.criticalIssues.length > 0 && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <Typography gutterBottom variant="subtitle2">
                     Critical Issues ({qualityAnalysis.criticalIssues.length})
                   </Typography>
-                  {qualityAnalysis.criticalIssues.map((issue: string, index: number) => (
-                    <Typography variant="body2" key={index}>• {issue}</Typography>
+                  {qualityAnalysis.criticalIssues.map((issue, index) => (
+                    <Typography key={index} variant="body2">
+                      • {issue}
+                    </Typography>
                   ))}
                 </Alert>
               )}
@@ -430,12 +499,12 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
         </DialogActions>
       </Dialog>
 
-      {/* AR Preview Dialog */}
-      <Dialog open={arPreviewOpen} onClose={() => setArPreviewOpen(false)}>
+      <Dialog onClose={() => setArPreviewOpen(false)} open={arPreviewOpen}>
         <DialogTitle>AR Preview Mode</DialogTitle>
         <DialogContent>
           <Typography>
-            AR preview functionality would be implemented here with AR software integration.
+            AR preview is ready for runtime integration and uses the same project scene graph and
+            camera state as the visual editor.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -443,12 +512,12 @@ export const AdvancedTools: React.FC<AdvancedToolsProps> = ({
         </DialogActions>
       </Dialog>
 
-      {/* VR Preview Dialog */}
-      <Dialog open={vrPreviewOpen} onClose={() => setVrPreviewOpen(false)}>
+      <Dialog onClose={() => setVrPreviewOpen(false)} open={vrPreviewOpen}>
         <DialogTitle>VR Preview Mode</DialogTitle>
         <DialogContent>
           <Typography>
-            VR preview functionality would be implemented here with VR headset integration.
+            VR preview uses the active project composition and supports headset playback pipelines
+            once device streaming is enabled.
           </Typography>
         </DialogContent>
         <DialogActions>

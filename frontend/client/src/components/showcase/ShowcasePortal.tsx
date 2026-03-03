@@ -1,54 +1,51 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Box,
-  Typography,
-  Grid,
-  Card,
-  CardMedia,
-  CardContent,
-  Avatar,
-  Chip,
-  IconButton,
   AppBar,
-  Toolbar,
+  Avatar,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  CardMedia,
+  Chip,
+  Container,
+  Divider,
   Drawer,
+  Grid,
+  IconButton,
   List,
   ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
-  ListItemButton,
-  Container,
   Paper,
-  Button,
-  Badge,
-  Divider,
+  Toolbar,
+  Typography,
 } from '@mui/material';
 import {
-  PhotoLibrary,
-  VideoLibrary as VideocamLibrary,
-  Favorite,
-  FavoriteBorder,
-  Share,
-  Download,
-  Visibility,
-  Menu,
-  Home,
-  Collections,
-  Person,
-  Settings,
-  Info,
-  Close,
-  Search,
-  FilterList as FilterListList,
-  PlayArrow as PlayArrowArrow,
-  Star,
-  LocationOn,
-  CalendarToday,
-  CameraAlt,
+  CalendarToday as CalendarTodayIcon,
+  CameraAlt as CameraAltIcon,
+  Close as CloseIcon,
+  Collections as CollectionsIcon,
+  Download as DownloadIcon,
+  Favorite as FavoriteIcon,
+  FavoriteBorder as FavoriteBorderIcon,
+  FilterList as FilterListIcon,
+  Home as HomeIcon,
+  Info as InfoIcon,
+  LocationOn as LocationOnIcon,
+  Menu as MenuIcon,
+  Person as PersonIcon,
+  PlayArrow as PlayArrowIcon,
+  Search as SearchIcon,
+  Settings as SettingsIcon,
+  Share as ShareIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
 interface ShowcasePortalProps {
   photographerId?: string;
@@ -67,7 +64,7 @@ interface ShowcaseItem {
   likes: number;
   views: number;
   isLiked: boolean;
-  tags: string[]
+  tags: string[];
 }
 
 interface PhotographerProfile {
@@ -79,446 +76,445 @@ interface PhotographerProfile {
   location: string;
   experience: string;
   totalProjects: number;
-  totalLikes: number
+  totalLikes: number;
 }
+
+const CATEGORIES = [
+  { id: 'all', label: 'Alle kategorier', icon: <CollectionsIcon /> },
+  { id: 'bryllup', label: 'Bryllup', icon: <CameraAltIcon /> },
+  { id: 'portrett', label: 'Portrett', icon: <PersonIcon /> },
+  { id: 'bedrift', label: 'Bedrift', icon: <HomeIcon /> },
+  { id: 'event', label: 'Event', icon: <CalendarTodayIcon /> },
+  { id: 'familie', label: 'Familie', icon: <InfoIcon /> },
+];
+
+const FALLBACK_PROFILE: PhotographerProfile = {
+  id: 'current-photographer',
+  name: 'Professional Photographer',
+  avatar: '/api/placeholder/64/64',
+  bio: 'Passionert fotograf med fokus på bryllup, portrett og kommersielle produksjoner.',
+  specialties: ['Bryllup', 'Portrett', 'Bedrift', 'Event'],
+  location: 'Oslo, Norge',
+  experience: '8+ år erfaring',
+  totalProjects: 120,
+  totalLikes: 3250,
+};
+
+const FALLBACK_ITEMS: ShowcaseItem[] = [
+  {
+    id: 'showcase-1',
+    title: 'Romantic Wedding in Lofoten',
+    description: 'Kveldslys og naturlige øyeblikk fra en fjordseremoni.',
+    imageUrl: '/api/placeholder/800/600',
+    category: 'bryllup',
+    location: 'Lofoten',
+    date: '2025-08-10',
+    likes: 147,
+    views: 1240,
+    isLiked: false,
+    tags: ['bryllup', 'utendørs', 'naturlig'],
+  },
+  {
+    id: 'showcase-2',
+    title: 'Corporate Headshots',
+    description: 'Konsekvent studio-look for hele ledergruppen.',
+    imageUrl: '/api/placeholder/800/600',
+    category: 'bedrift',
+    location: 'Oslo',
+    date: '2025-09-02',
+    likes: 83,
+    views: 922,
+    isLiked: false,
+    tags: ['bedrift', 'portrett'],
+  },
+  {
+    id: 'showcase-3',
+    title: 'Family Portrait Session',
+    description: 'Uformelle familieportretter i gyllent kveldslys.',
+    imageUrl: '/api/placeholder/800/600',
+    category: 'familie',
+    location: 'Bergen',
+    date: '2025-09-18',
+    likes: 96,
+    views: 1044,
+    isLiked: true,
+    tags: ['familie', 'portrett'],
+  },
+];
 
 const ShowcasePortal: React.FC<ShowcasePortalProps> = ({
   photographerId = 'current-photographer',
   theme = 'dark',
 }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [selectedCategory, setSelectedCategory] = useState('all,');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [likedItems, setLikedItems] = useState<Set<string>>(new Set());
+  const theming = useTheming('photographer');
 
-  // Hent fotograf-profil
-  const { data: profile } = useQuery({
-    queryKey: ['/api/photo-showcase/profile,', photographerId],
-    queryFn: () => apiRequest(`/api/photo-showcase/profile/${photographerd}`),
-});
+  const { data: profileRaw } = useQuery({
+    queryKey: ['/api/photo-showcase/profile', photographerId],
+    queryFn: () => apiRequest(`/api/photo-showcase/profile/${encodeURIComponent(photographerId)}`),
+  });
 
-  // Hent showcase-elementer
-  const { data: showcaseItems = [, ],} = useQuery({
+  const { data: itemsRaw } = useQuery({
     queryKey: ['/api/photo-showcase/items', photographerId, selectedCategory],
     queryFn: () =>
-      apiRequest(`/api/photo-showcase/items/${photographerd}?category=${selectedCategory}`),
-});
+      apiRequest(
+        `/api/photo-showcase/items/${encodeURIComponent(photographerId)}?category=${encodeURIComponent(selectedCategory)}`,
+      ),
+  });
+
+  const profile = normalizeProfile(profileRaw) ?? FALLBACK_PROFILE;
+  const items = normalizeItems(itemsRaw);
+  const allItems = items.length > 0 ? items : FALLBACK_ITEMS;
+
+  const visibleItems = useMemo(() => {
+    if (selectedCategory === 'all') {
+      return allItems;
+    }
+    return allItems.filter((item) => item.category === selectedCategory);
+  }, [allItems, selectedCategory]);
 
   const isDark = theme === 'dark';
-  const bgColor = isDark ? '#1a1a1a' : '#f5f5f5';
-  const cardBg = isDark ? '#2a2a2a' : '#ffffff';
-  const textPrimary = isDark ? '#ffffff' : '#000000';
-  const textSecondary = isDark ? '#b0b0b0' : '#666666';
-
-  const categories = [
-    { id: 'all', label: 'Alle kategorier', icon: theming.getThemedIcon(',') },
-    { id: 'bryllup', label: 'Bryllup', icon: theming.getThemedIcon(',') },
-    { id: 'portrett', label: 'Portrett', icon: theming.getThemedIcon(',') },
-    { id: 'bedrift', label: 'Bedrift', icon: <CameraAlt />,},
-    { id: 'event', label: 'Event', icon: theming.getThemedIcon(',') },
-    { id: 'familie', label: 'Familie', icon: theming.getThemedIcon(',') },
-  ];
-
-  const handleLike = (itemId: string) => {
-    const newLikedItems = new Set(likedItems);
-    if (likedItems.has(itemId)) {
-      newLikedItems.delete(itemId);
-} else {
-      newLikedItems.add(itemId);
-  }
-    setLikedItems(newLikedItems);
-};
-
-  const sampleProfile: PhotographerProfile = {
-    id: photographerd,
-    name: 'Professional Photographer',
-    avatar: '/api/placeholder-avatar',
-    bio: 'Passionert fotograf med fokus på å fange livets viktigste øyeblikk. Spesialiserer meg på bryllup, portrett og bedriftsfotografering.',
-    specialties: ['Bryllupsfotografering','Portrett','Bedriftsfoto','Event'],
-    location: 'Oslo, Norge',
-    experience: '8+ år erfaring',
-    totalProjects: 10,
-    totalLikes: 230,
-};
-
-  const sampleItems: ShowcaseItem[] = [
-    {
-      id: ', ',
-      title: 'Romantic Wedding in Lofoten',
-      description: 'A beautiful ceremony with stunning mountain backdrop',
-      imageUrl: '/api/placeholder-wedding',
-      category: 'bryllup',
-      location: 'Lofoten, Norge',
-      date: '2024-08-1',
-      likes:  47,
-      views: 24,
-      isLiked: false,
-      tags: ['bryllup', 'natur','lofoten'],
-  },
-    {
-      id: ', ',
-      title: 'Corporate Headshots',
-      description: 'Professional business portraits for tech company',
-      imageUrl: '/api/placeholder-corporate',
-      category: 'bedrift',
-      location: 'Oslo, Norge',
-      date: '2024-08-1',
-      likes:  23,
-      views: 16,
-      isLiked: true,
-      tags: ['bedrift', 'portrett','profesjonell'],
-  },
-    {
-      id: ', ',
-      title: 'Family Portrait Session',
-      description: 'Natural family moments captured in beautiful light',
-      imageUrl: '/api/placeholder-family',
-      category: 'familie',
-      location: 'Bergen, Norge',
-      date: '2024-08-0',
-      likes:  31,
-      views: 19,
-      isLiked: false,
-      tags: ['familie','portrett','naturlig'],
-  },
-  ];
-
-  const currentProfile = profile || sampleProfile;
-  const items = showcaseItems.length > 0 ? showcaseItems : sampleItems;
+  const background = isDark ? '#0f141a' : '#f4f6f8';
+  const surface = isDark ? '#151f2b' : '#ffffff';
+  const border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+  const primaryText = isDark ? '#ffffff' : '#101418';
+  const secondaryText = isDark ? '#9eb0c2' : '#586370';
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        bgcolor: bgColor,
-        color: textPrimary}}
-    >
-      {/* Header */}
+    <Box sx={{ minHeight: '100vh', bgcolor: background, color: primaryText }}>
       <AppBar
-        position="fixed"
+        position="sticky"
         elevation={0}
         sx={{
-          bgcolor: isDark ? 'rgba(6, 26, 26, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(10px)',
-          borderBottom: `1px solid ${isDark ? '#333', : '#e0e0e0'}`}}
+          bgcolor: isDark ? 'rgba(15, 20, 26, 0.95)' : 'rgba(255,255,255,0.95)',
+          borderBottom: `1px solid ${border}`,
+          backdropFilter: 'blur(12px)',
+        }}
       >
         <Toolbar>
-          <IconButton
-            edge="start"
-            color="inherit"
-            onClick={() => setSidebarOpen(true)}
-            sx={{ mr: 2, color: textPrimary }}
-          >
-            {theming.getThemedIcon('menu')}
+          <IconButton onClick={() => setSidebarOpen(true)} sx={{ color: primaryText }}>
+            <MenuIcon />
           </IconButton>
-
-          <Typography variant="h6" sx={{  flexGrow: 1, color: textPrimary, fontWeight: 600}}>
-            {currentProfile.name} - Portfolio
+          <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
+            {profile.name} • Portfolio
           </Typography>
-
-          <Box sx={{ display: 'flex', gap:  1 }}>
-            <IconButton sx={{ color: textPrimary }}>
-              {theming.getThemedIcon('search')}
+          <Stack direction="row" spacing={1}>
+            <IconButton sx={{ color: primaryText }}>
+              <SearchIcon />
             </IconButton>
-            <IconButton sx={{ color: textPrimary }}>
-              {theming.getThemedIcon('filter')}
+            <IconButton sx={{ color: primaryText }}>
+              <FilterListIcon />
             </IconButton>
-            <IconButton sx={{ color: textPrimary }}>
-              {theming.getThemedIcon('share')}
+            <IconButton sx={{ color: primaryText }}>
+              <ShareIcon />
             </IconButton>
-          </Box>
+          </Stack>
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar */}
       <Drawer
         anchor="left"
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         PaperProps={{
           sx: {
-            width: 20,
-            bgcolor: cardg,
-            color: textPrimary,
-        }}}
+            width: 320,
+            bgcolor: surface,
+            color: primaryText,
+            borderRight: `1px solid ${border}`,
+          },
+        }}
       >
-        <Box sx={{ p:  3 }}>
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              mb:  3}}
-          >
-            <Typography variant="h6" sx={{  fontWeight: 600}}>
-              Portfolio Menu
+        <Box sx={{ p: 2 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Navigasjon
             </Typography>
-            <IconButton onClick={() => setSidebarOpen(false)}>
-              <Close sx={{ color: textPrimary }} />
+            <IconButton onClick={() => setSidebarOpen(false)} sx={{ color: primaryText }}>
+              <CloseIcon />
             </IconButton>
-          </Box>
-
-          {/* Photographer Info */}
-          <Paper
-            sx={{
-              p:  2,
-              mb:  3,
-              bgcolor: isDark ? '#333', : '#f9f9f0',
-              borderRadius:  2}}
-           sx={theming.getThemedCardSx()}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Avatar src={currentProfile.avatar} sx={{ width:  50, height: 50}} />
-              <Box>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                  {currentProfile.name}
-                </Typography>
-                <Typography variant="caption" color={textSecondary}>
-                  {currentProfile.location}
-                </Typography>
-              </Box>
-            </Box>
-            <Typography variant="body2" color={textSecondary} sx={{ mb:  2 }}>
-              {currentProfile.bio}
-            </Typography>
-            <Box sx={{ display: 'flex', gap:  2 }}>
-              <Box sx={{ textAlign: 'center'}}>
-                <Typography variant="h6" sx={{  fontWeight: 600}}>
-                  {currentProfile.totalProjects}
-                </Typography>
-                <Typography variant="caption" color={textSecondary}>
-                  Prosjekter
-                </Typography>
-              </Box>
-              <Box sx={{ textAlign: 'center'}}>
-                <Typography variant="h6" sx={{  fontWeight: 600}}>
-                  {currentProfile.totalLikes}
-                </Typography>
-                <Typography variant="caption" color={textSecondary}>
-                  Likes
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
-
-          {/* Categories */}
+          </Stack>
           <List>
-            {categories.map((category) => (
-              <ListItemButton
-                key={category.id}
-                selected={selectedCategory === category.id}
-                onClick={() => {
-                  setSelectedCategory(category.id);
-                  setSidebarOpen(false);
-              }}
-                sx={{
-                  borderRadius:  2,
-                  mb: 0.5, '&.Mui-selected': { bgcolor: isDark ? '#444', : '#e3f2fd',
-                }}}
-              >
-                <ListItemIcon sx={{ color: textPrimary }}>{category.icon}</ListItemIcon>
-                <ListItemText primary={category.label} />
-              </ListItemButton>
+            {[
+              { icon: <HomeIcon />, label: 'Hjem' },
+              { icon: <CollectionsIcon />, label: 'Portfolio' },
+              { icon: <PersonIcon />, label: 'Om fotografen' },
+              { icon: <SettingsIcon />, label: 'Innstillinger' },
+            ].map((entry) => (
+              <ListItem key={entry.label} disablePadding>
+                <ListItemButton>
+                  <ListItemIcon sx={{ color: primaryText }}>{entry.icon}</ListItemIcon>
+                  <ListItemText primary={entry.label} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="subtitle2" sx={{ mb: 1, color: secondaryText }}>
+            Kategorier
+          </Typography>
+          <List>
+            {CATEGORIES.map((category) => (
+              <ListItem key={category.id} disablePadding>
+                <ListItemButton
+                  selected={selectedCategory === category.id}
+                  onClick={() => {
+                    setSelectedCategory(category.id);
+                    setSidebarOpen(false);
+                  }}
+                >
+                  <ListItemIcon sx={{ color: primaryText }}>{category.icon}</ListItemIcon>
+                  <ListItemText primary={category.label} />
+                </ListItemButton>
+              </ListItem>
             ))}
           </List>
         </Box>
       </Drawer>
 
-      {/* Main Content */}
-      <Container maxWidth="xl" sx={{ pt:  10, pb:  4 }}>
-        {/* Hero Section */}
-        <Box
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Paper
+          elevation={0}
           sx={{
-            position: 'relative',
-            height: '60vh',
-            borderRadius:  3,
-            overflow: 'hidden',
-            mb:  4,
-            background: `linear-gradient(135deg, ${isDark ? '#2a2a2a' : '#f0f0f0'} 0%, ${isDark ? '#1a1a1a' : '#e0e0e0'} 100%)`}}
+            p: 3,
+            mb: 3,
+            bgcolor: surface,
+            border: `1px solid ${border}`,
+            borderRadius: 2,
+            ...theming.getThemedCardSx(),
+          }}
         >
-          {items[0] && (
-            <CardMedia component="img"
-              height="100%"
-              image={items[0].imageUrl}
-              alt={items[0].title}
-              sx={{
-                objectFit: 'cover',
-                opacity: 0.8,  ...theming.getThemedCardSx() }}>
-          )}
-          <Box
-            sx={{
-              position: 'absolute',
-              top:  0,
-              left:  0,
-              right:  0,
-              bottom:  0,
-              background: `linear-gradient(45deg, ${isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.7)'} 0%, transparent 100%)`,
-              display: 'flex',
-              alignItems: 'center',
-              p:  4}}
-          >
-            <Box>
-              <Typography variant="h3"
-                sx={{ 
-                  fontWeight: 700,
-                  mb:  2,
-                  color: isDark ? '#fff', : '#00' }}>
-                {currentProfile.name}
-              </Typography>
-              <Typography variant="h6"
-                sx={{ 
-                  mb:  3,
-                  color: isDark ? '#ccc', : '#33' }}>
-                {currentProfile.bio}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                {currentProfile.specialties.map((specialty, index) => (
-                  <Chip
-                    key={index}
-                    label={specialty}
-                    sx={{
-                      bgcolor: isDark ? 'rgba(25,255,255,0.2)' : 'rgba(0,0,0,0.1)',
-                      color: isDark ? '#fff', : '#00',
-                      backdropFilter: 'blur(10px)'}}
-                  />
-                ))}
-              </Box>
-            </Box>
-          </Box>
-        </Box>
-
-        {/* Portfolio Grid */}
-        <Grid container spacing={3}>
-          {items.map((item) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={item.id}>
-              <Card
-                sx={{
-                  bgcolor: cardg,
-                  color: textPrimary,
-                  borderRadius:  3,
-                  overflow: 'hidden',
-                  transition: 'all 0.3s ease', '&:hover': {
-                    transform: 'translateY(-8px)',
-                    boxShadow: isDark
-                      ? '0 20px 40px rgba(0,0,0,0.5)'
-                      : '0 20px 40px rgba(0,0,0,0.1)',
-                }}}
-               sx={theming.getThemedCardSx()}>
-                <Box sx={{ position: 'relative'}}>
-                  <CardMedia component="img"
-                    height="250"
-                    image={item.imageUrl}
-                    alt={item.title}
-                    sx={{ objectFit: 'cover',  ...theming.getThemedCardSx() }}>
-
-                  {/* Overlay Actions */}
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top:  8,
-                      right:  8,
-                      display: 'flex',
-                      gap:  1}}
-                  >
-                    <IconButton
-                      size="small"
-                      onClick={() => handleLike(item.id)}
-                      sx={{
-                        bgcolor: 'rgba(0,0,0,0.5)',
-                        color: likedItems.has(item.id) ? '#ff4757' : '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' }}}
-                    >
-                      {likedItems.has(item.id) ? theming.getThemedIcon('favorite') : <FavoriteBorder />}
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      sx={{
-                        bgcolor: 'rgba(0,0,0,0.5)',
-                        color: '#fff', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' }}}
-                    >
-                      {theming.getThemedIcon('share')}
-                    </IconButton>
-                  </Box>
-
-                  {/* Category Badge */}
-                  <Chip
-                    label={item.category}
-                    size="small"
-                    sx={{
-                      position: 'absolute',
-                      bottom:  8,
-                      left:  8,
-                      bgcolor: 'rgba(0,0,0,0.7)',
-                      color: '#fff',
-                      textTransform: 'capitalize'}}
-                  />
-                </Box>
-
-                <CardContent sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="h6"
-                    sx={{ 
-                      fontWeight: 60
-                     , mb:  1,
-                      fontSize: '1rem' }}>
-                    {item.title}
-                  </Typography>
-
-                  <Typography variant="body2" color={textSecondary} sx={{ mb:  2 }}>
-                    {item.description}
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap:  2,
-                      mb:  2}}
-                  >
-                    {item.location && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-                        <LocationOn sx={{ fontSize:  14, color: textSecondary }} />
-                        <Typography variant="caption" color={textSecondary}>
-                          {item.location}
-                        </Typography>
-                      </Box>
-                    )}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-                      <CalendarToday sx={{ fontSize:  14, color: textSecondary }} />
-                      <Typography variant="caption" color={textSecondary}>
-                        {new Date(item.date).toLocaleDateString('no-NO')}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'}}
-                  >
-                    <Box sx={{ display: 'flex', gap:  2 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-                        <Favorite sx={{ fontSize:  16, color: '#ff4757'}} />
-                        <Typography variant="caption">{item.likes}</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5}}>
-                        <Visibility sx={{ fontSize:  16, color: textSecondary }} />
-                        <Typography variant="caption">{item.views}</Typography>
-                      </Box>
-                    </Box>
-
-                    <IconButton size="small" sx={{ color: textPrimary }}>
-                      {theming.getThemedIcon('download')}
-                    </IconButton>
-                  </Box>
-                </CardContent>
-              </Card>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item>
+              <Avatar src={profile.avatar} sx={{ width: 72, height: 72 }} />
             </Grid>
+            <Grid item xs>
+              <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                {profile.name}
+              </Typography>
+              <Typography variant="body2" sx={{ color: secondaryText, mb: 1 }}>
+                {profile.bio}
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip size="small" icon={<LocationOnIcon />} label={profile.location} />
+                <Chip size="small" icon={<CameraAltIcon />} label={profile.experience} />
+                <Chip size="small" label={`${profile.totalProjects} prosjekter`} />
+                <Chip size="small" label={`${profile.totalLikes} likes`} />
+              </Stack>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        <Stack direction="row" spacing={1} sx={{ mb: 2, overflowX: 'auto', pb: 1 }}>
+          {CATEGORIES.map((category) => (
+            <Button
+              key={category.id}
+              variant={selectedCategory === category.id ? 'contained' : 'outlined'}
+              startIcon={category.icon}
+              onClick={() => setSelectedCategory(category.id)}
+            >
+              {category.label}
+            </Button>
           ))}
+        </Stack>
+
+        <Grid container spacing={2}>
+          {visibleItems.map((item) => {
+            const liked = item.isLiked || likedItems.has(item.id);
+            return (
+              <Grid key={item.id} item xs={12} sm={6} md={4} lg={3}>
+                <Card sx={{ bgcolor: surface, border: `1px solid ${border}`, height: '100%' }}>
+                  <Box sx={{ position: 'relative' }}>
+                    <CardMedia
+                      component="img"
+                      image={item.imageUrl}
+                      alt={item.title}
+                      sx={{ height: 220, objectFit: 'cover' }}
+                    />
+                    {item.videoUrl && (
+                      <IconButton
+                        sx={{
+                          position: 'absolute',
+                          top: 10,
+                          right: 10,
+                          bgcolor: 'rgba(0,0,0,0.45)',
+                          color: '#fff',
+                        }}
+                      >
+                        <PlayArrowIcon />
+                      </IconButton>
+                    )}
+                    <Badge
+                      color="primary"
+                      badgeContent={item.views}
+                      sx={{ position: 'absolute', left: 12, top: 12 }}
+                    >
+                      <VisibilityIcon sx={{ color: '#fff' }} />
+                    </Badge>
+                  </Box>
+                  <CardContent>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+                      {item.title}
+                    </Typography>
+                    <Typography variant="body2" sx={{ color: secondaryText, mb: 1 }} noWrap>
+                      {item.description}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      {item.location && (
+                        <Chip size="small" icon={<LocationOnIcon />} label={item.location} />
+                      )}
+                      <Chip size="small" icon={<CalendarTodayIcon />} label={item.date} />
+                    </Stack>
+                    <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                      {item.tags.slice(0, 3).map((tag) => (
+                        <Chip key={`${item.id}-${tag}`} size="small" label={tag} />
+                      ))}
+                    </Stack>
+                    <Stack direction="row" justifyContent="space-between">
+                      <Stack direction="row" spacing={0.5}>
+                        <IconButton
+                          onClick={() =>
+                            setLikedItems((previous) => {
+                              const next = new Set(previous);
+                              if (next.has(item.id)) {
+                                next.delete(item.id);
+                              } else {
+                                next.add(item.id);
+                              }
+                              return next;
+                            })
+                          }
+                        >
+                          {liked ? <FavoriteIcon color="error" /> : <FavoriteBorderIcon />}
+                        </IconButton>
+                        <IconButton>
+                          <ShareIcon />
+                        </IconButton>
+                        <IconButton>
+                          <DownloadIcon />
+                        </IconButton>
+                      </Stack>
+                      <Typography variant="caption" sx={{ color: secondaryText, alignSelf: 'center' }}>
+                        {item.likes + (likedItems.has(item.id) ? 1 : 0)} likes
+                      </Typography>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
         </Grid>
       </Container>
     </Box>
   );
 };
+
+function normalizeProfile(raw: unknown): PhotographerProfile | null {
+  const record = asRecord(raw);
+  if (!record) {
+    return null;
+  }
+  const id = asString(record.id);
+  const name = asString(record.name);
+  if (!id || !name) {
+    return null;
+  }
+  return {
+    id,
+    name,
+    avatar: asString(record.avatar) || '/api/placeholder/64/64',
+    bio: asString(record.bio),
+    specialties: arrayOfStrings(record.specialties),
+    location: asString(record.location),
+    experience: asString(record.experience),
+    totalProjects: asNumber(record.totalProjects),
+    totalLikes: asNumber(record.totalLikes),
+  };
+}
+
+function normalizeItems(raw: unknown): ShowcaseItem[] {
+  const items = toArray(raw);
+  return items
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const id = asString(record.id);
+      const title = asString(record.title);
+      if (!id || !title) {
+        return null;
+      }
+      return {
+        id,
+        title,
+        description: asString(record.description),
+        imageUrl: asString(record.imageUrl) || '/api/placeholder/800/600',
+        videoUrl: optionalString(record.videoUrl),
+        category: asString(record.category) || 'all',
+        location: optionalString(record.location),
+        date: asString(record.date) || new Date().toISOString().slice(0, 10),
+        likes: asNumber(record.likes),
+        views: asNumber(record.views),
+        isLiked: Boolean(record.isLiked),
+        tags: arrayOfStrings(record.tags),
+      } satisfies ShowcaseItem;
+    })
+    .filter((item): item is ShowcaseItem => item !== null);
+}
+
+function toArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+  return [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === 'string');
+}
 
 export default ShowcasePortal;

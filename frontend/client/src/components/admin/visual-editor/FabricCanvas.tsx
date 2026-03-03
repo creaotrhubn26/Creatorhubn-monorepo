@@ -36,6 +36,11 @@ interface FabricCanvasWithMethods extends fabric.Canvas {
   sendToBack?: (obj: fabric.Object) => fabric.Canvas;
 }
 
+type FabricModifiedEvent = fabric.ModifiedEvent<fabric.TPointerEvent>;
+type FabricSelectionEvent = Partial<fabric.TEvent<fabric.TPointerEvent>> & {
+  selected?: fabric.FabricObject[];
+};
+
 export const FabricCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<FabricCanvasWithMethods | null>(null);
@@ -128,7 +133,9 @@ export const FabricCanvas: React.FC = () => {
         });
         break;
 
-      case 'text': obj = new fabric.IText(element.props.text || 'Text', {
+      case 'text': {
+        const textContent = typeof element.props.text === 'string' ? element.props.text : 'Text';
+        obj = new fabric.IText(textContent, {
           left: element.x,
           top: element.y,
           fontSize: parseInt(element.styles.fontSize || '16'),
@@ -138,6 +145,7 @@ export const FabricCanvas: React.FC = () => {
           opacity: element.styles.opacity || 1,
         });
         break;
+      }
 
       case 'image': {
         // Load actual image if src is available, otherwise placeholder
@@ -253,7 +261,7 @@ export const FabricCanvas: React.FC = () => {
     const canvas = fabricCanvasRef.current;
 
     // Object moved
-    const handleObjectModified = (e: fabric.IEvent) => {
+    const handleObjectModified = (e: FabricModifiedEvent) => {
       const obj = e.target as FabricObjectWithId | undefined;
       if (!obj || !obj.id) return;
 
@@ -270,7 +278,7 @@ export const FabricCanvas: React.FC = () => {
     };
 
     // Object selected
-    const handleSelection = (e: fabric.IEvent) => {
+    const handleSelection = (e: FabricSelectionEvent) => {
       const obj = (e.selected?.[0] as FabricObjectWithId) || undefined;
       if (obj && obj.id) {
         selectElement(obj.id);

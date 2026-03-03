@@ -220,7 +220,13 @@ export const CameraDiscoveryExample: React.FC = () => {
       {/* Discovery Controls */}
       <Box sx={{ mb:  3 }}>
         <Button variant="contained"
-          startIcon={isLoading ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('refresh')}
+          startIcon={
+            isLoading ? (
+              <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+            ) : (
+              theming.getThemedIcon('refresh')
+            )
+          }
           onClick={handleTriggerDiscovery}
           disabled={isLoading}
           sx={{ mr:  2 }}
@@ -285,7 +291,6 @@ export const CameraDiscoveryExample: React.FC = () => {
 };
 
 export default CameraDiscoveryExample;
-
 
 
 

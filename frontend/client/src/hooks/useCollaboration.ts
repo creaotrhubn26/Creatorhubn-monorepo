@@ -93,7 +93,9 @@ export const useCollaboration = (options: UseCollaborationOptions = {}): UseColl
 
   const [state, setState] = useState<CollaborationState>({
     isEnabled: false,
+    isInitialized: false,
     isConnected: false,
+    isPaused: false,
     isReconnecting: false,
     hasError: false,
     error: null,
@@ -377,7 +379,6 @@ export const useCollaboration = (options: UseCollaborationOptions = {}): UseColl
 };
 
 export default useCollaboration;
-
 
 
 

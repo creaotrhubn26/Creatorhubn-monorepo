@@ -3,7 +3,6 @@
  * Robust error handling for integration components
  */
 
-import { useTheming } from '../../utils/theming-helper';
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import {
   Box,
@@ -24,6 +23,27 @@ import {
   BugReport as BugIcon,
 } from '@mui/icons-material';
 
+interface MonitoringPayload {
+  error: string;
+  stack?: string;
+  componentStack?: string;
+  section: string;
+  errorId: string;
+  timestamp: string;
+  userAgent: string;
+  url: string;
+}
+
+interface MonitoringClient {
+  logError: (payload: MonitoringPayload) => void;
+}
+
+declare global {
+  interface Window {
+    monitoring?: MonitoringClient;
+  }
+}
+
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -38,6 +58,19 @@ interface State {
   errorId: string;
 }
 
+const SUPPORT_PANEL_SX = {
+  bgcolor: 'grey.100',
+  p: 1,
+  borderRadius: 1,
+  overflow: 'auto',
+  fontSize: '0.75rem',
+  fontFamily: 'monospace',
+};
+
+function createErrorId(): string {
+  return `error-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 export default class IntegrationErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -46,197 +79,162 @@ export default class IntegrationErrorBoundary extends Component<Props, State> {
       error: null,
       errorInfo: null,
       errorId: '',
-  };
-}
+    };
+  }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
     return {
       hasError: true,
       error,
-      errorId: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-  };
-}
+      errorId: createErrorId(),
+    };
+  }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    this.setState({
-      errorInfo,
-  });
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    this.setState({ errorInfo });
 
-    // Log to console for debugging
-    console.error('Integration Error Boundary caught an error: ', error, errorInfo);
+    console.error('Integration Error Boundary caught an error:', error, errorInfo);
 
-    // Send to monitoring service (if available)
-    if (typeof window !== 'undefined' && (window as any).monitoring) {
-      (window as any).monitoring.logError({
+    if (typeof window !== 'undefined' && window.monitoring) {
+      window.monitoring.logError({
         error: error.message,
         stack: error.stack,
-        componentStack: errorInfo.componentStack,
-        section: this.props.section || 'integration-panel',
-        errorId: this.state.errord,
+        componentStack: errorInfo.componentStack ?? undefined,
+        section: this.props.section ?? 'integration-panel',
+        errorId: this.state.errorId,
         timestamp: new Date().toISOString(),
         userAgent: navigator.userAgent,
         url: window.location.href,
-    });
+      });
+    }
+
+    this.props.onError?.(error, errorInfo);
   }
 
-    // Call custom error handler
-    if (this.props.onError) {
-      this.props.onError(error, errorInfo);
-  }
-}
-
-  handleRetry = () => {
+  private handleRetry = () => {
     this.setState({
       hasError: false,
       error: null,
       errorInfo: null,
-      errorId: ', ',
-  });
-};
+      errorId: '',
+    });
+  };
 
-  handleReload = () => {
+  private handleReload = () => {
     window.location.reload();
-};
+  };
 
-  render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+  render(): ReactNode {
+    if (!this.state.hasError) {
+      return this.props.children;
     }
 
-      return (
-        <Box sx={{ p:  2 }}>
-          <Alert
-            severity="error"
-            icon={<ErrorIcon />}
-            action={
-              <Box sx={{ display: 'flex', gap:  1 }}>
-                <Button
-                  color="inherit"
-                  size="small"
-                  onClick={this.handleRetry}
-                  startIcon={<RefreshIcon />}
-                >
-                  Prøv igjen
-                </Button>
-                <Button
-                  color="inherit"
-                  size="small"
-                  onClick={this.handleReload}
-                  variant="outlined"
-                >
-                  Last siden på nytt
-                </Button>
-              </Box>
+    if (this.props.fallback) {
+      return this.props.fallback;
+    }
+
+    return (
+      <Box sx={{ p: 2 }}>
+        <Alert
+          severity="error"
+          icon={<ErrorIcon />}
+          action={
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={this.handleRetry}
+                startIcon={<RefreshIcon />}
+              >
+                Prøv igjen
+              </Button>
+              <Button
+                color="inherit"
+                size="small"
+                onClick={this.handleReload}
+                variant="outlined"
+              >
+                Last siden på nytt
+              </Button>
+            </Box>
           }
-          >
-            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
-              Noe gikk galt med integrasjonspanelet
-            </Typography>
-            <Typography variant="body2">
-              {this.props.section 
-                ? `En feil oppstod i ${this.props.section}-seksjonen. `
-                : 'En uventet feil oppstod. '
-            }
-              Prøv å laste siden på nytt, eller kontakt support hvis problemet vedvarer.
-            </Typography>
-          </Alert>
+        >
+          <Typography variant="h6" gutterBottom>
+            Noe gikk galt med integrasjonspanelet
+          </Typography>
+          <Typography variant="body2">
+            {this.props.section
+              ? `En feil oppstod i ${this.props.section}-seksjonen. `
+              : 'En uventet feil oppstod. '}
+            Prøv å laste siden på nytt, eller kontakt support hvis problemet vedvarer.
+          </Typography>
+        </Alert>
 
-          <Card sx={{ mt:  2 }} variant="outlined" sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <BugIcon color="error" />
-                <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
-                  Feildetaljer
+        <Card sx={{ mt: 2 }} variant="outlined">
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+              <BugIcon color="error" />
+              <Typography variant="h6">Feildetaljer</Typography>
+              <Chip label={`ID: ${this.state.errorId}`} size="small" variant="outlined" />
+            </Box>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandIcon />}>
+                <Typography variant="subtitle2">
+                  Tekniske detaljer (for utviklere)
                 </Typography>
-                <Chip 
-                  label={`ID: ${this.state.errord}`}
-                  size="small" 
-                  variant="outlined"
-                />
-              </Box>
-
-              <Accordion>
-                <AccordionSummary expandIcon={<ExpandIcon />}>
-                  <Typography variant="subtitle2">
-                    Tekniske detaljer (for utviklere)
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Feilmelding:
                   </Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ mb:  2 }}>
+                  <Typography variant="body2" component="pre" sx={SUPPORT_PANEL_SX}>
+                    {this.state.error?.message ?? 'Ukjent feil'}
+                  </Typography>
+                </Box>
+
+                {this.state.error?.stack && (
+                  <Box sx={{ mb: 2 }}>
                     <Typography variant="subtitle2" gutterBottom>
-                      Feilmelding: </Typography>
-                    <Typography 
-                      variant="body2" 
+                      Stack trace:
+                    </Typography>
+                    <Typography
+                      variant="body2"
                       component="pre"
-                      sx={{ 
-                        bgcolor: 'grey.10', 
-                        p: 1, borderRadius:  1,
-                        overflow: 'auto',
-                        fontSize: '0.75rem',
-                        fontFamily: 'monospace'
-                  }}
+                      sx={{ ...SUPPORT_PANEL_SX, maxHeight: 200 }}
                     >
-                      {this.state.error?.message || 'Ukjent feil'}
+                      {this.state.error.stack}
                     </Typography>
                   </Box>
+                )}
 
-                  {this.state.error?.stack && (
-                    <Box sx={{ mb:  2 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Stack trace: </Typography>
-                      <Typography 
-                        variant="body2" 
-                        component="pre"
-                        sx={{ 
-                          bgcolor: 'grey.10', 
-                          p: 1, borderRadius:  1,
-                          overflow: 'auto',
-                          fontSize: '0.75rem',
-                          fontFamily: 'monospace',
-                          maxHeight: 200
-                    }}
-                      >
-                        {this.state.error.stack}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {this.state.errorInfo?.componentStack && (
-                    <Box>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Component stack: </Typography>
-                      <Typography 
-                        variant="body2" 
-                        component="pre"
-                        sx={{ 
-                          bgcolor: 'grey.10', 
-                          p: 1, borderRadius:  1,
-                          overflow: 'auto',
-                          fontSize: '0.75rem',
-                          fontFamily: 'monospace',
-                          maxHeight: 200
-                    }}
-                      >
-                        {this.state.errorInfo.componentStack}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  <Box sx={{ mt: 2, p: 1, bgcolor:'info.light', borderRadius:  1 }}>
-                    <Typography variant="caption" color="info.contrastText">
-                      <strong>Tips: </strong> Del denne informasjonen med support-teamet for raskere feilsøking.
-                      Feil-ID: {this.state.errord}
+                {this.state.errorInfo?.componentStack && (
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Component stack:
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      component="pre"
+                      sx={{ ...SUPPORT_PANEL_SX, maxHeight: 200 }}
+                    >
+                      {this.state.errorInfo.componentStack}
                     </Typography>
                   </Box>
-                </AccordionDetails>
-              </Accordion>
-            </CardContent>
-          </Card>
-        </Box>
-      );
+                )}
+
+                <Box sx={{ mt: 2, p: 1, bgcolor: 'info.light', borderRadius: 1 }}>
+                  <Typography variant="caption" color="info.contrastText">
+                    <strong>Tips:</strong> Del denne informasjonen med support-teamet for raskere
+                    feilsøking. Feil-ID: {this.state.errorId}
+                  </Typography>
+                </Box>
+              </AccordionDetails>
+            </Accordion>
+          </CardContent>
+        </Card>
+      </Box>
+    );
   }
-
-    return this.props.children;
-}
 }

@@ -335,7 +335,7 @@ export const RealTimeCollaboration: React.FC<RealTimeCollaborationProps> = ({
                       sx={{
                         width:  12,
                         height:  12,
-                        borderRadius: '50, %',
+                        borderRadius: '50%',
                         bgcolor: user.isOnline ? 'success.main' : 'grey.40',
                         border: '2px solid white'
                   }}
@@ -549,7 +549,8 @@ export const RealTimeCollaboration: React.FC<RealTimeCollaborationProps> = ({
                     <Button size="small"
                       variant="contained"
                       color="success"
-                      onClick={() => handleConflictResolution(conflict.id'accept')} sx={theming.getThemedButtonSx()}
+                      onClick={() => handleConflictResolution(conflict.id, 'accept')}
+                      sx={theming.getThemedButtonSx()}
                     >
                       Accept
                     </Button>
@@ -557,7 +558,7 @@ export const RealTimeCollaboration: React.FC<RealTimeCollaborationProps> = ({
                       size="small"
                       variant="outlined"
                       color="error"
-                      onClick={() => handleConflictResolution(conflict.id'reject')}
+                      onClick={() => handleConflictResolution(conflict.id, 'reject')}
                     >
                       Reject
                     </Button>
@@ -579,4 +580,3 @@ export const RealTimeCollaboration: React.FC<RealTimeCollaborationProps> = ({
 };
 
 export default RealTimeCollaboration;
-

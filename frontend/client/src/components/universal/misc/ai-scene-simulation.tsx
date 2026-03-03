@@ -310,7 +310,7 @@ export default function AiSceneSimulation({
                     <Chip 
                       label={`${getConfidenceLabel(simulation.confidence)} (${Math.round(simulation.confidence * 100)}%)`}
                       size="small"
-                      color={getConfidenceColor(simulation.confidence) as any}
+                      color={getConfidenceColor(simulation.confidence)}
                     />
                   </Box>
 
@@ -326,7 +326,7 @@ export default function AiSceneSimulation({
                   {/* AI Generated Badge */}
                   {simulation.aiGenerated && (
                     <Chip 
-                      icon={theming.getThemedIcon('smartToy')}}
+                      icon={theming.getThemedIcon('smartToy')}
                       label="AI Generated" 
                       size="small" 
                       color="success" 

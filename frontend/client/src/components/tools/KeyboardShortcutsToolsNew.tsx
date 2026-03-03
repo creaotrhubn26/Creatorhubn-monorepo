@@ -3056,7 +3056,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       transform: 'translate(-5%, -50%)',
                       width:  60, height:  60,
                       backgroundColor: '#4caf50',
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       border: '3px solid white'
             }} />
                     <Typography variant="caption" sx={{
@@ -3420,7 +3420,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       top: '35%', left: '45%',
                       width:  60, height:  60,
                       backgroundColor: '#ffeb3b',
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       border: '3px solid white',
                       boxShadow: '0 0 20px rgba(25,235,59,0.8)'
               }} />
@@ -3431,7 +3431,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       top: '20%', left: '20%',
                       width:  30, height:  30,
                       backgroundColor: '#795548',
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       opacity: 0.3 }} />
                     
                     <Box sx={{
@@ -3439,7 +3439,7 @@ export default function KeyboardShortcutsTools({ profession }: KeyboardShortcuts
                       top: '70%', right: '20%',
                       width:  25, height:  25,
                       backgroundColor: '#795548',
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       opacity: 0.2 }} />
                     
                     <Typography variant="caption" sx={{

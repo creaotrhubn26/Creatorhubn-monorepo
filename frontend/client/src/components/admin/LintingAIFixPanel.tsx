@@ -105,7 +105,7 @@ export const LintingAIFixPanel: React.FC = () => {
       const response = await apiRequest('/api/admin/linting/scan', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           paths: ['client/src/**/*.{ts,tsx}'],
@@ -144,7 +144,7 @@ export const LintingAIFixPanel: React.FC = () => {
       const response = await apiRequest('/api/admin/linting/generate-prompts', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({ scanResult }),
     });
@@ -177,7 +177,7 @@ export const LintingAIFixPanel: React.FC = () => {
       const response = await apiRequest('/api/admin/linting/batch-fix', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           prompts: aiPrompts,
@@ -219,7 +219,7 @@ export const LintingAIFixPanel: React.FC = () => {
       </Box>
 
       {/* Controls */}
-      <Grid container spacing={2}, sx={{ mb: 3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
@@ -412,7 +412,7 @@ export const LintingAIFixPanel: React.FC = () => {
                   </TableHead>
                   <TableBody>
                     {Object.entries(scanResult.errorsByRule || {})
-                      .sort(([, a][b]) => (b as number) - (a as number))
+                      .sort(([, a], [, b]) => (b as number) - (a as number))
                       .slice(0, 10)
                       .map(([rule, count]) => (
                         <TableRow key={rule}>
@@ -433,7 +433,7 @@ export const LintingAIFixPanel: React.FC = () => {
                 Files with Most Errors
               </Typography>
               {Object.entries(scanResult.errorsByFile || {})
-                .sort(([, a][b]) => (b as any[]).length - (a as any[]).length)
+                .sort(([, a], [, b]) => (b as any[]).length - (a as any[]).length)
                 .slice(0, 10)
                 .map(([file, errors]) => (
                   <Accordion key={file}>
@@ -567,7 +567,7 @@ export const LintingAIFixPanel: React.FC = () => {
               </Alert>
             )}
 
-            <Grid container spacing={2}, sx={{ mb: 3 }}>
+            <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={3}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.light' }}>
                   <Typography variant="h4" sx={{ color: 'success.contrastText' }}>
@@ -687,4 +687,3 @@ export const LintingAIFixPanel: React.FC = () => {
 };
 
 export default LintingAIFixPanel;
-

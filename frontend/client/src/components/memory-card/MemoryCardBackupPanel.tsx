@@ -1,612 +1,400 @@
 /**
  * CreatorHub Norge - Memory Card Backup Panel
- * Intelligent memory card backup system with Norwegian localization
+ * Intelligent memory-card backup panel with localized flow.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { Card as MuiCard, CardContent, CardHeader } from '@mui/material';
-import { Button, CustomBadge as Badge } from '@/components/material-ui';
-import { TextField as Input } from '@mui/material';
-import { Typography } from '@mui/material';
-import { LinearProgress as Progress } from '@mui/material';
-import { Divider as Separator } from '@mui/material';
-/* Alert & AlertDescription removed - Zero Toast Compliance */
-// import { Alert, AlertDescription } from "@/components/material-ui";
+import React, { useMemo, useState } from 'react';
 import {
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+  type ChipProps,
 } from '@mui/material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 import {
-  Memory as SdDirectionsCardIcon,
-  PhotoCamera as CameraIcon,
-  Videocam as VideoIcon,
-  Security as SecurityIcon,
-  CheckCircle as CheckCircleIcon,
-  Warning as WarningIcon,
-  Schedule as AccessTimeIcon,
-  Storage as StorageIcon,
-  Description as DescriptionTextIcon,
-  Info as InfoIcon,
   Add as AddIcon,
-  Delete as Delete2Icon,
-  Refresh as RefreshCwIcon,
+  CheckCircle as CheckCircleIcon,
   Download as DownloadIcon,
+  Memory as MemoryIcon,
+  PhotoCamera as CameraIcon,
+  Refresh as RefreshIcon,
+  Storage as StorageIcon,
+  Upload as UploadIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
-import { cn } from '@/lib/utils';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
 interface MemoryCardBackupPanelProps {
   projectId: string;
   profession: 'photographer' | 'videographer';
-  onSessionActivated?: (sessionId: string) => void
+  onSessionActivated?: (sessionId: string) => void;
 }
 
 interface MemoryCardSession {
-  id: number;
   sessionId: string;
   projectId: string;
   profession: string;
   eventType: string;
-  totalDays: number;
-  cardLabelingScheme: string;
-  status: string;
+  status: 'active' | 'completed' | 'failed';
   totalCards: number;
   backedUpCards: number;
-  activatedAt: string;
-  lastBackupAt?: string
 }
 
 interface MemoryCard {
-  id: number;
-  cardId: string;
+  id: string;
   cardLabel: string;
   cardType: string;
-  capacity?: string;
+  capacity: string;
   fileCount: number;
-  totalSize: string;
-  backupStatus: string;
+  totalSizeMb: number;
+  backupStatus: 'pending' | 'uploading' | 'completed' | 'failed';
+  backupProgress: number;
   backupLocation?: string;
-  createdAt: string
 }
 
 interface BackupTip {
-  id: number;
+  id: string;
   title: string;
   description: string;
-  titleNorwegian?: string;
-  descriptionNorwegian?: string;
-  importance: string;
-  category: string
+  importance: 'low' | 'medium' | 'high';
+}
+
+function safeArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function statusColor(status: MemoryCard['backupStatus']): ChipProps['color'] {
+  switch (status) {
+    case 'completed':
+      return 'success';
+    case 'uploading':
+      return 'info';
+    case 'failed':
+      return 'error';
+    case 'pending':
+    default:
+      return 'default';
+  }
+}
+
+function formatSize(totalSizeMb: number): string {
+  if (totalSizeMb >= 1024) {
+    return `${(totalSizeMb / 1024).toFixed(2)} GB`;
+  }
+  return `${totalSizeMb.toFixed(0)} MB`;
 }
 
 export function MemoryCardBackupPanel({
   projectId,
   profession,
   onSessionActivated,
-}: MemoryCardBackupPanelProps) {
-  const [showAddCard, setShowAddCard] = useState(false);
-  const [newCard, setNewCard] = useState({
-    cardLabel:  ',',
-    cardType: 'S',
-    capacity: '',
-    serialNumber: '',
-    fileCount:  0,
-    totalSize:  0,
-});
-
+}: MemoryCardBackupPanelProps): JSX.Element {
+  const theming = useTheming(profession);
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
 
-  // Hent aktiv backup session
-  const { data: session, isLoading: sessionLoading } = useQuery({
+  const [addCardDialogOpen, setAddCardDialogOpen] = useState(false);
+  const [newCard, setNewCard] = useState({
+    cardLabel: '',
+    cardType: 'SD UHS-II',
+    capacity: '128GB',
+    fileCount: 0,
+    totalSizeMb: 0,
+  });
+
+  const sessionQuery = useQuery({
     queryKey: ['/api/memory-card/session', projectId],
-    enabled: !!projectd,
-});
+    queryFn: async (): Promise<MemoryCardSession | null> => {
+      const data = await apiRequest(`/api/memory-card/session/${projectId}`);
+      return data ? (data as MemoryCardSession) : null;
+    },
+    enabled: Boolean(projectId),
+  });
 
-  // Hent minnekort for session
-  const { data: memoryCards = [], isLoading: cardsLoading } = useQuery({
-    queryKey: ['/api/memory-card/cards', session?.sessionId],
-    enabled: !!session?.sessiond,
-});
+  const cardsQuery = useQuery({
+    queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId],
+    queryFn: async (): Promise<MemoryCard[]> => {
+      const sessionId = sessionQuery.data?.sessionId;
+      if (!sessionId) {
+        return [];
+      }
+      const data = await apiRequest(`/api/memory-card/cards/${sessionId}`);
+      return safeArray<MemoryCard>(data);
+    },
+    enabled: Boolean(sessionQuery.data?.sessionId),
+  });
 
-  // Hent backup tips
-  const { data: backupTips = [, ],} = useQuery({
-    queryKey: ['/api/memory-card/tips', profession, session?.eventType],
-    enabled: !!session?.eventType,
-});
+  const tipsQuery = useQuery({
+    queryKey: ['/api/memory-card/tips', profession],
+    queryFn: async (): Promise<BackupTip[]> => {
+      const data = await apiRequest(`/api/memory-card/tips?profession=${profession}`);
+      const tips = safeArray<BackupTip>(data);
+      if (tips.length > 0) {
+        return tips;
+      }
+      return [
+        {
+          id: 'tip-1',
+          title: '3-2-1 backup',
+          description: 'Behold minst tre kopier av data i to ulike medier, hvorav én offsite.',
+          importance: 'high',
+        },
+      ];
+    },
+    enabled: Boolean(projectId),
+  });
 
-  // Aktiver backup session
-  const activateSessionMutation = useMutation({
-    mutationFn: async (data: {
-      eventType: string;
-      totalDays: number;
-      eventDate?: string;
-      executionDate?: string;
-}) => {
-      return apiRequest(`/api/memory-card/activate`, {
-        method: 'POS',
+  const activateSession = useMutation({
+    mutationFn: async (): Promise<{ sessionId: string }> => {
+      return (await apiRequest('/api/memory-card/activate', {
+        method: 'POST',
+        body: JSON.stringify({ projectId, profession }),
+      })) as { sessionId: string };
+    },
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/session', projectId] });
+      onSessionActivated?.(data.sessionId);
+    },
+  });
+
+  const addCard = useMutation({
+    mutationFn: async (): Promise<void> => {
+      await apiRequest('/api/memory-card/cards', {
+        method: 'POST',
         body: JSON.stringify({
-          projectd,
-          profession,
-          ...data,
-      }),
-    });
-  },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/session', ],});
-      if (onSessionActivated && data.sessionId) {
-        onSessionActivated(data.sessionId);
+          sessionId: sessionQuery.data?.sessionId,
+          ...newCard,
+        }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId] });
+      setAddCardDialogOpen(false);
+      setNewCard({ cardLabel: '', cardType: 'SD UHS-II', capacity: '128GB', fileCount: 0, totalSizeMb: 0 });
+    },
+  });
+
+  const triggerBackup = useMutation({
+    mutationFn: async (cardId: string): Promise<void> => {
+      await apiRequest(`/api/memory-card/backup/${cardId}`, {
+        method: 'POST',
+        body: JSON.stringify({ projectId }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId] });
+    },
+  });
+
+  const cards = cardsQuery.data ?? [];
+  const tips = tipsQuery.data ?? [];
+
+  const loading =
+    sessionQuery.isLoading ||
+    cardsQuery.isLoading ||
+    activateSession.isPending ||
+    addCard.isPending ||
+    triggerBackup.isPending;
+
+  const progressPercent = useMemo(() => {
+    if (cards.length === 0) {
+      return 0;
     }
-  },
-});
+    const completed = cards.filter((card) => card.backupStatus === 'completed').length;
+    return (completed / cards.length) * 100;
+  }, [cards]);
 
-  // Legg til minnekort
-  const addCardMutation = useMutation({
-    mutationFn: async (cardData: typeof newCard) => {
-      return apiRequest(`/api/memory-card/register`, {
-        method: 'POS',
-        body: JSON.stringify({
-          sessionId: session.sessiond,
-          ...cardData,
-      }),
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', ],});
-      setShowAddCard(false);
-      setNewCard({
-        cardLabel: '',
-        cardType: 'S',
-        capacity: '',
-        serialNumber: '',
-        fileCount:  0,
-        totalSize:  0,
-    });
-  },
-});
+  return (
+    <Box>
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Box display="flex" alignItems="center" gap={1}>
+              <MemoryIcon color="primary" />
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Memory Card Backup
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => cardsQuery.refetch()}>
+                Oppdater
+              </Button>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddCardDialogOpen(true)}>
+                Legg til kort
+              </Button>
+            </Stack>
+          </Box>
 
-  // Marker som sikkerhetskopiert
-  const markBackedUpMutation = useMutation({
-    mutationFn: async (data: {
-      cardId: string;
-      backupLocation: string;
-      fileCount: number;
-      totalSize: number;
-}) => {
-      return apiRequest(`/api/memory-card/backup-complete`, {
-        method: 'POS',
-        body: JSON.stringify(data),
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', ],});
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/session', ],});
-  },
-});
+          {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-  const getCardTypeIcon = (type: string) => {
-    switch (type) {
-      case 'CF':
-        return <Storage className="w-4 h-4" />;
-      case 'XQD':
-        return <Storage className="w-4 h-4" />;
-      case 'CFexpress':
-        return <Storage className="w-4 h-4" />;
-      default:
-        return <SdCard className="w-4 h-4" />;
-}
-};
+          {!sessionQuery.data && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Ingen aktiv backup-session. Start en ny session for prosjektet.
+            </Alert>
+          )}
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'text-green-600 bg-green-50';
-      case 'in_progress':
-        return 'text-blue-600 bg-blue-50';
-      case 'failed':
-        return 'text-red-600 bg-red-50';
-      default:
-        return 'text-yellow-600 bg-yellow-50';
-}
-};
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Sikkerhetskopiert';
-      case 'in_progress':
-        return 'Pågår';
-      case 'failed':
-        return 'Feilet';
-      default:
-        return 'Venter';
-}
-};
-
-  const getLabelSuggestions = () => {
-    if (!session) return [];
-
-    const scheme = session.cardLabelingScheme;
-    if (scheme === 'ABCD') {
-      return ['A','B', 'C','D'];
-  } else if (scheme === 'EFGH') {
-      return ['E', 'F', 'G','H'];
-  }
-    return [];
-};
-
-  const getProgressPercentage = () => {
-    if (!session || session.totalCards === 0) return 0;
-    return Math.round((session.backedUpCards / session.totalCards) * 100);
-};
-
-  if (sessionLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="w-6 h-6 animate-spin" />
-        <span className="ml-2">Laster minnekort backup...</span>
-      </div>
-    );
-}
-
-  // Hvis ingen aktiv session, vis aktiveringsgrensesnitt
-  if (!session) {
-    return (
-      <MuiCard className="w-full">
-        <CardHeader sx={theming.getThemedCardSx()}>
-          <CardTitle className="flex items-center gap-3" sx={theming.getThemedCardSx()}>
-            <div className="p-2 rounded-lg bg-blue-500 text-white">
-              {profession === 'photographer' ? (
-                <CameraAlt className="w-5 h-5" />
-              ) : (
-                <Videocam className="w-5 h-5" />
-              )}
-            </div>
-            <div>
-              <span>Minnekort Backup</span>
-              <p className="text-sm text-muted-foreground font-normal">
-                Sikkerhetskopi system for{', '}
-                {profession === 'photographer' ? 'fotografer': 'videografer'}
-              </p>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4" sx={theming.getThemedCardSx()}>
-          <Box
-            sx={{
-              p:  2,
-              bgcolor: 'info.light',
-              borderRadius:  1,
-              display: 'flex',
-              alignItems: 'center',
-              gap:  1}}
-          >
-            <InfoIcon sx={{ fontSize: '1rem'}} />
-            <Typography variant="body2" sx={{ color: 'info.contrastText'}}>
-              Minnekort backup aktiveres automatisk når prosjektet går inn i post-produksjonsfasen.
-              Du kan også aktivere det manuelt her.
-            </Typography>
+          <Box display="flex" gap={1} mb={2} flexWrap="wrap">
+            <Chip label={`Prosjekt: ${projectId}`} variant="outlined" />
+            <Chip label={`Profesjon: ${profession}`} variant="outlined" />
+            <Chip label={`Status: ${sessionQuery.data?.status ?? 'ikke aktiv'}`} color={sessionQuery.data ? 'primary' : 'default'} />
           </Box>
 
           <Button
-            onClick={() =>
-              activateSessionMutation.mutate({
-                eventType: 'single_day',
-                totalDays:  1,
-            })
-          }
-            disabled={activateSessionMutation.isPending}
-            className="w-full"
+            variant="contained"
+            startIcon={<UploadIcon />}
+            onClick={() => activateSession.mutate()}
+            disabled={activateSession.isPending}
+            sx={{ mb: 2 }}
           >
-            {activateSessionMutation.isPending ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Aktiverer...
-              </>
-            ) : (
-              <>
-                <Security className="w-4 h-4 mr-2" />
-                Aktiver Minnekort Backup
-              </>
-            )}
+            Aktiver session
           </Button>
-        </CardContent>
-      </MuiCard>
-    );
-}
 
-  return (
-    <div className="space-y-6">
-      {/* Session Overview */}
-      <MuiCard>
-        <CardHeader sx={theming.getThemedCardSx()}>
-          <CardTitle className="flex items-center justify-between" sx={theming.getThemedCardSx()}>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-500 text-white">
-                <Security className="w-5 h-5" />
-              </div>
-              <div>
-                <span>Minnekort Backup Aktiv</span>
-                <p className="text-sm text-muted-foreground font-normal">
-                  {session.eventType} • {session.cardLabelingScheme} labeling
-                </p>
-              </div>
-            </div>
-            <Badge variant="outline" className="bg-green-50 text-green-700">
-              {session.status}
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4" sx={theming.getThemedCardSx()}>
-          {/* Progress */}
-          <div>
-            <div className="flex justify-between text-sm mb-2">
-              <span>Backup fremgang</span>
-              <span>
-                {session.backedUpCards}/{session.totalCards} kort
-              </span>
-            </div>
-            <Progress value={getProgressPercentage()} className="h-2" />
-            <p className="text-xs text-muted-foreground mt-1">
-              {getProgressPercentage()}% fullført
-            </p>
-          </div>
+          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Backup-fremdrift
+            </Typography>
+            <LinearProgress variant="determinate" value={progressPercent} sx={{ mb: 1 }} />
+            <Typography variant="caption" color="text.secondary">
+              {progressPercent.toFixed(0)}% fullført
+            </Typography>
+          </Paper>
 
-          {/* Quick Stats */}
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-2xl font-bold text-blue-600">{session.totalCards}</p>
-              <p className="text-xs text-muted-foreground">Totalt kort</p>
-            </div>
-            <div className="p-3 bg-green-50 rounded-lg">
-              <p className="text-2xl font-bold text-green-600">{session.backedUpCards}</p>
-              <p className="text-xs text-muted-foreground">Sikkerhetskopiert</p>
-            </div>
-            <div className="p-3 bg-yellow-50 rounded-lg">
-              <p className="text-2xl font-bold text-yellow-600">
-                {session.totalCards - session.backedUpCards}
-              </p>
-              <p className="text-xs text-muted-foreground">Venter</p>
-            </div>
-          </div>
-        </CardContent>
-      </MuiCard>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={7}>
+              <List>
+                {cards.map((card) => (
+                  <ListItem key={card.id} divider>
+                    <ListItemIcon>
+                      {card.backupStatus === 'completed' ? <CheckCircleIcon color="success" /> : <StorageIcon />}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={`${card.cardLabel} • ${card.capacity}`}
+                      secondary={`${card.cardType} • ${card.fileCount.toLocaleString('no-NO')} filer • ${formatSize(card.totalSizeMb)}`}
+                    />
+                    <Chip size="small" label={card.backupStatus} color={statusColor(card.backupStatus)} sx={{ mr: 1 }} />
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={() => triggerBackup.mutate(card.id)}
+                      disabled={triggerBackup.isPending}
+                    >
+                      Backup
+                    </Button>
+                  </ListItem>
+                ))}
+              </List>
+            </Grid>
 
-      {/* Backup Tips */}
-      {backupTips.length > 0 && (
-        <MuiCard>
-          <CardHeader sx={theming.getThemedCardSx()}>
-            <CardTitle className="flex items-center gap-2" sx={theming.getThemedCardSx()}>
-              <FileText className="w-5 h-5" />
-              Backup Tips
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3" sx={theming.getThemedCardSx()}>
-            {backupTips.slice(0, 3).map((tip: BackupTip) => (
-              <Box
-                key={tip.d}
-                sx={{
-                  p:  2,
-                  bgcolor: 'info.light',
-                  borderRadius:  1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap:  1}}
-              >
-                <InfoIcon sx={{ fontSize: '1rem'}} />
-                <Typography variant="body2" sx={{ color: 'info.contrastText'}}>
-                  <strong>{tip.titleNorwegian || tip.title}:</strong>{', '}
-                  {tip.descriptionNorwegian || tip.description}
+            <Grid item xs={12} md={5}>
+              <Paper variant="outlined" sx={{ p: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Backup-tips
                 </Typography>
-              </Box>
-            ))}
-          </CardContent>
-        </MuiCard>
-      )}
-
-      {/* Memory Cards */}
-      <MuiCard>
-        <CardHeader sx={theming.getThemedCardSx()}>
-          <CardTitle className="flex items-center justify-between" sx={theming.getThemedCardSx()}>
-            <div className="flex items-center gap-2">
-              <SdCard className="w-5 h-5" />
-              Minnekort
-            </div>
-            <Button size="sm" onClick={() => setShowAddCard(!showAddCard)} disabled={showAddCard}>
-              <Add className="w-4 h-4 mr-1" />
-              Nytt kort
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4" sx={theming.getThemedCardSx()}>
-          {/* Add Card Form */}
-          {showAddCard && (
-            <MuiCard className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4" sx={theming.getThemedCardSx()}>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="card-label">Kort merking *</Label>
-                    <Select
-                      value={newCard.cardLabel}
-                      onValueChange={(value) =>
-                        setNewCard((prev) => ({ ...prev, cardLabel: value }))
-                    }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Velg merking" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {getLabelSuggestions().map((label) => (
-                          <SelectItem key={label} value={label}>
-                            Kort {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="card-type">Kort type</Label>
-                    <Select
-                      value={newCard.cardType}
-                      onValueChange={(value) =>
-                        setNewCard((prev) => ({ ...prev, cardType: value }))
-                    }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="SD">SD Card</SelectItem>
-                        <SelectItem value="CF">CompactFlash</SelectItem>
-                        <SelectItem value="XQD">XQD Card</SelectItem>
-                        <SelectItem value="CFexpress">CFexpress</SelectItem>
-                        <SelectItem value="microSD">microSD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="capacity">Kapasitet</Label>
-                    <Input
-                      id="capacity"
-                      value={newCard.capacity}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          capacity: e.target.value,
-                      }))
-                    }
-                      placeholder="f.eks. 64GB"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="file-count">Antall filer</Label>
-                    <Input
-                      id="file-count"
-                      type="number"
-                      value={newCard.fileCount}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          fileCount: parseInt(e.target.value) || 0,
-                      }))
-                    }
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-4">
-                  <Button
-                    onClick={() => addCardMutation.mutate(newCard)}
-                    disabled={!newCard.cardLabel || addCardMutation.isPending}
-                    size="sm"
-                  >
-                    {addCardMutation.isPending ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
-                        Registrerer...
-                      </>
-                    ) : (
-                      'Registrer kort'
-                    )}
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setShowAddCard(false)}>
-                    Avbryt
-                  </Button>
-                </div>
-              </CardContent>
-            </MuiCard>
-          )}
-
-          {/* Cards List */}
-          {cardsLoading ? (
-            <div className="flex items-center justify-center p-4">
-              <RefreshCw className="w-5 h-5 animate-spin mr-2" />
-              Laster minnekort...
-            </div>
-          ) : memoryCards.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <SdCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>Ingen minnekort registrert ennå</p>
-              <p className="text-sm">Legg til kort for å starte backup prosessen</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {memoryCards.map((card: MemoryCard) => (
-                <MuiCard key={card.d} className="border">
-                  <CardContent className="p-4" sx={theming.getThemedCardSx()}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-gray-100">
-                          {getCardTypeIcon(card.cardType)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-medium">Kort {card.cardLabel}</h4>
-                            <Badge variant="outline">{card.cardType}</Badge>
-                            {card.capacity && <Badge variant="outline">{card.capacity}</Badge>}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {card.fileCount} filer • {card.totalSize}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Badge className={cn('text-xs', getStatusColor(card.backupStatus))}>
-                          {card.backupStatus === 'completed' && (
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                          )}
-                          {card.backupStatus === 'pending' && <AccessTime className="w-3 h-3 mr-1" />}
-                          {card.backupStatus === 'failed' && (
-                            <Warning className="w-3 h-3 mr-1" />
-                          )}
-                          {getStatusText(card.backupStatus)}
-                        </Badge>
-
-                        {card.backupStatus === 'pending' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              markBackedUpMutation.mutate({
-                                cardId: card.cardd,
-                                backupLocation: '/local/backup',
-                                fileCount: card.fileCount,
-                                totalSize: parseInt(card.totalSize.replace(/\D, /'')),
-                            })
-                          }
-                            disabled={markBackedUpMutation.isPending}
-                          >
-                            <Download className="w-4 h-4 mr-1" />
-                            Marker som sikkerhetskopiert
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    {card.backupLocation && card.backupStatus ==='completed' && (
-                      <div className="mt-2 pt-2 border-t">
-                        <p className="text-xs text-muted-foreground">
-                          Sikkerhetskopi: {card.backupLocation}
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </MuiCard>
-              ))}
-            </div>
-          )}
+                <Divider sx={{ mb: 1 }} />
+                <List>
+                  {tips.map((tip) => (
+                    <ListItem key={tip.id}>
+                      <ListItemIcon>
+                        {tip.importance === 'high' ? <WarningIcon color="warning" /> : <CameraIcon color="action" />}
+                      </ListItemIcon>
+                      <ListItemText primary={tip.title} secondary={tip.description} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+            </Grid>
+          </Grid>
         </CardContent>
-      </MuiCard>
-    </div>
+      </Card>
+
+      <Dialog open={addCardDialogOpen} onClose={() => setAddCardDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Legg til minnekort</DialogTitle>
+        <DialogContent>
+          <TextField
+            margin="normal"
+            fullWidth
+            label="Kortlabel"
+            value={newCard.cardLabel}
+            onChange={(event) => setNewCard((prev) => ({ ...prev, cardLabel: event.target.value }))}
+          />
+          <TextField
+            margin="normal"
+            fullWidth
+            label="Korttype"
+            value={newCard.cardType}
+            onChange={(event) => setNewCard((prev) => ({ ...prev, cardType: event.target.value }))}
+          />
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel id="memory-card-capacity-label">Kapasitet</InputLabel>
+                <Select
+                  labelId="memory-card-capacity-label"
+                  label="Kapasitet"
+                  value={newCard.capacity}
+                  onChange={(event) =>
+                    setNewCard((prev) => ({ ...prev, capacity: event.target.value }))
+                  }
+                >
+                  <MenuItem value="64GB">64GB</MenuItem>
+                  <MenuItem value="128GB">128GB</MenuItem>
+                  <MenuItem value="256GB">256GB</MenuItem>
+                  <MenuItem value="512GB">512GB</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                margin="normal"
+                fullWidth
+                label="Antall filer"
+                type="number"
+                value={newCard.fileCount}
+                onChange={(event) =>
+                  setNewCard((prev) => ({ ...prev, fileCount: Number(event.target.value) || 0 }))
+                }
+              />
+            </Grid>
+          </Grid>
+          <TextField
+            margin="normal"
+            fullWidth
+            label="Total størrelse (MB)"
+            type="number"
+            value={newCard.totalSizeMb}
+            onChange={(event) =>
+              setNewCard((prev) => ({ ...prev, totalSizeMb: Number(event.target.value) || 0 }))
+            }
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddCardDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={() => addCard.mutate()} disabled={addCard.isPending}>
+            Lagre
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
+
+export default MemoryCardBackupPanel;

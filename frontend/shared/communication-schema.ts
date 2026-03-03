@@ -14,6 +14,7 @@ import {
   serial,
   index,
   uuid,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
@@ -53,7 +54,9 @@ export const communicationMessages = pgTable('communication_messages', {
   isRead: boolean('is_read').default(false),
   isPriority: boolean('is_priority').default(false),
   isSystemGenerated: boolean('is_system_generated').default(false),
-  parentMessageId: varchar('parent_message_id').references(() => communicationMessages.id), // For threads
+  parentMessageId: varchar('parent_message_id').references(
+    (): AnyPgColumn => communicationMessages.id,
+  ), // For threads
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
   readAt: timestamp('read_at'),

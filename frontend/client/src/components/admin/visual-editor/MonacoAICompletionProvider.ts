@@ -102,6 +102,11 @@ export class MonacoAICompletionProvider implements monaco.languages.InlineComple
    */
   freeInlineCompletions(completions: monaco.languages.InlineCompletions): void {
     // Cleanup if needed
+    void completions;
+  }
+
+  disposeInlineCompletions(completions: monaco.languages.InlineCompletions): void {
+    this.freeInlineCompletions(completions);
   }
 
   /**
@@ -183,7 +188,7 @@ export function configureMonacoForAI(editor: monaco.editor.IStandaloneCodeEditor
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnEnter: 'on',
     tabCompletion: 'on',
-    wordBasedSuggestions: true,
+    wordBasedSuggestions: 'currentDocument',
     // AI-specific settings
     suggest: {
       preview: true,

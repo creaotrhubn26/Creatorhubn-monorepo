@@ -33,6 +33,29 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+interface HeaderEntry {
+  key: string;
+  value: string;
+}
+
+const getBooleanValue = (value: unknown, fallback: boolean): boolean => {
+  return typeof value === 'boolean' ? value : fallback;
+};
+
+const toHeaders = (value: unknown): HeaderEntry[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (typeof entry !== 'object' || entry === null) return null;
+      const key =
+        'key' in entry && typeof entry.key === 'string' ? entry.key : '';
+      const headerValue =
+        'value' in entry && typeof entry.value === 'string' ? entry.value : '';
+      return { key, value: headerValue };
+    })
+    .filter((entry): entry is HeaderEntry => entry !== null);
+};
+
 // REST API Node
 export const RESTNode = memo(function RESTNode({
   config,
@@ -43,14 +66,14 @@ export const RESTNode = memo(function RESTNode({
   onDataChange?: (key: string, value: unknown) => void;
   [key: string]: unknown;
 }) {
-  const headers = config.data.headers || [];
+  const headers = toHeaders(config.data.headers);
 
   const addHeader = () => {
     onDataChange?.('headers', [...headers, { key: '', value: '' }]);
   };
 
   const removeHeader = (index: number) => {
-    const newHeaders = headers.filter((_: unknown, i: number) => i !== index);
+    const newHeaders = headers.filter((_, i: number) => i !== index);
     onDataChange?.('headers', newHeaders);
   };
 
@@ -137,7 +160,7 @@ export const RESTNode = memo(function RESTNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.includeCredentials || false}
+                checked={getBooleanValue(data.includeCredentials, false)}
                 onChange={(e) => onChange('includeCredentials', e.target.checked)}
                 size="small"
               />
@@ -551,4 +574,3 @@ export const API_NODE_DEFINITIONS = [
 ];
 
 export default API_NODE_DEFINITIONS;
-

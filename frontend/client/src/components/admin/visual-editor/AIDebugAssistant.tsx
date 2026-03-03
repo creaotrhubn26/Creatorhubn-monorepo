@@ -88,6 +88,124 @@ interface AIDebugAssistantProps {
   onGetAIAnalysis: (context: AIContext) => Promise<unknown>;
 }
 
+interface AnalysisSummary {
+  issues: DebugIssue[];
+  fixes: DebugFix[];
+  quality?: string;
+  complexity?: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
+const toDebugFix = (value: unknown, index: number): DebugFix | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.title !== 'string' ||
+    typeof value.description !== 'string' ||
+    typeof value.fixedCode !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `generated-fix-${Date.now()}-${index}`,
+    title: value.title,
+    description: value.description,
+    confidence: typeof value.confidence === 'number' ? value.confidence : 0.5,
+    fixedCode: value.fixedCode,
+    explanation: typeof value.explanation === 'string' ? value.explanation : '',
+    pros: toStringArray(value.pros),
+    cons: toStringArray(value.cons),
+    breakingChanges: typeof value.breakingChanges === 'boolean' ? value.breakingChanges : false,
+  };
+};
+
+const toDebugIssue = (value: unknown, index: number): DebugIssue | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const type =
+    value.type === 'error' ||
+    value.type === 'warning' ||
+    value.type === 'performance' ||
+    value.type === 'security' ||
+    value.type === 'best-practice'
+      ? value.type
+      : 'error';
+  const severity =
+    value.severity === 'critical' ||
+    value.severity === 'high' ||
+    value.severity === 'medium' ||
+    value.severity === 'low'
+      ? value.severity
+      : 'medium';
+
+  if (typeof value.title !== 'string' || typeof value.description !== 'string') {
+    return null;
+  }
+
+  const locationSource = isRecord(value.location) ? value.location : {};
+  const line = typeof locationSource.line === 'number' ? locationSource.line : 0;
+  const column = typeof locationSource.column === 'number' ? locationSource.column : 0;
+
+  const suggestedFixes = Array.isArray(value.suggestedFixes)
+    ? value.suggestedFixes
+        .map((fix, fixIndex) => toDebugFix(fix, fixIndex))
+        .filter((fix): fix is DebugFix => fix !== null)
+    : [];
+
+  return {
+    id: typeof value.id === 'string' ? value.id : `generated-issue-${Date.now()}-${index}`,
+    type,
+    severity,
+    title: value.title,
+    description: value.description,
+    location: {
+      line,
+      column,
+      file: typeof locationSource.file === 'string' ? locationSource.file : undefined,
+    },
+    stackTrace: typeof value.stackTrace === 'string' ? value.stackTrace : undefined,
+    affectedCode: typeof value.affectedCode === 'string' ? value.affectedCode : '',
+    suggestedFixes,
+    relatedIssues: toStringArray(value.relatedIssues),
+    learnMoreUrl: typeof value.learnMoreUrl === 'string' ? value.learnMoreUrl : undefined,
+  };
+};
+
+const toAnalysisSummary = (value: unknown): AnalysisSummary => {
+  if (!isRecord(value)) {
+    return { issues: [], fixes: [] };
+  }
+
+  const issues = Array.isArray(value.issues)
+    ? value.issues
+        .map((issue, index) => toDebugIssue(issue, index))
+        .filter((issue): issue is DebugIssue => issue !== null)
+    : [];
+
+  const fixes = Array.isArray(value.fixes)
+    ? value.fixes
+        .map((fix, index) => toDebugFix(fix, index))
+        .filter((fix): fix is DebugFix => fix !== null)
+    : [];
+
+  return {
+    issues,
+    fixes,
+    quality: typeof value.quality === 'string' ? value.quality : undefined,
+    complexity: typeof value.complexity === 'string' ? value.complexity : undefined,
+  };
+};
+
 export default function AIDebugAssistant({
   open,
   onClose,
@@ -103,7 +221,7 @@ export default function AIDebugAssistant({
   const [selectedIssue, setSelectedIssue] = useState<DebugIssue | null>(null);
   const [customErrorInput, setCustomErrorInput] = useState('');
   const [activeStep, setActiveStep] = useState(0);
-  const [analysisResult, setAnalysisResult] = useState<unknown>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisSummary | null>(null);
 
   useEffect(() => {
     if (open && errors.length > 0) {
@@ -122,7 +240,7 @@ export default function AIDebugAssistant({
       };
 
       // Get AI analysis
-      const analysis = await onGetAIAnalysis(context);
+      const analysis = toAnalysisSummary(await onGetAIAnalysis(context));
 
       // Convert to debug issues
       const detectedIssues: DebugIssue[] = errors.map((error, index) => ({
@@ -141,9 +259,7 @@ export default function AIDebugAssistant({
       }));
 
       // Add AI-detected issues
-      if (analysis?.issues) {
-        detectedIssues.push(...analysis.issues);
-      }
+      detectedIssues.push(...analysis.issues);
 
       setIssues(detectedIssues);
       if (detectedIssues.length > 0) {
@@ -190,6 +306,7 @@ export default function AIDebugAssistant({
       };
 
       const analysis = await onGetAIAnalysis(context);
+      const parsedAnalysis = toAnalysisSummary(analysis);
 
       const customIssue: DebugIssue = {
         id: `custom-${Date.now()}`,
@@ -198,14 +315,14 @@ export default function AIDebugAssistant({
         title: 'Custom Error Analysis',
         description: customErrorInput,
         location: { line: 0, column: 0 },
-        affectedCode: currentCode.split('\n, ').slice(0, 10).join('\n'),
-        suggestedFixes: analysis?.fixes || [],
+        affectedCode: currentCode.split('\n').slice(0, 10).join('\n'),
+        suggestedFixes: parsedAnalysis.fixes,
         relatedIssues: [],
       };
 
       setIssues([customIssue, ...issues]);
       setSelectedIssue(customIssue);
-      setCustomErrorInput(', ');
+      setCustomErrorInput('');
     } catch (error) {
       console.error('Custom analysis failed: ', error);
     } finally {

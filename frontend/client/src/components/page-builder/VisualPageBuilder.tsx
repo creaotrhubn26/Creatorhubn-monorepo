@@ -1,92 +1,65 @@
-/**
- * VisualPageBuilder - Standalone No-Code Page Builder
- *
- * A reusable, framework-agnostic page builder that can be used for: * - ScrollStories
- * - Landing pages
- * - Email templates
- * - Marketing pages
- * - Blog posts
- * - Any content creation
- *
- * Features: * - 📦 Component library with drag-and-drop
- * - 🎨 Live canvas editing
- * - 🔧 Property inspector
- * - 📐 Grid-based layout system
- * - 💾 JSON export/import
- * - 🎯 Responsive design controls
- * - 🖱️ Inline editing
- */
-
-import React, { useState, useCallback, DragEvent } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
+  Button,
+  Chip,
+  Divider,
   Drawer,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  InputLabel,
   List,
   ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
-  Typography,
-  Paper,
-  IconButton,
-  Divider,
-  TextField,
-  Stack,
-  Button,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Grid,
-  Select,
   MenuItem,
-  FormControl,
-  InputLabel,
-  ToggleButtonGroup,
-  ToggleButton,
-  Chip,
-  Tabs,
-  Tab,
+  Paper,
+  Select,
   Slider,
+  Stack,
   Switch,
-  FormControlLabel,
+  Tab,
+  Tabs,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  ExpandMore,
-  Title,
-  TextFields,
-  Image,
-  VideoLibrary,
-  GridOn,
-  ViewColumn,
-  ViewModule,
-  FormatAlignLeft,
-  FormatAlignCenter,
-  FormatAlignRight,
-  FormatAlignJustify,
-  Add,
-  Delete,
-  DragIndicator,
-  ContentCopy,
-  ArrowUpward,
-  ArrowDownward,
-  Code,
-  Devices,
-  Palette,
-  Edit,
+  Add as AddIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  Code as CodeIcon,
+  ContentCopy as ContentCopyIcon,
+  Delete as DeleteIcon,
+  Devices as DevicesIcon,
+  DragIndicator as DragIndicatorIcon,
+  Edit as EditIcon,
+  ExpandMore as ExpandMoreIcon,
+  FormatAlignCenter as FormatAlignCenterIcon,
+  FormatAlignJustify as FormatAlignJustifyIcon,
+  FormatAlignLeft as FormatAlignLeftIcon,
+  FormatAlignRight as FormatAlignRightIcon,
+  GridOn as GridOnIcon,
+  Image as ImageIcon,
+  Palette as PaletteIcon,
+  TextFields as TextFieldsIcon,
+  Title as TitleIcon,
+  VideoLibrary as VideoLibraryIcon,
+  ViewColumn as ViewColumnIcon,
+  ViewModule as ViewModuleIcon,
 } from '@mui/icons-material';
 
-// Types
 export interface PageBlock {
   id: string;
-  type: | 'heading'
-    | 'paragraph'
-    | 'image'
-    | 'video'
-    | 'button'
-    | 'spacer'
-    | 'divider'
-    | 'section'
-    | 'grid'
-    | 'columns';
+  type: 'heading' | 'paragraph' | 'image' | 'video' | 'button' | 'spacer' | 'divider' | 'section' | 'grid' | 'columns';
   content?: string;
   styles?: BlockStyles;
   media?: MediaConfig;
@@ -96,7 +69,6 @@ export interface PageBlock {
 }
 
 export interface BlockStyles {
-  // Typography
   fontSize?: string;
   fontWeight?: string;
   fontFamily?: string;
@@ -105,8 +77,6 @@ export interface BlockStyles {
   letterSpacing?: string;
   textDecoration?: string;
   color?: string;
-
-  // Spacing
   padding?: string;
   paddingTop?: string;
   paddingRight?: string;
@@ -117,21 +87,15 @@ export interface BlockStyles {
   marginRight?: string;
   marginBottom?: string;
   marginLeft?: string;
-
-  // Background
   backgroundColor?: string;
   backgroundImage?: string;
   backgroundSize?: string;
   backgroundPosition?: string;
-
-  // Border
   border?: string;
   borderRadius?: string;
   borderWidth?: string;
   borderColor?: string;
   borderStyle?: string;
-
-  // Layout
   width?: string;
   height?: string;
   maxWidth?: string;
@@ -141,8 +105,6 @@ export interface BlockStyles {
   justifyContent?: string;
   alignItems?: string;
   gap?: string;
-
-  // Effects
   boxShadow?: string;
   opacity?: string;
   transform?: string;
@@ -187,47 +149,256 @@ export interface ComponentItem {
   description?: string;
 }
 
-// Default component library
 const DEFAULT_COMPONENTS: ComponentCategory[] = [
   {
     category: 'Typography',
     items: [
-      { type: 'heading', icon: <Title />, label: 'Heading', description: 'Add heading text' },
-      { type: 'paragraph', icon: <TextFields />, label: 'Paragraph', description: 'Add body text' },
+      { type: 'heading', icon: <TitleIcon />, label: 'Heading', description: 'Add heading text' },
+      { type: 'paragraph', icon: <TextFieldsIcon />, label: 'Paragraph', description: 'Add body text' },
     ],
   },
   {
     category: 'Media',
     items: [
-      { type: 'image', icon: <Image />, label: 'Image', description: 'Add image' },
-      { type: 'video', icon: <VideoLibrary />, label: 'Video', description: 'Add video' },
+      { type: 'image', icon: <ImageIcon />, label: 'Image', description: 'Add image block' },
+      { type: 'video', icon: <VideoLibraryIcon />, label: 'Video', description: 'Add video block' },
     ],
   },
   {
     category: 'Layout',
     items: [
-      { type: 'section', icon: <ViewModule />, label: 'Section', description: 'Add container' },
-      { type: 'grid', icon: <Grid />, label: 'Grid', description: 'Add grid layout' },
-      { type: 'columns', icon: <ViewColumn />, label: 'Columns', description: '2-column layout' },
+      { type: 'section', icon: <ViewModuleIcon />, label: 'Section', description: 'Add container section' },
+      { type: 'grid', icon: <GridOnIcon />, label: 'Grid', description: 'Add grid container' },
+      { type: 'columns', icon: <ViewColumnIcon />, label: 'Columns', description: 'Add responsive columns' },
     ],
   },
   {
     category: 'Elements',
     items: [
-      { type: 'button', icon: <Add />, label: 'Button', description: 'Add button' },
-      {
-        type: 'spacer',
-        icon: <div style={{ width: 16, height: 16, border: '2px dashed #ccc'}} />,
-        label: 'Spacer',
-        description: 'Add spacing' },
-      {
-        type: 'divider',
-        icon: <div style={{ width: 16, height: 2, backgroundColor: '#ccc'}} />,
-        label: 'Divider',
-        description: 'Add divider line' },
+      { type: 'button', icon: <AddIcon />, label: 'Button', description: 'Add CTA button' },
+      { type: 'spacer', icon: <ViewColumnIcon />, label: 'Spacer', description: 'Add vertical spacing' },
+      { type: 'divider', icon: <GridOnIcon />, label: 'Divider', description: 'Add divider line' },
     ],
   },
 ];
+
+const DEFAULT_DATA: PageBuilderData = {
+  blocks: [
+    {
+      id: 'block-1',
+      type: 'heading',
+      content: 'Page Title',
+      styles: {
+        fontSize: '42px',
+        fontWeight: '700',
+        textAlign: 'left',
+        color: '#111827',
+        margin: '0 0 16px 0',
+      },
+    },
+    {
+      id: 'block-2',
+      type: 'paragraph',
+      content: 'Start building your page by adding and editing blocks from the left panel.',
+      styles: {
+        fontSize: '18px',
+        textAlign: 'left',
+        color: '#374151',
+      },
+    },
+  ],
+  settings: {
+    backgroundColor: '#ffffff',
+    maxWidth: '1200px',
+    padding: '32px',
+  },
+};
+
+const makeId = () => `block-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
+
+const createDefaultBlock = (type: string): PageBlock => {
+  switch (type) {
+    case 'heading':
+      return {
+        id: makeId(),
+        type: 'heading',
+        content: 'New Heading',
+        styles: {
+          fontSize: '36px',
+          fontWeight: '700',
+          textAlign: 'left',
+          color: '#111827',
+          margin: '0 0 16px 0',
+        },
+      };
+    case 'paragraph':
+      return {
+        id: makeId(),
+        type: 'paragraph',
+        content: 'Write your paragraph text here.',
+        styles: {
+          fontSize: '16px',
+          textAlign: 'left',
+          color: '#374151',
+          margin: '0 0 12px 0',
+        },
+      };
+    case 'image':
+      return {
+        id: makeId(),
+        type: 'image',
+        media: {
+          url: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=1600&auto=format&fit=crop',
+          alt: 'Default image',
+          objectFit: 'cover',
+          width: '100%',
+          height: '320px',
+        },
+        styles: {
+          borderRadius: '12px',
+          margin: '0 0 16px 0',
+        },
+      };
+    case 'video':
+      return {
+        id: makeId(),
+        type: 'video',
+        media: {
+          url: '',
+          width: '100%',
+          height: '320px',
+          objectFit: 'cover',
+        },
+        styles: {
+          borderRadius: '12px',
+          margin: '0 0 16px 0',
+        },
+      };
+    case 'button':
+      return {
+        id: makeId(),
+        type: 'button',
+        content: 'Call To Action',
+        styles: {
+          display: 'inline-flex',
+          padding: '12px 20px',
+          backgroundColor: '#2563eb',
+          color: '#ffffff',
+          borderRadius: '10px',
+          fontWeight: '600',
+        },
+      };
+    case 'spacer':
+      return {
+        id: makeId(),
+        type: 'spacer',
+        styles: {
+          height: '32px',
+        },
+      };
+    case 'divider':
+      return {
+        id: makeId(),
+        type: 'divider',
+        styles: {
+          border: 'none',
+          borderTop: '1px solid #e5e7eb',
+          margin: '16px 0',
+        },
+      };
+    case 'section':
+      return {
+        id: makeId(),
+        type: 'section',
+        content: 'Section Container',
+        styles: {
+          padding: '24px',
+          backgroundColor: '#f9fafb',
+          borderRadius: '12px',
+          margin: '0 0 16px 0',
+        },
+      };
+    case 'grid':
+      return {
+        id: makeId(),
+        type: 'grid',
+        content: 'Grid Layout',
+        gridColumns: 3,
+        styles: {
+          display: 'grid',
+          gap: '12px',
+          margin: '0 0 16px 0',
+        },
+      };
+    case 'columns':
+      return {
+        id: makeId(),
+        type: 'columns',
+        content: 'Columns Layout',
+        columnCount: 2,
+        styles: {
+          display: 'grid',
+          gap: '16px',
+          margin: '0 0 16px 0',
+        },
+      };
+    default:
+      return {
+        id: makeId(),
+        type: 'paragraph',
+        content: 'New block',
+      };
+  }
+};
+
+function styleToSx(styles: BlockStyles | undefined): Record<string, string | number | undefined> {
+  if (!styles) return {};
+
+  const sx: Record<string, string | number | undefined> = {
+    fontSize: styles.fontSize,
+    fontWeight: styles.fontWeight,
+    fontFamily: styles.fontFamily,
+    textAlign: styles.textAlign,
+    lineHeight: styles.lineHeight,
+    letterSpacing: styles.letterSpacing,
+    textDecoration: styles.textDecoration,
+    color: styles.color,
+    padding: styles.padding,
+    paddingTop: styles.paddingTop,
+    paddingRight: styles.paddingRight,
+    paddingBottom: styles.paddingBottom,
+    paddingLeft: styles.paddingLeft,
+    margin: styles.margin,
+    marginTop: styles.marginTop,
+    marginRight: styles.marginRight,
+    marginBottom: styles.marginBottom,
+    marginLeft: styles.marginLeft,
+    backgroundColor: styles.backgroundColor,
+    backgroundImage: styles.backgroundImage,
+    backgroundSize: styles.backgroundSize,
+    backgroundPosition: styles.backgroundPosition,
+    border: styles.border,
+    borderRadius: styles.borderRadius,
+    borderWidth: styles.borderWidth,
+    borderColor: styles.borderColor,
+    borderStyle: styles.borderStyle,
+    width: styles.width,
+    height: styles.height,
+    maxWidth: styles.maxWidth,
+    minHeight: styles.minHeight,
+    display: styles.display,
+    flexDirection: styles.flexDirection,
+    justifyContent: styles.justifyContent,
+    alignItems: styles.alignItems,
+    gap: styles.gap,
+    boxShadow: styles.boxShadow,
+    opacity: styles.opacity,
+    transform: styles.transform,
+    transition: styles.transition,
+  };
+
+  return sx;
+}
 
 export default function VisualPageBuilder({
   initialData,
@@ -237,878 +408,681 @@ export default function VisualPageBuilder({
   onMediaSelect,
   customComponents,
 }: VisualPageBuilderProps) {
-  const [data, setData] = useState<PageBuilderData>(
-    initialData || {
-      blocks: [],
-      settings: {
-        backgroundColor: '#ffffff',
-        maxWidth: '1200px',
-        padding: '32px' },
-    },
+  const [data, setData] = useState<PageBuilderData>(initialData ?? DEFAULT_DATA);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(data.blocks[0]?.id ?? null);
+  const [draggedType, setDraggedType] = useState<string | null>(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState(0);
+  const [showCodePreview, setShowCodePreview] = useState(false);
+
+  useEffect(() => {
+    if (!initialData) return;
+    setData(initialData);
+    setSelectedBlockId(initialData.blocks[0]?.id ?? null);
+  }, [initialData]);
+
+  const library = useMemo(() => (customComponents && customComponents.length > 0 ? customComponents : DEFAULT_COMPONENTS), [customComponents]);
+
+  const selectedBlock = useMemo(
+    () => data.blocks.find((block) => block.id === selectedBlockId) ?? null,
+    [data.blocks, selectedBlockId],
   );
 
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [draggedBlockType, setDraggedBlockType] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
-  const [activeTab, setActiveTab] = useState(0);
-
-  const components = customComponents || DEFAULT_COMPONENTS;
-  const selectedBlock = data.blocks.find((b) => b.id === selectedBlockId);
-
-  // Update data and trigger onChange
-  const updateData = useCallback(
-    (newData: PageBuilderData) => {
-      setData(newData);
-      onChange?.(newData);
+  const emitChange = useCallback(
+    (nextData: PageBuilderData) => {
+      setData(nextData);
+      if (onChange) {
+        onChange(nextData);
+      }
     },
     [onChange],
   );
 
-  // Handle drag start from component library
-  const handleDragStart = (e: DragEvent, type: string) => {
-    setDraggedBlockType(type);
-    e.dataTransfer.effectAllowed = 'copy';
-  };
-
-  // Handle drop on canvas
-  const handleDrop = (e: DragEvent, targetIndex?: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!draggedBlockType) return;
-
-    const newBlock: PageBlock = {
-      id: `block-${Date.now()}`,
-      type: draggedBlockType as any,
-      content: getDefaultContent(draggedBlockType),
-      styles: getDefaultStyles(draggedBlockType),
-    };
-
-    const newBlocks = [...data.blocks];
-    if (targetIndex !== undefined) {
-      newBlocks.splice(targetIndex, 0, newBlock);
-    } else {
-      newBlocks.push(newBlock);
-    }
-
-    updateData({ ...data, blocks: newBlocks });
-    setDraggedBlockType(null);
-    setSelectedBlockId(newBlock.id);
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-  };
-
-  // Get default content for block type
-  const getDefaultContent = (type: string): string => {
-    const defaults: Record<string, string> = {
-      heading: 'New Heading',
-      paragraph: 'Start writing your content here. Click to edit.',
-      button: 'Click Me',
-      divider: '',
-      spacer: '',
-    };
-    return defaults[type] || '';
-  };
-
-  // Get default styles for block type
-  const getDefaultStyles = (type: string): BlockStyles => {
-    const defaults: Record<string, BlockStyles> = {
-      heading: {
-        fontSize: '36px',
-        fontWeight: 'bold',
-        textAlign: 'left',
-        color: '#000000',
-        margin: '16px 0' },
-      paragraph: {
-        fontSize: '16px',
-        lineHeight: '1.6',
-        textAlign: 'left',
-        color: '#333333',
-        margin: '8px 0' },
-      button: {
-        fontSize: '16px',
-        fontWeight: 600 ',
-        color: '#ffffff',
-        backgroundColor: '#2196f3',
-        padding: '12px 24px',
-        borderRadius: '4px',
-        textAlign: 'center',
-        display: 'inline-block' },
-      image: {
-        width: '100%',
-        borderRadius: '8px',
-        margin: '16px 0' },
-      video: {
-        width: '100%',
-        borderRadius: '8px',
-        margin: '16px 0' },
-      section: {
-        padding: '32px',
-        margin: '16px 0',
-        backgroundColor: '#f5f5f5',
-        borderRadius: '8px' },
-      spacer: {
-        height: '32px',
-        margin: '0' },
-      divider: {
-        height: '1px',
-        backgroundColor: '#e0e0e0',
-        margin: '24px 0' },
-    };
-    return defaults[type] || {};
-  };
-
-  // Update block
-  const updateBlock = useCallback(
-    (blockId: string, updates: Partial<PageBlock>) => {
-      const newBlocks = data.blocks.map((block) =>
-        block.id === blockId ? { ...block, ...updates } : block,
-      );
-      updateData({ ...data, blocks: newBlocks });
-    },
-    [data, updateData],
-  );
-
-  // Delete block
-  const deleteBlock = useCallback(
-    (blockId: string) => {
-      const newBlocks = data.blocks.filter((b) => b.id !== blockId);
-      updateData({ ...data, blocks: newBlocks });
-      setSelectedBlockId(null);
-    },
-    [data, updateData],
-  );
-
-  // Duplicate block
-  const duplicateBlock = useCallback(
-    (blockId: string) => {
-      const block = data.blocks.find((b) => b.id === blockId);
-      if (!block) return;
-
-      const newBlock: PageBlock = {
-        ...block,
-        id: `block-${Date.now()}`,
+  const addBlock = useCallback(
+    (type: string) => {
+      const newBlock = createDefaultBlock(type);
+      const nextData: PageBuilderData = {
+        ...data,
+        blocks: [...data.blocks, newBlock],
       };
-
-      const index = data.blocks.findIndex((b) => b.id === blockId);
-      const newBlocks = [...data.blocks];
-      newBlocks.splice(index + 1, 0, newBlock);
-
-      updateData({ ...data, blocks: newBlocks });
+      emitChange(nextData);
       setSelectedBlockId(newBlock.id);
     },
-    [data, updateData],
+    [data, emitChange],
   );
 
-  // Move block up
-  const moveBlockUp = useCallback(
-    (blockId: string) => {
-      const index = data.blocks.findIndex((b) => b.id === blockId);
-      if (index <= 0) return;
-
-      const newBlocks = [...data.blocks];
-      [newBlocks[index - 1], newBlocks[index]] = [newBlocks[index], newBlocks[index - 1]];
-      updateData({ ...data, blocks: newBlocks });
+  const updateBlock = useCallback(
+    (blockId: string, updates: Partial<PageBlock>) => {
+      const nextData: PageBuilderData = {
+        ...data,
+        blocks: data.blocks.map((block) => (block.id === blockId ? { ...block, ...updates } : block)),
+      };
+      emitChange(nextData);
     },
-    [data, updateData],
+    [data, emitChange],
   );
 
-  // Move block down
-  const moveBlockDown = useCallback(
-    (blockId: string) => {
-      const index = data.blocks.findIndex((b) => b.id === blockId);
-      if (index < 0 || index >= data.blocks.length - 1) return;
-
-      const newBlocks = [...data.blocks];
-      [newBlocks[index], newBlocks[index + 1]] = [newBlocks[index + 1], newBlocks[index]];
-      updateData({ ...data, blocks: newBlocks });
-    },
-    [data, updateData],
-  );
-
-  // Update block style
   const updateBlockStyle = useCallback(
-    (style: string, value: unknown) => {
-      if (!selectedBlockId) return;
-
-      const block = data.blocks.find((b) => b.id === selectedBlockId);
+    (blockId: string, styleKey: keyof BlockStyles, value: string) => {
+      const block = data.blocks.find((item) => item.id === blockId);
       if (!block) return;
 
-      updateBlock(selectedBlockId, {
-        styles: { ...block.styles, [style]: value },
+      updateBlock(blockId, {
+        styles: {
+          ...block.styles,
+          [styleKey]: value,
+        },
       });
     },
-    [selectedBlockId, data.blocks, updateBlock],
+    [data.blocks, updateBlock],
   );
 
-  // Export to JSON
-  const exportJSON = useCallback(() => {
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `page-builder-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [data]);
+  const deleteBlock = useCallback(
+    (blockId: string) => {
+      const nextBlocks = data.blocks.filter((block) => block.id !== blockId);
+      const nextData: PageBuilderData = {
+        ...data,
+        blocks: nextBlocks,
+      };
+      emitChange(nextData);
+      if (selectedBlockId === blockId) {
+        setSelectedBlockId(nextBlocks[0]?.id ?? null);
+      }
+    },
+    [data, emitChange, selectedBlockId],
+  );
 
-  // Get canvas width based on view mode
-  const getCanvasWidth = () => {
-    switch (viewMode) {
-      case 'mobile': return '375px';
-      case 'tablet': return '768px';
-      case 'desktop': default: return '100%';
+  const moveBlock = useCallback(
+    (blockId: string, direction: 'up' | 'down') => {
+      const currentIndex = data.blocks.findIndex((block) => block.id === blockId);
+      if (currentIndex === -1) return;
+
+      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= data.blocks.length) return;
+
+      const nextBlocks = [...data.blocks];
+      const [moved] = nextBlocks.splice(currentIndex, 1);
+      nextBlocks.splice(targetIndex, 0, moved);
+
+      emitChange({
+        ...data,
+        blocks: nextBlocks,
+      });
+    },
+    [data, emitChange],
+  );
+
+  const duplicateBlock = useCallback(
+    (blockId: string) => {
+      const block = data.blocks.find((item) => item.id === blockId);
+      if (!block) return;
+
+      const duplicate: PageBlock = {
+        ...block,
+        id: makeId(),
+      };
+
+      emitChange({
+        ...data,
+        blocks: [...data.blocks, duplicate],
+      });
+      setSelectedBlockId(duplicate.id);
+    },
+    [data, emitChange],
+  );
+
+  const updateSettings = (updates: Partial<PageBuilderData['settings']>) => {
+    emitChange({
+      ...data,
+      settings: {
+        ...data.settings,
+        ...updates,
+      },
+    });
+  };
+
+  const handleCanvasDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (!draggedType) return;
+    addBlock(draggedType);
+    setDraggedType(null);
+  };
+
+  const handleCanvasDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const handleSave = () => {
+    if (onSave) {
+      onSave(data);
     }
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden', backgroundColor: '#fafafa' }}>
-      {/* Left Sidebar - Component Library */}
+    <Box sx={{ display: 'flex', height: 'calc(100vh - 160px)', minHeight: 640 }}>
       <Drawer
         variant="permanent"
         sx={{
           width: 280,
-          flexShrink: 0, '& .MuiDrawer-paper': { width: 280,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: 280,
             boxSizing: 'border-box',
             position: 'relative',
-            borderRight: '1px solid #e0e0e0',
-            backgroundColor: '#ffffff' }}}
+            borderRight: '1px solid #e5e7eb',
+          },
+        }}
       >
-        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 600}}>
-            Components
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Component Library
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            Drag and drop to canvas
+          <Typography variant="body2" color="text.secondary">
+            Drag or click components to add blocks
           </Typography>
         </Box>
+        <Divider />
 
-        <Box sx={{ overflow: 'auto', flex: 1 }}>
-          {components.map((category, idx) => (
-            <Accordion
-              key={idx}
-              defaultExpanded
-              disableGutters
-              elevation={0}
-              sx={{ , '&:before': { display: 'none' } }}
-
-            >
-              <AccordionSummary expandIcon={<ExpandMore />} sx={{ px: 2 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600}}>
+        <List sx={{ overflowY: 'auto', flex: 1 }}>
+          {library.map((category) => (
+            <Accordion key={category.category} defaultExpanded disableGutters>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                   {category.category}
                 </Typography>
               </AccordionSummary>
-              <AccordionDetails sx={{ p: 0 }}>
-                <List dense disablePadding>
-                  {category.items.map((item, itemIdx) => (
-                    <ListItem
-                      key={itemIdx}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e as any, item.type)}
-                      sx={{
-                        px: 2,
-                        cursor: 'grab','&:hover': {
-                          backgroundColor: '#f5f5f5' }, '&:active': {
-                          cursor: 'grabbing',
-                          backgroundColor: '#e0e0e0' }}}
-                    >
-                      <ListItemIcon sx={{ minWidth: 40, color: '#666'}}>{item.icon}</ListItemIcon>
-                      <ListItemText
-                        primary={item.label}
-                        secondary={item.description}
-                        primaryTypographyProps={{ variant: 'body2', fontWeight: 500}}
-                        secondaryTypographyProps={{ variant: 'caption' }} />
-                      <DragIndicator sx={{ color: '#ccc', fontSize: 18 }} />
+              <AccordionDetails sx={{ pt: 0 }}>
+                <Stack spacing={1}>
+                  {category.items.map((item) => (
+                    <ListItem key={`${category.category}-${item.type}`} disablePadding>
+                      <ListItemButton
+                        draggable
+                        onDragStart={() => setDraggedType(item.type)}
+                        onClick={() => addBlock(item.type)}
+                        sx={{ borderRadius: 1.5 }}
+                      >
+                        <ListItemIcon>{item.icon}</ListItemIcon>
+                        <ListItemText primary={item.label} secondary={item.description} />
+                      </ListItemButton>
                     </ListItem>
                   ))}
-                </List>
+                </Stack>
               </AccordionDetails>
             </Accordion>
           ))}
-        </Box>
+        </List>
 
-        <Box sx={{ p: 2, borderTop: '1px solid #e0e0e0' }}>
-          <Button
-            fullWidth
-            variant="outlined"
-            startIcon={<Code />}
-            onClick={exportJSON}
-            size="small"
-          >
-            Export JSON
-          </Button>
+        <Divider />
+        <Box sx={{ p: 2 }}>
+          <Stack direction="row" spacing={1}>
+            <Button fullWidth variant="contained" onClick={handleSave}>
+              Save
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<CodeIcon />}
+              onClick={() => setShowCodePreview((prev) => !prev)}
+            >
+              {showCodePreview ? 'Canvas' : 'JSON'}
+            </Button>
+          </Stack>
         </Box>
       </Drawer>
 
-      {/* Center - Canvas */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Top Toolbar */}
-        <Box sx={{ borderBottom: '1px solid #e0e0e0', backgroundColor: '#fff', px: 2, py: 1 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              onChange={(_, value) => value && setViewMode(value)}
-              size="small"
-            >
-              <ToggleButton value="desktop">
-                <Devices fontSize="small" />
-              </ToggleButton>
-              <ToggleButton value="tablet">
-                <Box sx={{ fontSize: 20 }}>📱</Box>
-              </ToggleButton>
-              <ToggleButton value="mobile">
-                <Box sx={{ fontSize: 16 }}>📱</Box>
-              </ToggleButton>
-            </ToggleButtonGroup>
-
-            <Chip label={`${data.blocks.length} blocks`} size="small" />
-
-            {onSave && (
-              <Button
-                variant="contained"
-                size="small"
-                onClick={() => onSave(data)}
-                sx={{ ml: 'auto' }}>
-                Save
-              </Button>
-            )}
+      <Box sx={{ flex: 1, overflow: 'auto', bgcolor: '#f3f4f6' }}>
+        <Box sx={{ p: 2, borderBottom: '1px solid #e5e7eb', bgcolor: '#fff' }}>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Stack direction="row" spacing={1} alignItems="center">
+              <DevicesIcon fontSize="small" color="action" />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                Visual Canvas
+              </Typography>
+              <Chip size="small" label={`${data.blocks.length} blocks`} />
+            </Stack>
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={() => addBlock('section')}>
+              Add Section
+            </Button>
           </Stack>
         </Box>
 
-        {/* Canvas */}
-        <Box
-          sx={{
-            flex: 1,
-            overflow: 'auto',
-            backgroundColor: '#f0f0f0',
-            p: 3}}
-          onDrop={(e) => handleDrop(e)}
-          onDragOver={handleDragOver}
-        >
-          <Box sx={{ mx: 'auto', maxWidth: getCanvasWidth(), transition: 'max-width 0.3s' }}>
+        {showCodePreview ? (
+          <Box sx={{ p: 2 }}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Page JSON
+              </Typography>
+              <TextField
+                fullWidth
+                multiline
+                minRows={28}
+                value={JSON.stringify(data, null, 2)}
+                InputProps={{ readOnly: true }}
+              />
+            </Paper>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              p: 3,
+              minHeight: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+            onDrop={handleCanvasDrop}
+            onDragOver={handleCanvasDragOver}
+          >
             <Paper
-              elevation={3}
               sx={{
-                p: data.settings.padding || '32px',
-                minHeight: 600,
-                backgroundColor: data.settings.backgroundColor || '#ffffff',
+                width: '100%',
                 maxWidth: data.settings.maxWidth || '1200px',
-                mx: 'auto' }}>
+                minHeight: 580,
+                backgroundColor: data.settings.backgroundColor || '#ffffff',
+                p: data.settings.padding || '32px',
+                borderRadius: 2,
+              }}
+            >
               {data.blocks.length === 0 ? (
                 <Box
                   sx={{
-                    height: 400,
+                    minHeight: 260,
+                    border: '2px dashed #d1d5db',
+                    borderRadius: 2,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px dashed #ddd',
-                    borderRadius: 2,
-                    color: 'text.secondary' }}>
-                  <Stack alignItems="center" spacing={1}>
-                    <Typography variant="h6">Drop components here</Typography>
-                    <Typography variant="body2">
-                      Drag from the left sidebar to start building
-                    </Typography>
-                  </Stack>
+                  }}
+                >
+                  <Typography color="text.secondary">Drop components here to start building.</Typography>
                 </Box>
               ) : (
-                data.blocks.map((block, index) => (
-                  <BlockRenderer
-                    key={block.id}
-                    block={block}
-                    isSelected={selectedBlockId === block.id}
-                    onSelect={() => setSelectedBlockId(block.id)}
-                    onUpdate={(updates) => updateBlock(block.id, updates)}
-                    onDelete={() => deleteBlock(block.id)}
-                    onDuplicate={() => duplicateBlock(block.id)}
-                    onMoveUp={() => moveBlockUp(block.id)}
-                    onMoveDown={() => moveBlockDown(block.id)}
-                    isFirst={index === 0}
-                    isLast={index === data.blocks.length - 1}
-                    onMediaSelect={onMediaSelect}
-                  />
-                ))
+                <Stack spacing={1.5}>
+                  {data.blocks.map((block, index) => {
+                    const isSelected = block.id === selectedBlockId;
+                    return (
+                      <Paper
+                        key={block.id}
+                        variant="outlined"
+                        sx={{
+                          p: 1.5,
+                          borderColor: isSelected ? '#2563eb' : '#e5e7eb',
+                          boxShadow: isSelected ? '0 0 0 2px rgba(37,99,235,0.15)' : 'none',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setSelectedBlockId(block.id)}
+                      >
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                          <DragIndicatorIcon fontSize="small" color="disabled" />
+                          <Chip label={block.type} size="small" variant="outlined" />
+                          <Box sx={{ flex: 1 }} />
+                          <Tooltip title="Move up">
+                            <span>
+                              <IconButton size="small" onClick={() => moveBlock(block.id, 'up')} disabled={index === 0}>
+                                <ArrowUpwardIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Move down">
+                            <span>
+                              <IconButton
+                                size="small"
+                                onClick={() => moveBlock(block.id, 'down')}
+                                disabled={index === data.blocks.length - 1}
+                              >
+                                <ArrowDownwardIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="Duplicate">
+                            <IconButton size="small" onClick={() => duplicateBlock(block.id)}>
+                              <ContentCopyIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete">
+                            <IconButton size="small" onClick={() => deleteBlock(block.id)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
+
+                        <Box sx={styleToSx(block.styles)}>
+                          {block.type === 'heading' && (
+                            <Typography variant="h4">{block.content || 'Heading'}</Typography>
+                          )}
+                          {block.type === 'paragraph' && (
+                            <Typography variant="body1">{block.content || 'Paragraph text'}</Typography>
+                          )}
+                          {block.type === 'image' && (
+                            <Box
+                              component="img"
+                              src={block.media?.url || 'https://placehold.co/1200x400?text=Image'}
+                              alt={block.media?.alt || 'Block image'}
+                              sx={{
+                                width: block.media?.width || '100%',
+                                height: block.media?.height || '320px',
+                                objectFit: block.media?.objectFit || 'cover',
+                                borderRadius: block.styles?.borderRadius || '0px',
+                              }}
+                            />
+                          )}
+                          {block.type === 'video' && (
+                            <Box
+                              sx={{
+                                width: block.media?.width || '100%',
+                                height: block.media?.height || '320px',
+                                borderRadius: block.styles?.borderRadius || '0px',
+                                border: '1px dashed #9ca3af',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#6b7280',
+                              }}
+                            >
+                              <Stack alignItems="center" spacing={1}>
+                                <VideoLibraryIcon />
+                                <Typography variant="body2">{block.media?.url ? 'Video URL set' : 'No video URL'}</Typography>
+                              </Stack>
+                            </Box>
+                          )}
+                          {block.type === 'button' && (
+                            <Button variant="contained" disableElevation>
+                              {block.content || 'Button'}
+                            </Button>
+                          )}
+                          {block.type === 'spacer' && (
+                            <Box sx={{ height: block.styles?.height || '24px', border: '1px dashed #d1d5db', borderRadius: 1 }} />
+                          )}
+                          {block.type === 'divider' && <Divider />}
+                          {block.type === 'section' && (
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {block.content || 'Section'}
+                            </Typography>
+                          )}
+                          {block.type === 'grid' && (
+                            <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${block.gridColumns || 3}, minmax(0, 1fr))`, gap: 1 }}>
+                              {Array.from({ length: block.gridColumns || 3 }).map((_, slotIndex) => (
+                                <Paper key={`${block.id}-slot-${slotIndex}`} variant="outlined" sx={{ p: 1, textAlign: 'center' }}>
+                                  <Typography variant="caption">Grid Item {slotIndex + 1}</Typography>
+                                </Paper>
+                              ))}
+                            </Box>
+                          )}
+                          {block.type === 'columns' && (
+                            <Grid container spacing={1}>
+                              {Array.from({ length: block.columnCount || 2 }).map((_, columnIndex) => (
+                                <Grid item xs={12 / (block.columnCount || 2)} key={`${block.id}-column-${columnIndex}`}>
+                                  <Paper variant="outlined" sx={{ p: 1, textAlign: 'center' }}>
+                                    <Typography variant="caption">Column {columnIndex + 1}</Typography>
+                                  </Paper>
+                                </Grid>
+                              ))}
+                            </Grid>
+                          )}
+                        </Box>
+                      </Paper>
+                    );
+                  })}
+                </Stack>
               )}
             </Paper>
           </Box>
-        </Box>
+        )}
       </Box>
 
-      {/* Right Sidebar - Properties Inspector */}
       <Drawer
         variant="permanent"
         anchor="right"
         sx={{
-          width: 320,
-          flexShrink: 0, '& .MuiDrawer-paper': { width: 320,
+          width: 340,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: 340,
             boxSizing: 'border-box',
             position: 'relative',
-            borderLeft: '1px solid #e0e0e0',
-            backgroundColor: '#ffffff' }}}
+            borderLeft: '1px solid #e5e7eb',
+          },
+        }}
       >
-        <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600}}>
-            {selectedBlock ? 'Block Properties' : 'Page Settings'}
+        <Box sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Inspector
           </Typography>
         </Box>
+        <Divider />
 
-        <Box sx={{ overflow: 'auto', flex: 1 }}>
-          {selectedBlock ? (
-            <BlockProperties
-              block={selectedBlock}
-              onUpdateStyle={updateBlockStyle}
-              onUpdate={(updates) => updateBlock(selectedBlock.id, updates)}
-            />
-          ) : (
-            <PageSettings
-              settings={data.settings}
-              onUpdate={(settings) => updateData({ ...data, settings })}
-            />
-          )}
+        <Tabs value={activeInspectorTab} onChange={(_, next) => setActiveInspectorTab(next)}>
+          <Tab icon={<EditIcon />} iconPosition="start" label="Content" />
+          <Tab icon={<PaletteIcon />} iconPosition="start" label="Style" />
+          <Tab icon={<DevicesIcon />} iconPosition="start" label="Page" />
+        </Tabs>
+
+        <Divider />
+
+        <Box sx={{ p: 2, overflowY: 'auto', flex: 1 }}>
+          {activeInspectorTab === 0 ? (
+            selectedBlock ? (
+              <Stack spacing={2}>
+                <TextField
+                  label="Type"
+                  value={selectedBlock.type}
+                  InputProps={{ readOnly: true }}
+                  size="small"
+                  fullWidth
+                />
+
+                {(selectedBlock.type === 'heading' || selectedBlock.type === 'paragraph' || selectedBlock.type === 'button' || selectedBlock.type === 'section' || selectedBlock.type === 'grid' || selectedBlock.type === 'columns') && (
+                  <TextField
+                    label="Content"
+                    value={selectedBlock.content || ''}
+                    onChange={(event) => updateBlock(selectedBlock.id, { content: event.target.value })}
+                    size="small"
+                    fullWidth
+                    multiline
+                    minRows={selectedBlock.type === 'paragraph' ? 4 : 2}
+                  />
+                )}
+
+                {(selectedBlock.type === 'image' || selectedBlock.type === 'video') && (
+                  <Stack spacing={1.5}>
+                    <TextField
+                      label="Media URL"
+                      value={selectedBlock.media?.url || ''}
+                      onChange={(event) =>
+                        updateBlock(selectedBlock.id, {
+                          media: {
+                            ...selectedBlock.media,
+                            url: event.target.value,
+                          },
+                        })
+                      }
+                      size="small"
+                      fullWidth
+                    />
+                    {selectedBlock.type === 'image' ? (
+                      <TextField
+                        label="Alt text"
+                        value={selectedBlock.media?.alt || ''}
+                        onChange={(event) =>
+                          updateBlock(selectedBlock.id, {
+                            media: {
+                              ...selectedBlock.media,
+                              alt: event.target.value,
+                            },
+                          })
+                        }
+                        size="small"
+                        fullWidth
+                      />
+                    ) : null}
+
+                    {enableMediaUpload && onMediaSelect ? (
+                      <Button variant="outlined" onClick={onMediaSelect}>
+                        Open Media Picker
+                      </Button>
+                    ) : null}
+                  </Stack>
+                )}
+
+                {selectedBlock.type === 'grid' ? (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Grid columns
+                    </Typography>
+                    <Slider
+                      value={selectedBlock.gridColumns || 3}
+                      min={1}
+                      max={6}
+                      step={1}
+                      onChange={(_, value) =>
+                        updateBlock(selectedBlock.id, { gridColumns: Array.isArray(value) ? value[0] : value })
+                      }
+                    />
+                  </Box>
+                ) : null}
+
+                {selectedBlock.type === 'columns' ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="column-count-label">Columns</InputLabel>
+                    <Select
+                      labelId="column-count-label"
+                      label="Columns"
+                      value={selectedBlock.columnCount || 2}
+                      onChange={(event) => updateBlock(selectedBlock.id, { columnCount: Number(event.target.value) })}
+                    >
+                      <MenuItem value={2}>2</MenuItem>
+                      <MenuItem value={3}>3</MenuItem>
+                      <MenuItem value={4}>4</MenuItem>
+                    </Select>
+                  </FormControl>
+                ) : null}
+              </Stack>
+            ) : (
+              <Typography color="text.secondary">Select a block to edit content.</Typography>
+            )
+          ) : null}
+
+          {activeInspectorTab === 1 ? (
+            selectedBlock ? (
+              <Stack spacing={2}>
+                <TextField
+                  label="Font Size"
+                  value={selectedBlock.styles?.fontSize || '16px'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'fontSize', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <TextField
+                  label="Font Weight"
+                  value={selectedBlock.styles?.fontWeight || '400'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'fontWeight', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                    Text alignment
+                  </Typography>
+                  <ToggleButtonGroup
+                    exclusive
+                    size="small"
+                    value={selectedBlock.styles?.textAlign || 'left'}
+                    onChange={(_, value) => {
+                      if (!value) return;
+                      updateBlockStyle(selectedBlock.id, 'textAlign', value);
+                    }}
+                  >
+                    <ToggleButton value="left"><FormatAlignLeftIcon fontSize="small" /></ToggleButton>
+                    <ToggleButton value="center"><FormatAlignCenterIcon fontSize="small" /></ToggleButton>
+                    <ToggleButton value="right"><FormatAlignRightIcon fontSize="small" /></ToggleButton>
+                    <ToggleButton value="justify"><FormatAlignJustifyIcon fontSize="small" /></ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+
+                <TextField
+                  label="Text Color"
+                  type="color"
+                  value={selectedBlock.styles?.color || '#111827'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'color', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <TextField
+                  label="Background Color"
+                  type="color"
+                  value={selectedBlock.styles?.backgroundColor || '#ffffff'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'backgroundColor', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <TextField
+                  label="Padding"
+                  value={selectedBlock.styles?.padding || '0px'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'padding', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <TextField
+                  label="Margin"
+                  value={selectedBlock.styles?.margin || '0px'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'margin', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+
+                <TextField
+                  label="Border Radius"
+                  value={selectedBlock.styles?.borderRadius || '0px'}
+                  onChange={(event) => updateBlockStyle(selectedBlock.id, 'borderRadius', event.target.value)}
+                  size="small"
+                  fullWidth
+                />
+              </Stack>
+            ) : (
+              <Typography color="text.secondary">Select a block to edit style.</Typography>
+            )
+          ) : null}
+
+          {activeInspectorTab === 2 ? (
+            <Stack spacing={2}>
+              <TextField
+                label="Background Color"
+                type="color"
+                value={data.settings.backgroundColor || '#ffffff'}
+                onChange={(event) => updateSettings({ backgroundColor: event.target.value })}
+                size="small"
+                fullWidth
+              />
+
+              <TextField
+                label="Max Width"
+                value={data.settings.maxWidth || '1200px'}
+                onChange={(event) => updateSettings({ maxWidth: event.target.value })}
+                size="small"
+                fullWidth
+                placeholder="e.g. 1200px"
+              />
+
+              <TextField
+                label="Canvas Padding"
+                value={data.settings.padding || '32px'}
+                onChange={(event) => updateSettings({ padding: event.target.value })}
+                size="small"
+                fullWidth
+                placeholder="e.g. 32px"
+              />
+
+              <FormControlLabel
+                control={<Switch checked={showCodePreview} onChange={(event) => setShowCodePreview(event.target.checked)} />}
+                label="Show JSON preview"
+              />
+            </Stack>
+          ) : null}
         </Box>
       </Drawer>
     </Box>
   );
 }
-
-// Block Renderer Component
-interface BlockRendererProps {
-  block: PageBlock;
-  isSelected: boolean;
-  onSelect: () => void;
-  onUpdate: (updates: Partial<PageBlock>) => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  isFirst: boolean;
-  isLast: boolean;
-  onMediaSelect?: () => void;
-}
-
-function BlockRenderer({
-  block,
-  isSelected,
-  onSelect,
-  onUpdate,
-  onDelete,
-  onDuplicate,
-  onMoveUp,
-  onMoveDown,
-  isFirst,
-  isLast,
-  onMediaSelect,
-}: BlockRendererProps) {
-  const blockStyles: React.CSSProperties = {
-    ...block.styles,
-    outline: isSelected ? '2px solid #2196f3' : '1px solid transparent',
-    cursor: 'pointer',
-    position: 'relative',
-    transition: 'outline 0.2s' };
-
-  return (
-    <Box onClick={onSelect} sx={blockStyles}>
-      {isSelected && (
-        <Box
-          sx={{
-            position: 'absolute',
-            top: -36,
-            left: 0,
-            right: 0,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5
-            backgroundColor: '#2196f3',
-            borderRadius: '4px 4px 0 0',
-            padding: '4px 8px',
-            zIndex: 1}}>
-          <Chip
-            label={block.type}
-            size="small"
-            sx={{
-              color: 'white',
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              fontSize: '11px',
-              height: 24}} />
-
-          <Box sx={{ flex: 1 }} />
-
-          {!isFirst && (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMoveUp();
-              }}
-              sx={{ color: 'white', p: 0.5 }}>
-              <ArrowUpward fontSize="small" />
-            </IconButton>
-          )}
-          {!isLast && (
-            <IconButton
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                onMoveDown();
-              }}
-              sx={{ color: 'white', p: 0.5 }}>
-              <ArrowDownward fontSize="small" />
-            </IconButton>
-          )}
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDuplicate();
-            }}
-            sx={{ color: 'white', p: 0.5 }}>
-            <ContentCopy fontSize="small" />
-          </IconButton>
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            sx={{ color: 'white', p: 0.5 }}>
-            <Delete fontSize="small" />
-          </IconButton>
-        </Box>
-      )}
-
-      {block.type === 'heading' && (
-        <Typography
-          variant="h3"
-          contentEditable
-          suppressContentEditableWarning
-          onBlur={(e) => onUpdate({ content: e.currentTarget.textContent || ',' })}
-          sx={{
-            ...block.styles,
-            outline: 'none','&:focus': {
-              outline: 'none' }}}
-        >
-          {block.content}
-        </Typography>
-      )}
-
-      {block.type === 'paragraph' && (
-        <Typography
-          variant="body1"
-          contentEditable
-          suppressContentEditableWarning
-          onBlur={(e) => onUpdate({ content: e.currentTarget.textContent || ', ' })}
-          sx={{
-            ...block.styles,
-            outline: 'none','&:focus': {
-              outline: 'none' }}}
-        >
-          {block.content}
-        </Typography>
-      )}
-
-      {block.type === 'button' && (
-        <Button
-          variant="contained"
-          contentEditable
-          suppressContentEditableWarning
-          onBlur={(e) => onUpdate({ content: e.currentTarget.textContent || ', ' })}
-          sx={{
-            ...block.styles'&:focus': {
-              outline: 'none' }}}
-        >
-          {block.content}
-        </Button>
-      )}
-
-      {block.type === 'image' && (
-        <Box
-          component="img"
-          src={block.media?.url || 'https://via.placeholder.com/800x400?text=Click+to+add+image'}
-          alt={block.media?.alt || 'Image'}
-          onClick={(e) => {
-            e.stopPropagation();
-            onMediaSelect?.();
-          }}
-          sx={{
-            ...block.styles,
-            cursor: 'pointer', '&:hover': {
-              opacity: 0.8 }}}
-        />
-      )}
-
-      {block.type === 'video' && (
-        <Box
-          component="video"
-          src={block.media?.url}
-          controls
-          sx={{
-            ...block.styles}} />
-      )}
-
-      {block.type === 'spacer' && (
-        <Box sx={{ ...block.styles, backgroundColor: isSelected ? '#f0f0f0' : 'transparent' }} />
-      )}
-
-      {block.type === 'divider' && <Box sx={{ ...block.styles }} />}
-
-      {block.type === 'section' && (
-        <Box sx={{ ...block.styles }}>
-          <Typography variant="body2" color="text.secondary" align="center">
-            Section Container
-          </Typography>
-        </Box>
-      )}
-
-      {block.type === 'grid' && (
-        <Grid container spacing={2} sx={{ ...block.styles }}>
-          {[1, 2, 3].map((i) => (
-            <Grid item xs={12} md={4} key={i}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>Grid Item {i}</Paper>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {block.type === 'columns' && (
-        <Grid container spacing={2} sx={{ ...block.styles }}>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>Column 1</Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>Column 2</Paper>
-          </Grid>
-        </Grid>
-      )}
-    </Box>
-  );
-}
-
-// Block Properties Inspector
-interface BlockPropertiesProps {
-  block: PageBlock;
-  onUpdateStyle: (style: string, value: unknown) => void;
-  onUpdate: (updates: Partial<PageBlock>) => void;
-}
-
-function BlockProperties({ block, onUpdateStyle, onUpdate }: BlockPropertiesProps) {
-  const [activeTab, setActiveTab] = useState(0);
-
-  return (
-    <Box>
-      <Tabs
-        value={activeTab}
-        onChange={(_, v) => setActiveTab(v)}
-        sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Style" />
-        <Tab label="Layout" />
-      </Tabs>
-
-      <Box sx={{ p: 2 }}>
-        {activeTab === 0 && (
-          <Stack spacing={3}>
-            {/* Typography */}
-            {(block.type === 'heading' ||
-              block.type === 'paragraph' ||
-              block.type === 'button') && (
-              <Box>
-                <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-                  Typography
-                </Typography>
-
-                <Stack spacing={2}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Font Size</InputLabel>
-                    <Select
-                      value={block.styles?.fontSize || '16px'}
-                      onChange={(e) => onUpdateStyle('fontSize', e.target.value)}
-                    >
-                      <MenuItem value="12px">12px</MenuItem>
-                      <MenuItem value="14px">14px</MenuItem>
-                      <MenuItem value="16px">16px</MenuItem>
-                      <MenuItem value="18px">18px</MenuItem>
-                      <MenuItem value="24px">24px</MenuItem>
-                      <MenuItem value="32px">32px</MenuItem>
-                      <MenuItem value="48px">48px</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  <Box>
-                    <Typography variant="caption" display="block" gutterBottom>
-                      Text Align
-                    </Typography>
-                    <ToggleButtonGroup
-                      value={block.styles?.textAlign || 'left'}
-                      exclusive
-                      onChange={(_, value) => value && onUpdateStyle('textAlign', value)}
-                      size="small"
-                      fullWidth
-                    >
-                      <ToggleButton value="left">
-                        <FormatAlignLeft />
-                      </ToggleButton>
-                      <ToggleButton value="center">
-                        <FormatAlignCenter />
-                      </ToggleButton>
-                      <ToggleButton value="right">
-                        <FormatAlignRight />
-                      </ToggleButton>
-                      <ToggleButton value="justify">
-                        <FormatAlignJustify />
-                      </ToggleButton>
-                    </ToggleButtonGroup>
-                  </Box>
-
-                  <TextField
-                    label="Text Color"
-                    type="color"
-                    value={block.styles?.color || '#000000'}
-                    onChange={(e) => onUpdateStyle('color', e.target.value)}
-                    size="small"
-                    fullWidth
-                  />
-                </Stack>
-              </Box>
-            )}
-
-            {/* Background */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-                Background
-              </Typography>
-
-              <TextField
-                label="Background Color"
-                type="color"
-                value={block.styles?.backgroundColor || '#ffffff'}
-                onChange={(e) => onUpdateStyle('backgroundColor', e.target.value)}
-                size="small"
-                fullWidth
-              />
-            </Box>
-
-            {/* Border */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-                Border & Radius
-              </Typography>
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Border Radius"
-                  value={block.styles?.borderRadius || '0px'}
-                  onChange={(e) => onUpdateStyle('borderRadius', e.target.value)}
-                  size="small"
-                  fullWidth
-                  placeholder="e.g., 8px"
-                />
-              </Stack>
-            </Box>
-          </Stack>
-        )}
-
-        {activeTab === 1 && (
-          <Stack spacing={3}>
-            {/* Spacing */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-                Spacing
-              </Typography>
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Padding"
-                  value={block.styles?.padding || '0px'}
-                  onChange={(e) => onUpdateStyle('padding', e.target.value)}
-                  size="small"
-                  fullWidth
-                  placeholder="e.g., 16px, 1rem"
-                />
-
-                <TextField
-                  label="Margin"
-                  value={block.styles?.margin || '0px'}
-                  onChange={(e) => onUpdateStyle('margin', e.target.value)}
-                  size="small"
-                  fullWidth
-                  placeholder="e.g., 8px 0"
-                />
-              </Stack>
-            </Box>
-
-            {/* Dimensions */}
-            <Box>
-              <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600}}>
-                Dimensions
-              </Typography>
-
-              <Stack spacing={2}>
-                <TextField
-                  label="Width"
-                  value={block.styles?.width || 'auto'}
-                  onChange={(e) => onUpdateStyle('width', e.target.value)}
-                  size="small"
-                  fullWidth
-                  placeholder="e.g., 100%, 500px"
-                />
-
-                <TextField
-                  label="Height"
-                  value={block.styles?.height || 'auto'}
-                  onChange={(e) => onUpdateStyle('height', e.target.value)}
-                  size="small"
-                  fullWidth
-                  placeholder="e.g., 400px, auto"
-                />
-              </Stack>
-            </Box>
-          </Stack>
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-// Page Settings
-interface PageSettingsProps {
-  settings: PageBuilderData['settings'];
-  onUpdate: (settings: PageBuilderData['settings']) => void;
-}
-
-function PageSettings({ settings, onUpdate }: PageSettingsProps) {
-  return (
-    <Box sx={{ p: 2 }}>
-      <Stack spacing={3}>
-        <TextField
-          label="Background Color"
-          type="color"
-          value={settings.backgroundColor || '#ffffff'}
-          onChange={(e) => onUpdate({ ...settings, backgroundColor: e.target.value })}}
-          fullWidth
-          size="small"
-        />
-
-        <TextField
-          label="Max Width"
-          value={settings.maxWidth || '1200px'}
-          onChange={(e) => onUpdate({ ...settings, maxWidth: e.target.value })}}
-          fullWidth
-          size="small"
-          placeholder="e.g., 1200px, 100%"
-        />
-
-        <TextField
-          label="Padding"
-          value={settings.padding ||'32px'}
-          onChange={(e) => onUpdate({ ...settings, padding: e.target.value })}}
-          fullWidth
-          size="small"
-          placeholder="e.g., 32px, 2rem"
-        />
-      </Stack>
-    </Box>
-  );
-}}

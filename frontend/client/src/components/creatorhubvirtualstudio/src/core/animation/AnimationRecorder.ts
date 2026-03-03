@@ -240,7 +240,7 @@ export class AnimationRecorder {
     }
 
     if (session.config.recordRotation && transform.rotation) {
-      this.recordTrackSample(session'rotation', elapsedTime, {
+      this.recordTrackSample(session, 'rotation', elapsedTime, {
         x: transform.rotation.x,
         y: transform.rotation.y,
         z: transform.rotation.z,
@@ -249,7 +249,7 @@ export class AnimationRecorder {
     }
 
     if (session.config.recordScale && transform.scale) {
-      this.recordTrackSample(session'scale', elapsedTime, {
+      this.recordTrackSample(session, 'scale', elapsedTime, {
         x: transform.scale.x,
         y: transform.scale.y,
         z: transform.scale.z,
@@ -464,4 +464,3 @@ export class AnimationRecorder {
 export const animationRecorder = new AnimationRecorder();
 
 export default animationRecorder;
-

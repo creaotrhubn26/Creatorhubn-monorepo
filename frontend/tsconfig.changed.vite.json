@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "client/src/components/admin/shared/IntegrationErrorBoundary.tsx",
+    "client/src/components/admin/SystemBackupDashboard.tsx",
+    "client/src/components/admin/SystemHealthPanel.tsx",
+    "client/src/components/admin/SEOTrendsDashboard.tsx",
+    "client/src/components/admin/ShowcaseSettingsPanel.tsx"
+  ]
+}

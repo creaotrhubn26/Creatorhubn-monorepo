@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent } from 'react';
 import {
   Box,
+  Alert,
   Typography,
   Button,
   IconButton,
@@ -18,9 +19,11 @@ import {
   Tooltip,
   Collapse,
   FormControl,
+  FormControlLabel,
   InputLabel,
   Select,
   MenuItem,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -74,6 +77,8 @@ import {
   History as HistoryIcon,
   CalendarToday as CalendarTodayIcon,
   QrCode as QrCodeIcon,
+  QrCodeScanner as QrCodeScannerIcon,
+  Inventory2 as Inventory2Icon,
   FileDownload as DownloadIcon,
   FileUpload as UploadIcon,
   FileCopy as DuplicateIcon,
@@ -93,11 +98,12 @@ import {
   Newspaper as NewspaperIcon,
   AttachMoney as AttachMoneyIcon,
 } from '@mui/icons-material';
-import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
+import { EquipmentIcon as BuildIcon, LocationsIcon as LocationIcon, PropsIcon } from './icons/CastingIcons';
+import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
 import { useQuery } from '@tanstack/react-query';
 import EquipmentCatalogBrowser, { type CatalogEquipment } from '../../equipment/EquipmentCatalogBrowser';
 import FirmwareManagementInterface from '../../equipment/FirmwareManagementInterface';
-import { useAuth } from '../../../hooks/use-auth';
+import { useAuth } from '../../../hooks/useAuth';
 import { apiRequest } from '../../../lib/queryClient';
 import { 
   Equipment, 
@@ -130,6 +136,8 @@ const focusVisibleStyles = {
     outlineOffset: 2,
   },
 };
+
+const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
 
 type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
 type SortDirection = 'asc' | 'desc';
@@ -176,6 +184,110 @@ interface LensItem {
   weight?: string;
   currentPrice?: string;
 }
+
+type CameraCatalogType = 'photo' | 'video';
+
+interface CameraSourceMeta {
+  source?: string;
+  lastSeenAt?: string;
+  isDeprecated?: boolean;
+  version?: number;
+}
+
+interface CameraRecord {
+  id: string;
+  externalId?: string;
+  type: CameraCatalogType;
+  brand: string;
+  model: string;
+  category: string;
+  isNetflixCertified?: boolean;
+  description?: string;
+  priceRange?: string;
+  features?: string[];
+  logFormats?: string[];
+  resolution?: string[];
+  frameRates?: string[];
+  videoResolution?: string[];
+  videoFrameRates?: string[];
+  videoCodecs?: string[];
+  mount?: string;
+  sensorSize?: string;
+  releaseDate?: string;
+  lastSeenAt?: string;
+  specs?: Record<string, unknown>;
+  sourceMeta?: CameraSourceMeta;
+}
+
+interface CameraCatalogResponse {
+  data?: CameraRecord[];
+  results?: CameraRecord[];
+  cameras?: CameraRecord[];
+}
+
+interface MemoryCardTypeRecord {
+  id: string;
+  name: string;
+  fullName: string;
+  category: string;
+  readSpeed: number;
+  writeSpeed: number;
+  maxCapacity: string;
+  commonCapacities: string[];
+  videoClass?: string;
+  uhsClass?: string;
+  reliability?: string;
+  priceRange?: string;
+  description?: string;
+}
+
+interface MemoryCardResponse {
+  data?: MemoryCardTypeRecord[];
+  results?: MemoryCardTypeRecord[];
+  cardTypeIds?: string[];
+}
+
+const getErrorStatusCode = (error: unknown): number | null => {
+  if (error && typeof error === 'object') {
+    const maybeStatus = (error as { status?: unknown }).status;
+    if (typeof maybeStatus === 'number') {
+      return maybeStatus;
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const prefixedMatch = message.match(/^(\d{3})[:\s]/);
+  if (prefixedMatch) {
+    return Number(prefixedMatch[1]);
+  }
+
+  const wrappedMatch = message.match(/\((\d{3})\)\s*$/);
+  if (wrappedMatch) {
+    return Number(wrappedMatch[1]);
+  }
+
+  return null;
+};
+
+const isRecoverableEndpointError = (error: unknown): boolean => {
+  const status = getErrorStatusCode(error);
+  return status === 401 || status === 403 || status === 404;
+};
+
+const blurFocusedElement = () => {
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    active.blur();
+  }
+};
+
+const stringifySpecValue = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
 
 const STATUS_LABELS: Record<string, string> = {
   available: 'Tilgjengelig',
@@ -224,6 +336,9 @@ const DEFAULT_CATEGORY_OPTIONS = [
 import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import equipPng from './icons/Keep/roleroom_equip.png';
+import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
+import warehouseInventoryService from '../services/warehouseInventoryService';
+import QrCameraScanner from './shared/QrCameraScanner';
 
 interface EquipmentManagementPanelProps {
   projectId: string;
@@ -253,6 +368,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [filterOpen, setFilterOpen] = useState(false);
   
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [createTypeDialogOpen, setCreateTypeDialogOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -344,37 +460,178 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // Catalog bridge — browse manufacturer catalog and import items into this project
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const hasProtectedRoleRoomAccess = Boolean(projectId) && isAuthenticated && !authLoading;
+  const [roleRoomApiUnavailable, setRoleRoomApiUnavailable] = useState(false);
+  const [vendorLinksUnavailable, setVendorLinksUnavailable] = useState(false);
+  const [gearNewsUnavailable, setGearNewsUnavailable] = useState(false);
+  const [marketPricesUnavailable, setMarketPricesUnavailable] = useState(false);
+  const [lensDbUnavailable, setLensDbUnavailable] = useState(false);
+  const [cameraCatalogUnavailable, setCameraCatalogUnavailable] = useState(false);
+  const [memoryCardsUnavailable, setMemoryCardsUnavailable] = useState(false);
+  const [cameraSyncing, setCameraSyncing] = useState(false);
   const [catalogBridgeOpen, setCatalogBridgeOpen] = useState(false);
-  // Active sub-tab inside the catalog bridge dialog (0=catalog, 1=news, 2=market, 3=lenses)
+  // Active sub-tab inside the catalog bridge dialog (0=catalog, 1=news, 2=market, 3=lenses, 4=cameras/cards)
   const [catalogDialogTab, setCatalogDialogTab] = useState(0);
+  const [cameraCatalogType, setCameraCatalogType] = useState<'all' | CameraCatalogType>('all');
+  const [cameraCatalogSearch, setCameraCatalogSearch] = useState('');
+  const [cameraBrandFilter, setCameraBrandFilter] = useState('all');
+  const [cameraNetflixOnly, setCameraNetflixOnly] = useState(false);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
   // Firmware panel — manage firmware updates for this project's equipment
   const [firmwarePanelOpen, setFirmwarePanelOpen] = useState(false);
+  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
+  const [warehouseIssueCount, setWarehouseIssueCount] = useState(0);
+  const [warehouseStockByItem, setWarehouseStockByItem] = useState<
+    Record<string, { quantity: number; reserved: number; available: number }>
+  >({});
+  const [qrLabelDialogOpen, setQrLabelDialogOpen] = useState(false);
+  const [qrScanDialogOpen, setQrScanDialogOpen] = useState(false);
+  const [qrTargetEquipment, setQrTargetEquipment] = useState<Equipment | null>(null);
+  const [qrScanInput, setQrScanInput] = useState('');
+  const [qrScanError, setQrScanError] = useState<string | null>(null);
 
   // ── External database data: gear news, market prices, lens database ──────────
   const { data: gearNewsRaw, isLoading: gearNewsLoading } = useQuery<GearNewsResponse>({
     queryKey: ['/api/gear-news', 'videographer'],
-    queryFn: () => apiRequest('/api/gear-news?profession=videographer') as Promise<GearNewsResponse>,
+    enabled: catalogBridgeOpen && catalogDialogTab === 1 && !gearNewsUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/gear-news?profession=videographer') as Promise<GearNewsResponse>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          setGearNewsUnavailable(true);
+          return { data: [] };
+        }
+        throw error;
+      }
+    },
     staleTime: 5 * 60 * 1000,
-    retry: 1,
+    retry: false,
   });
   const gearNewsArticles: GearNewsArticle[] = gearNewsRaw?.data ?? [];
 
   const { data: marketRaw, isLoading: marketPricesLoading } = useQuery<MarketEquipmentItem[]>({
     queryKey: ['/api/equipment/market-prices', 'videographer'],
-    queryFn: () => apiRequest('/api/equipment/market-prices?profession=videographer') as Promise<MarketEquipmentItem[]>,
+    enabled: catalogBridgeOpen && catalogDialogTab === 2 && !marketPricesUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/equipment/market-prices?profession=videographer') as Promise<MarketEquipmentItem[]>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          setMarketPricesUnavailable(true);
+          return [];
+        }
+        throw error;
+      }
+    },
     staleTime: 60 * 60 * 1000,
-    retry: 1,
+    retry: false,
   });
   const marketItems: MarketEquipmentItem[] = Array.isArray(marketRaw) ? marketRaw : [];
 
   const { data: lensRaw, isLoading: lensDbLoading } = useQuery<LensItem[]>({
     queryKey: ['/api/equipment/lenses', 'videographer'],
-    queryFn: () => apiRequest('/api/equipment/lenses?profession=videographer') as Promise<LensItem[]>,
+    enabled: catalogBridgeOpen && catalogDialogTab === 3 && !lensDbUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/equipment/lenses?profession=videographer') as Promise<LensItem[]>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          setLensDbUnavailable(true);
+          return [];
+        }
+        throw error;
+      }
+    },
     staleTime: 60 * 60 * 1000,
-    retry: 1,
+    retry: false,
   });
   const lensItems: LensItem[] = Array.isArray(lensRaw) ? lensRaw : [];
+
+  const { data: cameraCatalogRaw, isLoading: cameraCatalogLoading, isFetching: cameraCatalogFetching, refetch: refetchCameraCatalog } = useQuery<CameraCatalogResponse | CameraRecord[]>({
+    queryKey: ['/api/equipment/cameras', cameraCatalogType, cameraBrandFilter, cameraCatalogSearch, cameraNetflixOnly],
+    enabled: catalogBridgeOpen && catalogDialogTab === 4 && !cameraCatalogUnavailable,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (cameraCatalogType !== 'all') params.set('type', cameraCatalogType);
+      if (cameraBrandFilter !== 'all') params.set('brand', cameraBrandFilter);
+      if (cameraCatalogSearch.trim()) params.set('q', cameraCatalogSearch.trim());
+      if (cameraNetflixOnly) params.set('netflixCertified', '1');
+      try {
+        return await apiRequest(`/api/equipment/cameras?${params.toString()}`) as Promise<CameraCatalogResponse>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          setCameraCatalogUnavailable(true);
+          return { data: [] };
+        }
+        throw error;
+      }
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const cameraCatalogItems: CameraRecord[] = useMemo(() => {
+    if (Array.isArray(cameraCatalogRaw)) return cameraCatalogRaw;
+    return cameraCatalogRaw?.data ?? cameraCatalogRaw?.results ?? cameraCatalogRaw?.cameras ?? [];
+  }, [cameraCatalogRaw]);
+
+  const cameraBrandOptions = useMemo(
+    () =>
+      Array.from(new Set(cameraCatalogItems.map((camera) => camera.brand).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'nb')
+      ),
+    [cameraCatalogItems]
+  );
+
+  useEffect(() => {
+    if (cameraBrandFilter === 'all') return;
+    if (!cameraBrandOptions.includes(cameraBrandFilter)) {
+      setCameraBrandFilter('all');
+    }
+  }, [cameraBrandFilter, cameraBrandOptions]);
+
+  useEffect(() => {
+    if (catalogDialogTab !== 4) return;
+    if (cameraCatalogItems.length === 0) {
+      setSelectedCameraId('');
+      return;
+    }
+    if (!selectedCameraId || !cameraCatalogItems.some((camera) => camera.id === selectedCameraId)) {
+      setSelectedCameraId(cameraCatalogItems[0].id);
+    }
+  }, [catalogDialogTab, cameraCatalogItems, selectedCameraId]);
+
+  const selectedCamera = useMemo(
+    () => cameraCatalogItems.find((camera) => camera.id === selectedCameraId) ?? null,
+    [cameraCatalogItems, selectedCameraId]
+  );
+
+  const { data: memoryCardsRaw, isLoading: memoryCardsLoading, refetch: refetchMemoryCards } = useQuery<MemoryCardResponse | MemoryCardTypeRecord[]>({
+    queryKey: ['/api/equipment/memory-cards', selectedCameraId],
+    enabled: catalogBridgeOpen && catalogDialogTab === 4 && Boolean(selectedCameraId) && !memoryCardsUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest(
+          `/api/equipment/memory-cards?cameraId=${encodeURIComponent(selectedCameraId)}`
+        ) as Promise<MemoryCardResponse>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          setMemoryCardsUnavailable(true);
+          return { data: [] };
+        }
+        throw error;
+      }
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const memoryCardItems: MemoryCardTypeRecord[] = useMemo(() => {
+    if (Array.isArray(memoryCardsRaw)) return memoryCardsRaw;
+    return memoryCardsRaw?.data ?? memoryCardsRaw?.results ?? [];
+  }, [memoryCardsRaw]);
   
   // History/audit log
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -447,6 +704,42 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [offlineOutboxOpen, setOfflineOutboxOpen] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<OfflineEntry[]>([]);
 
+  const warehouseDialogItems = useMemo<WarehouseDialogItem[]>(
+    () =>
+      equipment.map((eq) => ({
+        id: eq.id,
+        itemType: 'equipment',
+        name: eq.name,
+        quantity: Number(eq.quantity || 0),
+        primaryLocationId: eq.primary_location_id,
+        locationLabel: eq.location_name,
+        category: eq.category,
+      })),
+    [equipment]
+  );
+
+  const refreshWarehouseSummary = useCallback(() => {
+    if (!projectId || warehouseDialogItems.length === 0) {
+      setWarehouseStockByItem({});
+      setWarehouseIssueCount(0);
+      return;
+    }
+
+    warehouseInventoryService.bootstrapProject(projectId, {
+      locations: locations.map((loc) => ({ id: loc.id, name: loc.name })),
+      items: warehouseDialogItems,
+    });
+
+    const nextTotals: Record<string, { quantity: number; reserved: number; available: number }> = {};
+    warehouseDialogItems.forEach((item) => {
+      nextTotals[item.id] = warehouseInventoryService.getItemTotals(projectId, 'equipment', item.id);
+    });
+    setWarehouseStockByItem(nextTotals);
+
+    const issues = warehouseInventoryService.listConsistencyIssues(projectId, warehouseDialogItems);
+    setWarehouseIssueCount(issues.length);
+  }, [locations, projectId, warehouseDialogItems]);
+
   const handleAddCustomCategory = async () => {
     const trimmedName = newCategoryName.trim();
     if (!trimmedName) {
@@ -473,34 +766,71 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   };
 
   const loadActiveCheckouts = async () => {
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setActiveCheckouts([]);
+      return;
+    }
     try {
       const data = await equipmentCheckoutApi.getActive(projectId);
       setActiveCheckouts(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (error) {
       // Non-fatal: active checkout tracking is best-effort
+      if (!isRecoverableEndpointError(error)) {
+        console.error('Error loading active checkouts:', error);
+      }
+      setActiveCheckouts([]);
     }
   };
 
   useEffect(() => {
+    setRoleRoomApiUnavailable(false);
+    setVendorLinksUnavailable(false);
+    setCameraCatalogUnavailable(false);
+    setMemoryCardsUnavailable(false);
+  }, [projectId, isAuthenticated]);
+
+  useEffect(() => {
+    if (!projectId || authLoading || roleRoomApiUnavailable) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      setEquipment([]);
+      setCrewMembers([]);
+      setLocations([]);
+      setTemplates([]);
+      setActiveCheckouts([]);
+      return;
+    }
+
     loadEquipment();
     loadCrewAndLocations();
     loadTemplates();
     loadActiveCheckouts();
-  }, [projectId]);
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
 
   // Multi-user realtime: poll every 30 s while online
   useEffect(() => {
-    const onOnline  = () => { setIsOnline(true);  loadEquipment(); };
+    const onOnline  = () => {
+      setIsOnline(true);
+      if (isAuthenticated && !authLoading && !roleRoomApiUnavailable) {
+        loadEquipment();
+      }
+    };
     const onOffline = () => setIsOnline(false);
     window.addEventListener('online',  onOnline);
     window.addEventListener('offline', onOffline);
-    const timer = setInterval(() => { if (navigator.onLine) loadEquipment(); }, 30_000);
+    const timer = setInterval(() => {
+      if (navigator.onLine && isAuthenticated && !authLoading && !roleRoomApiUnavailable) {
+        loadEquipment();
+      }
+    }, 30_000);
     return () => {
       window.removeEventListener('online',  onOnline);
       window.removeEventListener('offline', onOffline);
       clearInterval(timer);
     };
-  }, [projectId]);
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
 
   // Offline outbox: restore queue from localStorage on mount / project change
   useEffect(() => {
@@ -516,48 +846,84 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   }, [projectId]);
 
   const loadEquipment = async () => {
-    if (!projectId) return;
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setEquipment([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    let cancelled = false;
     try {
       const data = await equipmentApi.getAll(projectId);
-      if (!cancelled) setEquipment(Array.isArray(data) ? data : []);
+      setEquipment(Array.isArray(data) ? data : []);
     } catch (error) {
-      if (!cancelled) {
+      if (isRecoverableEndpointError(error)) {
+        const status = getErrorStatusCode(error);
+        if (status === 401 || status === 403 || status === 404) {
+          setRoleRoomApiUnavailable(true);
+        }
+        setEquipment([]);
+      } else {
         console.error('Error loading equipment:', error);
         showError('Kunne ikke laste utstyr');
         setEquipment([]);
       }
     } finally {
-      if (!cancelled) setLoading(false);
+      setLoading(false);
     }
-    return () => { cancelled = true; };
   };
 
+  useEffect(() => {
+    refreshWarehouseSummary();
+  }, [refreshWarehouseSummary]);
+
   const loadCrewAndLocations = async () => {
-    try {
-      const [crewData, locationData] = await Promise.all([
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setCrewMembers([]);
+      setLocations([]);
+      return;
+    }
+
+    const [crewResult, locationResult] = await Promise.allSettled([
         crewApi.getAll(projectId),
         locationsApi.getAll(projectId),
       ]);
-      setCrewMembers(Array.isArray(crewData) ? crewData : []);
-      setLocations(Array.isArray(locationData) ? locationData : []);
-    } catch (error) {
-      console.error('Error loading crew/locations:', error);
+
+    if (crewResult.status === 'fulfilled') {
+      setCrewMembers(Array.isArray(crewResult.value) ? crewResult.value : []);
+    } else if (!isRecoverableEndpointError(crewResult.reason)) {
+      console.error('Error loading crew:', crewResult.reason);
+    } else {
+      setCrewMembers([]);
+    }
+
+    if (locationResult.status === 'fulfilled') {
+      setLocations(Array.isArray(locationResult.value) ? locationResult.value : []);
+    } else if (!isRecoverableEndpointError(locationResult.reason)) {
+      console.error('Error loading locations:', locationResult.reason);
+    } else {
+      setLocations([]);
     }
   };
 
   const loadTemplates = async () => {
-    if (!projectId) return;
+    if (!hasProtectedRoleRoomAccess || roleRoomApiUnavailable) {
+      setTemplates([]);
+      return;
+    }
     try {
       const data = await equipmentTemplatesApi.getAll(projectId);
       setTemplates(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error loading templates:', error);
+      if (isRecoverableEndpointError(error)) {
+        setTemplates([]);
+      } else {
+        console.error('Error loading templates:', error);
+      }
     }
   };
 
   const loadVendorLinks = async () => {
+    if (!shopDialogOpen || vendorLinksUnavailable) return;
     try {
       const [links, categories] = await Promise.all([
         vendorLinksApi.getAll(selectedVendorCategory === 'all' ? undefined : selectedVendorCategory),
@@ -566,15 +932,21 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       setVendorLinks(Array.isArray(links) ? links : []);
       setVendorCategories(Array.isArray(categories) ? categories : []);
     } catch (error) {
-      console.error('Error loading vendor links:', error);
+      if (isRecoverableEndpointError(error)) {
+        setVendorLinksUnavailable(true);
+        setVendorLinks([]);
+        setVendorCategories([]);
+      } else {
+        console.error('Error loading vendor links:', error);
+      }
     }
   };
 
   // Re-fetch vendor links whenever the category filter changes
   useEffect(() => {
+    if (!shopDialogOpen || vendorLinksUnavailable) return;
     loadVendorLinks();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVendorCategory]);
+  }, [selectedVendorCategory, shopDialogOpen, vendorLinksUnavailable]);
 
   // Image search functions - Multi-source search via backend proxies (no keys in client)
   const searchImages = useCallback(async (query: string) => {
@@ -877,11 +1249,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   };
 
   const handleOpenShopDialog = () => {
-    loadVendorLinks();
+    blurFocusedElement();
+    setVendorLinksUnavailable(false);
     setShopDialogOpen(true);
   };
 
   const handleOpenDialog = (eq?: Equipment) => {
+    blurFocusedElement();
     if (eq) {
       setEditingEquipment(eq);
       setFormData({
@@ -919,6 +1293,24 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       setFormErrors({}); // Clear validation errors
     }
     setDialogOpen(true);
+  };
+
+  const handleOpenCreateTypeDialog = () => {
+    blurFocusedElement();
+    setCreateTypeDialogOpen(true);
+  };
+
+  const handleCreateEquipmentFromChooser = () => {
+    setCreateTypeDialogOpen(false);
+    handleOpenDialog();
+  };
+
+  const handleCreatePropFromChooser = () => {
+    setCreateTypeDialogOpen(false);
+    window.dispatchEvent(new CustomEvent(OPEN_PROP_CREATE_MODAL_EVENT, { detail: { itemType: 'prop' } }));
+    window.requestAnimationFrame(() => {
+      document.getElementById('role-room-prop-management-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   /** Import a catalog item into the project: pre-fills the add-dialog with the
@@ -1003,6 +1395,99 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       isGlobal: false,
     });
     setDialogOpen(true);
+  };
+
+  const handleImportFromCameraRecord = (camera: CameraRecord) => {
+    setCatalogBridgeOpen(false);
+    setEditingEquipment(null);
+    setFormErrors({});
+
+    const specsLines = Object.entries(camera.specs ?? {})
+      .map(([key, value]) => `${key}: ${stringifySpecValue(value)}`)
+      .filter((line) => line.trim().length > 0);
+
+    const detailLines = [
+      camera.type && `Type: ${camera.type}`,
+      camera.category && `Kategori: ${camera.category}`,
+      camera.mount && `Fatning: ${camera.mount}`,
+      camera.sensorSize && `Sensor: ${camera.sensorSize}`,
+      camera.releaseDate && `Lansert: ${camera.releaseDate}`,
+      camera.logFormats?.length ? `Log-formater: ${camera.logFormats.join(', ')}` : '',
+      camera.videoCodecs?.length ? `Kodeker: ${camera.videoCodecs.join(', ')}` : '',
+    ]
+      .filter(Boolean)
+      .map((entry) => String(entry));
+
+    setFormData({
+      name: [camera.brand, camera.model].filter(Boolean).join(' ') || '',
+      description: camera.description || '',
+      category: 'Kamera',
+      brand: camera.brand || '',
+      model: camera.model || '',
+      serialNumber: '',
+      quantity: 1,
+      condition: 'good',
+      primaryLocationId: '',
+      notes: [...detailLines, ...specsLines].join('\n'),
+      imageUrl: '',
+      status: 'available',
+      isGlobal: false,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleImportFromMemoryCard = (card: MemoryCardTypeRecord) => {
+    setCatalogBridgeOpen(false);
+    setEditingEquipment(null);
+    setFormErrors({});
+
+    setFormData({
+      name: card.fullName || card.name || '',
+      description: card.description || '',
+      category: 'Minnekort',
+      brand: card.name || '',
+      model: card.id || '',
+      serialNumber: '',
+      quantity: 1,
+      condition: 'good',
+      primaryLocationId: '',
+      notes: [
+        `Korttype: ${card.category}`,
+        `Maks kapasitet: ${card.maxCapacity}`,
+        `Leseskriving: ${card.readSpeed} MB/s / ${card.writeSpeed} MB/s`,
+        card.videoClass ? `Video-klasse: ${card.videoClass}` : '',
+        card.uhsClass ? `UHS-klasse: ${card.uhsClass}` : '',
+        card.commonCapacities?.length ? `Vanlige kapasiteter: ${card.commonCapacities.join(', ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      imageUrl: '',
+      status: 'available',
+      isGlobal: false,
+    });
+    setDialogOpen(true);
+  };
+
+  const handleSyncCameraDiscovery = async () => {
+    setCameraSyncing(true);
+    try {
+      await Promise.all([
+        apiRequest('/api/equipment/discovery/sync?type=photo', { method: 'POST' }),
+        apiRequest('/api/equipment/discovery/sync?type=video', { method: 'POST' }),
+      ]);
+      setCameraCatalogUnavailable(false);
+      setMemoryCardsUnavailable(false);
+      await refetchCameraCatalog();
+      if (selectedCameraId) {
+        await refetchMemoryCards();
+      }
+      showSuccess('Kamera-discovery synkronisert');
+    } catch (error) {
+      console.error('Error syncing camera discovery:', error);
+      showError('Kunne ikke synkronisere kamera-discovery');
+    } finally {
+      setCameraSyncing(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1317,36 +1802,154 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     event.target.value = ''; // Reset input
   };
 
-  // 5. QR Code generation
-  const generateQRCode = (eq: Equipment): string => {
-    // Only embed the equipment's own identifiers — no project context to avoid data leaks
-    // via third-party QR service logs.
-    const data = JSON.stringify({
-      id: eq.id,
-      name: eq.name,
-      serial: eq.serial_number,
-    });
-    return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data)}`;
+  // 5. Warehouse QR system
+  const getEquipmentQrValue = useCallback(
+    (eq: Equipment): string =>
+      warehouseInventoryService.buildQrValue({
+        projectId,
+        itemType: 'equipment',
+        itemId: eq.id,
+        itemName: eq.name,
+        serialNumber: eq.serial_number || undefined,
+      }),
+    [projectId]
+  );
+
+  const getEquipmentQrImageUrl = useCallback(
+    (eq: Equipment, size = 280): string =>
+      warehouseInventoryService.buildQrImageUrl(getEquipmentQrValue(eq), size),
+    [getEquipmentQrValue]
+  );
+
+  const handleOpenQrLabel = (eq: Equipment) => {
+    blurFocusedElement();
+    setQrTargetEquipment(eq);
+    setQrLabelDialogOpen(true);
+  };
+
+  const handleCopyQrPayload = async (eq: Equipment) => {
+    const value = getEquipmentQrValue(eq);
+    try {
+      await navigator.clipboard.writeText(value);
+      showSuccess('QR-data kopiert');
+    } catch {
+      showError('Kunne ikke kopiere QR-data');
+    }
   };
 
   const handlePrintQR = (eq: Equipment) => {
-    const qrUrl = generateQRCode(eq);
+    const qrUrl = getEquipmentQrImageUrl(eq, 360);
+    const qrPayload = getEquipmentQrValue(eq);
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head><title>QR-kode: ${eq.name}</title></head>
-          <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
-            <h2>${eq.name}</h2>
-            <img src="${qrUrl}" alt="QR Code" />
-            <p>Serienummer: ${eq.serial_number || 'N/A'}</p>
-            <p style="color:#666;font-size:12px;">ID: ${eq.id}</p>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      setTimeout(() => printWindow.print(), 500);
+    if (!printWindow) {
+      showError('Kunne ikke åpne utskriftsvindu');
+      return;
     }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>QR-etikett: ${eq.name}</title>
+          <style>
+            body {
+              margin: 0;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: #111421;
+              color: #fff;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+            }
+            .label {
+              width: 420px;
+              border: 2px solid #9333ea;
+              border-radius: 16px;
+              padding: 20px;
+              background: #171a2b;
+              box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+            }
+            h2 {
+              margin: 0 0 6px 0;
+              font-size: 24px;
+              color: #c084fc;
+            }
+            .meta {
+              margin: 0 0 12px 0;
+              color: #cbd5e1;
+              font-size: 13px;
+            }
+            .qr-wrap {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              padding: 12px;
+              border: 1px solid rgba(255,255,255,0.15);
+              border-radius: 12px;
+              background: #0f1220;
+            }
+            img {
+              width: 300px;
+              height: 300px;
+            }
+            .foot {
+              margin-top: 12px;
+              font-size: 11px;
+              color: #94a3b8;
+              word-break: break-all;
+            }
+          </style>
+        </head>
+        <body>
+          <section class="label">
+            <h2>${eq.name}</h2>
+            <p class="meta">Serienummer: ${eq.serial_number || 'N/A'} • Antall: ${eq.quantity}</p>
+            <div class="qr-wrap">
+              <img src="${qrUrl}" alt="QR Code" />
+            </div>
+            <p class="foot">${qrPayload}</p>
+          </section>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 400);
+  };
+
+  const handleResolveScannedQr = (rawValue: string) => {
+    const parsed = warehouseInventoryService.parseQrValue(rawValue);
+    if (!parsed) {
+      setQrScanError('Ukjent QR-format. Bruk en Role Room lager-QR.');
+      return;
+    }
+
+    if (parsed.itemType !== 'equipment') {
+      setQrScanError('Denne QR-koden peker ikke på utstyr.');
+      return;
+    }
+
+    if (parsed.projectId && parsed.projectId !== projectId) {
+      setQrScanError('QR-koden tilhører et annet prosjekt.');
+      return;
+    }
+
+    const match = equipment.find(
+      (entry) =>
+        entry.id === parsed.itemId ||
+        (parsed.serialNumber && entry.serial_number === parsed.serialNumber)
+    );
+
+    if (!match) {
+      setQrScanError('Fant ikke utstyrspost for denne QR-koden i prosjektet.');
+      return;
+    }
+
+    setQrScanError(null);
+    setQrScanInput('');
+    setQrScanDialogOpen(false);
+    setSearchQuery(match.name);
+    handleOpenDialog(match);
+    showSuccess(`QR funnet: ${match.name}`);
   };
 
   // 6. History/audit log — real API data
@@ -1943,7 +2546,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            onClick={() => handleOpenDialog()}
+            onClick={handleOpenCreateTypeDialog}
             sx={{
               background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
               color: '#fff',
@@ -1963,7 +2566,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Button
               variant="outlined"
               startIcon={<BookmarkIcon />}
-              onClick={() => setTemplatesDialogOpen(true)}
+              onClick={() => {
+                blurFocusedElement();
+                setTemplatesDialogOpen(true);
+              }}
               sx={{
                 borderColor: '#4caf50',
                 color: '#4caf50',
@@ -1979,7 +2585,15 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Button
               variant="outlined"
               startIcon={<SearchIcon />}
-              onClick={() => setCatalogBridgeOpen(true)}
+              onClick={() => {
+                blurFocusedElement();
+                setGearNewsUnavailable(false);
+                setMarketPricesUnavailable(false);
+                setLensDbUnavailable(false);
+                setCameraCatalogUnavailable(false);
+                setMemoryCardsUnavailable(false);
+                setCatalogBridgeOpen(true);
+              }}
               sx={{
                 borderColor: '#9333ea',
                 color: '#9333ea',
@@ -1991,11 +2605,57 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               Katalog
             </Button>
           </Tooltip>
+          <Tooltip title="Lagerstyring, reservasjoner og flyt mellom lagernoder">
+            <Button
+              variant="outlined"
+              startIcon={<Inventory2Icon />}
+              onClick={() => {
+                blurFocusedElement();
+                setWarehouseDialogOpen(true);
+              }}
+              sx={{
+                borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#c084fc',
+                color: warehouseIssueCount > 0 ? '#ef5350' : '#c084fc',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': {
+                  borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#d8b4fe',
+                  bgcolor: warehouseIssueCount > 0 ? 'rgba(239,83,80,0.1)' : 'rgba(192,132,252,0.1)',
+                },
+                ...focusVisibleStyles,
+              }}
+            >
+              {warehouseIssueCount > 0 ? `Lager (${warehouseIssueCount})` : 'Lager'}
+            </Button>
+          </Tooltip>
+          <Tooltip title="Skann lager-QR og åpne utstyrspost">
+            <Button
+              variant="outlined"
+              startIcon={<QrCodeScannerIcon />}
+              onClick={() => {
+                blurFocusedElement();
+                setQrScanInput('');
+                setQrScanError(null);
+                setQrScanDialogOpen(true);
+              }}
+              sx={{
+                borderColor: '#64b5f6',
+                color: '#64b5f6',
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { borderColor: '#90caf9', bgcolor: 'rgba(100,181,246,0.1)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              Skann QR
+            </Button>
+          </Tooltip>
           <Tooltip title="Administrer fastvare-oppdateringer for prosjektets utstyr">
             <Button
               variant="outlined"
               startIcon={<SyncIcon />}
-              onClick={() => setFirmwarePanelOpen(true)}
+              onClick={() => {
+                blurFocusedElement();
+                setFirmwarePanelOpen(true);
+              }}
               sx={{
                 borderColor: '#2196f3',
                 color: '#2196f3',
@@ -2011,7 +2671,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Button
               variant="outlined"
               startIcon={<ReportIcon />}
-              onClick={() => setReportsDialogOpen(true)}
+              onClick={() => {
+                blurFocusedElement();
+                setReportsDialogOpen(true);
+              }}
               sx={{
                 borderColor: '#9c27b0',
                 color: '#9c27b0',
@@ -2028,7 +2691,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <Button
                 variant="outlined"
                 startIcon={isOnline ? <SyncIcon /> : <OfflineIcon />}
-                onClick={isOnline ? handleSyncOfflineQueue : () => setOfflineOutboxOpen(true)}
+                onClick={isOnline
+                  ? handleSyncOfflineQueue
+                  : () => {
+                      blurFocusedElement();
+                      setOfflineOutboxOpen(true);
+                    }}
                 sx={{
                   borderColor: isOnline ? '#9333ea' : '#f44336',
                   color: isOnline ? '#9333ea' : '#f44336',
@@ -2286,7 +2954,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       setCategoryFilter(isActive ? 'all' : cat);
                       setExpandedCategories(prev => {
                         const next = new Set(prev);
-                        isExpanded ? next.delete(cat) : next.add(cat);
+                        if (isExpanded) {
+                          next.delete(cat);
+                        } else {
+                          next.add(cat);
+                        }
                         return next;
                       });
                     }}
@@ -2574,12 +3246,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   : 'Legg til ditt første utstyr for å komme i gang'}
                 color="#9333ea"
                 buttonLabel="Legg til utstyr"
-                onAction={() => handleOpenDialog()}
+                onAction={handleOpenCreateTypeDialog}
               />
             </Grid>
           ) : (
-            filteredEquipment.map((eq, index) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={eq.id}>
+            filteredEquipment.map((eq, index) => {
+              const warehouseTotals = warehouseStockByItem[eq.id];
+              return (
+                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={eq.id}>
               <Grow in timeout={200 + index * 50}>
               <Card sx={{
                 bgcolor: 'rgba(28, 33, 40, 0.8)',
@@ -2777,6 +3451,32 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       }}
                     />
                   </Stack>
+                  {warehouseTotals && (
+                    <Stack direction="row" spacing={0.75} sx={{ mb: 1, flexWrap: 'wrap', gap: 0.5 }}>
+                      <Chip
+                        label={`Tilgjengelig ${warehouseTotals.available}`}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(76,175,80,0.15)',
+                          color: '#81c784',
+                          border: '1px solid rgba(76,175,80,0.35)',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                        }}
+                      />
+                      <Chip
+                        label={`Reservert ${warehouseTotals.reserved}`}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(255,183,77,0.15)',
+                          color: '#ffb74d',
+                          border: '1px solid rgba(255,183,77,0.35)',
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                        }}
+                      />
+                    </Stack>
+                  )}
                   
                   {eq.location_name && (
                     <Box sx={{ 
@@ -2897,7 +3597,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     <Tooltip title="QR-kode">
                       <IconButton
                         size="small"
-                        onClick={() => handlePrintQR(eq)}
+                        onClick={() => handleOpenQrLabel(eq)}
                         sx={{ 
                           ...focusVisibleStyles, 
                           color: 'rgba(255,255,255,0.87)',
@@ -2978,8 +3678,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 </Box>
               </Card>
               </Grow>
-            </Grid>
-          )))}
+                </Grid>
+              );
+            })
+          )}
         </Grid>
       ) : (
         <TableContainer component={Paper} sx={{ 
@@ -3027,12 +3729,15 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 </TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Tilstand</TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="center">Antall</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="center">Lagerstatus</TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Lokasjon</TableCell>
                 <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="right">Handlinger</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredEquipment.map((eq, index) => (
+              {filteredEquipment.map((eq) => {
+                const warehouseTotals = warehouseStockByItem[eq.id];
+                return (
                 <TableRow 
                   key={eq.id} 
                   sx={{ 
@@ -3129,6 +3834,38 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       }} 
                     />
                   </TableCell>
+                  <TableCell align="center" sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    {warehouseTotals ? (
+                      <Stack direction="row" spacing={0.5} justifyContent="center" flexWrap="wrap">
+                        <Chip
+                          label={`Tilg ${warehouseTotals.available}`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(76,175,80,0.15)',
+                            color: '#81c784',
+                            border: '1px solid rgba(76,175,80,0.35)',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                          }}
+                        />
+                        <Chip
+                          label={`Res ${warehouseTotals.reserved}`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(255,183,77,0.15)',
+                            color: '#ffb74d',
+                            border: '1px solid rgba(255,183,77,0.35)',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                          }}
+                        />
+                      </Stack>
+                    ) : (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                        -
+                      </Typography>
+                    )}
+                  </TableCell>
                   <TableCell sx={{ color: 'rgba(255,255,255,0.87)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     {eq.location_name ? (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -3186,6 +3923,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           <PersonIcon sx={{ fontSize: 18 }} />
                         </IconButton>
                       </Tooltip>
+                      <Tooltip title="QR-kode">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenQrLabel(eq)}
+                          sx={{
+                            ...focusVisibleStyles,
+                            color: 'rgba(255,255,255,0.87)',
+                            '&:hover': { color: '#9c27b0', bgcolor: 'rgba(156,39,176,0.1)' },
+                          }}
+                        >
+                          <QrCodeIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </Tooltip>
                       <Tooltip title="Rediger">
                         <IconButton 
                           size="small" 
@@ -3215,7 +3965,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     </Stack>
                   </TableCell>
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
@@ -3223,6 +3974,149 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
         </Box>{/* end main content column */}
       </Box>{/* end sidebar + main row */}
+
+      <Dialog
+        open={createTypeDialogOpen}
+        onClose={() => setCreateTypeDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            py: 2,
+            px: 3,
+          }}
+        >
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Ny post
+          </Typography>
+          <IconButton
+            onClick={() => setCreateTypeDialogOpen(false)}
+            sx={{ color: 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5, px: 3 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
+            Velg hva du vil opprette:
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+              gap: 2,
+            }}
+          >
+            <Button
+              variant="outlined"
+              onClick={handleCreateEquipmentFromChooser}
+              sx={{
+                p: 2,
+                minHeight: 170,
+                borderRadius: 2.5,
+                borderColor: 'rgba(147,51,234,0.35)',
+                color: '#fff',
+                textTransform: 'none',
+                alignItems: 'flex-start',
+                justifyContent: 'flex-start',
+                '&:hover': {
+                  borderColor: '#9333ea',
+                  bgcolor: 'rgba(147,51,234,0.12)',
+                },
+                ...focusVisibleStyles,
+              }}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.25 }}>
+                <Box
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(147,51,234,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <BuildIcon sx={{ color: '#c084fc', fontSize: 24 }} />
+                </Box>
+                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
+                  Filmutstyr
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>
+                  Åpner eksisterende nytt-utstyr modal for kamera, lys, lyd, strøm, sikkerhet og logistikk.
+                </Typography>
+              </Box>
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={handleCreatePropFromChooser}
+              sx={{
+                p: 2,
+                minHeight: 170,
+                borderRadius: 2.5,
+                borderColor: 'rgba(192,132,252,0.35)',
+                color: '#fff',
+                textTransform: 'none',
+                alignItems: 'flex-start',
+                justifyContent: 'flex-start',
+                '&:hover': {
+                  borderColor: '#c084fc',
+                  bgcolor: 'rgba(192,132,252,0.12)',
+                },
+                ...focusVisibleStyles,
+              }}
+            >
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.25 }}>
+                <Box
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(192,132,252,0.2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <PropsIcon sx={{ color: '#c084fc', fontSize: 24 }} />
+                </Box>
+                <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: '#fff' }}>
+                  Rekvisitter
+                </Typography>
+                <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.875rem', textAlign: 'left' }}>
+                  Åpner ny-post modalen i rekvisittseksjonen. Filmutstyr holdes i utstyrsmodulen.
+                </Typography>
+              </Box>
+            </Button>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5 }}>
+          <Button
+            onClick={() => setCreateTypeDialogOpen(false)}
+            sx={{ color: 'rgba(255,255,255,0.8)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
+          >
+            Avbryt
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={dialogOpen}
@@ -3241,7 +4135,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle id={dialogTitleId} sx={{ 
+        <DialogTitle component="div" id={dialogTitleId} sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -3283,8 +4177,15 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </IconButton>
         </DialogTitle>
         <DialogContent sx={{ mt: 2, px: 3 }}>
-          <Grid container spacing={2.5}>
-            <Grid size={{ xs: 12, sm: 6 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+              gap: 2.5,
+              alignItems: 'start',
+            }}
+          >
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 label="Navn *"
@@ -3308,8 +4209,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiFormHelperText-root': { color: '#f44336' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
                 <Select
@@ -3368,8 +4269,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </MenuItem>
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 label="Merke"
@@ -3387,8 +4288,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 label="Modell"
@@ -3406,8 +4307,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 label="Serienummer"
@@ -3425,8 +4326,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 type="number"
@@ -3446,8 +4347,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Status</InputLabel>
                 <Select
@@ -3475,8 +4376,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6 }}>
+            </Box>
+            <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Tilstand</InputLabel>
                 <Select
@@ -3504,8 +4405,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
+            </Box>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <FormControl fullWidth>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Lagerlokasjon</InputLabel>
                 <Select
@@ -3534,8 +4435,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid size={{ xs: 12 }}>
+            </Box>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <TextField
                 fullWidth
                 label="Beskrivelse"
@@ -3555,8 +4456,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
-            <Grid size={{ xs: 12 }}>
+            </Box>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <TextField
                 fullWidth
                 label="Notater"
@@ -3576,10 +4477,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                 }}
               />
-            </Grid>
+            </Box>
             
             {/* Global Equipment Toggle */}
-            <Grid size={{ xs: 12 }}>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <Box sx={{ 
                 p: 2, 
                 borderRadius: 2, 
@@ -3635,10 +4536,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </Box>
                 </Box>
               </Box>
-            </Grid>
+            </Box>
             
             {/* Image Picker Section with Drag & Drop */}
-            <Grid size={{ xs: 12 }}>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <Box 
                 ref={dropZoneRef}
                 onDragEnter={handleDragEnter}
@@ -3657,11 +4558,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   Utstyrsbilde
                   {isDragging && <Chip label="Slipp bildet her!" size="small" sx={{ bgcolor: '#9333ea', color: '#fff', fontSize: '0.7rem' }} />}
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 180px) minmax(0, 1fr)' },
+                    gap: { xs: 1.5, md: 2 },
+                    alignItems: 'start',
+                  }}
+                >
                   {/* Image Preview */}
                   <Box sx={{
-                    width: 140,
-                    height: 100,
+                    width: '100%',
+                    maxWidth: { xs: 220, md: 'none' },
+                    aspectRatio: '7 / 5',
                     bgcolor: 'rgba(255,255,255,0.03)',
                     borderRadius: 2,
                     border: isDragging ? '2px solid #9333ea' : '2px dashed rgba(255,255,255,0.15)',
@@ -3669,7 +4578,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     alignItems: 'center',
                     justifyContent: 'center',
                     overflow: 'hidden',
-                    flexShrink: 0,
+                    justifySelf: { xs: 'center', md: 'stretch' },
                     transition: 'all 0.2s',
                     '&:hover': {
                       borderColor: 'rgba(147,51,234,0.3)',
@@ -3688,7 +4597,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </Box>
                 
                   {/* Image Actions */}
-                  <Stack spacing={1.5} sx={{ flex: 1 }}>
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', md: '1fr' },
+                      gap: 1.5,
+                    }}
+                  >
                     <Button
                       variant="outlined"
                       size="small"
@@ -3704,6 +4619,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         borderRadius: 2,
                         py: 1,
                         justifyContent: 'flex-start',
+                        minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' },
                       }}
                     >
@@ -3720,6 +4636,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         borderRadius: 2,
                         py: 1,
                         justifyContent: 'flex-start',
+                        minHeight: TOUCH_TARGET_SIZE,
                         '&:hover': { borderColor: '#4caf50', bgcolor: 'rgba(76,175,80,0.1)' },
                       }}
                     >
@@ -3756,6 +4673,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         ),
                       }}
                       sx={{ 
+                        gridColumn: '1 / -1',
                         '& .MuiOutlinedInput-root': { 
                           bgcolor: 'rgba(0,0,0,0.2)', 
                           color: '#fff',
@@ -3765,11 +4683,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         },
                       }}
                     />
-                  </Stack>
+                  </Box>
                 </Box>
               </Box>
-            </Grid>
-          </Grid>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ 
           borderTop: '1px solid rgba(255,255,255,0.1)', 
@@ -3833,7 +4751,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -3990,7 +4908,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -4167,7 +5085,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -4420,7 +5338,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: 2,
@@ -4652,7 +5570,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -4920,7 +5838,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -5074,7 +5992,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -5409,7 +6327,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: 2,
@@ -5487,7 +6405,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: 2,
@@ -5597,7 +6515,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
@@ -5671,7 +6589,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: 2,
@@ -5783,7 +6701,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle sx={{ 
+        <DialogTitle component="div" sx={{ 
           display: 'flex', 
           alignItems: 'center', 
           gap: 2,
@@ -5923,7 +6841,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       {/* ── Check-out Dialog ─────────────────────────── */}
       <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
         PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #2196f3, #1565c0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CheckOutIcon sx={{ color: '#fff' }} />
           </Box>
@@ -5971,7 +6889,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       {/* ── Check-in Dialog ──────────────────────────── */}
       <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
         PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #4caf50, #2e7d32)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CheckInIcon sx={{ color: '#fff' }} />
           </Box>
@@ -6003,7 +6921,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       {/* ── Reports Dialog ───────────────────────────── */}
       <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="md" fullWidth TransitionComponent={Grow}
         PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 0 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 0 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #9c27b0, #6a1b9a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ReportIcon sx={{ color: '#fff' }} />
           </Box>
@@ -6097,7 +7015,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       {/* ── Offline outbox viewer ────────────────────── */}
       <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
         PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
           <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #f44336, #b71c1c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <OfflineIcon sx={{ color: '#fff' }} />
           </Box>
@@ -6143,7 +7061,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       </Dialog>
 
       {/* ── Catalog Bridge Dialog ─────────────────────────────────────────────
-          4 tabs: Manufacturer catalog · Gear news · Market prices · Lens DB.
+          5 tabs: Manufacturer catalog · Gear news · Market prices · Lens DB · Camera/Memory.
           The onAddToProject / onImportFrom* callbacks pre-fill the add-dialog.  */}
       <Dialog
         open={catalogBridgeOpen}
@@ -6151,7 +7069,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         fullScreen
         PaperProps={{ sx: { bgcolor: '#0f0f1a' } }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#fff', pb: 0 }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#fff', pb: 0 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <SearchIcon sx={{ color: '#9333ea' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
@@ -6178,6 +7096,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Tab icon={<NewspaperIcon sx={{ fontSize: 16 }} />} label="Utstyrsnyheter" iconPosition="start" />
             <Tab icon={<TrendingUpIcon sx={{ fontSize: 16 }} />} label="Markedspriser" iconPosition="start" />
             <Tab icon={<PhotoLibraryIcon sx={{ fontSize: 16 }} />} label="Objektiver" iconPosition="start" />
+            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} label="Kamera + Minnekort" iconPosition="start" />
           </Tabs>
         </Box>
 
@@ -6187,7 +7106,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           {catalogDialogTab === 0 && (
             <EquipmentCatalogBrowser
               profession="videographer"
-              userId={user?.id ? String(user.id) : 'guest'}
+              userId={user?.id ? String(user.id) : ''}
               onAddToProject={handleImportFromCatalog}
             />
           )}
@@ -6436,7 +7355,582 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Box>
           )}
 
+          {/* Tab 4 — Backend camera + memory card catalog */}
+          {catalogDialogTab === 4 && (
+            <Box sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Inventory2Icon sx={{ color: '#c084fc' }} />
+                  Kamera + Minnekort (backend)
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={handleSyncCameraDiscovery}
+                  startIcon={cameraSyncing ? <CircularProgress size={14} sx={{ color: '#c084fc' }} /> : <SyncIcon />}
+                  disabled={cameraSyncing}
+                  sx={{
+                    borderColor: '#c084fc',
+                    color: '#c084fc',
+                    '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(216,180,254,0.08)' },
+                  }}
+                >
+                  Kjør discovery sync
+                </Button>
+              </Box>
+
+              {cameraCatalogUnavailable && (
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Kamera-endepunkt er utilgjengelig i dette miljøet.
+                </Alert>
+              )}
+
+              <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
+                <Grid size={{ xs: 12, md: 5 }}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Søk kamera"
+                    value={cameraCatalogSearch}
+                    onChange={(event) => setCameraCatalogSearch(event.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon sx={{ color: 'rgba(255,255,255,0.5)' }} />
+                        </InputAdornment>
+                      ),
+                    }}
+                    sx={{
+                      '& .MuiInputBase-root': { bgcolor: 'rgba(255,255,255,0.04)', color: '#fff' },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' },
+                    }}
+                  />
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Kameratype</InputLabel>
+                    <Select
+                      value={cameraCatalogType}
+                      label="Kameratype"
+                      onChange={(event) => setCameraCatalogType(event.target.value as 'all' | CameraCatalogType)}
+                      sx={{
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        color: '#fff',
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                      }}
+                    >
+                      <MenuItem value="all">Alle typer</MenuItem>
+                      <MenuItem value="photo">Foto</MenuItem>
+                      <MenuItem value="video">Video</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Brand</InputLabel>
+                    <Select
+                      value={cameraBrandFilter}
+                      label="Brand"
+                      onChange={(event) => setCameraBrandFilter(String(event.target.value))}
+                      sx={{
+                        bgcolor: 'rgba(255,255,255,0.04)',
+                        color: '#fff',
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
+                      }}
+                    >
+                      <MenuItem value="all">Alle brands</MenuItem>
+                      {cameraBrandOptions.map((brand) => (
+                        <MenuItem key={brand} value={brand}>
+                          {brand}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid size={{ xs: 12, md: 1 }}>
+                  <Box
+                    sx={{
+                      height: '100%',
+                      minHeight: 40,
+                      px: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: { xs: 'flex-start', md: 'center' },
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <FormControlLabel
+                      sx={{ m: 0, '& .MuiFormControlLabel-label': { fontSize: '0.72rem', color: 'rgba(255,255,255,0.78)' } }}
+                      control={
+                        <Switch
+                          size="small"
+                          checked={cameraNetflixOnly}
+                          onChange={(event) => setCameraNetflixOnly(event.target.checked)}
+                          sx={{
+                            mr: 0.5,
+                            '& .MuiSwitch-switchBase.Mui-checked': { color: '#e50914' },
+                            '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                              bgcolor: '#e50914',
+                            },
+                          }}
+                        />
+                      }
+                      label="Netflix"
+                    />
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {cameraCatalogLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1.5, py: 8 }}>
+                  <CircularProgress sx={{ color: '#c084fc' }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>Henter kameradata...</Typography>
+                </Box>
+              ) : cameraCatalogItems.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 8 }}>
+                  <Inventory2Icon sx={{ fontSize: 52, color: 'rgba(255,255,255,0.2)', mb: 1 }} />
+                  <Typography sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                    Ingen kamera funnet for valgt filter.
+                  </Typography>
+                </Box>
+              ) : (
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, lg: 7 }}>
+                    <Grid container spacing={2}>
+                      {cameraCatalogItems.map((camera) => (
+                        <Grid key={camera.id} size={{ xs: 12, sm: 6 }}>
+                          <Card
+                            onClick={() => setSelectedCameraId(camera.id)}
+                            sx={{
+                              height: '100%',
+                              cursor: 'pointer',
+                              border: selectedCameraId === camera.id ? '1px solid #c084fc' : '1px solid rgba(255,255,255,0.08)',
+                              bgcolor: selectedCameraId === camera.id ? 'rgba(192,132,252,0.12)' : 'rgba(255,255,255,0.04)',
+                              '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' },
+                            }}
+                          >
+                            <CardContent>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+                                <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600 }}>
+                                  {camera.brand} {camera.model}
+                                </Typography>
+                                <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                                  <Chip
+                                    size="small"
+                                    label={camera.type === 'photo' ? 'Foto' : 'Video'}
+                                    sx={{
+                                      bgcolor: camera.type === 'photo' ? 'rgba(33,150,243,0.2)' : 'rgba(156,39,176,0.25)',
+                                      color: camera.type === 'photo' ? '#90caf9' : '#d1a3ff',
+                                    }}
+                                  />
+                                  {camera.isNetflixCertified && (
+                                    <Chip
+                                      size="small"
+                                      icon={
+                                        <img
+                                          src={netflixWordmark}
+                                          alt="Netflix"
+                                          style={{ height: 10, width: 'auto', display: 'block' }}
+                                        />
+                                      }
+                                      label="Sertifisert"
+                                      sx={{
+                                        bgcolor: 'rgba(229,9,20,0.88)',
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                      }}
+                                    />
+                                  )}
+                                </Stack>
+                              </Box>
+                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', mb: 1.5 }}>
+                                {camera.description || 'Ingen beskrivelse tilgjengelig.'}
+                              </Typography>
+                              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', mb: 1 }}>
+                                {camera.category && (
+                                  <Chip size="small" label={camera.category} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.72)' }} />
+                                )}
+                                {camera.mount && (
+                                  <Chip size="small" label={camera.mount} sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.72)' }} />
+                                )}
+                              </Stack>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<AddIcon />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleImportFromCameraRecord(camera);
+                                }}
+                                sx={{
+                                  borderColor: '#c084fc',
+                                  color: '#c084fc',
+                                  '&:hover': { bgcolor: 'rgba(192,132,252,0.1)', borderColor: '#d8b4fe' },
+                                }}
+                              >
+                                Importer kamera
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, lg: 5 }}>
+                    <Paper
+                      sx={{
+                        p: 2,
+                        bgcolor: 'rgba(255,255,255,0.03)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }}
+                    >
+                      <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>
+                        Minnekort-kompatibilitet
+                      </Typography>
+                      {selectedCamera ? (
+                        <>
+                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.72)', mb: 0.5 }}>
+                            Valgt kamera: {selectedCamera.brand} {selectedCamera.model}
+                          </Typography>
+                          {selectedCamera.isNetflixCertified && (
+                            <Chip
+                              size="small"
+                              icon={
+                                <img
+                                  src={netflixWordmark}
+                                  alt="Netflix"
+                                  style={{ height: 10, width: 'auto', display: 'block' }}
+                                />
+                              }
+                              label="Netflix-sertifisert cinekamera"
+                              sx={{
+                                mb: 1,
+                                bgcolor: 'rgba(229,9,20,0.88)',
+                                color: '#fff',
+                                fontWeight: 700,
+                              }}
+                            />
+                          )}
+                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                            Kilde: {selectedCamera.sourceMeta?.source ?? 'seed'}
+                            {selectedCamera.sourceMeta?.version ? ` · v${selectedCamera.sourceMeta.version}` : ''}
+                            {selectedCamera.sourceMeta?.lastSeenAt
+                              ? ` · sist sett ${new Date(selectedCamera.sourceMeta.lastSeenAt).toLocaleString('nb-NO')}`
+                              : ''}
+                          </Typography>
+                          <Divider sx={{ my: 1.5, borderColor: 'rgba(255,255,255,0.08)' }} />
+
+                          {memoryCardsUnavailable ? (
+                            <Alert severity="warning">Minnekort-endepunkt er utilgjengelig.</Alert>
+                          ) : memoryCardsLoading ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2 }}>
+                              <CircularProgress size={18} sx={{ color: '#c084fc' }} />
+                              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                                Henter minnekort...
+                              </Typography>
+                            </Box>
+                          ) : memoryCardItems.length === 0 ? (
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                              Ingen korttyper tilgjengelig for valgt kamera.
+                            </Typography>
+                          ) : (
+                            <Stack spacing={1}>
+                              {memoryCardItems.map((card) => (
+                                <Paper
+                                  key={card.id}
+                                  sx={{
+                                    p: 1.25,
+                                    bgcolor: 'rgba(255,255,255,0.04)',
+                                    border: '1px solid rgba(255,255,255,0.07)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 1,
+                                  }}
+                                >
+                                  <Box>
+                                    <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                                      {card.fullName}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                                      {card.readSpeed} / {card.writeSpeed} MB/s · {card.maxCapacity}
+                                    </Typography>
+                                  </Box>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<AddIcon />}
+                                    onClick={() => handleImportFromMemoryCard(card)}
+                                    sx={{
+                                      borderColor: '#c084fc',
+                                      color: '#c084fc',
+                                      minWidth: 98,
+                                      '&:hover': { bgcolor: 'rgba(192,132,252,0.1)', borderColor: '#d8b4fe' },
+                                    }}
+                                  >
+                                    Importer
+                                  </Button>
+                                </Paper>
+                              ))}
+                            </Stack>
+                          )}
+                        </>
+                      ) : (
+                        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                          Velg et kamera for å se anbefalte minnekort.
+                        </Typography>
+                      )}
+                    </Paper>
+
+                    {(cameraCatalogFetching || cameraSyncing) && (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', mt: 1, display: 'block' }}>
+                        Oppdaterer katalogdata...
+                      </Typography>
+                    )}
+                  </Grid>
+                </Grid>
+              )}
+            </Box>
+          )}
+
         </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={qrLabelDialogOpen}
+        onClose={() => setQrLabelDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            py: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <QrCodeIcon sx={{ color: '#c084fc' }} />
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                Lager-QR etikett
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                {qrTargetEquipment?.name || 'Utstyr'}
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton onClick={() => setQrLabelDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          {qrTargetEquipment && (
+            <Stack spacing={1.5}>
+              <Box
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                }}
+              >
+                <Box
+                  component="img"
+                  src={getEquipmentQrImageUrl(qrTargetEquipment)}
+                  alt={`QR for ${qrTargetEquipment.name}`}
+                  sx={{
+                    width: { xs: 220, sm: 260 },
+                    height: { xs: 220, sm: 260 },
+                    borderRadius: 1,
+                    bgcolor: '#fff',
+                    p: 1,
+                  }}
+                />
+              </Box>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Chip
+                  label={`ID: ${qrTargetEquipment.id}`}
+                  sx={{ bgcolor: 'rgba(147,51,234,0.15)', color: '#c084fc', maxWidth: '100%' }}
+                />
+                <Chip
+                  label={`Serienr: ${qrTargetEquipment.serial_number || 'N/A'}`}
+                  sx={{ bgcolor: 'rgba(33,150,243,0.15)', color: '#64b5f6' }}
+                />
+                <Chip
+                  label={`Antall: ${qrTargetEquipment.quantity}`}
+                  sx={{ bgcolor: 'rgba(76,175,80,0.15)', color: '#81c784' }}
+                />
+              </Stack>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<CopyIcon />}
+            onClick={() => qrTargetEquipment && handleCopyQrPayload(qrTargetEquipment)}
+            sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
+          >
+            Kopier QR-data
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<QrCodeScannerIcon />}
+            onClick={() => {
+              setQrLabelDialogOpen(false);
+              setQrScanInput('');
+              setQrScanError(null);
+              setQrScanDialogOpen(true);
+            }}
+            sx={{ borderColor: '#81c784', color: '#81c784' }}
+          >
+            Skann
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            onClick={() => qrTargetEquipment && handlePrintQR(qrTargetEquipment)}
+            sx={{
+              bgcolor: '#9333ea',
+              color: '#000',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#a855f7' },
+            }}
+          >
+            Skriv ut etikett
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={qrScanDialogOpen}
+        onClose={() => setQrScanDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            bgcolor: '#1c2128',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            py: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <QrCodeScannerIcon sx={{ color: '#64b5f6' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Skann lager-QR
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>
+            Lim inn skannet QR-tekst fra scanner eller mobilkamera. Systemet åpner riktig utstyrspost automatisk.
+          </Typography>
+          <QrCameraScanner
+            active={qrScanDialogOpen}
+            onDetected={(value) => {
+              setQrScanInput(value);
+              setQrScanError(null);
+              handleResolveScannedQr(value);
+            }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            minRows={4}
+            autoFocus
+            value={qrScanInput}
+            onChange={(event) => {
+              setQrScanInput(event.target.value);
+              if (qrScanError) setQrScanError(null);
+            }}
+            placeholder="role-room://warehouse/v1/..."
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(100,181,246,0.4)' },
+                '&.Mui-focused fieldset': { borderColor: '#64b5f6' },
+              },
+            }}
+          />
+          {qrScanError && (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              {qrScanError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+          <Button onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CopyIcon />}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                setQrScanInput(text);
+                setQrScanError(null);
+              } catch {
+                setQrScanError('Kunne ikke lese fra utklippstavle.');
+              }
+            }}
+            sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
+          >
+            Lim inn
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<QrCodeScannerIcon />}
+            onClick={() => handleResolveScannedQr(qrScanInput)}
+            sx={{
+              bgcolor: '#64b5f6',
+              color: '#000',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#90caf9' },
+            }}
+          >
+            Tolk QR
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* ── Firmware Management Dialog ────────────────────────────────────────
@@ -6449,7 +7943,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         maxWidth="lg"
         PaperProps={{ sx: { bgcolor: '#0f0f1a', color: '#fff' } }}
       >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <SyncIcon sx={{ color: '#2196f3' }} />
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
@@ -6461,10 +7955,28 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         <DialogContent sx={{ p: 0, overflow: 'auto' }}>
           <FirmwareManagementInterface
             profession="videographer"
-            userId={user?.id ? String(user.id) : 'guest'}
+            userId={user?.id ? String(user.id) : ''}
           />
         </DialogContent>
       </Dialog>
+
+      <WarehouseInventoryDialog
+        open={warehouseDialogOpen}
+        onClose={() => {
+          setWarehouseDialogOpen(false);
+          refreshWarehouseSummary();
+        }}
+        projectId={projectId}
+        title="Lagerstyring - Filmutstyr"
+        items={warehouseDialogItems}
+        locationSeeds={locations.map((location) => ({ id: location.id, name: location.name }))}
+        onRequestEditItem={(item) => {
+          const target = equipment.find((entry) => entry.id === item.id);
+          if (!target) return;
+          setWarehouseDialogOpen(false);
+          handleOpenDialog(target);
+        }}
+      />
 
     </Box>
   );

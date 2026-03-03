@@ -169,7 +169,9 @@ export const classPhotoSessionsService = {
   /**
    * Create a new session
    */
-  async create(session: Omit<ClassPhotoSessionDB, 'id' | 'userId' | 'createdAt, ' | , 'updatedAt, '>): Promise<ClassPhotoSessionDB | null> {
+  async create(
+    session: Omit<ClassPhotoSessionDB, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
+  ): Promise<ClassPhotoSessionDB | null> {
     try {
       const response = await apiRequest<{ success: boolean; session: ClassPhotoSessionDB }>('/sessions', {
         method: 'POST',
@@ -255,7 +257,7 @@ export const classPhotoSessionsService = {
   /**
    * Convert in-memory session to DB format
    */
-  fromMemory(session: ClassPhotoSession): Omit<ClassPhotoSessionDB, 'id' | 'userId' | 'createdAt' | , 'updatedAt'> {
+  fromMemory(session: ClassPhotoSession): Omit<ClassPhotoSessionDB, 'id' | 'userId' | 'createdAt' | 'updatedAt'> {
     return {
       name: session.name,
       studentCount: session.setup.studentCount,
@@ -542,4 +544,3 @@ export const schoolPhotoDataService = {
 };
 
 export default schoolPhotoDataService;
-

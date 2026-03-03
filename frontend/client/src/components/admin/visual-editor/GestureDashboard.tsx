@@ -138,7 +138,7 @@ import {
   Swipe,
 } from '@mui/icons-material';
 import { useGestures, UseGesturesOptions } from '../../../hooks/useGestures';
-import { GestureConfig, Gesture as GestureType } from '../../../utils/gestureManager';
+import { GestureConfig, Gesture as GestureType, GestureEvent } from '../../../utils/gestureManager';
 
 interface GestureDashboardProps {
   showDetails?: boolean;
@@ -211,10 +211,10 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
     onGestureRecognized: (data: { gesture: GestureType; event: TouchEvent | MouseEvent | KeyboardEvent }) => {
       setSelectedGesture(data.gesture);
   },
-    onGestureExecuted: (data: { gesture: GestureType; event: Record<string, unknown> }) => {
+    onGestureExecuted: (data: { gesture: GestureType; event: GestureEvent }) => {
       setSelectedGesture(data.gesture);
   },
-    onGestureExecutionFailed: (data: { gesture: GestureType; event: Record<string, unknown>; error: string }) => {
+    onGestureExecutionFailed: (data: { gesture: GestureType; event: GestureEvent; error: string }) => {
       console.error('Gesture execution failed: ', data.error);
   },
     onGestureRecognitionFailed: (data: { event: TouchEvent | MouseEvent | KeyboardEvent; error: string }) => {
@@ -342,7 +342,7 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
 }, [createGesture]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'default' | 'error' | 'warning' | 'success' => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -350,12 +350,19 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) return <Error fontSize="small" />;
     if (!isInitialized) return <CircularProgress size={16} />;
     if (isEnabled) return <Gesture />;
-    return theming.getThemedIcon('warning');
+    return <Warning fontSize="small" />;
 }, [hasError, isInitialized, isEnabled]);
+
+  const getStatusTextColor = useCallback((): 'error.main' | 'warning.main' | 'success.main' | 'text.secondary' => {
+    if (hasError) return 'error.main';
+    if (!isInitialized) return 'warning.main';
+    if (isEnabled) return 'success.main';
+    return 'text.secondary';
+  }, [hasError, isEnabled, isInitialized]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -409,7 +416,7 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
-          <Typography variant="body2" color={getStatusColor() + '.main'}>
+          <Typography variant="body2" color={getStatusTextColor()}>
             {getStatusText()}
           </Typography>
         </Box>
@@ -1284,7 +1291,6 @@ const GestureDashboard: React.FC<GestureDashboardProps> = memo(({
 GestureDashboard.displayName ='GestureDashboard';
 
 export default GestureDashboard;
-
 
 
 

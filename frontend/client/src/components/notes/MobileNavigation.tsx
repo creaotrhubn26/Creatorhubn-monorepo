@@ -142,7 +142,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
   
   // Theming system
   const theming = useTheming('photographer');
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Handlers
   const handleItemClick = useCallback((item: NavigationItem) => {
@@ -394,4 +394,3 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({
 };
 
 export default MobileNavigation;
-

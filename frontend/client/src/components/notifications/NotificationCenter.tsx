@@ -98,7 +98,7 @@ export default function NotificationCenter({
   const supportsSplitSheets = React.useMemo(() => {
     const config = professionConfigs[profession];
     if (!config) return profession === 'music_producer';
-    return profession === 'music_producer' || professionSupports(profession 'split_sheets,');
+    return profession === 'music_producer' || professionSupports(profession, 'split_sheets');
   }, [profession, professionConfigs, professionSupports]);
   
   const [showSettings, setShowSettings] = useState(false);

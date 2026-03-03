@@ -29,6 +29,7 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Mic,
   MicOff,
@@ -48,6 +49,26 @@ interface CollaborationToolsProps {
   onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
 
+interface VoiceSession {
+  id: string;
+  started: Date;
+  commands: string[];
+}
+
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  earned: boolean;
+}
+
+interface ActivityEntry {
+  id: string;
+  type: string;
+  timestamp: Date;
+  description: string;
+}
+
 export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
   selectedProject,
   onNotificationCreate,
@@ -61,7 +82,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
 
   // Component registration and performance monitoring
   useEffect(() => {
-    const endTiming = performance.startTiming('collaboration_tools_render,');
+    const endTiming = performance.startTiming('collaboration_tools_render');
     
     lifecycle.registerComponent({
       id: 'CollaborationTools',
@@ -104,13 +125,13 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
     };
   }, [analytics, lifecycle, performance, debugging, selectedProject?.id]);
 
-  const [activeVoiceSession, setActiveVoiceSession] = useState<Record<string, unknown> | null>(null);
-  const [achievements, setAchievements] = useState<Record<string, unknown>[]>([
+  const [activeVoiceSession, setActiveVoiceSession] = useState<VoiceSession | null>(null);
+  const [achievements, setAchievements] = useState<Achievement[]>([
     { id: '1', title: 'First Project', description: 'Created your first project', earned: true },
     { id: '2', title: 'Quick Learner', description: 'Completed basic tutorial', earned: true },
     { id: '3', title: 'User Expert', description: 'Used all major features', earned: false }
   ]);
-  const [recentActivities, setRecentActivities] = useState<Record<string, unknown>[]>([
+  const [recentActivities, setRecentActivities] = useState<ActivityEntry[]>([
     { id: '1', type: 'element_added', timestamp: new Date(), description: 'Added image element' },
     { id: '2', type: 'project_saved', timestamp: new Date(), description: 'Project auto-saved' }
   ]);
@@ -127,10 +148,10 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
   const startVoiceSession = useCallback(async () => {
     try {
       // Simulate voice API call
-      const newSession = {
+      const newSession: VoiceSession = {
         id: `voice_${Date.now()}`,
         started: new Date(),
-        commands: []
+        commands: [],
       };
 
       setActiveVoiceSession(newSession);
@@ -189,7 +210,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
         id: `achievement_unlocked_${Date.now()}`,
         type: 'project_updated',
         title: 'Achievement Unlocked, !',
-        message: `${achieved.title}: ${achieved.description as string}`,
+        message: `${achieved.title}: ${achieved.description}`,
         priority: 'medium',
         source: 'gamification',
         timestamp: new Date().toISOString()
@@ -317,7 +338,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
                             {achievement.title}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {achievement.description as string}
+                            {achievement.description}
                           </Typography>
                         </Box>
                         {achievement.earned && (
@@ -351,7 +372,7 @@ export const CollaborationTools: React.FC<CollaborationToolsProps> = ({
                   </Avatar>
                 </ListItemIcon>
                 <ListItemText
-                  primary={activity.description as string}
+                  primary={activity.description}
                   secondary={activity.timestamp.toLocaleString()}
                 />
               </ListItem>

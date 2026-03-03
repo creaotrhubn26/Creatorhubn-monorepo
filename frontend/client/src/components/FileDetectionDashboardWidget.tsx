@@ -124,7 +124,7 @@ export default function FileDetectionDashboardWidget({
   const syncGoogleDriveMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/google/drive/sync-folders', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ userI, d,}),
     });
@@ -140,7 +140,7 @@ export default function FileDetectionDashboardWidget({
   const relocateFileMutation = useMutation({
     mutationFn: async ({ filed, targetFolder }: { fileId: number; targetFolder: string }) => {
       const response = await fetch('/api/relocate-file', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ filed, targetFolder, userId }),
     });

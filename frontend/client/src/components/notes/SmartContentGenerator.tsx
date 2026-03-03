@@ -208,8 +208,8 @@ export const SmartContentGenerator: React.FC<SmartContentGeneratorProps> = ({
             { id:  3, label: "End", type: "end",}
           ],
           edges: [
-            { from: 1to:  2 },
-            { from: 2to:  3 }
+            { from: 1, to: 2 },
+            { from: 2, to: 3 }
           ],
           settings: params
     };
@@ -478,4 +478,3 @@ export const SmartContentGenerator: React.FC<SmartContentGeneratorProps> = ({
 };
 
 export default SmartContentGenerator;
-

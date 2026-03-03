@@ -231,12 +231,13 @@ const OptimizedCanvas: React.FC<OptimizedCanvasProps> = memo(({
       x >= obj.x && x <= obj.x + obj.width &&
       y >= obj.y && y <= obj.y + obj.height
     );
+    const nextHovered = hovered ?? null;
 
-    if (hovered !== hoveredObject) {
-      setHoveredObject(hovered);
+    if (nextHovered !== hoveredObject) {
+      setHoveredObject(nextHovered);
       
       if (onObjectHover) {
-        onObjectHover(hovered);
+        onObjectHover(nextHovered);
   }
   }
 }, [objects, hoveredObject, onObjectHover]);
@@ -539,7 +540,6 @@ const OptimizedCanvas: React.FC<OptimizedCanvasProps> = memo(({
 OptimizedCanvas.displayName ='OptimizedCanvas';
 
 export default OptimizedCanvas;
-
 
 
 

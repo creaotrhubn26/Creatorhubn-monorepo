@@ -274,7 +274,7 @@ export default function TableOfContents({
                     sx={{
                       width:  4,
                       height:  4,
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       backgroundColor: 'text.secondary'}}
                   />
                 </Box>
@@ -286,7 +286,7 @@ export default function TableOfContents({
                 <Typography
                   variant="body2"
                   sx={{
-                    fontWeight: sCurrent ? 600 : 50,
+                    fontWeight: isCurrent ? 600 : 500,
                     fontSize: `${Math.max(0.5, 1 - depth * 0.1)}rem`,
                     color: isCurrent ? 'primary.contrastText' : 'text.primary'}}
                 >
@@ -301,7 +301,7 @@ export default function TableOfContents({
                         <Chip
                           size="small"
                           label={`${item.wordCount} ord`}
-                          icon={theming.getThemedIcon('speed')}}
+                          icon={theming.getThemedIcon('speed')}
                           sx={{ fontSize: '0.65rem', height: 20}}
                         />
                       )}
@@ -406,23 +406,21 @@ export default function TableOfContents({
     // Filter by level
     if (filterLevel !== null) {
       const filterByLevel = (items: TOCItem[]): TOCItem[] => {
-        return items.filter(item => {
-          if (item.level === filterLevel) return true;
-          if (item.children.length > 0) {
-            const filteredChildren = filterByLevel(item.children);
-            if (filteredChildren.length > 0) {
-              return { ...item, children: filteredChildren };
-          }
-        }
-          return false;
-      });
-    };
+        return items
+          .map((item) => ({
+            ...item,
+            children: item.children.length > 0 ? filterByLevel(item.children) : [],
+          }))
+          .filter((item) => item.level === filterLevel || item.children.length > 0);
+      };
       filtered = filterByLevel(filtered);
   }
 
     // Sort items
     const sortItems = (items: TOCItem[]): TOCItem[] => {
-      return items.sort(, (b) => {
+      return items
+        .slice()
+        .sort((a, b) => {
         switch (sortBy) {
           case 'title':
             return a.title.localeCompare(b.title);
@@ -430,11 +428,12 @@ export default function TableOfContents({
             return a.level - b.level;
           case 'position':
           default: return a.position - b.position;
-    }
-    }).map(item => ({
-        ...item,
-        children: item.children.length > 0 ? sortItems(item.children) : [],
-    }));
+        }
+      })
+        .map((item) => ({
+          ...item,
+          children: item.children.length > 0 ? sortItems(item.children) : [],
+        }));
   };
 
     return sortItems(filtered);

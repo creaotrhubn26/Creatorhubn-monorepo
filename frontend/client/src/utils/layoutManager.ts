@@ -37,7 +37,7 @@ export interface LayoutConfig {
 
 export interface LayoutElement {
   id: string;
-  type: 'container, ' | 'item' | 'group' | 'spacer';
+  type: 'container' | 'item' | 'group' | 'spacer';
   element: HTMLElement;
   position: { x: number; y: number };
   size: { width: number; height: number };
@@ -441,7 +441,7 @@ class LayoutManager {
     if (!this.state.isEnabled) throw new Error('Layout manager is not enabled');
 
     const element = this.state.elements.get(elementId);
-    if (!element) throw new Error(`Element not found: ${elementd}`);
+    if (!element) throw new Error(`Element not found: ${elementId}`);
 
     try {
       const startTime = Date.now();

@@ -121,7 +121,7 @@ export const TutorialSelectionNotificationSystem: React.FC<
   const calculateFinalScore = (tutorial: TutorialComparison): number => {
     const qualityWeight = 0.4;
     const typeBonus = tutorial.type === 'video' ? 10 : 0;
-    const stepsBonus = Math.min(tutorial.steps *,  220);
+    const stepsBonus = Math.min(tutorial.steps * 2, 20);
     const ratingBonus = tutorial.userRating * 10;
 
     return Math.round(tutorial.qualityScore * qualityWeight + typeBonus + stepsBonus + ratingBonus);
@@ -153,8 +153,8 @@ export const TutorialSelectionNotificationSystem: React.FC<
 🏆 "${selectedTutorial.title}" ble valgt av admin som den beste veiledningen blant ${selectedTutorial.competitorCount} konkurrerende tutorials!
 
 📊 SCORE RESULTAT: • Kvalitetsscore: ${selectedTutorial.qualityScore}%
-• Type bonus: ${selectedTutorial.type === 'video' ? '+10 (Video)' : '+0 (Mixed, )'}
-• Steg bonus: +${Math.min(selectedTutorial.steps *,  220)}
+• Type bonus: ${selectedTutorial.type === 'video' ? '+10 (Video)' : '+0 (Mixed)'}
+• Steg bonus: +${Math.min(selectedTutorial.steps * 2, 20)}
 • Rating bonus: +${selectedTutorial.userRating * 10}
 • Konkurranse bonus: +${selectedTutorial.competitorCount * 25}
 • Utvalgt bonus: +150

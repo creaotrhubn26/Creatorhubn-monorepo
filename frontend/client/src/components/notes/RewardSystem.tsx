@@ -1,48 +1,47 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
-  CardHeader,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Chip,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-  LinearProgress,
-  Divider,
-  Tooltip,
-  Badge,
-  Avatar,
-  Tabs,
-  Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Alert,
-  AlertTitle,
-  FormControl,
-  InputLabel,
-  Select,
   MenuItem,
-  TextField,
+  Paper,
+  Select,
+  Stack,
   Switch,
-  FormControlLabel,
+  Tab,
+  Tabs,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import Grid from '@mui/material/Grid2';
+import {
+  LocalOffer,
+  Redeem,
+  ShoppingCart,
+  Star,
+  WorkspacePremium,
+} from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
-// Types
+interface RewardRequirement {
+  id: string;
+  description: string;
+  completed: boolean;
+  value: number;
+  maxValue: number;
+}
+
 interface Reward {
   id: string;
   name: string;
@@ -55,24 +54,7 @@ interface Reward {
   icon: string;
   unlocked: boolean;
   unlockedAt?: Date;
-  requirements: RewardRequirement[]
-}
-
-interface RewardRequirement {
-  id: string;
-  description: string;
-  completed: boolean;
-  value: number;
-  maxValue: number
-}
-
-interface RewardShop {
-  id: string;
-  name: string;
-  description: string;
-  items: Reward[];
-  category: string;
-  available: boolean
+  requirements: RewardRequirement[];
 }
 
 interface UserReward {
@@ -82,603 +64,374 @@ interface UserReward {
   earnedAt: Date;
   used: boolean;
   usedAt?: Date;
-  expiresAt?: Date
+  expiresAt?: Date;
 }
 
 interface RewardSystemProps {
   className?: string;
   onRewardEarned?: (reward: Reward) => void;
   onRewardUsed?: (reward: Reward) => void;
-  onShopPurchase?: (reward: Reward) => void
+  onShopPurchase?: (reward: Reward) => void;
 }
 
-// Mock data
+const INITIAL_REWARDS: Reward[] = [
+  {
+    id: 'rw-1',
+    name: 'Priority Export Slot',
+    description: 'Unlock one fast export slot.',
+    type: 'unlock',
+    value: 1,
+    cost: 80,
+    category: 'performance',
+    rarity: 'rare',
+    icon: 'workspace_premium',
+    unlocked: false,
+    requirements: [
+      {
+        id: 'req-1',
+        description: 'Complete 3 project exports',
+        completed: true,
+        value: 3,
+        maxValue: 3,
+      },
+    ],
+  },
+  {
+    id: 'rw-2',
+    name: 'Discount Voucher',
+    description: 'Get 10% off next premium feature purchase.',
+    type: 'discount',
+    value: 10,
+    cost: 60,
+    category: 'interaction',
+    rarity: 'uncommon',
+    icon: 'local_offer',
+    unlocked: false,
+    requirements: [
+      {
+        id: 'req-2',
+        description: 'Reach 200 contribution points',
+        completed: true,
+        value: 200,
+        maxValue: 200,
+      },
+    ],
+  },
+  {
+    id: 'rw-3',
+    name: 'Creator Star Badge',
+    description: 'Permanent profile badge for your workspace.',
+    type: 'badge',
+    value: 1,
+    cost: 40,
+    category: 'content',
+    rarity: 'common',
+    icon: 'star',
+    unlocked: true,
+    unlockedAt: new Date('2026-02-20T10:00:00Z'),
+    requirements: [
+      {
+        id: 'req-3',
+        description: 'Publish 1 project',
+        completed: true,
+        value: 1,
+        maxValue: 1,
+      },
+    ],
+  },
+];
 
+function rarityColor(rarity: Reward['rarity']): 'default' | 'success' | 'info' | 'warning' | 'error' {
+  switch (rarity) {
+    case 'uncommon':
+      return 'success';
+    case 'rare':
+      return 'info';
+    case 'epic':
+      return 'warning';
+    case 'legendary':
+      return 'error';
+    case 'common':
+    default:
+      return 'default';
+  }
+}
 
+function rewardIcon(iconName: string): React.ReactNode {
+  switch (iconName) {
+    case 'workspace_premium':
+      return <WorkspacePremium color="warning" />;
+    case 'local_offer':
+      return <LocalOffer color="primary" />;
+    case 'star':
+    default:
+      return <Star color="secondary" />;
+  }
+}
 
-
-
-
-const RewardSystem: React.FC<RewardSystemProps> = ({
-  className ='',
+export default function RewardSystem({
+  className,
   onRewardEarned,
   onRewardUsed,
-  onShopPurchase
-}) => {
-  // State
-  const [activeTab, setActiveTab] = useState(false);
-  
-  // Theming system
+  onShopPurchase,
+}: RewardSystemProps): React.ReactElement {
   const theming = useTheming('photographer');
-  const [selectedReward, setSelectedReward] = useState<Reward | null>(null);
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [selectedRewardId, setSelectedRewardId] = useState<string | null>(null);
   const [showRewardDialog, setShowRewardDialog] = useState(false);
-  const [showShopDialog, setShowShopDialog] = useState(false);
-  const [userPoints, setUserPoints] = useState(150);
-  const [rewards, setRewards] = useState<Reward[]>(mockRewards);
-  const [userRewards, setUserRewards] = useState<UserReward[]>(mockUserRewards);
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | Reward['category']>('all');
   const [showUnlockedOnly, setShowUnlockedOnly] = useState(false);
 
-  // Handlers
-  const handleRewardClick = useCallback((reward: Reward) => {
-    setSelectedReward(reward);
-    setShowRewardDialog(true);
-}, []);
+  const [userPoints, setUserPoints] = useState(150);
+  const [rewards, setRewards] = useState<Reward[]>(INITIAL_REWARDS);
+  const [userRewards, setUserRewards] = useState<UserReward[]>([
+    {
+      id: 'ur-1',
+      rewardId: 'rw-3',
+      userId: 'user-1',
+      earnedAt: new Date('2026-02-20T10:00:00Z'),
+      used: false,
+    },
+  ]);
 
-  const handleRewardUse = useCallback((reward: Reward) => {
-    setUserRewards(prev => prev.map(ur => 
-      ur.rewardId === reward.id 
-        ? { ..., urused: true, usedAt: new Date(),}
-        : ur
-    ));
-    onRewardUsed?.(reward);
-}, [onRewardUsed]);
-
-  const handleShopPurchase = useCallback((reward: Reward) => {
-    if (userPoints >= reward.cost) {
-      setUserPoints(prev => prev - reward.cost);
-      setRewards(prev => prev.map(r => 
-        r.id === reward.id ? { .., .unlocked: true, unlockedAt: new Date(),} : r
-      ));
-      setUserRewards(prev => [...prev, {
-        id: Date.now().toString(),
-        rewardId: reward.d,
-        userId: 'user',
-        earnedAt: new Date(),
-        used: false
-  }]);
-      onShopPurchase?.(reward);
-  }
-}, [userPoints, onShopPurchase]);
-
-  const getRarityColor = useCallback((rarity: string) => {
-    switch (rarity) {
-      case 'common': return 'default';
-      case 'uncommon': return 'success';
-      case 'rare': return 'info';
-      case 'epic': return 'warning';
-      case 'legendary': return 'error';
-      default: return 'default';
-}
-}, []);
-
-  const getTypeIcon = useCallback((type: string) => {
-    switch (type) {
-      case 'points': return <CREATOR_HUB_ICONS.assessment />;
-      case 'badge': return <CREATOR_HUB_ICONS.star />;
-      case 'achievement': return <CREATOR_HUB_ICONS.checkCircle />;
-      case 'unlock': return <CREATOR_HUB_ICONS.lock />;
-      case 'discount': return <CREATOR_HUB_ICONS.percent />;
-      default: return <CREATOR_HUB_ICONS.star />;
-}
-}, []);
-
-  const getCategoryIcon = useCallback((category: string) => {
-    switch (category) {
-      case 'content': return <CREATOR_HUB_ICONS.article />;
-      case 'interaction': return <CREATOR_HUB_ICONS.smartToy />;
-      case 'collaboration': return <CREATOR_HUB_ICONS.group />;
-      case 'learning': return <CREATOR_HUB_ICONS.psychology />;
-      case 'performance': return <CREATOR_HUB_ICONS.assessment />;
-      default: return <CREATOR_HUB_ICONS.star />;
-}
-}, []);
-
-  const getRewardIcon = useCallback((iconName: string) => {
-    switch (iconName) {
-      case 'article': return <CREATOR_HUB_ICONS.article />;
-      case 'group': return <CREATOR_HUB_ICONS.group />;
-      case 'palette': return <CREATOR_HUB_ICONS.palette />;
-      case 'assessment': return <CREATOR_HUB_ICONS.assessment />;
-      case 'star': return <CREATOR_HUB_ICONS.star />;
-      case 'code': return <CREATOR_HUB_ICONS.code />;
-      case 'timeline': return <CREATOR_HUB_ICONS.timeline />;
-      default: return <CREATOR_HUB_ICONS.star />;
-}
-}, []);
-
-  const canAfford = useCallback((reward: Reward) => {
-    return userPoints >= reward.cost;
-}, [userPoints]);
-
-  const isUnlocked = useCallback((reward: Reward) => {
-    return reward.unlocked || userRewards.some(ur => ur.rewardId === reward.id && !ur.used);
-}, [userRewards]);
-
-  // Memoized data
   const filteredRewards = useMemo(() => {
-    let filtered = rewards;
-    
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(r => r.category === selectedCategory);
-  }
-    
-    if (showUnlockedOnly) {
-      filtered = filtered.filter(r => isUnlocked(r));
-  }
-    
-    return filtered;
-}, [rewards, selectedCategory, showUnlockedOnly, isUnlocked]);
-
-  const unlockedRewards = useMemo(() => {
-    return rewards.filter(r => isUnlocked(r));
-}, [rewards, isUnlocked]);
-
-  const availableRewards = useMemo(() => {
-    return rewards.filter(r => !isUnlocked(r) && canAfford(r));
-}, [rewards, isUnlocked, canAfford]);
-
-  const usedRewards = useMemo(() => {
-    return userRewards.filter(ur => ur.used);
-}, [userRewards]);
-
-  const activeRewards = useMemo(() => {
-    return userRewards.filter(ur => !ur.used);
-}, [userRewards]);
-
-  // Auto-check for new rewards
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // Simulate reward checking
-      const newRewards = rewards.filter(r => 
-        !r.unlocked && r.requirements.every(req => req.completed)
-      );
-      
-      newRewards.forEach(reward => {
-        setRewards(prev => prev.map(r => 
-          r.id === reward.id ? { ...r, unlocked: true, unlockedAt: new Date(),} : r
-        ));
-        onRewardEarned?.(reward);
+    return rewards.filter((reward) => {
+      if (selectedCategory !== 'all' && reward.category !== selectedCategory) {
+        return false;
+      }
+      if (showUnlockedOnly && !reward.unlocked) {
+        return false;
+      }
+      return true;
     });
-  }, 10000);
+  }, [rewards, selectedCategory, showUnlockedOnly]);
 
-    return () => clearInterval(interval);
-}, [rewards, onRewardEarned]);
+  const selectedReward = useMemo(
+    () => rewards.find((reward) => reward.id === selectedRewardId) ?? null,
+    [rewards, selectedRewardId],
+  );
+
+  const handlePurchase = (reward: Reward): void => {
+    if (reward.unlocked || userPoints < reward.cost) {
+      return;
+    }
+
+    const unlockedReward = {
+      ...reward,
+      unlocked: true,
+      unlockedAt: new Date(),
+    };
+
+    setUserPoints((previous) => previous - reward.cost);
+    setRewards((previous) =>
+      previous.map((entry) => (entry.id === reward.id ? unlockedReward : entry)),
+    );
+
+    const userReward: UserReward = {
+      id: `ur-${Date.now()}`,
+      rewardId: reward.id,
+      userId: 'user-1',
+      earnedAt: new Date(),
+      used: false,
+    };
+
+    setUserRewards((previous) => [userReward, ...previous]);
+    onShopPurchase?.(unlockedReward);
+    onRewardEarned?.(unlockedReward);
+  };
+
+  const handleUseReward = (reward: Reward): void => {
+    if (!reward.unlocked) {
+      return;
+    }
+
+    setUserRewards((previous) =>
+      previous.map((entry) =>
+        entry.rewardId === reward.id && !entry.used
+          ? {
+              ...entry,
+              used: true,
+              usedAt: new Date(),
+            }
+          : entry,
+      ),
+    );
+
+    onRewardUsed?.(reward);
+  };
+
+  const openReward = (rewardId: string): void => {
+    setSelectedRewardId(rewardId);
+    setShowRewardDialog(true);
+  };
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.star sx={{ fontSize:  32, color: 'primary.main'}} />
+    <Box className={className} sx={{ width: '100%' }}>
+      <Paper sx={{ ...theming.getThemedCardSx(), mb: 2, p: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Redeem color="primary" />
             <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Reward System</Typography>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Reward System
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                Earn and use rewards for your achievements
+                Earn, purchase, and apply rewards across Story Arc workflows.
               </Typography>
             </Box>
           </Stack>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip 
-              label={`${userPoints} points`}
-              color="primary" 
-              icon={<CREATOR_HUB_ICONS.assessment />}
-            />
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.store />}
-              onClick={() => setShowShopDialog(true)}
-            >
-              Shop
-            </Button>
-          </Stack>
+          <Chip label={`${userPoints} points`} color="primary" />
         </Stack>
       </Paper>
 
-      {/* Filters */}
-      <Paper elevation={1} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <FormControl size="small" sx={{ minWidth: 150}}>
-            <InputLabel>Category</InputLabel>
-            <Select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-            >
-              <MenuItem value="all">All Categories</MenuItem>
-              <MenuItem value="content">Content</MenuItem>
-              <MenuItem value="interaction">Interaction</MenuItem>
-              <MenuItem value="collaboration">Collaboration</MenuItem>
-              <MenuItem value="learning">Learning</MenuItem>
-              <MenuItem value="performance">Performance</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControlLabel
-            control={
-              <Switch
-                checked={showUnlockedOnly}
-                onChange={(e) => setShowUnlockedOnly(e.target.checked)}
-              />
-          }
-            label="Show unlocked only"
-          />
-        </Stack>
+      <Paper sx={{ p: 1, mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_event, next) => setActiveTab(next)}>
+          <Tab icon={<ShoppingCart />} iconPosition="start" label="Shop" />
+          <Tab icon={<Redeem />} iconPosition="start" label="My Rewards" />
+        </Tabs>
       </Paper>
 
-      {/* Stats Overview */}
-      <Grid container spacing={2} sx={{ mb:  2 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.star color="primary" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{unlockedRewards.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Unlocked Rewards
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.assessment color="success" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{availableRewards.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Available Rewards
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.checkCircle color="info" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{activeRewards.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Active Rewards
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.timeline color="warning" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{usedRewards.length}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Used Rewards
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {activeTab === 0 ? (
+        <Card sx={{ mb: 2 }}>
+          <CardContent>
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="reward-category-label">Category</InputLabel>
+                  <Select
+                    labelId="reward-category-label"
+                    label="Category"
+                    value={selectedCategory}
+                    onChange={(event) => {
+                      const value = event.target.value as 'all' | Reward['category'];
+                      setSelectedCategory(value);
+                    }}
+                  >
+                    <MenuItem value="all">All</MenuItem>
+                    <MenuItem value="content">Content</MenuItem>
+                    <MenuItem value="interaction">Interaction</MenuItem>
+                    <MenuItem value="collaboration">Collaboration</MenuItem>
+                    <MenuItem value="learning">Learning</MenuItem>
+                    <MenuItem value="performance">Performance</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ height: '100%' }}>
+                  <Typography variant="body2">Unlocked only</Typography>
+                  <Switch checked={showUnlockedOnly} onChange={(event) => setShowUnlockedOnly(event.target.checked)} />
+                </Stack>
+              </Grid>
+            </Grid>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
-        <Tab label="All Rewards" icon={<CREATOR_HUB_ICONS.star />} />
-        <Tab label="Unlocked" icon={<CREATOR_HUB_ICONS.checkCircle />} />
-        <Tab label="Available" icon={<CREATOR_HUB_ICONS.assessment />} />
-        <Tab label="My Rewards" icon={<CREATOR_HUB_ICONS.group />} />
-      </Tabs>
-
-      {/* All Rewards Tab */}
-      {activeTab === 0 && (
-        <Grid container spacing={2}>
-          {filteredRewards.map((reward) => (
-            <Grid item xs={12} sm={6} md={4} key={reward.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2',
-                  opacity: isUnlocked(reward) ? 1 : 0.8 }}
-                onClick={() => handleRewardClick(reward)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <Box sx={{ position: 'relative'}}>
-                      {getRewardIcon(reward.icon)}
-                      {isUnlocked(reward) && (
-                        <Badge
-                          overlap="circular"
-                          anchorOrigin={{ vertical: 'bottom', horizontal: 'right'}}
-                          badgeContent={<CREATOR_HUB_ICONS.checkCircle color="success" />}
-                        />
-                      )}
-                    </Box>
-                    <Box sx={{ flex:  1 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb:  1 }}>
-                        <Typography variant="subtitle1" gutterBottom>
-                          {reward.name}
+            <Grid container spacing={2}>
+              {filteredRewards.map((reward) => (
+                <Grid key={reward.id} size={{ xs: 12, md: 6 }}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            {rewardIcon(reward.icon)}
+                            <Typography variant="subtitle1">{reward.name}</Typography>
+                          </Stack>
+                          <Chip size="small" label={reward.rarity} color={rarityColor(reward.rarity)} />
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary">
+                          {reward.description}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Cost: {reward.cost} points
                         </Typography>
                         <Stack direction="row" spacing={1}>
-                          <Chip 
-                            label={reward.rarity}
-                            size="small" 
-                            color={getRarityColor(reward.rarity)}
-                          />
-                          {reward.cost > 0 && (
-                            <Chip 
-                              label={`${reward.cost} pts`}
-                              size="small" 
-                              color={canAfford(reward) ? 'primary' : 'error'}
-                            />
-                          )}
+                          <Button size="small" variant="outlined" onClick={() => openReward(reward.id)}>
+                            Details
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            disabled={reward.unlocked || userPoints < reward.cost}
+                            onClick={() => handlePurchase(reward)}
+                          >
+                            {reward.unlocked ? 'Unlocked' : 'Purchase'}
+                          </Button>
                         </Stack>
                       </Stack>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {reward.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          {getTypeIcon(reward.type)}
-                          <Typography variant="body2" sx={{ textTransform: 'capitalize'}}>
-                            {reward.type}
-                          </Typography>
-                        </Stack>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          {getCategoryIcon(reward.category)}
-                          <Typography variant="caption" sx={{ textTransform: 'capitalize'}}>
-                            {reward.category}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
-      )}
+          </CardContent>
+        </Card>
+      ) : null}
 
-      {/* Unlocked Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={2}>
-          {unlockedRewards.map((reward) => (
-            <Grid item xs={12} sm={6} md={4} key={reward.id}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <CREATOR_HUB_ICONS.checkCircle color="success" />
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        {reward.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {reward.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Chip 
-                          label={reward.rarity}
-                          size="small" 
-                          color={getRarityColor(reward.rarity)}
-                        />
-                        <Typography variant="caption" color="text.secondary">
-                          Unlocked {reward.unlockedAt?.toLocaleDateString()}
-                        </Typography>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
+      {activeTab === 1 ? (
+        <Card>
+          <CardContent>
+            {userRewards.length === 0 ? (
+              <Alert severity="info">No rewards earned yet.</Alert>
+            ) : (
+              <List>
+                {userRewards.map((userReward) => {
+                  const reward = rewards.find((entry) => entry.id === userReward.rewardId);
+                  if (!reward) {
+                    return null;
+                  }
 
-      {/* Available Tab */}
-      {activeTab === 2 && (
-        <Grid container spacing={2}>
-          {availableRewards.map((reward) => (
-            <Grid item xs={12} sm={6} md={4} key={reward.id}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getRewardIcon(reward.icon)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        {reward.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {reward.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Chip 
-                          label={`${reward.cost} pts`}
-                          size="small" 
-                          color="primary"
-                        />
-                        <Button size="small"
-                          variant="contained"
-                          onClick={() => handleShopPurchase(reward)} sx={theming.getThemedButtonSx()}
-                          disabled={!canAfford(reward)}
+                  return (
+                    <ListItem
+                      key={userReward.id}
+                      secondaryAction={
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          disabled={userReward.used}
+                          onClick={() => handleUseReward(reward)}
                         >
-                          Purchase
+                          {userReward.used ? 'Used' : 'Use'}
                         </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* My Rewards Tab */}
-      {activeTab === 3 && (
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <Paper elevation={1} sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Active Rewards
-              </Typography>
-              <List>
-                {activeRewards.map((userReward) => {
-                  const reward = rewards.find(r => r.id === userReward.rewardId);
-                  if (!reward) return null;
-                  
-                  return (
-                    <ListItem key={userReward.id}>
-                      <ListItemIcon>
-                        {getRewardIcon(reward.icon)}
-                      </ListItemIcon>
+                      }
+                    >
                       <ListItemText
                         primary={reward.name}
-                        secondary={`Earned ${userReward.earnedAt.toLocaleDateString()}`}
-                      />
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleRewardUse(reward)}
-                      >
-                        Use
-                      </Button>
-                    </ListItem>
-                  );
-              })}
-              </List>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper elevation={1} sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Used Rewards
-              </Typography>
-              <List>
-                {usedRewards.map((userReward) => {
-                  const reward = rewards.find(r => r.id === userReward.rewardId);
-                  if (!reward) return null;
-                  
-                  return (
-                    <ListItem key={userReward.id}>
-                      <ListItemIcon>
-                        <CREATOR_HUB_ICONS.checkCircle color="success" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={reward.name}
-                        secondary={`Used ${userReward.usedAt?.toLocaleDateString()}`}
+                        secondary={`Earned ${userReward.earnedAt.toLocaleDateString()} • ${reward.category}`}
                       />
                     </ListItem>
                   );
-              })}
+                })}
               </List>
-            </Paper>
-          </Grid>
-        </Grid>
-      )}
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
-      {/* Reward Dialog */}
-      <Dialog open={showRewardDialog} onClose={() => setShowRewardDialog(false)}>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            {selectedReward && getRewardIcon(selectedReward.icon)}
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedReward?.name}
-            </Typography>
-          </Stack>
-        </DialogTitle>
+      <Dialog open={showRewardDialog} onClose={() => setShowRewardDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{selectedReward?.name ?? 'Reward'}</DialogTitle>
         <DialogContent>
-          {selectedReward && (
-            <Stack spacing={2}>
-              <Typography variant="body1">
-                {selectedReward.description}
+          {selectedReward ? (
+            <Stack spacing={1}>
+              <Typography>{selectedReward.description}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Type: {selectedReward.type}
               </Typography>
-              
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Chip 
-                  label={selectedReward.rarity}
-                  color={getRarityColor(selectedReward.rarity)}
-                />
-                <Chip 
-                  label={selectedReward.type}
-                  color="primary"
-                />
-                <Chip 
-                  label={selectedReward.category}
-                  color="secondary"
-                />
-              </Stack>
-
-              {selectedReward.cost > 0 && (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Cost: {selectedReward.cost} points
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    You have {userPoints} points available
-                  </Typography>
-                </Box>
-              )}
-
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  Requirements: </Typography>
-                {selectedReward.requirements.map((req) => (
-                  <Box key={req.d} sx={{ mb:  1 }}>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center">
-                      <Typography variant="body2">{req.description}</Typography>
-                      <Typography variant="body2">
-                        {req.value}/{req.maxValue}
-                      </Typography>
-                    </Stack>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={(req.value / req.maxValue) * 100}
-                      sx={{ mt: 0, .height:  4, borderRadius:  2 }}
-                    />
-                  </Box>
-                ))}
-              </Box>
+              <Typography variant="body2" color="text.secondary">
+                Category: {selectedReward.category}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Cost: {selectedReward.cost} points
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Status: {selectedReward.unlocked ? 'Unlocked' : 'Locked'}
+              </Typography>
             </Stack>
-          )}
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowRewardDialog(false)}>
-            Close
-          </Button>
-          {selectedReward && selectedReward.cost > 0 && !isUnlocked(selectedReward) && (
-            <Button variant="contained" 
-              onClick={() => {
-                handleShopPurchase(selectedReward);
-                setShowRewardDialog(false);
-            } sx={theming.getThemedButtonSx()}}
-              disabled={!canAfford(selectedReward)}
-            >
-              Purchase
-            </Button>
-          )}
+          <Button onClick={() => setShowRewardDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
-};
-
-export default RewardSystem;
-
+}

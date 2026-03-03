@@ -201,6 +201,8 @@ export default function VendorTypeManager({
     queryKey: ['/api/vendor-types/expandable/available'],
     queryFn: () => apiRequest('/api/vendor-types/expandable/available')
   });
+  const availableVendorTypes = availableTypes?.availableTypes ?? [];
+  const availableVendorTypeCount = availableTypes?.count ?? availableVendorTypes.length;
 
   // Enable vendor type mutation
   const enableTypeMutation = useMutation({
@@ -666,11 +668,11 @@ export default function VendorTypeManager({
       </Paper>
 
       {/* Available Expandable Types */}
-      {availableTypes?.availableTypes?.length > 0 && (
+      {availableVendorTypes.length > 0 && (
         <Paper sx={{ p: 3 }}>
           <Typography variant="h5" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
             <Extension sx={{ mr: 2, color: 'primary.main' }} />
-            Tilgjengelige Utvidelser ({availableTypes.count})
+            Tilgjengelige Utvidelser ({availableVendorTypeCount})
           </Typography>
           
           <Alert severity="info" sx={{ mb: 3 }}>
@@ -680,7 +682,7 @@ export default function VendorTypeManager({
           </Alert>
           
           <Grid container spacing={2}>
-            {availableTypes.availableTypes.map((type: VendorTypeConfig) => (
+            {availableVendorTypes.map((type: VendorTypeConfig) => (
               <Grid item xs={12} sm={6} md={4} key={type.id}>
                 <Card sx={{ 
                   height: '100%',

@@ -1,386 +1,441 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import {
+  Alert,
   Box,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Chip,
-  Button,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Alert,
-  Card as MuiCard,
+  DialogContent,
+  DialogTitle,
+  Stack,
+  Typography,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   CheckCircle,
-  RadioButtonUnchecked,
-  Warning,
   Error,
+  RadioButtonUnchecked,
   Storage,
+  Warning,
 } from '@mui/icons-material';
-import MemoryCardVisualDesign, { MemoryCardSet } from './MemoryCardVisualDesign';
+import { useTheming } from '../../utils/theming-helper';
+import MemoryCardVisualDesign, {
+  MemoryCardSet,
+  type MemoryCardStatus,
+  type MemoryCardTypeKey,
+} from './MemoryCardVisualDesign';
+
+type ProfessionType = 'photographer' | 'videographer' | 'music_producer';
 
 interface MemoryCardSelectorProps {
-  onCardSelected?: (cardType: 'A' | 'B' | 'C' | 'D' | 'E') => void;
-  selectedCard?: 'A' | 'B' | 'C' | 'D' | 'E' | null;
-  profession?: 'photographer' | 'videographer' | 'music_producer';
-  showSetOverview?: boolean
+  onCardSelected?: (cardType: MemoryCardTypeKey) => void;
+  selectedCard?: MemoryCardTypeKey | null;
+  profession?: ProfessionType;
+  showSetOverview?: boolean;
 }
 
 interface CardDetails {
-  type: 'A' | 'B' | 'C' | 'D' | 'E';
+  type: MemoryCardTypeKey;
   name: string;
   description: string;
   capacity: string;
   speed: string;
-  status: 'active' | 'backup' | 'full' | 'error' | 'empty';
-  usage: string;
+  status: MemoryCardStatus;
+  usagePercent: number;
   files: number;
-  lastUsed?: string
+  lastUsed?: string;
+}
+
+interface PersistedSelection {
+  selectedCard: MemoryCardTypeKey | null;
+}
+
+const LOCAL_STORAGE_KEY = 'creatorhub_memory_card_selector';
+
+const CARD_DETAILS: CardDetails[] = [
+  {
+    type: 'A',
+    name: 'Hovedkort',
+    description: 'Primert kort for aktiv produksjon.',
+    capacity: '128GB',
+    speed: 'V90',
+    status: 'active',
+    usagePercent: 72,
+    files: 287,
+    lastUsed: '2 timer siden',
+  },
+  {
+    type: 'B',
+    name: 'Backup-kort',
+    description: 'Synkron backup av viktig opptak.',
+    capacity: '64GB',
+    speed: 'V60',
+    status: 'backup',
+    usagePercent: 43,
+    files: 123,
+    lastUsed: '1 dag siden',
+  },
+  {
+    type: 'C',
+    name: 'Arkivkort',
+    description: 'Langtidslagring av ferdige shoots.',
+    capacity: '256GB',
+    speed: 'V90',
+    status: 'full',
+    usagePercent: 97,
+    files: 541,
+    lastUsed: '3 dager siden',
+  },
+  {
+    type: 'D',
+    name: 'Reservekort',
+    description: 'Tomt kort klart for raske bytter.',
+    capacity: '32GB',
+    speed: 'V30',
+    status: 'empty',
+    usagePercent: 0,
+    files: 0,
+    lastUsed: 'Aldri',
+  },
+  {
+    type: 'E',
+    name: 'Servicekort',
+    description: 'Kort med feil, krever utskifting.',
+    capacity: '64GB',
+    speed: 'V60',
+    status: 'error',
+    usagePercent: 100,
+    files: 0,
+    lastUsed: '1 uke siden',
+  },
+];
+
+function parseLocalStorageSelection(): MemoryCardTypeKey | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as PersistedSelection;
+    return parsed.selectedCard ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function getStatusIcon(status: MemoryCardStatus): React.ReactNode {
+  switch (status) {
+    case 'active':
+      return <CheckCircle sx={{ color: 'success.main' }} />;
+    case 'backup':
+      return <Storage sx={{ color: 'warning.main' }} />;
+    case 'full':
+      return <Warning sx={{ color: 'error.main' }} />;
+    case 'error':
+      return <Error sx={{ color: 'error.dark' }} />;
+    case 'empty':
+    default:
+      return <RadioButtonUnchecked sx={{ color: 'text.disabled' }} />;
+  }
+}
+
+function getStatusLabel(status: MemoryCardStatus): string {
+  switch (status) {
+    case 'active':
+      return 'Aktiv';
+    case 'backup':
+      return 'Backup';
+    case 'full':
+      return 'Nesten fullt';
+    case 'error':
+      return 'Feil';
+    case 'empty':
+    default:
+      return 'Tom';
+  }
 }
 
 export default function MemoryCardSelector({
   onCardSelected,
   selectedCard,
   profession = 'photographer',
-  showSetOverview = true
-}: MemoryCardSelectorProps) {
+  showSetOverview = true,
+}: MemoryCardSelectorProps): React.ReactElement {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // Database connection for MemoryCardSelector
-  const { data: componentData = [], isLoading } = useQuery({
-    queryKey: ['/api/component','user-data, '],
-    queryFn: () => apiRequest('/api/component/user-data', ),
-    retry: false,
-});
+  const theming = useTheming(profession);
 
-  // Mutation for updating component data
-  const updateMemoryCardSelector = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/component/update', {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify(data)
-  });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/component', ],});
-  }
-});
+  const [localSelection, setLocalSelection] = useState<MemoryCardTypeKey | null>(selectedCard ?? null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [selectedForDetails, setSelectedForDetails] = useState<CardDetails | null sx={theming.getThemedCardSx()}>(null);
+  const [selectedForDetails, setSelectedForDetails] = useState<CardDetails | null>(null);
 
-  const cardDetails: CardDetails[] = [
-    {
-      type: ', ',
-      name: 'Hovedkort - Aktiv',
-      description: 'Primært minnekort for aktiv fotografering',
-      capacity: '128G',
-      speed: 'V9',
-      status: 'active',
-      usage: '75, %',
-      files: 287,
-      lastUsed: '2 timer siden'
-},
-    {
-      type: ', ',
-      name: 'Backup - Sikkerhet',
-      description: 'Backup-kort for sikkerhetskopi',
-      capacity: '64G', 
-      speed: 'V6',
-      status: 'backup',
-      usage: '45, %',
-      files: 123,
-      lastUsed: '1 dag siden'
-},
-    {
-      type: ', ',
-      name: 'Arkiv - Fullt',
-      description: 'Arkivkort med tidligere prosjekter',
-      capacity: '256G',
-      speed: 'V9',
-      status: 'full',
-      usage: '98, %',
-      files: 541,
-      lastUsed: '3 dager siden'
-},
-    {
-      type: ', ',
-      name: 'Reserve - Tom',
-      description: 'Reservekort klart for bruk',
-      capacity: '32G',
-      speed: 'V3',
-      status: 'empty',
-      usage: '0, %',
-      files:  0,
-      lastUsed: 'Aldri'
-},
-    {
-      type: '',
-      name: 'Defekt - Feil',
-      description: 'Kort med feil - trenger erstatning',
-      capacity: '64G',
-      speed: 'V6',
-      status: 'error',
-      usage: 'N/',
-      files:  0,
-      lastUsed: '1 uke siden'
-}
-  ];
+  const persistedSelectionQuery = useQuery({
+    queryKey: ['memory-card-selection', user?.id],
+    queryFn: async (): Promise<PersistedSelection | null> => {
+      try {
+        const result = await apiRequest('/api/memory-cards/selection');
+        if (typeof result === 'object' && result !== null && 'selectedCard' in result) {
+          const selectedFromApi = (result as PersistedSelection).selectedCard;
+          return { selectedCard: selectedFromApi };
+        }
+      } catch {
+        // Falls back to local state when endpoint is unavailable in local dev.
+      }
+      return null;
+    },
+    staleTime: 60_000,
+  });
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active': return <CheckCircle sx={{ color: '#4CAF50' }} />;
-      case 'backup': return <Storage sx={{ color: '#FF9800' }} />;
-      case 'full': return <Warning sx={{ color: '#F44336' }} />;
-      case 'error': return <Error sx={{ color: '#E91E63' }} />;
-      case 'empty': return <RadioButtonUnchecked sx={{ color: '#9E9E9E' }} />;
-      default: return <RadioButtonUnchecked sx={{ color: '#757575' }} />;
-  }
-};
+  useEffect(() => {
+    if (selectedCard !== undefined) {
+      setLocalSelection(selectedCard);
+      return;
+    }
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'active': return 'Aktiv';
-      case 'backup': return 'Backup';
-      case 'full': return 'Fullt';
-      case 'error': return 'Feil';
-      case 'empty': return 'Tom';
-      default: return 'Ukjent';
-}
-};
+    const fromApi = persistedSelectionQuery.data?.selectedCard ?? null;
+    if (fromApi) {
+      setLocalSelection(fromApi);
+      return;
+    }
 
-  const handleCardClick = (cardType: 'A' | 'B' | 'C' | 'D' | 'E') => {
+    const fromStorage = parseLocalStorageSelection();
+    if (fromStorage) {
+      setLocalSelection(fromStorage);
+    }
+  }, [persistedSelectionQuery.data, selectedCard]);
+
+  const persistSelectionMutation = useMutation({
+    mutationFn: async (nextSelection: MemoryCardTypeKey): Promise<void> => {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ selectedCard: nextSelection }));
+      try {
+        await apiRequest('/api/memory-cards/selection', {
+          method: 'POST',
+          body: {
+            selectedCard: nextSelection,
+            userId: user?.id ?? null,
+          },
+        });
+      } catch {
+        // API can be unavailable in offline/local mode. Local persistence still works.
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['memory-card-selection', user?.id] });
+    },
+  });
+
+  const effectiveSelection = useMemo(
+    () => selectedCard ?? localSelection,
+    [selectedCard, localSelection],
+  );
+
+  const handleCardClick = (cardType: MemoryCardTypeKey): void => {
+    setLocalSelection(cardType);
     onCardSelected?.(cardType);
-};
+    persistSelectionMutation.mutate(cardType);
+  };
 
-  const handleDetailsClick = (card: CardDetails) => {
+  const handleDetailsClick = (card: CardDetails): void => {
     setSelectedForDetails(card);
     setDetailsOpen(true);
-};
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Set Overview */}
-      {showSetOverview && (
-        <Box sx={{ mb:  4 }}>
-          <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
-            {theming.getThemedIcon('storage')}
-            Minnekort Oversikt
+    <Box sx={{ p: 3 }}>
+      {showSetOverview ? (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 2 }}>
+            Minnekortoversikt
           </Typography>
-          <Box sx={{ 
-            p:  3, 
-            bgcolor: 'background.paper', 
-            borderRadius: 2
-            boxShadow:  1,
-            display: 'flex',
-            justifyContent: 'center'
-      }}>
-            <MemoryCardSet profession={profession} showLabels={true} />
-          </Box>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent>
+              <MemoryCardSet profession={profession} showLabels />
+            </CardContent>
+          </Card>
         </Box>
-      )}
+      ) : null}
 
-      {/* Detailed Card Selection */}
-      <Typography variant="h6" sx={{  mb:  3  }}>
-        Velg Minnekort
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+          Velg Minnekort
+        </Typography>
+        {persistSelectionMutation.isPending ? <Chip size="small" label="Lagrer..." /> : null}
+      </Stack>
+
+      {persistedSelectionQuery.isError ? (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          Kun lokal lagring er tilgjengelig akkurat ne.
+        </Alert>
+      ) : null}
 
       <Grid container spacing={2}>
-        {cardDetails.map((card) => (
-          <Grid size={{ xs: 12 }} sm={6} md={4} key={card.type}>
-            <MuiCard
-              sx={{
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                border: selectedCard === card.type ? '2px solid #1976d2' : '1px solid #e0e0e0', '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 4 }
-            }}
-              onClick={() => handleCardClick(card.type)}
-            >
-              <CardContent sx={theming.getThemedCardSx()}>
-                {/* Card Visual */}
-                <Box sx={{ display: 'flex', justifyContent: 'center', mb:  2 }}>
-                  <MemoryCardVisualDesign
-                    cardType={card.type}
-                    capacity={card.capacity}
-                    speed={card.speed}
-                    status={card.status}
-                    profession={profession}
-                    size="large"
-                  />
-                </Box>
+        {CARD_DETAILS.map((card) => {
+          const isSelected = effectiveSelection === card.type;
+          const isDisabled = card.status === 'error';
 
-                {/* Card Info */}
-                <Typography variant="h6" sx={{  mb: 1, textAlign: 'center'  }}>
-                  Kort {card.type}
-                </Typography>
-                
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, textAlign: 'center' }}>
-                  {card.name}
-                </Typography>
+          return (
+            <Grid key={card.type} size={{ xs: 12, sm: 6, md: 4 }}>
+              <Card
+                sx={{
+                  border: isSelected ? '2px solid' : '1px solid',
+                  borderColor: isSelected ? 'primary.main' : 'divider',
+                  cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  opacity: isDisabled ? 0.7 : 1,
+                  transition: 'all 160ms ease',
+                  '&:hover': isDisabled
+                    ? undefined
+                    : {
+                        boxShadow: 4,
+                        transform: 'translateY(-2px)',
+                      },
+                }}
+                onClick={() => {
+                  if (!isDisabled) {
+                    handleCardClick(card.type);
+                  }
+                }}
+              >
+                <CardContent>
+                  <Stack spacing={1.5}>
+                    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                      <MemoryCardVisualDesign
+                        cardType={card.type}
+                        capacity={card.capacity}
+                        speed={card.speed}
+                        status={card.status}
+                        profession={profession}
+                        size="large"
+                      />
+                    </Box>
 
-                {/* Status and Details */}
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                  <Chip
-                    icon={getStatusIcon(card.status)}
-                    label={getStatusText(card.status)}
-                    size="small"
-                    variant="outlined"
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {card.capacity}
-                  </Typography>
-                </Box>
+                    <Typography variant="h6" align="center" sx={{ color: theming.colors.primary }}>
+                      Kort {card.type}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" align="center">
+                      {card.name}
+                    </Typography>
 
-                {/* Usage Info */}
-                <Box sx={{ mb:  2 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Bruk: {card.usage} • {card.files.toLocaleString()} filer
-                  </Typography>
-                </Box>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Chip
+                        icon={getStatusIcon(card.status)}
+                        label={getStatusLabel(card.status)}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Typography variant="caption" color="text.secondary">
+                        {card.capacity}
+                      </Typography>
+                    </Stack>
 
-                {/* Action Buttons */}
-                <Box sx={{ display: 'flex', gap:  1 }}>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    fullWidth
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDetailsClick(card);
-                  }}
-                  >
-                    Detaljer
-                  </Button>
-                  <Button
-                    variant={selectedCard === card.type ? 'contained' : 'outlined'}
-                    size="small"
-                    fullWidth
-                    disabled={card.status === 'error'}
-                  >
-                    {selectedCard === card.type ? 'Valgt' : 'Velg'}
-                  </Button>
-                </Box>
-              </CardContent>
-            </MuiCard>
-          </Grid>
-        ))}
+                    <Typography variant="caption" color="text.secondary">
+                      Bruk: {card.usagePercent}% • {card.files.toLocaleString()} filer
+                    </Typography>
+
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        fullWidth
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDetailsClick(card);
+                        }}
+                        size="small"
+                        variant="outlined"
+                      >
+                        Detaljer
+                      </Button>
+                      <Button
+                        fullWidth
+                        disabled={isDisabled}
+                        size="small"
+                        variant={isSelected ? 'contained' : 'outlined'}
+                      >
+                        {isSelected ? 'Valgt' : 'Velg'}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
 
-      {/* Details Dialog */}
-      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} fullWidth maxWidth="sm">
         <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            {selectedForDetails && (
-              <MemoryCardVisualDesign
-                cardType={selectedForDetails.type}
-                capacity={selectedForDetails.capacity}
-                speed={selectedForDetails.speed}
-                status={selectedForDetails.status}
-                profession={profession}
-                size="medium"
-              />
-            )}
-            <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                Minnekort {selectedForDetails?.type}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {selectedForDetails?.name}
-              </Typography>
-            </Box>
-          </Box>
+          {selectedForDetails ? `Minnekort ${selectedForDetails.type}` : 'Kortdetaljer'}
         </DialogTitle>
-        
         <DialogContent>
-          {selectedForDetails && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap:  2 }}>
-              <Typography variant="body1">
-                {selectedForDetails.description}
-              </Typography>
+          {selectedForDetails ? (
+            <Stack spacing={2}>
+              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                <MemoryCardVisualDesign
+                  cardType={selectedForDetails.type}
+                  capacity={selectedForDetails.capacity}
+                  speed={selectedForDetails.speed}
+                  status={selectedForDetails.status}
+                  profession={profession}
+                  size="medium"
+                />
+              </Box>
 
-              {selectedForDetails.status === 'error' && (
-                <Alert severity="error">
-                  Dette minnekortet har feil og bør erstattes umiddelbart.
-                </Alert>
-              )}
+              <Typography>{selectedForDetails.description}</Typography>
 
-              {selectedForDetails.status === 'full' && (
-                <Alert severity="warning">
-                  Dette minnekortet er nesten fullt. Vurder å arkivere eller slette filer.
-                </Alert>
-              )}
+              {selectedForDetails.status === 'error' ? (
+                <Alert severity="error">Dette kortet er markert med feil og ber ikke brukes.</Alert>
+              ) : null}
 
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap:  2 }}>
-                <Box>
+              {selectedForDetails.status === 'full' ? (
+                <Alert severity="warning">Kortet er nesten fullt. Frigjer plass fer neste opptak.</Alert>
+              ) : null}
+
+              <Grid container spacing={1}>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">
                     Kapasitet
                   </Typography>
-                  <Typography variant="body1">
-                    {selectedForDetails.capacity}
-                  </Typography>
-                </Box>
-                <Box>
+                  <Typography>{selectedForDetails.capacity}</Typography>
+                </Grid>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">
                     Hastighet
                   </Typography>
-                  <Typography variant="body1">
-                    {selectedForDetails.speed}
-                  </Typography>
-                </Box>
-                <Box>
+                  <Typography>{selectedForDetails.speed}</Typography>
+                </Grid>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">
-                    Antall filer
+                    Filer
                   </Typography>
-                  <Typography variant="body1">
-                    {selectedForDetails.files.toLocaleString()}
-                  </Typography>
-                </Box>
-                <Box>
+                  <Typography>{selectedForDetails.files.toLocaleString()}</Typography>
+                </Grid>
+                <Grid size={{ xs: 6 }}>
                   <Typography variant="caption" color="text.secondary">
                     Sist brukt
                   </Typography>
-                  <Typography variant="body1">
-                    {selectedForDetails.lastUsed}
-                  </Typography>
-                </Box>
-              </Box>
-            </Box>
-          )}
+                  <Typography>{selectedForDetails.lastUsed ?? 'Ukjent'}</Typography>
+                </Grid>
+              </Grid>
+            </Stack>
+          ) : null}
         </DialogContent>
-        
         <DialogActions>
-          <Button onClick={() => setDetailsOpen(false)}>
-            Lukk
-          </Button>
-          {selectedForDetails && selectedForDetails.status !=='error' && (
-            <Button variant="contained" 
+          <Button onClick={() => setDetailsOpen(false)}>Lukk</Button>
+          {selectedForDetails && selectedForDetails.status !== 'error' ? (
+            <Button
+              variant="contained"
               onClick={() => {
                 handleCardClick(selectedForDetails.type);
                 setDetailsOpen(false);
-            }}
+              }}
             >
               Velg dette kortet
             </Button>
-          )}
+          ) : null}
         </DialogActions>
       </Dialog>
     </Box>

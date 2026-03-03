@@ -278,7 +278,7 @@ export const useDesignSystem = (options: UseDesignSystemOptions = {}): UseDesign
     setActiveTheme,
     getActiveTheme,
     state,
-    currentConfig,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -324,6 +324,5 @@ export const useDesignSystem = (options: UseDesignSystemOptions = {}): UseDesign
 };
 
 export default useDesignSystem;
-
 
 

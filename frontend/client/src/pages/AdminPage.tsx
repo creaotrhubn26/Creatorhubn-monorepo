@@ -1,76 +1,103 @@
-import { useTheming } from '../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Container,
-  Typography,
-  Paper,
-  Tabs,
-  Tab,
+  Breadcrumbs,
   Card,
   CardContent,
+  Container,
+  FormControlLabel,
   Grid,
-  Alert,
-  Breadcrumbs,
   Link,
+  Paper,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+  Button,
+  List,
+  ListItem,
+  ListItemText,
 } from '@mui/material';
 import {
-  Dashboard,
-  Inventory,
-  PhotoLibrary,
-  Memory,
-  AttachMoney,
-  Category,
-  Settings,
-  Upload,
-  Analytics,
+  Analytics as AnalyticsIcon,
+  Dashboard as DashboardIcon,
+  Inventory as InventoryIcon,
+  Memory as MemoryIcon,
+  PhotoLibrary as PhotoLibraryIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import ProductManager from '../components/admin/ProductManager';
 import PricingManagement from '../components/pricing/PricingManagement';
+import { useTheming } from '../utils/theming-helper';
 
 interface TabPanelProps {
-  children?: React.ReactNode;
+  value: number;
   index: number;
-  value: number
+  children: React.ReactNode;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`admin-tabpanel-${index}`}
-      aria-labelledby={`admin-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ py:  3 }}>{children}</Box>}
-    </div>
-  );
+function TabPanel({ value, index, children }: TabPanelProps) {
+  if (value !== index) {
+    return null;
+  }
+  return <Box sx={{ py: 3 }}>{children}</Box>;
 }
 
-function a11yProps(index: number) {
+function tabA11yProps(index: number) {
   return {
-    id: `admin-tab-${index}`'aria-controls': `admin-tabpanel-${index}`,
-};
+    id: `admin-tab-${index}`,
+    'aria-controls': `admin-tabpanel-${index}`,
+  };
 }
 
-const AdminPage: React.FC = () => {
-  const [tabValue, setTabValue] = useState(false);
-  
-  // Theming system
+export default function AdminPage() {
+  const [tabValue, setTabValue] = useState(0);
+  const [importSource, setImportSource] = useState('');
+  const [imports, setImports] = useState<string[]>([]);
+  const [settings, setSettings] = useState({
+    autoSync: true,
+    strictValidation: true,
+    analyticsEnabled: true,
+  });
+
   const theming = useTheming('photographer');
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-};
+  const dashboardStats = useMemo(() => {
+    return [
+      { label: 'Totale produkter', value: '120+', icon: <DashboardIcon color="primary" /> },
+      { label: 'Autentiske bilder', value: '95%', icon: <PhotoLibraryIcon color="success" /> },
+      { label: 'Firmware status', value: 'Aktiv', icon: <MemoryIcon color="warning" /> },
+      { label: 'System status', value: 'Operativ', icon: <AnalyticsIcon color="info" /> },
+    ];
+  }, []);
+
+  const analyticsSummary = useMemo(() => {
+    const totalImports = imports.length;
+    const syncState = settings.autoSync ? 'Aktiv' : 'Av';
+    return [
+      `Importer registrert: ${totalImports}`,
+      `Auto-sync: ${syncState}`,
+      `Validering: ${settings.strictValidation ? 'Streng' : 'Normal'}`,
+      `Analytics: ${settings.analyticsEnabled ? 'Aktiv' : 'Av'}`,
+    ];
+  }, [imports.length, settings.analyticsEnabled, settings.autoSync, settings.strictValidation]);
+
+  const addImportSource = () => {
+    const trimmed = importSource.trim();
+    if (!trimmed) {
+      return;
+    }
+    setImports((prev) => [trimmed, ...prev]);
+    setImportSource('');
+  };
 
   return (
-    <Container maxWidth="xl" sx={{ py:  4 }}>
-      {/* Header */}
-      <Box sx={{ mb:  4 }}>
-        <Breadcrumbs sx={{ mb:  2 }}>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Box sx={{ mb: 4 }}>
+        <Breadcrumbs sx={{ mb: 2 }}>
           <Link color="inherit" href="/">
             CreatorHub Norge
           </Link>
@@ -85,102 +112,47 @@ const AdminPage: React.FC = () => {
         </Typography>
 
         <Typography variant="subtitle1" color="text.secondary">
-          Avansert administrasjonssystem for CreatorHub Norge utstyrsdatabase med 200+ modeller
+          Administrer produkter, priser, importflyt og plattforminnstillinger.
         </Typography>
       </Box>
 
-      {/* Admin Notice */}
-      <Alert severity="info" sx={{ mb:  3 }}>
-        <strong>Avansert Utstyrsdatabase</strong> - Komplett administrasjon av 200+ kameraer,
-        objektiver og tilbehør med autentiske bilder fra Google Custom Search,
-        pHash-duplikatdeteksjon, og lisensieringssystem.
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Systemet er konfigurert for aktiv drift med produkt- og prisforvaltning i sanntid.
       </Alert>
 
-      {/* Stats Overview */}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Dashboard color="primary" />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Totale produkter
-                  </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>120+</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <PhotoLibrary color="success" />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Autentiske bilder
-                  </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>95%</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Memory color="warning" />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    Firmware-oppdateringer
-                  </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>Aktiv</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Analytics color="info" />
-                <Box>
-                  <Typography color="textSecondary" gutterBottom>
-                    System status
-                  </Typography>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>✅ Operativ</Typography>
-                </Box>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {dashboardStats.map((stat) => (
+          <Grid item xs={12} md={3} key={stat.label}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  {stat.icon}
+                  <Box>
+                    <Typography color="text.secondary">{stat.label}</Typography>
+                    <Typography variant="h4" sx={{ color: theming.colors.primary }}>
+                      {stat.value}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
       </Grid>
 
-      {/* Main Admin Interface */}
-      <Paper sx={{ width: '100%',  ...theming.getThemedCardSx() }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider',}}>
+      <Paper sx={{ width: '100%', ...theming.getThemedCardSx() }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs
             value={tabValue}
-            onChange={handleTabChange}
-            aria-label="admin navigation tabs"
+            onChange={(_, newValue: number) => setTabValue(newValue)}
             variant="scrollable"
             scrollButtons="auto"
           >
-            <Tab icon={<Inventory />} label="Produkter" {...a11yProps(0)} />
-            <Tab icon={{theming.getThemedIcon('photoLibrary')}} label="Bilder" {...a11yProps(1)} />
-            <Tab icon={<Memory />} label="Firmware" {...a11yProps(2)} />
-            <Tab icon={<Category />} label="Kompatibilitet" {...a11yProps(3)} />
-            <Tab icon={{theming.getThemedIcon('money')}} label="Priser" {...a11yProps(4)} />
-            <Tab icon={{theming.getThemedIcon('upload')}} label="Masseimport" {...a11yProps(5)} />
-            <Tab icon={{theming.getThemedIcon('analytics')}} label="Analyser" {...a11yProps(6)} />
-            <Tab icon={{theming.getThemedIcon('settings')}} label="Innstillinger" {...a11yProps(7)} />
+            <Tab icon={<InventoryIcon />} label="Produkter" {...tabA11yProps(0)} />
+            <Tab icon={<PhotoLibraryIcon />} label="Priser" {...tabA11yProps(1)} />
+            <Tab icon={<MemoryIcon />} label="Import" {...tabA11yProps(2)} />
+            <Tab icon={<AnalyticsIcon />} label="Analyser" {...tabA11yProps(3)} />
+            <Tab icon={<SettingsIcon />} label="Innstillinger" {...tabA11yProps(4)} />
           </Tabs>
         </Box>
 
@@ -189,91 +161,106 @@ const AdminPage: React.FC = () => {
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              Bildehåndtering
-            </Typography>
-            <Alert severity="info">
-              Komplett bildehåndteringssystem med pHash-duplikatdeteksjon, automatisk
-              størrelsesoptimalisering, og lisensieringssporing kommer snart.
-            </Alert>
-          </Box>
+          <PricingManagement />
         </TabPanel>
 
         <TabPanel value={tabValue} index={2}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              Firmware-administrasjon
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ mb: 2, color: theming.colors.primary }}>
+              Masseimport av data
             </Typography>
-            <Alert severity="info">
-              Automatisk firmware-oppdateringssystem med versjonssporing, nedlastingslenker, og
-              regional støtte kommer snart.
-            </Alert>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+              <TextField
+                label="Importkilde (URL eller filreferanse)"
+                fullWidth
+                value={importSource}
+                onChange={(event) => setImportSource(event.target.value)}
+              />
+              <Button variant="contained" onClick={addImportSource}>
+                Legg til import
+              </Button>
+            </Stack>
+            <List dense>
+              {imports.map((entry, index) => (
+                <ListItem key={`${entry}-${index}`} divider>
+                  <ListItemText
+                    primary={entry}
+                    secondary={`Registrert ${new Date().toLocaleString('nb-NO')}`}
+                  />
+                </ListItem>
+              ))}
+            </List>
+            {imports.length === 0 ? (
+              <Alert severity="info">Ingen importkilder registrert enda.</Alert>
+            ) : null}
           </Box>
         </TabPanel>
 
         <TabPanel value={tabValue} index={3}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              Kompatibilitetsadministrasjon
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ mb: 2, color: theming.colors.primary }}>
+              System-analyser
             </Typography>
-            <Alert severity="info">
-              Komplett kompatibilitetssystem for objektiv-kamera-fatning mapping og intelligent
-              tilbehørskompatibilitet kommer snart.
-            </Alert>
+            <List>
+              {analyticsSummary.map((line) => (
+                <ListItem key={line} disableGutters>
+                  <ListItemText primary={line} />
+                </ListItem>
+              ))}
+            </List>
           </Box>
         </TabPanel>
 
         <TabPanel value={tabValue} index={4}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              Prisadministrasjon
-            </Typography>
-            <Alert severity="info">
-              Prisovervåkingssystem med forhandlersporing, historisk prisutvikling, og automatisk
-              prisoversikt kommer snart.
-            </Alert>
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={5}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              Masseimport av data
-            </Typography>
-            <Alert severity="info">
-              Avansert CSV/JSON import-system med validering, deduplisering, og batch-prosessering
-              kommer snart.
-            </Alert>
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={6}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-              System-analyser
-            </Typography>
-            <Alert severity="info">
-              Komplett analytikksystem med bruksstatistikk, ytelsesmetrikker, og
-              databasintegritetrapporter kommer snart.
-            </Alert>
-          </Box>
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={7}>
-          <Box sx={{ p:  3 }}>
-            <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" sx={{ mb: 2, color: theming.colors.primary }}>
               Systeminnstillinger
             </Typography>
-            <Alert severity="info">
-              Avanserte systemkonfigurasjoner med API-kvoter, cache-innstillinger, og
-              ytelsesoptimaliseringer kommer snart.
-            </Alert>
+            <Stack spacing={1.5}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.autoSync}
+                    onChange={(event) =>
+                      setSettings((prev) => ({ ...prev, autoSync: event.target.checked }))
+                    }
+                  />
+                }
+                label="Auto-sync mot eksterne kilder"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.strictValidation}
+                    onChange={(event) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        strictValidation: event.target.checked,
+                      }))
+                    }
+                  />
+                }
+                label="Streng validering ved import"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.analyticsEnabled}
+                    onChange={(event) =>
+                      setSettings((prev) => ({
+                        ...prev,
+                        analyticsEnabled: event.target.checked,
+                      }))
+                    }
+                  />
+                }
+                label="Aktiver analytics-logging"
+              />
+            </Stack>
           </Box>
         </TabPanel>
       </Paper>
     </Container>
   );
-};
+}
 
-export default AdminPage;

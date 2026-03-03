@@ -54,7 +54,7 @@ export default function CommercialVideoShowcase({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },
@@ -71,7 +71,7 @@ export default function CommercialVideoShowcase({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },

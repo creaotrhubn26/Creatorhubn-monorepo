@@ -25,7 +25,7 @@ const queryClient = useQueryClient();
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },

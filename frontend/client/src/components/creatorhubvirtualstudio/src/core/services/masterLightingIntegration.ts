@@ -196,13 +196,20 @@ const HDRI_EXPOSURE_DATA: Record<string, Partial<HDRIExposureData>> = {
   'studio-dark': { brightness: 0.1, evContribution: -1, dominantColorTemp: 5500 },
   
   // Outdoor HDRIs
-  'sunny-day': { brightness: 0.95, evContribution: 14, dominantColorTemp: 5500 }, 'overcast': { brightness: 0.5, evContribution: 10, dominantColorTemp: 6500 }, 'golden-hour': { brightness: 0.7, evContribution: 12, dominantColorTemp: 3500 }, 'blue-hour': { brightness: 0.2, evContribution: 4, dominantColorTemp: 9000 }, 'sunset': { brightness: 0.6, evContribution: 11, dominantColorTemp: 3000 },
+  'sunny-day': { brightness: 0.95, evContribution: 14, dominantColorTemp: 5500 },
+  overcast: { brightness: 0.5, evContribution: 10, dominantColorTemp: 6500 },
+  'golden-hour': { brightness: 0.7, evContribution: 12, dominantColorTemp: 3500 },
+  'blue-hour': { brightness: 0.2, evContribution: 4, dominantColorTemp: 9000 },
+  sunset: { brightness: 0.6, evContribution: 11, dominantColorTemp: 3000 },
   
   // Indoor HDRIs
-  'office': { brightness: 0.4, evContribution: 7, dominantColorTemp: 4000 }, 'warehouse': { brightness: 0.3, evContribution: 5, dominantColorTemp: 5000 }, 'living-room': { brightness: 0.25, evContribution: 4, dominantColorTemp: 2700 },
+  office: { brightness: 0.4, evContribution: 7, dominantColorTemp: 4000 },
+  warehouse: { brightness: 0.3, evContribution: 5, dominantColorTemp: 5000 },
+  'living-room': { brightness: 0.25, evContribution: 4, dominantColorTemp: 2700 },
   
   // Night HDRIs
-  'night-city': { brightness: 0.15, evContribution: 1, dominantColorTemp: 4500 }, 'moonlight': { brightness: 0.05, evContribution: -3, dominantColorTemp: 6500 },
+  'night-city': { brightness: 0.15, evContribution: 1, dominantColorTemp: 4500 },
+  moonlight: { brightness: 0.05, evContribution: -3, dominantColorTemp: 6500 },
 };
 
 // =============================================================================
@@ -211,7 +218,12 @@ const HDRI_EXPOSURE_DATA: Record<string, Partial<HDRIExposureData>> = {
 
 const LUT_MOOD_MAPPING: Record<string, string[]> = {
   // Pattern moods -> LUT categories
-  'bright': ['clean','vibrant','summer','fresh']'high-key': ['bright','airy','fashion','beauty']'neutral': ['natural','balanced','documentary']'dramatic': ['cinematic','contrast','moody','film']'low-key': ['dark','noir','shadows','mysterious']'dark': ['noir','thriller','horror','night'],
+  bright: ['clean', 'vibrant', 'summer', 'fresh'],
+  'high-key': ['bright', 'airy', 'fashion', 'beauty'],
+  neutral: ['natural', 'balanced', 'documentary'],
+  dramatic: ['cinematic', 'contrast', 'moody', 'film'],
+  'low-key': ['dark', 'noir', 'shadows', 'mysterious'],
+  dark: ['noir', 'thriller', 'horror', 'night'],
 };
 
 // =============================================================================
@@ -219,7 +231,21 @@ const LUT_MOOD_MAPPING: Record<string, string[]> = {
 // =============================================================================
 
 const SKIN_TONE_ADJUSTMENTS: Record<string, { evAdjust: number; keyFillRatio: number; notes: string }> = {
-  'light': { evAdjust: 0, keyFillRatio: 3, notes: 'Standard metering, avoid overexposure on highlights' }, 'medium': { evAdjust: 0.3, keyFillRatio: 2.5, notes: 'Slight overexposure for natural look' }, 'dark': { evAdjust: 0.7, keyFillRatio: 2, notes: 'Open up exposure, use lower contrast ratio for detail' },
+  light: {
+    evAdjust: 0,
+    keyFillRatio: 3,
+    notes: 'Standard metering, avoid overexposure on highlights',
+  },
+  medium: {
+    evAdjust: 0.3,
+    keyFillRatio: 2.5,
+    notes: 'Slight overexposure for natural look',
+  },
+  dark: {
+    evAdjust: 0.7,
+    keyFillRatio: 2,
+    notes: 'Open up exposure, use lower contrast ratio for detail',
+  },
 };
 
 // =============================================================================
@@ -1115,7 +1141,11 @@ class MasterLightingIntegrationService {
   
   private subjectMatchesCategory(subject: string, category: string): boolean {
     const mapping: Record<string, string[]> = {
-      'portrait': ['portrait','beauty','interview']'product': ['product','commercial']'fashion': ['fashion','beauty','commercial']'automotive': ['product', 'commercial']'food': ['product'],
+      portrait: ['portrait', 'beauty', 'interview'],
+      product: ['product', 'commercial'],
+      fashion: ['fashion', 'beauty', 'commercial'],
+      automotive: ['product', 'commercial'],
+      food: ['product'],
     };
     
     return mapping[subject]?.includes(category) || false;
@@ -1147,7 +1177,12 @@ class MasterLightingIntegrationService {
   private estimatePrice(power: number, modifier: string): number {
     // Rough price estimates based on power and modifier
     const basePrices: Record<string, number> = {
-      'standard': 200'softbox': 350'umbrella': 250'beauty-dish': 400'grid': 300'octabox': 450,
+      standard: 200,
+      softbox: 350,
+      umbrella: 250,
+      'beauty-dish': 400,
+      grid: 300,
+      octabox: 450,
     };
     
     const basePrice = basePrices[modifier] || 300;
@@ -1158,7 +1193,10 @@ class MasterLightingIntegrationService {
   
   private estimateSetupTime(difficulty: string): string {
     const times: Record<string, string> = {
-      'beginner':'10-15 min','intermediate':'15-25 min', 'advanced':'25-40 min', 'expert' : '40-60 min',
+      beginner: '10-15 min',
+      intermediate: '15-25 min',
+      advanced: '25-40 min',
+      expert: '40-60 min',
     };
     return times[difficulty] || '20-30 min';
   }
@@ -1233,4 +1271,3 @@ class MasterLightingIntegrationService {
 // Export singleton
 export const masterLightingIntegration = new MasterLightingIntegrationService();
 export default masterLightingIntegration;
-

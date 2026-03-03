@@ -1,666 +1,650 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
-  CardHeader,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  InputLabel,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Chip,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-  LinearProgress,
-  Divider,
-  Tooltip,
-  Badge,
-  Avatar,
-  Tabs,
-  Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Alert,
-  AlertTitle,
-  FormControl,
-  InputLabel,
-  Select,
   MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
   TextField,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import {
+  Add as AddIcon,
+  CheckCircle as CheckCircleIcon,
+  Flag as FlagIcon,
+  TrendingUp as TrendingUpIcon,
+} from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
-// Types
+type GoalCategory =
+  | 'content'
+  | 'interaction'
+  | 'collaboration'
+  | 'learning'
+  | 'performance';
+type GoalPriority = 'low' | 'medium' | 'high';
+type GoalStatus = 'active' | 'completed' | 'paused' | 'cancelled';
+
 interface ProgressGoal {
   id: string;
   title: string;
   description: string;
-  category: 'content' | 'interaction' | 'collaboration' | 'learning' | 'performance';
+  category: GoalCategory;
   target: number;
   current: number;
   unit: string;
-  deadline?: Date;
-  priority: 'low' | 'medium' | 'high';
-  status: 'active' | 'completed' | 'paused' | 'cancelled';
+  priority: GoalPriority;
+  status: GoalStatus;
   createdAt: Date;
-  completedAt?: Date
+  completedAt?: Date;
 }
 
 interface ProgressMilestone {
   id: string;
-  title: string;
-  description: string;
   goalId: string;
+  title: string;
   targetValue: number;
   achieved: boolean;
   achievedAt?: Date;
-  reward: {
-    type: 'points' | 'badge' | 'achievement';
-    value: number;
-    name?: string;
-};
 }
 
 interface ProgressSession {
   id: string;
   goalId: string;
-  startTime: Date;
-  endTime: Date;
-  duration: number; // in minutes
-  progress: number;
-  notes?: string
+  date: Date;
+  delta: number;
+  note: string;
 }
 
 interface ProgressStats {
   totalGoals: number;
-  completedGoals: number;
   activeGoals: number;
-  totalProgress: number;
+  completedGoals: number;
   averageCompletion: number;
-  streak: number;
-  totalTimeSpent: number
+  totalDelta: number;
 }
 
 interface ProgressTrackingProps {
   className?: string;
   onGoalCompleted?: (goal: ProgressGoal) => void;
   onMilestoneReached?: (milestone: ProgressMilestone) => void;
-  onProgressUpdate?: (goal: ProgressGoal, progress: number) => void
+  onProgressUpdate?: (goal: ProgressGoal, progress: number) => void;
 }
 
-// Mock data
+interface NewGoalDraft {
+  title: string;
+  description: string;
+  category: GoalCategory;
+  target: number;
+  unit: string;
+  priority: GoalPriority;
+}
 
+const INITIAL_GOALS: ProgressGoal[] = [
+  {
+    id: 'goal-1',
+    title: 'Publiser klipp',
+    description: 'Publiser ferdige videoklipp denne uken',
+    category: 'content',
+    target: 8,
+    current: 3,
+    unit: 'klipp',
+    priority: 'high',
+    status: 'active',
+    createdAt: new Date(),
+  },
+  {
+    id: 'goal-2',
+    title: 'Svar pa kundekommentarer',
+    description: 'Hold svartid lav pa aktive prosjekt',
+    category: 'interaction',
+    target: 20,
+    current: 12,
+    unit: 'svar',
+    priority: 'medium',
+    status: 'active',
+    createdAt: new Date(),
+  },
+];
 
+const INITIAL_MILESTONES: ProgressMilestone[] = [
+  { id: 'm-1', goalId: 'goal-1', title: '50% ferdig', targetValue: 4, achieved: false },
+  { id: 'm-2', goalId: 'goal-1', title: '100% ferdig', targetValue: 8, achieved: false },
+  { id: 'm-3', goalId: 'goal-2', title: '50% ferdig', targetValue: 10, achieved: true, achievedAt: new Date() },
+  { id: 'm-4', goalId: 'goal-2', title: '100% ferdig', targetValue: 20, achieved: false },
+];
 
+const INITIAL_SESSIONS: ProgressSession[] = [
+  {
+    id: 's-1',
+    goalId: 'goal-1',
+    date: new Date(),
+    delta: 1,
+    note: 'La til et nytt highlight-klipp',
+  },
+  {
+    id: 's-2',
+    goalId: 'goal-2',
+    date: new Date(),
+    delta: 3,
+    note: 'Besvarte kommentarer fra kunder',
+  },
+];
 
+function getGoalPercent(goal: ProgressGoal): number {
+  if (goal.target <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.round((goal.current / goal.target) * 100));
+}
 
+function getStatusColor(status: GoalStatus): 'default' | 'primary' | 'success' | 'warning' | 'error' {
+  if (status === 'completed') return 'success';
+  if (status === 'active') return 'primary';
+  if (status === 'paused') return 'warning';
+  if (status === 'cancelled') return 'error';
+  return 'default';
+}
+
+function getPriorityColor(priority: GoalPriority): 'success' | 'warning' | 'error' {
+  if (priority === 'high') return 'error';
+  if (priority === 'medium') return 'warning';
+  return 'success';
+}
+
+function formatDate(value: Date): string {
+  return new Intl.DateTimeFormat('nb-NO', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(value);
+}
 
 const ProgressTracking: React.FC<ProgressTrackingProps> = ({
-  className ='',
+  className = '',
   onGoalCompleted,
   onMilestoneReached,
-  onProgressUpdate
+  onProgressUpdate,
 }) => {
-  // State
-  const [activeTab, setActiveTab] = useState(false);
-  
-  // Theming system
   const theming = useTheming('photographer');
+
+  const [tab, setTab] = useState(0);
+  const [goals, setGoals] = useState<ProgressGoal[]>(INITIAL_GOALS);
+  const [milestones, setMilestones] = useState<ProgressMilestone[]>(INITIAL_MILESTONES);
+  const [sessions, setSessions] = useState<ProgressSession[]>(INITIAL_SESSIONS);
   const [selectedGoal, setSelectedGoal] = useState<ProgressGoal | null>(null);
-  const [showGoalDialog, setShowGoalDialog] = useState(false);
-  const [showAddGoalDialog, setShowAddGoalDialog] = useState(false);
-  const [goals, setGoals] = useState<ProgressGoal[]>(mockGoals);
-  const [milestones, setMilestones] = useState<ProgressMilestone[]>(mockMilestones);
-  const [sessions, setSessions] = useState<ProgressSession[]>(mockSessions);
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
-
-  // Handlers
-  const handleGoalClick = useCallback((goal: ProgressGoal) => {
-    setSelectedGoal(goal);
-    setShowGoalDialog(true);
-}, []);
-
-  const handleProgressUpdate = useCallback((goalId: string, progress: number) => {
-    setGoals(prev => prev.map(goal => {
-      if (goal.id === goalId) {
-        const newCurrent = Math.min(goal.current + progress, goal.target);
-        const updatedGoal = { ...goal, current: newCurrent };
-        
-        if (newCurrent >= goal.target && goal.status === 'active') {
-          updatedGoal.status = 'completed';
-          updatedGoal.completedAt = new Date();
-          onGoalCompleted?.(updatedGoal);
-      }
-        
-        onProgressUpdate?.(updatedGoal, progress);
-        return updatedGoal;
-    }
-      return goal;
-  }));
-}, [onGoalCompleted, onProgressUpdate]);
-
-  const handleMilestoneCheck = useCallback((goalId: string) => {
-    const goal = goals.find(g => g.id === goalId);
-    if (!goal) return;
-
-    const goalMilestones = milestones.filter(m => m.goalId === goalId);
-    goalMilestones.forEach(milestone => {
-      if (!milestone.achieved && goal.current >= milestone.targetValue) {
-        setMilestones(prev => prev.map(m => 
-          m.id === milestone.id 
-            ? { .., .achieved: true, achievedAt: new Date(),}
-            : m
-        ));
-        onMilestoneReached?.(milestone);
-    }
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newGoal, setNewGoal] = useState<NewGoalDraft>({
+    title: '',
+    description: '',
+    category: 'content',
+    target: 10,
+    unit: 'enheter',
+    priority: 'medium',
   });
-}, [goals, milestones, onMilestoneReached]);
 
-  const getCategoryIcon = useCallback((category: string) => {
-    switch (category) {
-      case 'content': return <CREATOR_HUB_ICONS.article />;
-      case 'interaction': return <CREATOR_HUB_ICONS.smartToy />;
-      case 'collaboration': return <CREATOR_HUB_ICONS.group />;
-      case 'learning': return <CREATOR_HUB_ICONS.psychology />;
-      case 'performance': return <CREATOR_HUB_ICONS.assessment />;
-      default: return <CREATOR_HUB_ICONS.timeline />;
-}
-}, []);
-
-  const getPriorityColor = useCallback((priority: string) => {
-    switch (priority) {
-      case 'high': return 'error';
-      case 'medium': return 'warning';
-      case 'low': return 'success';
-      default: return 'default';
-}
-}, []);
-
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'active': return 'primary';
-      case 'completed': return 'success';
-      case 'paused': return 'warning';
-      case 'cancelled': return 'error';
-      default: return 'default';
-}
-}, []);
-
-  const formatDuration = useCallback((minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-  }
-    return `${mins}m`;
-}, []);
-
-  const getProgressPercentage = useCallback((goal: ProgressGoal) => {
-    return Math.min((goal.current / goal.target) * 10, 100);
-}, []);
-
-  const getDaysRemaining = useCallback((deadline: Date) => {
-    const now = new Date();
-    const diffTime = deadline.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-}, []);
-
-  // Memoized data
-  const stats: ProgressStats = useMemo(() => {
+  const stats = useMemo<ProgressStats>(() => {
     const totalGoals = goals.length;
-    const completedGoals = goals.filter(g => g.status === 'completed').length;
-    const activeGoals = goals.filter(g => g.status === 'active').length;
-    const totalProgress = goals.reduce((sum, goal) => sum + getProgressPercentage(goal), 0);
-    const averageCompletion = totalGoals > 0 ? totalProgress / totalGoals : 0;
-    const totalTimeSpent = sessions.reduce((sum, session) => sum + session.duration, 0);
-    
+    const activeGoals = goals.filter((goal) => goal.status === 'active').length;
+    const completedGoals = goals.filter((goal) => goal.status === 'completed').length;
+    const averageCompletion =
+      totalGoals > 0
+        ? goals.reduce((sum, goal) => sum + getGoalPercent(goal), 0) / totalGoals
+        : 0;
+    const totalDelta = sessions.reduce((sum, session) => sum + session.delta, 0);
+
     return {
       totalGoals,
-      completedGoals,
       activeGoals,
-      totalProgress,
+      completedGoals,
       averageCompletion,
-      streak:  7, // Mock streak
-      totalTimeSpent
-  };
-}, [goals, sessions, getProgressPercentage]);
+      totalDelta,
+    };
+  }, [goals, sessions]);
 
-  const activeGoals = useMemo(() => {
-    return goals.filter(g => g.status === 'active');
-}, [goals]);
+  const applyMilestonesForGoal = useCallback(
+    (goalId: string, nextValue: number) => {
+      setMilestones((prev) =>
+        prev.map((milestone) => {
+          if (milestone.goalId !== goalId || milestone.achieved || nextValue < milestone.targetValue) {
+            return milestone;
+          }
 
-  const completedGoals = useMemo(() => {
-    return goals.filter(g => g.status === 'completed');
-}, [goals]);
+          const reached: ProgressMilestone = {
+            ...milestone,
+            achieved: true,
+            achievedAt: new Date(),
+          };
+          onMilestoneReached?.(reached);
+          return reached;
+        }),
+      );
+    },
+    [onMilestoneReached],
+  );
 
-  const upcomingDeadlines = useMemo(() => {
-    return goals
-      .filter(g => g.deadline && g.status === 'active')
-      .sort((a, b) => (a.deadline?.getTime() || 0) - (b.deadline?.getTime() || 0))
-      .slice(0, 5);
-}, [goals]);
+  const updateGoalProgress = useCallback(
+    (goalId: string, delta: number) => {
+      let updatedGoal: ProgressGoal | null = null;
+      setGoals((prev) =>
+        prev.map((goal) => {
+          if (goal.id !== goalId) {
+            return goal;
+          }
 
-  // Auto-check milestones
-  useEffect(() => {
-    goals.forEach(goal => {
-      if (goal.status === 'active') {
-        handleMilestoneCheck(goal.id);
+          const nextValue = Math.max(0, Math.min(goal.target, goal.current + delta));
+          const nextStatus: GoalStatus =
+            nextValue >= goal.target ? 'completed' : goal.status === 'completed' ? 'active' : goal.status;
+          updatedGoal = {
+            ...goal,
+            current: nextValue,
+            status: nextStatus,
+            completedAt: nextStatus === 'completed' ? new Date() : undefined,
+          };
+
+          return updatedGoal;
+        }),
+      );
+
+      if (!updatedGoal) {
+        return;
+      }
+
+      setSessions((prev) => [
+        {
+          id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          goalId,
+          date: new Date(),
+          delta,
+          note: delta > 0 ? `Oppdatert +${delta}` : `Oppdatert ${delta}`,
+        },
+        ...prev,
+      ]);
+
+      applyMilestonesForGoal(goalId, updatedGoal.current);
+      onProgressUpdate?.(updatedGoal, delta);
+      if (updatedGoal.status === 'completed') {
+        onGoalCompleted?.(updatedGoal);
+      }
+    },
+    [applyMilestonesForGoal, onGoalCompleted, onProgressUpdate],
+  );
+
+  const createGoal = useCallback(() => {
+    if (!newGoal.title.trim()) {
+      return;
     }
-  });
-}, [goals, handleMilestoneCheck]);
+    const id = `goal-${Date.now()}`;
+    const created: ProgressGoal = {
+      id,
+      title: newGoal.title.trim(),
+      description: newGoal.description.trim(),
+      category: newGoal.category,
+      target: Math.max(1, newGoal.target),
+      current: 0,
+      unit: newGoal.unit.trim() || 'enheter',
+      priority: newGoal.priority,
+      status: 'active',
+      createdAt: new Date(),
+    };
+
+    const generatedMilestones: ProgressMilestone[] = [
+      {
+        id: `${id}-50`,
+        goalId: id,
+        title: '50% ferdig',
+        targetValue: Math.ceil(created.target / 2),
+        achieved: false,
+      },
+      {
+        id: `${id}-100`,
+        goalId: id,
+        title: '100% ferdig',
+        targetValue: created.target,
+        achieved: false,
+      },
+    ];
+
+    setGoals((prev) => [created, ...prev]);
+    setMilestones((prev) => [...generatedMilestones, ...prev]);
+    setNewGoal({
+      title: '',
+      description: '',
+      category: 'content',
+      target: 10,
+      unit: 'enheter',
+      priority: 'medium',
+    });
+    setShowCreateDialog(false);
+  }, [newGoal]);
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.timeline sx={{ fontSize:  32, color: 'primary.main'}} />
-            <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Progress Tracking</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Set goals and track your progress
-              </Typography>
-            </Box>
+    <Box className={className} sx={{ width: '100%' }}>
+      <Paper sx={{ p: 2, mb: 2, ...theming.getThemedCardSx() }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TrendingUpIcon color="primary" />
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              Progress Tracking
+            </Typography>
           </Stack>
-          <Stack direction="row" spacing={1}>
-            <FormControl size="small" sx={{ minWidth: 120}}>
-              <InputLabel>Time Range</InputLabel>
-              <Select
-                value={timeRange}
-                onChange={(e) => setTimeRange(e.target.value as any)}
-              >
-                <MenuItem value="7d">Last 7 Days</MenuItem>
-                <MenuItem value="30d">Last 30 Days</MenuItem>
-                <MenuItem value="90d">Last 90 Days</MenuItem>
-                <MenuItem value="1y">Last Year</MenuItem>
-              </Select>
-            </FormControl>
-            <Button variant="contained"
-              startIcon={<CREATOR_HUB_ICONS.add sx={theming.getThemedButtonSx()} />}
-              onClick={() => setShowAddGoalDialog(true)}
-            >
-              Add Goal
-            </Button>
-          </Stack>
+          <Button
+            startIcon={<AddIcon />}
+            variant="contained"
+            onClick={() => setShowCreateDialog(true)}
+          >
+            Add Goal
+          </Button>
         </Stack>
       </Paper>
 
-      {/* Stats Overview */}
-      <Grid container spacing={2} sx={{ mb:  2 }}>
+      <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.timeline color="primary" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.totalGoals}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Total Goals
-                  </Typography>
-                </Box>
-              </Stack>
+            <CardContent>
+              <Typography variant="h4">{stats.totalGoals}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Total Goals
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.checkCircle color="success" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.completedGoals}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Completed
-                  </Typography>
-                </Box>
-              </Stack>
+            <CardContent>
+              <Typography variant="h4">{stats.activeGoals}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Active
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.assessment color="info" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{stats.averageCompletion.toFixed(1)}%</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Avg Progress
-                  </Typography>
-                </Box>
-              </Stack>
+            <CardContent>
+              <Typography variant="h4">{stats.completedGoals}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Completed
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <CREATOR_HUB_ICONS.timeline color="warning" />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{formatDuration(stats.totalTimeSpent)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Time Spent
-                  </Typography>
-                </Box>
-              </Stack>
+            <CardContent>
+              <Typography variant="h4">{stats.averageCompletion.toFixed(1)}%</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Avg Completion
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
-        <Tab label="Active Goals" icon={<CREATOR_HUB_ICONS.timeline />} />
-        <Tab label="Completed Goals" icon={<CREATOR_HUB_ICONS.checkCircle />} />
-        <Tab label="Milestones" icon={<CREATOR_HUB_ICONS.star />} />
-        <Tab label="Sessions" icon={<CREATOR_HUB_ICONS.assessment />} />
-      </Tabs>
+      <Paper sx={{ ...theming.getThemedCardSx() }}>
+        <Tabs value={tab} onChange={(_, value: number) => setTab(value)}>
+          <Tab label="Goals" />
+          <Tab label="Milestones" />
+          <Tab label="Sessions" />
+        </Tabs>
 
-      {/* Active Goals Tab */}
-      {activeTab === 0 && (
-        <Grid container spacing={2}>
-          {activeGoals.map((goal) => (
-            <Grid item xs={12} md={6} key={goal.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2s'
-            }}
-                onClick={() => handleGoalClick(goal)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getCategoryIcon(goal.category)}
-                    <Box sx={{ flex:  1 }}>
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb:  1 }}>
-                        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                          {goal.title}
-                        </Typography>
-                        <Stack direction="row" spacing={1}>
-                          <Chip 
-                            label={goal.priority}
-                            size="small" 
-                            color={getPriorityColor(goal.priority)}
-                          />
-                          <Chip 
+        <Box sx={{ p: 2 }}>
+          {tab === 0 ? (
+            <Stack spacing={1.5}>
+              {goals.map((goal) => (
+                <Card key={goal.id} variant="outlined">
+                  <CardContent>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      justifyContent="space-between"
+                      spacing={1.5}
+                    >
+                      <Box sx={{ flex: 1 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            {goal.title}
+                          </Typography>
+                          <Chip
+                            size="small"
                             label={goal.status}
-                            size="small" 
                             color={getStatusColor(goal.status)}
                           />
-                        </Stack>
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {goal.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  1 }}>
-                        <Typography variant="body2">
-                          {goal.current} / {goal.target} {goal.unit}
-                        </Typography>
-                        <Typography variant="body2" color="primary">
-                          {getProgressPercentage(goal).toFixed(1)}%
-                        </Typography>
-                      </Stack>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={getProgressPercentage(goal)}
-                        sx={{ height:  8, borderRadius:  4, mb:  1 }}
-                      />
-                      {goal.deadline && (
-                        <Typography variant="caption" color="text.secondary">
-                          {getDaysRemaining(goal.deadline)} days remaining
-                        </Typography>
-                      )}
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Completed Goals Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={2}>
-          {completedGoals.map((goal) => (
-            <Grid item xs={12} md={6} key={goal.id}>
-              <Card sx={{ opacity: 0.9,  ...theming.getThemedCardSx() }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <CREATOR_HUB_ICONS.checkCircle color="success" />
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {goal.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {goal.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2">
-                          Completed {goal.completedAt?.toLocaleDateString()}
-                        </Typography>
-                        <Chip 
-                          label="Completed" 
-                          size="small" 
-                          color="success"
-                        />
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Milestones Tab */}
-      {activeTab === 2 && (
-        <Grid container spacing={2}>
-          {milestones.map((milestone) => (
-            <Grid item xs={12} md={6} key={milestone.id}>
-              <Card sx={{ opacity: milestone.achieved ? 1 : 0.8,  ...theming.getThemedCardSx() }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <Box sx={{ position: 'relative'}}>
-                      <CREATOR_HUB_ICONS.star color={milestone.achieved ? 'warning' : 'disabled'} />
-                      {milestone.achieved && (
-                        <Badge
-                          overlap="circular"
-                          anchorOrigin={{ vertical: 'bottom', horizontal: 'right'}}
-                          badgeContent={<CREATOR_HUB_ICONS.checkCircle color="success" />}
-                        />
-                      )}
-                    </Box>
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {milestone.title}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {milestone.description}
-                      </Typography>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography variant="body2">
-                          Target: {milestone.targetValue}
-                        </Typography>
-                        <Chip 
-                          label={milestone.achieved ? 'Achieved' : 'Pending'}
-                          size="small" 
-                          color={milestone.achieved ? 'success' : 'default'}
-                        />
-                      </Stack>
-                      {milestone.achieved && milestone.achievedAt && (
-                        <Typography variant="caption" color="text.secondary">
-                          Achieved {milestone.achievedAt.toLocaleDateString()}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Sessions Tab */}
-      {activeTab === 3 && (
-        <Paper elevation={1} sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Recent Sessions
-          </Typography>
-          <List>
-            {sessions.map((session) => {
-              const goal = goals.find(g => g.id === session.goalId);
-              return (
-                <ListItem key={session.id}>
-                  <ListItemIcon>
-                    <CREATOR_HUB_ICONS.assessment />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Typography variant="subtitle1">
-                          {goal?.title || 'Unknown Goal'}
-                        </Typography>
-                        <Chip 
-                          label={`+${session.progress}`}
-                          size="small" 
-                          color="success"
-                        />
-                      </Stack>
-                  }
-                    secondary={
-                      <Stack spacing={1}>
-                        <Typography variant="body2">
-                          {session.startTime.toLocaleString()} - {formatDuration(session.duration)}
-                        </Typography>
-                        {session.notes && (
-                          <Typography variant="body2" color="text.secondary">
-                            {session.notes}
-                          </Typography>
-                        )}
-                      </Stack>
-                  }
-                  />
-                </ListItem>
-              );
-          })}
-          </List>
-        </Paper>
-      )}
-
-      {/* Goal Dialog */}
-      <Dialog open={showGoalDialog} onClose={() => setShowGoalDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            {selectedGoal && getCategoryIcon(selectedGoal.category)}
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedGoal?.title}
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedGoal && (
-            <Stack spacing={3}>
-              <Typography variant="body1">
-                {selectedGoal.description}
-              </Typography>
-              
-              <Box>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  1 }}>
-                  <Typography variant="subtitle2">Progress</Typography>
-                  <Typography variant="body2">
-                    {selectedGoal.current} / {selectedGoal.target} {selectedGoal.unit}
-                  </Typography>
-                </Stack>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={getProgressPercentage(selectedGoal)}
-                  sx={{ height:  8, borderRadius:  4 }}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  {getProgressPercentage(selectedGoal).toFixed(1)}% complete
-                </Typography>
-              </Box>
-
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" gutterBottom>Priority</Typography>
-                  <Chip 
-                    label={selectedGoal.priority}
-                    color={getPriorityColor(selectedGoal.priority)}
-                  />
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="subtitle2" gutterBottom>Status</Typography>
-                  <Chip 
-                    label={selectedGoal.status}
-                    color={getStatusColor(selectedGoal.status)}
-                  />
-                </Grid>
-                {selectedGoal.deadline && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2" gutterBottom>Deadline</Typography>
-                    <Typography variant="body2">
-                      {selectedGoal.deadline.toLocaleDateString()}
-                      ({getDaysRemaining(selectedGoal.deadline)} days remaining)
-                    </Typography>
-                  </Grid>
-                )}
-              </Grid>
-
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>Milestones</Typography>
-                <Stack spacing={1}>
-                  {milestones
-                    .filter(m => m.goalId === selectedGoal.id)
-                    .map((milestone) => (
-                      <Box key={milestone.id}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="center">
-                          <Typography variant="body2">{milestone.title}</Typography>
-                          <Chip 
-                            label={milestone.achieved ? 'Achieved' : 'Pending'}
-                            size="small" 
-                            color={milestone.achieved ? 'success' : 'default'}
+                          <Chip
+                            size="small"
+                            label={goal.priority}
+                            color={getPriorityColor(goal.priority)}
                           />
                         </Stack>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {goal.description}
+                        </Typography>
+                        <LinearProgress
+                          variant="determinate"
+                          value={getGoalPercent(goal)}
+                          sx={{ height: 8, borderRadius: 4, mb: 0.5 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {goal.current}/{goal.target} {goal.unit} ({getGoalPercent(goal)}%)
+                        </Typography>
                       </Box>
-                    ))}
-                </Stack>
-              </Box>
+
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => updateGoalProgress(goal.id, 1)}
+                          disabled={goal.status === 'completed'}
+                        >
+                          +1
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => updateGoalProgress(goal.id, 5)}
+                          disabled={goal.status === 'completed'}
+                        >
+                          +5
+                        </Button>
+                        <Button
+                          variant="text"
+                          size="small"
+                          onClick={() => setSelectedGoal(goal)}
+                        >
+                          Details
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
             </Stack>
-          )}
+          ) : null}
+
+          {tab === 1 ? (
+            <List dense>
+              {milestones.map((milestone) => {
+                const goal = goals.find((g) => g.id === milestone.goalId);
+                return (
+                  <ListItem key={milestone.id}>
+                    <ListItemText
+                      primary={milestone.title}
+                      secondary={`${goal?.title ?? 'Unknown goal'} - Target ${milestone.targetValue}`}
+                    />
+                    {milestone.achieved ? (
+                      <Chip icon={<CheckCircleIcon />} color="success" label="Achieved" />
+                    ) : (
+                      <Chip icon={<FlagIcon />} color="default" label="Pending" />
+                    )}
+                  </ListItem>
+                );
+              })}
+            </List>
+          ) : null}
+
+          {tab === 2 ? (
+            <List dense>
+              {sessions.map((session) => {
+                const goal = goals.find((g) => g.id === session.goalId);
+                return (
+                  <ListItem key={session.id}>
+                    <ListItemText
+                      primary={`${goal?.title ?? 'Unknown goal'} (${session.delta > 0 ? '+' : ''}${session.delta})`}
+                      secondary={`${formatDate(session.date)} - ${session.note}`}
+                    />
+                  </ListItem>
+                );
+              })}
+              {sessions.length === 0 ? (
+                <Alert severity="info">Ingen progresjonssesjoner registrert ennå.</Alert>
+              ) : null}
+            </List>
+          ) : null}
+        </Box>
+      </Paper>
+
+      <Dialog open={Boolean(selectedGoal)} onClose={() => setSelectedGoal(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Goal details</DialogTitle>
+        <DialogContent>
+          {selectedGoal ? (
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <Typography variant="h6">{selectedGoal.title}</Typography>
+              <Typography variant="body2">{selectedGoal.description}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Category: {selectedGoal.category}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Progress: {selectedGoal.current}/{selectedGoal.target} {selectedGoal.unit}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Created: {formatDate(selectedGoal.createdAt)}
+              </Typography>
+              {selectedGoal.completedAt ? (
+                <Typography variant="body2" color="text.secondary">
+                  Completed: {formatDate(selectedGoal.completedAt)}
+                </Typography>
+              ) : null}
+            </Stack>
+          ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowGoalDialog(false)}>
-            Close
-          </Button>
-          <Button variant="contained" 
-            onClick={() => {
-              if (selectedGoal) {
-                handleProgressUpdate(selectedGoal.id, 1);
-                setShowGoalDialog(false);
-            } sx={theming.getThemedButtonSx()}
-          }}
-          >
-            Update Progress
+          <Button onClick={() => setSelectedGoal(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add new goal</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Title"
+              value={newGoal.title}
+              onChange={(event) =>
+                setNewGoal((prev) => ({ ...prev, title: event.target.value }))
+              }
+              fullWidth
+            />
+            <TextField
+              label="Description"
+              value={newGoal.description}
+              onChange={(event) =>
+                setNewGoal((prev) => ({ ...prev, description: event.target.value }))
+              }
+              fullWidth
+              multiline
+              minRows={2}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="goal-category-label">Category</InputLabel>
+              <Select
+                labelId="goal-category-label"
+                value={newGoal.category}
+                label="Category"
+                onChange={(event) =>
+                  setNewGoal((prev) => ({
+                    ...prev,
+                    category: event.target.value as GoalCategory,
+                  }))
+                }
+              >
+                <MenuItem value="content">Content</MenuItem>
+                <MenuItem value="interaction">Interaction</MenuItem>
+                <MenuItem value="collaboration">Collaboration</MenuItem>
+                <MenuItem value="learning">Learning</MenuItem>
+                <MenuItem value="performance">Performance</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Target"
+              type="number"
+              inputProps={{ min: 1 }}
+              value={newGoal.target}
+              onChange={(event) =>
+                setNewGoal((prev) => ({
+                  ...prev,
+                  target: Number(event.target.value || 1),
+                }))
+              }
+            />
+            <TextField
+              label="Unit"
+              value={newGoal.unit}
+              onChange={(event) =>
+                setNewGoal((prev) => ({ ...prev, unit: event.target.value }))
+              }
+            />
+            <FormControl fullWidth>
+              <InputLabel id="goal-priority-label">Priority</InputLabel>
+              <Select
+                labelId="goal-priority-label"
+                value={newGoal.priority}
+                label="Priority"
+                onChange={(event) =>
+                  setNewGoal((prev) => ({
+                    ...prev,
+                    priority: event.target.value as GoalPriority,
+                  }))
+                }
+              >
+                <MenuItem value="low">Low</MenuItem>
+                <MenuItem value="medium">Medium</MenuItem>
+                <MenuItem value="high">High</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={createGoal} disabled={!newGoal.title.trim()}>
+            Save goal
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Paper sx={{ p: 1.5, mt: 2, ...theming.getThemedCardSx() }}>
+        <Typography variant="body2" color="text.secondary">
+          Total updates logged: {stats.totalDelta}
+        </Typography>
+      </Paper>
     </Box>
   );
 };

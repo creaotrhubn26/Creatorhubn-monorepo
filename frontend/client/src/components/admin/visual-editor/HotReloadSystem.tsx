@@ -166,10 +166,12 @@ export class HotReloadManager {
   private captureFormState(doc: Document): Record<string, unknown> {
     const formState: Record<string, unknown> = {};
 
-    const inputs = doc.querySelectorAll('input, textarea, select');
-    inputs.forEach((input: Element, index: number) => {
+    const inputs = doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      'input, textarea, select',
+    );
+    inputs.forEach((input, index) => {
       const id = input.id || input.name || `input-${index}`;
-      if (input.type === 'checkbox' || input.type === 'radio') {
+      if (input instanceof HTMLInputElement && (input.type === 'checkbox' || input.type === 'radio')) {
         formState[id] = { checked: input.checked, value: input.value };
       } else {
         formState[id] = input.value;
@@ -183,18 +185,26 @@ export class HotReloadManager {
    * Restore form input values
    */
   private restoreFormState(doc: Document, formState: Record<string, unknown>) {
-    const inputs = doc.querySelectorAll('input, textarea, select');
-    inputs.forEach((input: Element, index: number) => {
+    const inputs = doc.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      'input, textarea, select',
+    );
+    inputs.forEach((input, index) => {
       const id = input.id || input.name || `input-${index}`;
       const savedValue = formState[id];
 
       if (savedValue !== undefined) {
-        if (typeof savedValue === 'object') {
+        if (
+          savedValue
+          && typeof savedValue === 'object'
+          && 'checked' in savedValue
+          && 'value' in savedValue
+          && input instanceof HTMLInputElement
+        ) {
           // Checkbox/radio
-          input.checked = savedValue.checked;
-          input.value = savedValue.value;
+          input.checked = typeof savedValue.checked === 'boolean' ? savedValue.checked : false;
+          input.value = typeof savedValue.value === 'string' ? savedValue.value : '';
         } else {
-          input.value = savedValue;
+          input.value = String(savedValue);
         }
       }
     });

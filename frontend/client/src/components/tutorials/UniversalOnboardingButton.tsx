@@ -1,97 +1,95 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React from 'react';
 import { useLocation } from 'wouter';
-import { Button, Tooltip, Chip as Badge } from '@mui/material';
-import { SettingsOutlined, ArrowForward, CheckCircle } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/api';
+import { Button, Chip, Tooltip } from '@mui/material';
+import { ArrowForward, CheckCircle, SettingsOutlined } from '@mui/icons-material';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
-interface UniversalOnboardingButtonProps { userType: 'photographer' | 'videographer' | 'music_producer' | 'northtone_vendor' | 'print_vendor' }
+interface UniversalOnboardingButtonProps {
+  userType: 'photographer' | 'videographer' | 'music_producer' | 'northtone_vendor' | 'print_vendor';
+}
 
-export default function UniversalOnboardingButton({ userType }: UniversalOnboardingButtonProps) {
+interface AuthUser {
+  id?: string;
+}
+
+interface OnboardingProgress {
+  currentStep?: number;
+  completedAt?: string | null;
+}
+
+export default function UniversalOnboardingButton({ userType }: UniversalOnboardingButtonProps): React.ReactElement {
   const [, setLocation] = useLocation();
-  
-  // Theming system
-  const theming = useTheming('photographer');
+  const theming = useTheming(userType === 'videographer' ? 'videographer' : 'photographer');
 
-  // Get current user from session
-  const { data: currentUser } = useQuery({ 
-    queryKey: ["/api/auth/user", ],
-    queryFn: () => apiRequest('/api/auth/user', ),
-    retry: false
-});
+  const { data: currentUser } = useQuery({
+    queryKey: ['auth-user'],
+    queryFn: async (): Promise<AuthUser | null> => {
+      try {
+        const data = await apiRequest('/api/auth/user');
+        return typeof data === 'object' && data !== null ? (data as AuthUser) : null;
+      } catch {
+        return null;
+      }
+    },
+    retry: false,
+  });
 
-  // Check if user has completed onboarding
-  const { data: progress } = useQuery({ 
-    queryKey: [`/api/onboarding/progress/${currentUser?.d}`],
-    queryFn: () => apiRequest(`/api/onboarding/progress/${currentUser?.d}`),
-    enabled: !!currentUser?.d,
-    retry: false
-});
+  const userId = currentUser?.id;
 
-  const isCompleted = progress?.completedAt !== null;
-  const hasStarted = progress?.currentStep && progress.currentStep > 1;
+  const { data: progress } = useQuery({
+    queryKey: ['onboarding-progress', userId],
+    queryFn: async (): Promise<OnboardingProgress | null> => {
+      if (!userId) {
+        return null;
+      }
+      try {
+        const data = await apiRequest(`/api/onboarding/progress/${userId}`);
+        return typeof data === 'object' && data !== null ? (data as OnboardingProgress) : null;
+      } catch {
+        return null;
+      }
+    },
+    enabled: Boolean(userId),
+    retry: false,
+  });
 
-  const handleOnboardingClick = () => {
-    setLocation('/universal-onboarding');
-};
-  return ()
-    <Tooltip title={isCompleted ? "Onboarding fullført" : "Start universell oppsettveiledning"}>
+  const isCompleted = Boolean(progress?.completedAt);
+  const hasStarted = (progress?.currentStep ?? 0) > 1;
+
+  return (
+    <Tooltip title={isCompleted ? 'Onboarding fullfort' : 'Start universell oppsettveiledning'}>
       <Button
-        onClick={handleOnboardingClick}
+        onClick={() => setLocation('/universal-onboarding')}
         variant="outlined"
         size="small"
         sx={{
-          borderColor: isCompleted ? '#4caf50' : '#ff8c00',
-          color: isCompleted ? '#4caf50' : '#ff8c00',
-          backgroundColor: 'transparent',
-          minWidth: '40px',
-          height: '40px',
-          borderRadius: '12px',
-          display: 'flex',
           alignItems: 'center',
+          borderColor: isCompleted ? '#4caf50' : '#ff8c00',
+          borderRadius: '12px',
+          color: isCompleted ? '#4caf50' : '#ff8c00',
+          display: 'inline-flex',
           gap: '8px',
-          padding: '8px 12px',
-          transition: 'all 0.3s ease', '&:hover': {
-            backgroundColor: isCompleted ? 'rgba(6, 175, 80, 0.1)' : 'rgba(255, 140, 0, 0.1)',
+          minHeight: 38,
+          px: 1.25,
+          transition: 'all 120ms ease',
+          '&:hover': {
             borderColor: isCompleted ? '#4caf50' : '#ff8c00',
+            boxShadow: `0 0 0 2px ${theming.colors.light}`,
             transform: 'translateY(-1px)',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}}
+          },
+        }}
       >
-        {isCompleted ? ()
-               <CheckCircle sx={{ fontSize: 18 }} />
-              ) : ()
-                <SettingsOutlined sx={{ fontSize: 18 }} />
-    
+        {isCompleted ? <CheckCircle sx={{ fontSize: 18 }} /> : <SettingsOutlined sx={{ fontSize: 18 }} />}
 
-                <span
-                style={{
-                  fontSize: '0.875rem',
-                  fontWeight: 500,
-                  display: typeof window !== 'undefined' && window.innerWidth < 768 ? 'none' : 'inline' }}
-              >
-    
-          {isCompleted ? 'Fullført' : 'Oppsett'}
+        <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+          {isCompleted ? 'Fullfort' : 'Oppsett'}
         </span>
 
-        {hasStarted && !isCompleted && ()
-          <Badge
-            sx={{
-              backgroundColor: '#ff8c00',
-              color: 'white',
-              fontSize: '0.75rem',
-              height: '20px',
-              minWidth: '20px',
-              marginLeft: '4px'
-        }}
-          >
-            {progress?.currentStep || 1}
-          </Badge>
-        )}
+        {hasStarted && !isCompleted ? <Chip size="small" label={progress?.currentStep ?? 1} /> : null}
 
-        {!isCompleted && ()
-          <ArrowForward sx={{ fontSize:  14, marginLeft: '4px' }} />
-        )}
+        {!isCompleted ? <ArrowForward sx={{ fontSize: 14 }} /> : null}
       </Button>
     </Tooltip>
   );

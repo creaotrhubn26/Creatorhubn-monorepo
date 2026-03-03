@@ -173,14 +173,17 @@ export default function DocumentImporter({ onDocumentProcessed, onError }: Docum
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'application/pdf': ['.pdf', ]'text/plain': ['.txt']'text/markdown': ['.md']'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-  },
+      'application/pdf': ['.pdf'],
+      'text/plain': ['.txt'],
+      'text/markdown': ['.md'],
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    },
     multiple: false,
-});
+  });
 
   const retryProcessing = () => {
     if (extractedContent) {
-      processDocument(new File([extractedContent.text]'document.txt', { type: 'text/plain',}));
+      processDocument(new File([extractedContent.text], 'document.txt', { type: 'text/plain' }));
   }
 };
 
@@ -195,11 +198,14 @@ export default function DocumentImporter({ onDocumentProcessed, onError }: Docum
           textAlign: 'center',
           cursor: 'pointer',
           bgcolor: isDragActive ? 'primary.50' : 'background.paper',
-          transition: 'all 0.3s ease', '&:hover': {
+          transition: 'all 0.3s ease',
+          '&:hover': {
             borderColor: 'primary.main',
             bgcolor: 'primary.5',
-        }}}
-       sx={theming.getThemedCardSx()}>
+          },
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <input {...getInputProps()} />
         
         {isProcessing ? (
@@ -374,12 +380,12 @@ async function extractDocumentMetadata(file: File, text: string): Promise<Docume
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve({
-        title: file.name.replace(/\.[^/.]+, $, /', '),
+        title: file.name.replace(/\.[^/.]+$/, ''),
         author: 'Unknown',
         created: new Date().toISOString(),
         modified: new Date().toISOString(),
         pages:  1,
-        wordCount: text.split('').length,
+        wordCount: text.trim().length > 0 ? text.trim().split(/\s+/).length : 0,
     });
   }, 300);
 });

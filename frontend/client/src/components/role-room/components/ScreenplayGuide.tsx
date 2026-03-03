@@ -51,6 +51,7 @@ import {
   AutoStories as StoryboardNavIcon,
   Videocam as VideoIcon,
 } from '@mui/icons-material';
+import { GuideAnnotatedScreenshot } from './shared/guide/GuideAnnotationOverlay';
 import { useVisualEditor } from './admin/visual-editor/VisualEditorContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1201,9 +1202,13 @@ export const ScreenplayGuide: React.FC<ScreenplayGuideProps> = ({
                   <video src={stepOverride.videoUrl} controls style={{ width: '100%', display: 'block' }} />
                 </Box>
               ) : stepOverride.screenshotUrl ? (
-                <Box sx={{ width: '100%', my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <img src={stepOverride.screenshotUrl} alt={section.screenshotLabel} style={{ width: '100%', display: 'block' }} />
-                </Box>
+                <GuideAnnotatedScreenshot
+                  src={stepOverride.screenshotUrl}
+                  alt={section.screenshotLabel}
+                  annotations={stepOverride.annotations}
+                  containerSx={{ my: 2, borderRadius: 2, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}
+                  imageSx={{ objectFit: 'cover' }}
+                />
               ) : (
                 <>
                   <ScreenshotPlaceholder label={section.screenshotLabel} />

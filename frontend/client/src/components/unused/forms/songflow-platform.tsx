@@ -111,7 +111,7 @@ const queryClient = useQueryClient();
         headers: {
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           ...trackData,
           googleDriveBackup: true, // Always enable for music producers
@@ -148,7 +148,7 @@ const queryClient = useQueryClient();
         headers: {
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           backupType: 'google-drive',
           includeStems: true,

@@ -34,7 +34,7 @@ export interface CanvasMetrics {
 
 export interface RenderObject {
   id: string;
-  type: 'rectangle, ' | 'circle' | 'line' | 'text' | 'image' | 'path';
+  type: 'rectangle' | 'circle' | 'line' | 'text' | 'image' | 'path';
   x: number;
   y: number;
   width: number;
@@ -179,7 +179,7 @@ class CanvasOptimizer {
    */
   initializeCanvas(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d, ', {
+    this.ctx = canvas.getContext('2d', {
       alpha: true,
       desynchronized: true,
       willReadFrequently: false
@@ -858,7 +858,6 @@ export const getOptimizationRecommendations = () => {
 };
 
 export default canvasOptimizer;
-
 
 
 

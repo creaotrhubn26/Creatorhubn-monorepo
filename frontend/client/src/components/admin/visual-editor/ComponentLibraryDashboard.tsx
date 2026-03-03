@@ -28,7 +28,7 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Grid,
+  ChipProps,
   Card,
   CardContent,
   CardActions,
@@ -60,6 +60,7 @@ import {
   StepContent,
   StepButton,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   LibraryBooks,
   Add,
@@ -420,7 +421,7 @@ const ComponentLibraryDashboard: React.FC<ComponentLibraryDashboardProps> = memo
 }, [searchQuery, filterCategory, filterTag, searchComponents]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): ChipProps['color'] => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -467,18 +468,21 @@ const ComponentLibraryDashboard: React.FC<ComponentLibraryDashboardProps> = memo
 }, [position]);
 
   // Render minimal variant
-  const renderMinimal = () => (
-    <Tooltip title={`Component Library: ${getStatusText()}`}>
-      <Chip
-        icon={getStatusIcon()}
-        label={totalItems}
-        color={getStatusColor()}
-        size="small"
-        onClick={() => setShowLibraryDialog(true)}
-        sx={{ cursor: 'pointer'}}
-      />
-    </Tooltip>
-  );
+  const renderMinimal = () => {
+    const statusIcon = getStatusIcon();
+    return (
+      <Tooltip title={`Component Library: ${getStatusText()}`}>
+        <Chip
+          icon={React.isValidElement(statusIcon) ? statusIcon : undefined}
+          label={totalItems}
+          color={getStatusColor()}
+          size="small"
+          onClick={() => setShowLibraryDialog(true)}
+          sx={{ cursor: 'pointer'}}
+        />
+      </Tooltip>
+    );
+  };
 
   // Render detailed variant
   const renderDetailed = () => (
@@ -1195,7 +1199,6 @@ const ComponentLibraryDashboard: React.FC<ComponentLibraryDashboardProps> = memo
 ComponentLibraryDashboard.displayName ='ComponentLibraryDashboard';
 
 export default ComponentLibraryDashboard;
-
 
 
 

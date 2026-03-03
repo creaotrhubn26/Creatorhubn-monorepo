@@ -1,68 +1,45 @@
-// Placeholder for AdvancedAnalyticsDashboard.tsx
-// This component will provide a comprehensive interface for advanced analytics features.
-// It will display heatmaps, user behavior tracking, conversion funnels, A/B tests, and real-time metrics.
-
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Grid,
-  Tabs,
-  Tab,
-  Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Select,
+  Snackbar,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  IconButton,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Tabs,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  Snackbar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Divider,
-  Badge,
+  Tooltip,
+  Typography,
+  type AlertColor,
+  type ChipProps,
+  type SelectChangeEvent,
 } from '@mui/material';
-import {
-  Analytics,
-  TrendingUp,
-  Visibility,
-  Mouse as MouseIcon,
-  Timeline,
-  Science,
-  Insights,
-  Refresh,
-  Download,
-  Upload,
-  PlayArrow,
-  Stop,
-  Add,
-  Edit,
-  Delete,
-  Warning,
-  CheckCircle,
-  Info,
-} from '@mui/icons-material';
+import { Analytics, Info, Insights, Warning } from '@mui/icons-material';
 import { useAdvancedAnalytics } from '../../../hooks/useAdvancedAnalytics';
+import type { ABTest, AnalyticsInsight } from '../../../utils/advancedAnalytics';
 
 interface AdvancedAnalyticsDashboardProps {
   onSettingsClick: () => void;
@@ -73,23 +50,74 @@ interface AdvancedAnalyticsDashboardProps {
   onInsightsClick: () => void;
 }
 
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: AlertColor;
+};
+
+const INSIGHT_STATUSES: AnalyticsInsight['status'][] = [
+  'new',
+  'reviewed',
+  'implemented',
+  'dismissed',
+];
+
+const isInsightStatus = (value: string): value is AnalyticsInsight['status'] =>
+  INSIGHT_STATUSES.includes(value as AnalyticsInsight['status']);
+
+const getAbStatusColor = (status: ABTest['status']): ChipProps['color'] => {
+  switch (status) {
+    case 'running':
+      return 'success';
+    case 'draft':
+      return 'default';
+    case 'paused':
+      return 'warning';
+    case 'completed':
+      return 'info';
+    case 'cancelled':
+      return 'error';
+    default:
+      return 'default';
+  }
+};
+
+const getImpactColor = (
+  impact: AnalyticsInsight['impact'],
+): ChipProps['color'] => {
+  switch (impact) {
+    case 'critical':
+    case 'high':
+      return 'error';
+    case 'medium':
+      return 'warning';
+    case 'low':
+      return 'success';
+    default:
+      return 'default';
+  }
+};
+
 const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
   onSettingsClick,
   onHeatmapsClick,
   onBehaviorClick,
   onFunnelsClick,
   onTestsClick,
-  onInsightsClick
+  onInsightsClick,
 }) => {
-  const [activeTab, setActiveTab] = useState(false);
-  
-  // Theming system
   const theming = useTheming('prototype_tester');
+  const [activeTab, setActiveTab] = useState<number>(0);
   const [showCreateFunnelDialog, setShowCreateFunnelDialog] = useState(false);
   const [showCreateTestDialog, setShowCreateTestDialog] = useState(false);
   const [newFunnelName, setNewFunnelName] = useState('');
   const [newTestName, setNewTestName] = useState('');
-  const [snackbar, setSnackbar] = useState({ open: false, message: ', ', severity: 'success' as 'success' | 'error' | 'warning' | 'info',});
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
   const [errorDismissed, setErrorDismissed] = useState(false);
 
   const {
@@ -116,226 +144,400 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
     updateInsightStatus,
     refreshData,
     exportData,
-    importData
-} = useAdvancedAnalytics();
+    importData,
+  } = useAdvancedAnalytics();
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const heatmapAggregatedData = useMemo(
+    () => getHeatmapAggregatedData(),
+    [getHeatmapAggregatedData, heatmapData.length],
+  );
+  const popularElements = useMemo(
+    () => getPopularElements(),
+    [getPopularElements, userBehaviorEvents.length],
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      updateRealTimeMetrics();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [updateRealTimeMetrics]);
+
+  const showSnackbar = (message: string, severity: AlertColor): void => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
-};
+  };
 
   const handleCreateFunnel = () => {
-    if (!newFunnelName.trim()) return;
+    const funnelName = newFunnelName.trim();
+    if (!funnelName) return;
 
     try {
       createConversionFunnel({
-        name: newFunnelName,
-        steps:  [],
-        totalSessions:  0,
-        conversionRate:  0,
-        averageTimeToConvert: 0 });
-      setSnackbar({ open: true, message: 'Conversion funnel created successfully', severity: 'success',});
+        name: funnelName,
+        steps: [
+          {
+            id: `step-view-${Date.now()}`,
+            name: 'Page View',
+            description: 'User viewed the target page',
+            eventType: 'page_view',
+            order: 1,
+            sessions: 0,
+            conversionRate: 0,
+            averageTime: 0,
+            dropOffRate: 0,
+          },
+          {
+            id: `step-click-${Date.now()}`,
+            name: 'Primary Action',
+            description: 'User clicked primary CTA',
+            eventType: 'click',
+            eventSelector: '.primary-cta',
+            order: 2,
+            sessions: 0,
+            conversionRate: 0,
+            averageTime: 0,
+            dropOffRate: 0,
+          },
+        ],
+        totalSessions: 0,
+        conversionRate: 0,
+        averageTimeToConvert: 0,
+      });
       setShowCreateFunnelDialog(false);
-      setNewFunnelName(', ');
-  } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to create conversion funnel', severity: 'error',});
-  }
-};
+      setNewFunnelName('');
+      showSnackbar('Conversion funnel created successfully', 'success');
+    } catch {
+      showSnackbar('Failed to create conversion funnel', 'error');
+    }
+  };
 
   const handleCreateTest = () => {
-    if (!newTestName.trim()) return;
+    const testName = newTestName.trim();
+    if (!testName) return;
 
     try {
       createABTest({
-        name: newTestName,
+        name: testName,
         description: 'New A/B test',
         status: 'draft',
-        variants:  [],
-        trafficAllocation: 10,
+        variants: [
+          {
+            id: `variant-control-${Date.now()}`,
+            name: 'Control',
+            description: 'Current baseline experience',
+            trafficPercentage: 50,
+            changes: [],
+            sessions: 0,
+            conversions: 0,
+            conversionRate: 0,
+            averageSessionDuration: 0,
+            bounceRate: 0,
+          },
+          {
+            id: `variant-test-${Date.now()}`,
+            name: 'Variant',
+            description: 'Alternative experience',
+            trafficPercentage: 50,
+            changes: [],
+            sessions: 0,
+            conversions: 0,
+            conversionRate: 0,
+            averageSessionDuration: 0,
+            bounceRate: 0,
+          },
+        ],
+        trafficAllocation: 100,
         startDate: new Date(),
         primaryMetric: 'conversion_rate',
-        secondaryMetrics:  [],
-        confidenceLevel:  95,
-        minimumDetectableEffect: 10 });
-      setSnackbar({ open: true, message: 'A/B test created successfully', severity: 'success',});
+        secondaryMetrics: ['bounce_rate'],
+        confidenceLevel: 95,
+        minimumDetectableEffect: 10,
+      });
       setShowCreateTestDialog(false);
       setNewTestName('');
-  } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to create A/B test', severity: 'error',});
-  }
-};
+      showSnackbar('A/B test created successfully', 'success');
+    } catch {
+      showSnackbar('Failed to create A/B test', 'error');
+    }
+  };
 
   const handleStartTest = (testId: string) => {
     try {
       startABTest(testId);
-      setSnackbar({ open: true, message: 'A/B test started successfully', severity: 'success',});
-  } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to start A/B test', severity: 'error',});
-  }
-};
+      showSnackbar('A/B test started successfully', 'success');
+    } catch {
+      showSnackbar('Failed to start A/B test', 'error');
+    }
+  };
 
   const handleStopTest = (testId: string) => {
     try {
       stopABTest(testId);
       calculateABTestResults(testId);
-      setSnackbar({ open: true, message: 'A/B test stopped and results calculated', severity: 'success',});
-  } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to stop A/B test', severity: 'error',});
-  }
-};
+      showSnackbar('A/B test stopped and results calculated', 'success');
+    } catch {
+      showSnackbar('Failed to stop A/B test', 'error');
+    }
+  };
 
   const handleGenerateInsights = () => {
     try {
       generateInsights();
-      setSnackbar({ open: true, message: 'New insights generated', severity: 'success',});
-  } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to generate insights', severity: 'error',});
-  }
-};
+      showSnackbar('New insights generated', 'success');
+    } catch {
+      showSnackbar('Failed to generate insights', 'error');
+    }
+  };
 
-  const handleUpdateInsightStatus = (id: string, status: string) => {
+  const handleUpdateInsightStatus = (
+    id: string,
+    status: AnalyticsInsight['status'],
+  ) => {
     try {
-      updateInsightStatus(id, status as string);
-      setSnackbar({ open: true, message: 'Insight status updated', severity: 'success' });
-    } catch (err) {
-      setSnackbar({ open: true, message: 'Failed to update insight status', severity: 'error' });
-  }
-};
+      updateInsightStatus(id, status);
+      showSnackbar('Insight status updated', 'success');
+    } catch {
+      showSnackbar('Failed to update insight status', 'error');
+    }
+  };
+
+  const handleInsightStatusChange =
+    (insightId: string) => (event: SelectChangeEvent<AnalyticsInsight['status']>) => {
+      const value = event.target.value;
+      if (!isInsightStatus(value)) {
+        showSnackbar('Invalid insight status selected', 'warning');
+        return;
+      }
+      handleUpdateInsightStatus(insightId, value);
+    };
+
+  const handleRecordDemoInteraction = () => {
+    try {
+      const now = Date.now();
+      const sessionId = `session-${Math.floor(now / 1000)}`;
+      const userId = 'demo-user';
+      const x = 320 + Math.floor(Math.random() * 120);
+      const y = 180 + Math.floor(Math.random() * 80);
+
+      recordHeatmapEvent({
+        type: 'click',
+        x,
+        y,
+        intensity: 75,
+        sessionId,
+        userId,
+        elementId: 'demo-cta',
+        elementType: 'button',
+        viewport: { width: 1920, height: 1080 },
+      });
+
+      recordUserBehaviorEvent({
+        sessionId,
+        userId,
+        eventType: 'click',
+        elementId: 'demo-cta',
+        elementType: 'button',
+        elementText: 'Create Story Arc',
+        position: { x, y },
+        metadata: {
+          path: '/story-arc-studio',
+          referrer: 'internal',
+          device: 'desktop',
+          browser: 'chrome',
+          country: 'NO',
+        },
+      });
+
+      updateRealTimeMetrics();
+      showSnackbar('Recorded sample heatmap and behavior event', 'success');
+    } catch {
+      showSnackbar('Failed to record sample analytics event', 'error');
+    }
+  };
+
+  const handleNormalizeFunnels = () => {
+    try {
+      conversionFunnels.forEach((funnel) => {
+        if (funnel.steps.length === 0) return;
+        const firstSessions = funnel.steps[0].sessions;
+        const lastSessions = funnel.steps[funnel.steps.length - 1].sessions;
+        const conversionRate =
+          firstSessions > 0 ? (lastSessions / firstSessions) * 100 : 0;
+
+        updateConversionFunnel(funnel.id, {
+          totalSessions: firstSessions,
+          conversionRate,
+        });
+      });
+      showSnackbar('Funnels normalized from step session data', 'success');
+    } catch {
+      showSnackbar('Failed to normalize funnels', 'error');
+    }
+  };
 
   const handleExportData = () => {
     const data = exportData();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json',});
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `advanced-analytics-data-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `advanced-analytics-data-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
-};
+  };
 
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (loadEvent) => {
       try {
-        const data = JSON.parse(e.target?.result as string);
-        importData(data);
-        setSnackbar({ open: true, message: 'Data imported successfully', severity: 'success',});
-    } catch (err) {
-        setSnackbar({ open: true, message: 'Failed to import data', severity: 'error',});
-    }
-  };
+        const raw = loadEvent.target?.result;
+        if (typeof raw !== 'string') {
+          throw new Error('Invalid import payload');
+        }
+        importData(JSON.parse(raw));
+        showSnackbar('Data imported successfully', 'success');
+      } catch {
+        showSnackbar('Failed to import data', 'error');
+      }
+    };
     reader.readAsText(file);
-};
+  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'running': return 'success';
-      case 'draft': return 'default';
-      case 'paused': return 'warning';
-      case 'completed': return 'info';
-      case 'cancelled': return 'error';
-      default: return 'default';
-}
-};
-
-  const getImpactColor = (impact: string) => {
-    switch (impact) {
-      case 'critical': return 'error';
-      case 'high': return 'error';
-      case 'medium': return 'warning';
-      case 'low': return 'success';
-      default: return 'default';
-}
-};
-
-  // Update real-time metrics every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      updateRealTimeMetrics();
-  }, 30000);
-
-    return () => clearInterval(interval);
-}, [updateRealTimeMetrics]);
+  const deviceTotal =
+    realTimeMetrics.deviceBreakdown.desktop +
+    realTimeMetrics.deviceBreakdown.mobile +
+    realTimeMetrics.deviceBreakdown.tablet;
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-        <Typography variant="h4" component="h1" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
+    <Box sx={{ p: 3 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 3,
+          gap: 2,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Typography
+          variant="h4"
+          component="h1"
+          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+        >
           <Analytics color="primary" />
           Advanced Analytics Dashboard
         </Typography>
-        <Box sx={{ display: 'flex', gap:  1 }}>
+
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
             variant="outlined"
-            startIcon={theming.getThemedIcon('refresh')}
-            onClick={refreshData}
-            disabled={isLoading}
+            onClick={onSettingsClick}
+            aria-label="Open analytics settings"
           >
-            Refresh
+            Settings
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={theming.getThemedIcon('download')}
-            onClick={handleExportData}
-          >
-            Export
+          <Button variant="outlined" onClick={onHeatmapsClick}>
+            Heatmaps
           </Button>
-          <Button
-            variant="outlined"
-            startIcon={theming.getThemedIcon('upload')}
-            component="label"
-          >
-            Import
-            <input
-              type="file"
-              hidden
-              accept=".json"
-              onChange={handleImportData}
-            />
+          <Button variant="outlined" onClick={onBehaviorClick}>
+            Behavior
+          </Button>
+          <Button variant="outlined" onClick={onFunnelsClick}>
+            Funnels
+          </Button>
+          <Button variant="outlined" onClick={onTestsClick}>
+            Tests
+          </Button>
+          <Button variant="outlined" onClick={onInsightsClick}>
+            Insights
           </Button>
         </Box>
       </Box>
 
-      {/* Error Alert */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <Button
+          variant="outlined"
+          startIcon={theming.getThemedIcon('refresh')}
+          onClick={refreshData}
+          disabled={isLoading}
+        >
+          Refresh
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={theming.getThemedIcon('download')}
+          onClick={handleExportData}
+        >
+          Export
+        </Button>
+        <Button
+          variant="outlined"
+          startIcon={theming.getThemedIcon('upload')}
+          component="label"
+        >
+          Import
+          <input type="file" hidden accept=".json" onChange={handleImportData} />
+        </Button>
+        <Button variant="outlined" onClick={handleRecordDemoInteraction}>
+          Record Demo Event
+        </Button>
+        <Button variant="outlined" onClick={handleNormalizeFunnels}>
+          Normalize Funnels
+        </Button>
+      </Box>
+
       {error && !errorDismissed && (
-        <Alert severity="error" sx={{ mb:  2 }} onClose={() => setErrorDismissed(true)}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          onClose={() => setErrorDismissed(true)}
+        >
           {error}
         </Alert>
       )}
 
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={handleTabChange}>
           <Tab label="Overview" />
           <Tab label="Heatmaps" />
           <Tab label="User Behavior" />
           <Tab label="Conversion Funnels" />
           <Tab label="A/B Tests" />
-          <Tab label="Insights" />
+          <Tab
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                Insights
+                <Chip size="small" label={insights.length} />
+              </Box>
+            }
+          />
         </Tabs>
       </Box>
 
-      {/* Overview Tab */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
-          {/* Real-time Metrics Cards */}
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography color="textSecondary" gutterBottom>
+                <Typography color="text.secondary" gutterBottom>
                   Active Users
                 </Typography>
                 <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                   {realTimeMetrics.activeUsers}
                 </Typography>
-                <Typography color="textSecondary">
-                  Last hour
-                </Typography>
+                <Typography color="text.secondary">Last hour</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -343,15 +545,13 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography color="textSecondary" gutterBottom>
+                <Typography color="text.secondary" gutterBottom>
                   Page Views
                 </Typography>
                 <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                   {realTimeMetrics.pageViews}
                 </Typography>
-                <Typography color="textSecondary">
-                  Last hour
-                </Typography>
+                <Typography color="text.secondary">Last hour</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -359,15 +559,13 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography color="textSecondary" gutterBottom>
+                <Typography color="text.secondary" gutterBottom>
                   Bounce Rate
                 </Typography>
                 <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                   {realTimeMetrics.bounceRate.toFixed(1)}%
                 </Typography>
-                <Typography color="textSecondary">
-                  Last hour
-                </Typography>
+                <Typography color="text.secondary">Last hour</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -375,29 +573,30 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography color="textSecondary" gutterBottom>
+                <Typography color="text.secondary" gutterBottom>
                   Avg Session Duration
                 </Typography>
                 <Typography variant="h4" sx={{ color: theming.colors.primary }}>
                   {Math.round(realTimeMetrics.averageSessionDuration)}s
                 </Typography>
-                <Typography color="textSecondary">
-                  Last hour
-                </Typography>
+                <Typography color="text.secondary">Last hour</Typography>
               </CardContent>
             </Card>
           </Grid>
 
-          {/* Top Pages */}
           <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
                   Top Pages
                 </Typography>
                 <List dense>
-                  {realTimeMetrics.topPages.slice(0, 5).map((page, index) => (
-                    <ListItem key={index}>
+                  {realTimeMetrics.topPages.slice(0, 5).map((page) => (
+                    <ListItem key={page.path}>
                       <ListItemText
                         primary={page.path}
                         secondary={`${page.views} views, ${page.uniqueViews} unique`}
@@ -409,59 +608,124 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
             </Card>
           </Grid>
 
-          {/* Device Breakdown */}
           <Grid item xs={12} md={6}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
                   Device Breakdown
                 </Typography>
-                <Box sx={{ mt:  2 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+                <Box sx={{ mt: 2 }}>
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}
+                  >
                     <Typography variant="body2">Desktop</Typography>
-                    <Typography variant="body2">{realTimeMetrics.deviceBreakdown.desktop}</Typography>
+                    <Typography variant="body2">
+                      {realTimeMetrics.deviceBreakdown.desktop}
+                    </Typography>
                   </Box>
                   <LinearProgress
                     variant="determinate"
-                    value={(realTimeMetrics.deviceBreakdown.desktop / (realTimeMetrics.deviceBreakdown.desktop + realTimeMetrics.deviceBreakdown.mobile + realTimeMetrics.deviceBreakdown.tablet)) * 100}
-                    sx={{ mb:  2 }}
+                    value={
+                      deviceTotal > 0
+                        ? (realTimeMetrics.deviceBreakdown.desktop / deviceTotal) *
+                          100
+                        : 0
+                    }
+                    sx={{ mb: 2 }}
                   />
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}
+                  >
                     <Typography variant="body2">Mobile</Typography>
-                    <Typography variant="body2">{realTimeMetrics.deviceBreakdown.mobile}</Typography>
+                    <Typography variant="body2">
+                      {realTimeMetrics.deviceBreakdown.mobile}
+                    </Typography>
                   </Box>
                   <LinearProgress
                     variant="determinate"
-                    value={(realTimeMetrics.deviceBreakdown.mobile / (realTimeMetrics.deviceBreakdown.desktop + realTimeMetrics.deviceBreakdown.mobile + realTimeMetrics.deviceBreakdown.tablet)) * 100}
-                    sx={{ mb:  2 }}
+                    value={
+                      deviceTotal > 0
+                        ? (realTimeMetrics.deviceBreakdown.mobile / deviceTotal) * 100
+                        : 0
+                    }
+                    sx={{ mb: 2 }}
                   />
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
+
+                  <Box
+                    sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}
+                  >
                     <Typography variant="body2">Tablet</Typography>
-                    <Typography variant="body2">{realTimeMetrics.deviceBreakdown.tablet}</Typography>
+                    <Typography variant="body2">
+                      {realTimeMetrics.deviceBreakdown.tablet}
+                    </Typography>
                   </Box>
                   <LinearProgress
                     variant="determinate"
-                    value={(realTimeMetrics.deviceBreakdown.tablet / (realTimeMetrics.deviceBreakdown.desktop + realTimeMetrics.deviceBreakdown.mobile + realTimeMetrics.deviceBreakdown.tablet)) * 100}
+                    value={
+                      deviceTotal > 0
+                        ? (realTimeMetrics.deviceBreakdown.tablet / deviceTotal) * 100
+                        : 0
+                    }
                   />
                 </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
+                  Heatmap Aggregates
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {heatmapAggregatedData.length} unique hot zones tracked
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
+                  Popular Elements
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {popularElements.length} tracked elements with interaction data
+                </Typography>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
       )}
 
-      {/* Heatmaps Tab */}
       {activeTab === 1 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
                   Heatmap Data
                 </Typography>
-                <Typography variant="body2" color="textSecondary" sx={{ mb:  2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {heatmapData.length} heatmap events recorded
                 </Typography>
                 <TableContainer>
@@ -485,15 +749,17 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                               color={event.type === 'click' ? 'primary' : 'default'}
                             />
                           </TableCell>
-                          <TableCell>({event.x}, {event.y})</TableCell>
+                          <TableCell>
+                            ({event.x}, {event.y})
+                          </TableCell>
                           <TableCell>
                             <LinearProgress
                               variant="determinate"
                               value={event.intensity}
-                              sx={{ width: 100}}
+                              sx={{ width: 100 }}
                             />
                           </TableCell>
-                          <TableCell>{event.elementId || 'N/A'}</TableCell>
+                          <TableCell>{event.elementId ?? 'N/A'}</TableCell>
                           <TableCell>
                             {new Date(event.timestamp).toLocaleTimeString()}
                           </TableCell>
@@ -508,16 +774,19 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
         </Grid>
       )}
 
-      {/* User Behavior Tab */}
       {activeTab === 2 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <Typography
+                  variant="h6"
+                  gutterBottom
+                  sx={{ color: theming.colors.primary }}
+                >
                   User Behavior Events
                 </Typography>
-                <Typography variant="body2" color="textSecondary" sx={{ mb:  2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {userBehaviorEvents.length} behavior events recorded
                 </Typography>
                 <TableContainer>
@@ -541,9 +810,16 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                               color={event.eventType === 'click' ? 'primary' : 'default'}
                             />
                           </TableCell>
-                          <TableCell>{event.elementText || event.elementId || 'N/A'}</TableCell>
-                          <TableCell>({event.position.x}, {event.position.y})</TableCell>
-                          <TableCell>{event.sessionId.substring(0, 8)}...</TableCell>
+                          <TableCell>
+                            {event.elementText ?? event.elementId ?? 'N/A'}
+                          </TableCell>
+                          <TableCell>
+                            ({event.position.x}, {event.position.y})
+                          </TableCell>
+                          <TableCell>
+                            {event.sessionId.substring(0, 8)}
+                            ...
+                          </TableCell>
                           <TableCell>
                             {new Date(event.timestamp).toLocaleTimeString()}
                           </TableCell>
@@ -558,14 +834,22 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
         </Grid>
       )}
 
-      {/* Conversion Funnels Tab */}
       {activeTab === 3 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Conversion Funnels</Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    Conversion Funnels
+                  </Typography>
                   <Button
                     variant="contained"
                     startIcon={theming.getThemedIcon('add')}
@@ -593,14 +877,14 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                           <TableCell>{funnel.name}</TableCell>
                           <TableCell>{funnel.steps.length}</TableCell>
                           <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="body2">
                                 {funnel.conversionRate.toFixed(1)}%
                               </Typography>
                               <LinearProgress
                                 variant="determinate"
-                                value={funnel.conversionRate}
-                                sx={{ width: 100}}
+                                value={Math.max(0, Math.min(100, funnel.conversionRate))}
+                                sx={{ width: 100 }}
                               />
                             </Box>
                           </TableCell>
@@ -609,13 +893,26 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                             {new Date(funnel.createdAt).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
-                            <Tooltip title="Edit Funnel">
-                              <IconButton size="small">
+                            <Tooltip title="Recalculate from steps">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  if (funnel.steps.length === 0) return;
+                                  const first = funnel.steps[0].sessions;
+                                  const last =
+                                    funnel.steps[funnel.steps.length - 1].sessions;
+                                  updateConversionFunnel(funnel.id, {
+                                    totalSessions: first,
+                                    conversionRate:
+                                      first > 0 ? (last / first) * 100 : 0,
+                                  });
+                                }}
+                              >
                                 {theming.getThemedIcon('edit')}
                               </IconButton>
                             </Tooltip>
-                            <Tooltip title="Delete Funnel">
-                              <IconButton size="small" color="error">
+                            <Tooltip title="No hard delete in dashboard">
+                              <IconButton size="small" color="error" disabled>
                                 {theming.getThemedIcon('delete')}
                               </IconButton>
                             </Tooltip>
@@ -631,14 +928,22 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
         </Grid>
       )}
 
-      {/* A/B Tests Tab */}
       {activeTab === 4 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>A/B Tests</Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    A/B Tests
+                  </Typography>
                   <Button
                     variant="contained"
                     startIcon={theming.getThemedIcon('add')}
@@ -667,7 +972,7 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                           <TableCell>
                             <Chip
                               label={test.status}
-                              color={getStatusColor(test.status)}
+                              color={getAbStatusColor(test.status)}
                               size="small"
                             />
                           </TableCell>
@@ -678,7 +983,7 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                           </TableCell>
                           <TableCell>
                             {test.status === 'draft' && (
-                              <Tooltip title="Start Test">
+                              <Tooltip title="Start test">
                                 <IconButton
                                   size="small"
                                   color="success"
@@ -689,7 +994,7 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                               </Tooltip>
                             )}
                             {test.status === 'running' && (
-                              <Tooltip title="Stop Test">
+                              <Tooltip title="Stop test and calculate results">
                                 <IconButton
                                   size="small"
                                   color="error"
@@ -699,11 +1004,6 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                                 </IconButton>
                               </Tooltip>
                             )}
-                            <Tooltip title="Edit Test">
-                              <IconButton size="small">
-                                {theming.getThemedIcon('edit')}
-                              </IconButton>
-                            </Tooltip>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -716,15 +1016,24 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
         </Grid>
       )}
 
-      {/* Insights Tab */}
       {activeTab === 5 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Analytics Insights</Typography>
-                  <Button variant="contained"
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    Analytics Insights
+                  </Typography>
+                  <Button
+                    variant="contained"
                     startIcon={<Insights />}
                     onClick={handleGenerateInsights}
                   >
@@ -734,9 +1043,10 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                 <List>
                   {insights.map((insight) => (
                     <React.Fragment key={insight.id}>
-                      <ListItem>
+                      <ListItem alignItems="flex-start">
                         <ListItemIcon>
-                          {insight.impact === 'critical' || insight.impact === 'high' ? (
+                          {insight.impact === 'critical' ||
+                          insight.impact === 'high' ? (
                             <Warning color="error" />
                           ) : insight.impact === 'medium' ? (
                             <Warning color="warning" />
@@ -746,8 +1056,12 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                         </ListItemIcon>
                         <ListItemText
                           primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                              <Typography variant="subtitle1">{insight.title}</Typography>
+                            <Box
+                              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                            >
+                              <Typography variant="subtitle1">
+                                {insight.title}
+                              </Typography>
                               <Chip
                                 label={insight.impact}
                                 size="small"
@@ -759,34 +1073,40 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
                                 variant="outlined"
                               />
                             </Box>
-                        }
+                          }
                           secondary={
                             <Box>
-                              <Typography variant="body2" sx={{ mb:  1 }}>
+                              <Typography variant="body2" sx={{ mb: 1 }}>
                                 {insight.description}
                               </Typography>
-                              <Typography variant="body2" color="textSecondary">
-                                Recommendations: {insight.recommendations.join(', ')}
+                              <Typography variant="body2" color="text.secondary">
+                                Recommendations:{' '}
+                                {insight.recommendations.join(', ')}
                               </Typography>
                             </Box>
-                        }
+                          }
                         />
-                        <Box sx={{ display: 'flex', gap:  1 }}>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
                           <Chip
                             label={insight.status}
                             size="small"
-                            color={insight.status === 'implemented' ? 'success' : 'default'}
+                            color={
+                              insight.status === 'implemented'
+                                ? 'success'
+                                : 'default'
+                            }
                           />
-                          <Select
+                          <Select<AnalyticsInsight['status']>
                             value={insight.status}
-                            onChange={(e) => handleUpdateInsightStatus(insight.id, e.target.value)}
+                            onChange={handleInsightStatusChange(insight.id)}
                             size="small"
-                            sx={{ minWidth: 120}}
+                            sx={{ minWidth: 140 }}
                           >
-                            <MenuItem value="new">New</MenuItem>
-                            <MenuItem value="reviewed">Reviewed</MenuItem>
-                            <MenuItem value="implemented">Implemented</MenuItem>
-                            <MenuItem value="dismissed">Dismissed</MenuItem>
+                            {INSIGHT_STATUSES.map((status) => (
+                              <MenuItem key={status} value={status}>
+                                {status}
+                              </MenuItem>
+                            ))}
                           </Select>
                         </Box>
                       </ListItem>
@@ -800,54 +1120,69 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
         </Grid>
       )}
 
-      {/* Create Funnel Dialog */}
-      <Dialog open={showCreateFunnelDialog} onClose={() => setShowCreateFunnelDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={showCreateFunnelDialog}
+        onClose={() => setShowCreateFunnelDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Create Conversion Funnel</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
             label="Funnel Name"
             value={newFunnelName}
-            onChange={(e) => setNewFunnelName(e.target.value)}
-            sx={{ mt:  2 }}
+            onChange={(event) => setNewFunnelName(event.target.value)}
+            sx={{ mt: 2 }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowCreateFunnelDialog(false)}>Cancel</Button>
-          <Button onClick={handleCreateFunnel} variant="contained" sx={theming.getThemedButtonSx()}>
+          <Button
+            onClick={handleCreateFunnel}
+            variant="contained"
+            sx={theming.getThemedButtonSx()}
+          >
             Create
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Create Test Dialog */}
-      <Dialog open={showCreateTestDialog} onClose={() => setShowCreateTestDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={showCreateTestDialog}
+        onClose={() => setShowCreateTestDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Create A/B Test</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
             label="Test Name"
             value={newTestName}
-            onChange={(e) => setNewTestName(e.target.value)}
-            sx={{ mt:  2 }}
+            onChange={(event) => setNewTestName(event.target.value)}
+            sx={{ mt: 2 }}
           />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShowCreateTestDialog(false)}>Cancel</Button>
-          <Button onClick={handleCreateTest} variant="contained" sx={theming.getThemedButtonSx()}>
+          <Button
+            onClick={handleCreateTest}
+            variant="contained"
+            sx={theming.getThemedButtonSx()}
+          >
             Create
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
           severity={snackbar.severity}
         >
           {snackbar.message}
@@ -858,7 +1193,5 @@ const AdvancedAnalyticsDashboard: React.FC<AdvancedAnalyticsDashboardProps> = ({
 };
 
 export default AdvancedAnalyticsDashboard;
-
-
 
 

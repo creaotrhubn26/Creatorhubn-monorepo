@@ -300,7 +300,7 @@ export class DeploymentService {
         id: data.id,
         url: data.url,
         status: this.mapVercelState(data.readyState),
-        environment: data.target || 'production',
+        environment: this.mapEnvironment(data.target),
         createdAt: data.createdAt,
         readyAt: data.ready,
         buildTime: data.buildingAt ? data.ready - data.buildingAt : undefined,
@@ -333,17 +333,29 @@ export class DeploymentService {
 
       if (!response.ok) return [];
 
-      const data = await response.json();
+      const data = (await response.json()) as { deployments?: unknown[] };
+      const deployments = Array.isArray(data.deployments) ? data.deployments : [];
 
-      return data.deployments.map((d: unknown) => ({
-        id: d.id,
-        url: d.url,
-        status: this.mapVercelState(d.readyState),
-        environment: d.target || 'production',
-        createdAt: d.createdAt,
-        readyAt: d.ready,
-        creator: d.creator?.username || 'unknown',
-      }));
+      return deployments.map((deployment) => {
+        const d = deployment as {
+          id?: string;
+          url?: string;
+          readyState?: string;
+          target?: string;
+          createdAt?: number;
+          ready?: number;
+          creator?: { username?: string };
+        };
+        return {
+          id: d.id || '',
+          url: d.url || '',
+          status: this.mapVercelState(d.readyState || 'ERROR'),
+          environment: this.mapEnvironment(d.target),
+          createdAt: d.createdAt || Date.now(),
+          readyAt: d.ready,
+          creator: d.creator?.username || 'unknown',
+        };
+      });
     } catch (error) {
       console.error('Failed to list deployments:', error);
       return [];
@@ -526,8 +538,12 @@ export class DeploymentService {
 
       if (!response.ok) return [];
 
-      const data = await response.json();
-      return data.events?.map((e: unknown) => e.text || ', ') || [];
+      const data = (await response.json()) as { events?: unknown[] };
+      const events = Array.isArray(data.events) ? data.events : [];
+      return events.map((event) => {
+        const e = event as { text?: string };
+        return e.text || '';
+      });
     } catch (error) {
       console.error('Failed to get logs:', error);
       return [];
@@ -553,6 +569,17 @@ export class DeploymentService {
         return 'canceled';
       default:
         return 'queued';
+    }
+  }
+
+  private mapEnvironment(target?: string): Environment {
+    switch (target) {
+      case 'development':
+      case 'preview':
+      case 'production':
+        return target;
+      default:
+        return 'production';
     }
   }
 

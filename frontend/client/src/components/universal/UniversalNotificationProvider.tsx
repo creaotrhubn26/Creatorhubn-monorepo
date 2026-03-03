@@ -3,7 +3,6 @@
  * Provides notification context and integration across all components
  */
 
-import { useTheming } from '../../utils/theming-helper';
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -72,10 +71,7 @@ export default function UniversalNotificationProvider({
 }, [notificationSystem]);
 
   // Enhanced notification methods with automatic Google integration
-  const enhancedNotify = useCallback(
-  
-  // Theming system
-  const theming = useTheming('photographer');async (notification: any) => {
+  const enhancedNotify = useCallback(async (notification: any) => {
     // Add automatic Google integration metadata
     const enhancedNotification = {
       ...notification,
@@ -89,7 +85,7 @@ export default function UniversalNotificationProvider({
   };
 
     return notificationSystem.notify(enhancedNotification);
-}, [notificationSystem, userId, profession]);
+  }, [notificationSystem, userId, profession]);
 
   const enhancedNotifyGoogleUpload = useCallback(async (data: any) => {
     // Automatically trigger related component updates

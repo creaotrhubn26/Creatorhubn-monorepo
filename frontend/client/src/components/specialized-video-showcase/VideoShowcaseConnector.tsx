@@ -85,7 +85,7 @@ export default function VideoShowcaseConnector({
   const connectToShowcaseSystem = useMutation({
     mutationFn: async ({ videod, showcaseData }: { videoId: string; showcaseData: any }) =>
       apiRequest('/api/showcase/connect-video', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ videod, ...showcaseData }),
     }),
     onSuccess: () => {
@@ -98,7 +98,7 @@ export default function VideoShowcaseConnector({
   const uploadToYouTube = useMutation({
     mutationFn: async ({ videod, youtubeData }: { videoId: string; youtubeData: any }) =>
       apiRequest('/api/youtube/upload-from-showcase', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ videod, ...youtubeData }),
     }),
     onSuccess: () => {
@@ -111,11 +111,11 @@ export default function VideoShowcaseConnector({
       showcase,
       onConnect: (data: any) =>
         connectToShowcaseSystem.mutate({
-          videoId: showcase.d,
+          videoId: showcase.id,
           showcaseData: data,
       }),
       onYouTubeUpload: (data: any) =>
-        uploadToYouTube.mutate({ videoId: showcase., idyoutubeData: data }),
+        uploadToYouTube.mutate({ videoId: showcase.id, youtubeData: data }),
   };
 
     switch (showcase.type) {
@@ -350,8 +350,8 @@ function DefaultVideoShowcase({
         <IconButton
           sx={{
             position: 'absolute',
-            top: '50, %',
-            left: '50, %',
+            top: '50%',
+            left: '50%',
             transform: 'translate(-5%, -50%)',
             bgcolor: 'rgba, (, 0,0,0,0.7)',
             color: 'white', '&:hover': { bgcolor: 'rgba, (, 0,0,0,0.8)' },

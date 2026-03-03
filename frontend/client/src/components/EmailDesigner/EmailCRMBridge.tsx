@@ -315,7 +315,7 @@ export default function EmailCRMBridge({
           </Typography>
           <List dense sx={{ maxHeight: 200, overflow: 'auto' }}>
             {customers
-              .filter((c: CRMCustomer) => selectedCustomers.includes(c.id)
+              .filter((c: CRMCustomer) => selectedCustomers.includes(c.id))
               .map((customer: CRMCustomer) => (
                 <ListItem key={customer.id}>
                   <ListItemText primary={customer.email} secondary={customer.firstName} />
@@ -328,7 +328,7 @@ export default function EmailCRMBridge({
           <Button
             variant="contained"
             onClick={handleSendCampaign}
-            sx={{ bgcolor: '#ff8c00','&:hover': { bgcolor: '#e67c00' } }}
+            sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' } }}
 
           >
             Bekreft og Send

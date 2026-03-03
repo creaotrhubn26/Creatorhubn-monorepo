@@ -168,7 +168,7 @@ export default function AIPromptTemplates({
 
   // Load templates from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('ai_prompt_templates, ');
+    const saved = localStorage.getItem('ai_prompt_templates');
     if (saved) {
       try {
         setTemplates(JSON.parse(saved));
@@ -214,9 +214,9 @@ export default function AIPromptTemplates({
     setEditingTemplate({
       id: `custom-${Date.now()}`,
       name: '',
-      description: ', ',
+      description: '',
       category: 'custom',
-      template: ', ',
+      template: '',
       variables: [],
       isFavorite: false,
       createdAt: Date.now(),
@@ -568,23 +568,34 @@ export default function AIPromptTemplates({
               fullWidth
               multiline
               rows={2}
-              value={editingTemplate?.description || ', '}
+              value={editingTemplate?.description || ''}
               onChange={(e) =>
                 setEditingTemplate((prev) => ({ ...prev, description: e.target.value }))
               }
             />
             <FormControl fullWidth>
               <InputLabel>Category</InputLabel>
-              <Select
-                value={editingTemplate?.category || 'custom'}
-                onChange={(e) =>
-                  setEditingTemplate((prev) => ({
-                    ...prev,
-                    category: e.target.value as string,
-                  }))
-                }
-                label="Category"
-              >
+                <Select
+                  value={editingTemplate?.category || 'custom'}
+                  onChange={(e) =>
+                    setEditingTemplate((prev) => {
+                      const value = e.target.value;
+                      const category: PromptTemplate['category'] =
+                        value === 'component' ||
+                        value === 'refactor' ||
+                        value === 'bug-fix' ||
+                        value === 'optimization' ||
+                        value === 'custom'
+                          ? value
+                          : 'custom';
+                      return {
+                        ...prev,
+                        category,
+                      };
+                    })
+                  }
+                  label="Category"
+                >
                 <MenuItem value="component">Component</MenuItem>
                 <MenuItem value="refactor">Refactoring</MenuItem>
                 <MenuItem value="bug-fix">Bug Fix</MenuItem>
@@ -597,7 +608,7 @@ export default function AIPromptTemplates({
               fullWidth
               multiline
               rows={10}
-              value={editingTemplate?.template ||', '}
+              value={editingTemplate?.template || ''}
               onChange={(e) => {
                 const template = e.target.value;
                 // Extract variables from template
@@ -616,7 +627,7 @@ export default function AIPromptTemplates({
             />
             {editingTemplate?.variables && editingTemplate.variables.length > 0 && (
               <Alert severity="info">
-                Detected variables: {editingTemplate.variables.join('')}
+                Detected variables: {editingTemplate.variables.join(', ')}
               </Alert>
             )}
           </Stack>

@@ -298,7 +298,7 @@ export function PlanFeaturePreview({
         <ListItemText
           primary={
             <Tooltip title={getEnterpriseTooltip()}>
-              <Typography variant="body2" sx={{ fontWeight: eature.hasAccess ? 500 : 400 }}>
+              <Typography variant="body2" sx={{ fontWeight: feature.hasAccess ? 500 : 400 }}>
                 {feature.name}
               </Typography>
             </Tooltip>
@@ -385,7 +385,7 @@ export function PlanFeaturePreview({
                 sx={{
                   bgcolor: isAccessible ? alpha(PLAN_COLORS[planKey], 0.15) : alpha('#999', 0.1),
                   color: isAccessible ? PLAN_COLORS[planKey] : '#666',
-                  fontWeight: sAccessible ? 600 : 400}}
+                  fontWeight: isAccessible ? 600 : 400}}
               />
             </Tooltip>
           );
@@ -454,4 +454,3 @@ export function PlanFeaturePreview({
 }
 
 export default PlanFeaturePreview;
-

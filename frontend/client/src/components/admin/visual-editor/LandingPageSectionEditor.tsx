@@ -85,6 +85,19 @@ interface CustomFieldDefinition {
   helperText?: string;
 }
 
+const toRecord = (value: unknown): Record<string, unknown> => {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+};
+
+const toStringValue = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return fallback;
+};
+
 export function LandingPageSectionEditor({
   sectionId,
   sectionName,
@@ -137,7 +150,7 @@ export function LandingPageSectionEditor({
   const handleArrayItemChange = useCallback((arrayField: string, index: number, field: string, value: unknown) => {
     setLocalSection((prev) => {
       const array = [...(prev[arrayField] as unknown[] || [])];
-      array[index] = { ...array[index], [field]: value };
+      array[index] = { ...toRecord(array[index]), [field]: value };
       const newSection = { ...prev, [arrayField]: array };
       setHasChanges(true);
       return newSection;
@@ -239,13 +252,13 @@ export function LandingPageSectionEditor({
       </Typography>
       <input
         type="color"
-        value={(localStyles[category] as Record<string, unknown>)?.[field] || '#ff6b00'}
+        value={toStringValue((localStyles[category] as Record<string, unknown>)?.[field], '#ff6b00')}
         onChange={(e) => handleStyleChange(category, field, e.target.value)}
         style={{ width: 40, height: 30, border: 'none', cursor: 'pointer' }}
       />
       <TextField
         size="small"
-        value={(localStyles[category] as Record<string, unknown>)?.[field] || '#ff6b00'}
+        value={toStringValue((localStyles[category] as Record<string, unknown>)?.[field], '#ff6b00')}
         onChange={(e) => handleStyleChange(category, field, e.target.value)}
         sx={{ width: 120 }}
       />
@@ -436,8 +449,10 @@ export function LandingPageSectionEditor({
               <Typography variant="subtitle2" sx={{ mb: 1, color: 'rgba(255,255,255,0.7)' }}>
                 Items ({localSection.items.length})
               </Typography>
-              {localSection.items.map((item: unknown, index: number) => (
-                <Paper
+              {localSection.items.map((item: unknown, index: number) => {
+                const itemRecord = toRecord(item);
+                return (
+                  <Paper
                   key={index}
                   sx={{
                     p: 2,
@@ -462,7 +477,7 @@ export function LandingPageSectionEditor({
                     fullWidth
                     size="small"
                     label="Title"
-                    value={item.title || ''}
+                    value={toStringValue(itemRecord.title)}
                     onChange={(e) => handleArrayItemChange('items', index, 'title', e.target.value)}
                     sx={{ mb: 1 }}
                   />
@@ -470,13 +485,14 @@ export function LandingPageSectionEditor({
                     fullWidth
                     size="small"
                     label="Description"
-                    value={item.description || ''}
+                    value={toStringValue(itemRecord.description)}
                     onChange={(e) => handleArrayItemChange('items', index, 'description', e.target.value)}
                     multiline
                     rows={2}
                   />
                 </Paper>
-              ))}
+                );
+              })}
               <Button
                 startIcon={<Add />}
                 onClick={() => handleAddArrayItem('items', { title: '', description: '' })}
@@ -508,7 +524,7 @@ export function LandingPageSectionEditor({
               Section Padding
             </Typography>
             <Slider
-              value={parseInt((localStyles.spacing as Record<string, unknown>)?.sectionPadding || '80', 10)}
+              value={parseInt(toStringValue((localStyles.spacing as Record<string, unknown>)?.sectionPadding, '80'), 10)}
               onChange={(_, value) => handleStyleChange('spacing', 'sectionPadding', `${value}px`)}
               min={20}
               max={200}
@@ -606,4 +622,3 @@ export function LandingPageSectionEditor({
 }
 
 export default LandingPageSectionEditor;
-

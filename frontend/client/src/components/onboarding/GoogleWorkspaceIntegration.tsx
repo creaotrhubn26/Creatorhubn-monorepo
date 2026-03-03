@@ -1,58 +1,34 @@
-// client/src/components/onboarding/GoogleWorkspaceIntegration.tsx
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Button,
-  Alert,
-  LinearProgress,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  Chip,
-  Avatar,
-  Fade,
-  Slide,
-  Zoom,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  CircularProgress,
-  Divider,
   Paper,
-  Grid,
+  Stack,
+  Typography,
 } from '@mui/material';
 import {
-  Google,
-  CheckCircle,
-  Warning,
-  Info,
-  CloudSync,
-  Security,
-  Speed as Speed,
-  People,
-  Work,
-  ArrowForward,
-  Refresh,
-  OpenInNew,
-  Business as DirectionsBusiness,
-  Email,
-  Storage,
-  CalendarToday as CalendarTodayToday,
-  VideoCall as VideocamCall,
-  Description,
-  TableChart,
+  CheckCircle as CheckCircleIcon,
+  Google as GoogleIcon,
+  OpenInNew as OpenInNewIcon,
+  Refresh as RefreshIcon,
+  Workspaces as WorkspacesIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
 interface GoogleWorkspaceStatus {
@@ -69,85 +45,81 @@ interface GoogleWorkspaceStatus {
     meet: boolean;
     docs: boolean;
     sheets: boolean;
-};
+  };
 }
 
 interface GoogleWorkspaceIntegrationProps {
   onWorkspaceDetected: (status: GoogleWorkspaceStatus) => void;
   onWorkspaceCreated: () => void;
   onSkip: () => void;
-  profession: string
+  profession: string;
 }
 
-const WORKSPACE_FEATURES = [
-  {
-    name: 'Gmail for Business',
-    description: 'Profesjonell e-post med ditt domene',
-    icon: theming.getThemedIcon(''),
-    benefit: 'Kundekommunikasjon ser mer profesjonell ut',
-},
-  {
-    name: 'Google Drive',
-    description: 'Sikker fillagring og deling',
-    icon: theming.getThemedIcon(''),
-    benefit: 'Alle dine prosjektfiler på ett sted',
-},
-  {
-    name: 'Google Calendar',
-    description: 'Avtaleplanlegging og timebooking',
-    icon: theming.getThemedIcon(''),
-    benefit: 'Automatisk synkronisering med CreatorHub',
-},
-  {
-    name: 'Google Meet',
-    description: 'Video-møter med kunder',
-    icon: theming.getThemedIcon(''),
-    benefit: 'Integrert i kundemøter og konsultasjoner',
-},
-  {
-    name: 'Google Docs',
-    description: 'Kontrakter og dokumenter',
-    icon: <Description />,
-    benefit: 'Automatisk kontraktopprettelse',
-},
-  {
-    name: 'Google Sheets',
-    description: 'Fakturering og regnskap',
-    icon: <TableChart />,
-    benefit: 'Integrert med CreatorHub fakturering',
-},
-];
-
-const CREATORHUB_WORKSPACE_BENEFITS = {
-  photographer: {
-    title: 'CreatorHub Norge + Google Workspace for Fotografer',
-    benefits: [
-      '📸 Automatisk galleri-synkronisering - Dine bilder synkroniseres direkte fra Google Photos til CreatorHub','📋 Smart kontraktopprettelse - Kontrakter genereres automatisk og lagres i Google Drive''📅 Kundemøter integrert - Timebooking kobles direkte til Google Calendar','💰 Fakturering på autopilot - Fakturaer genereres fra Google Sheets data''🎨 Portefølje-galleri - Automatisk oppdatering av kundegallerier fra Google Drive','📧 Profesjonell e-post - Bruk din bedrifts-e-post direkte i CreatorHub''👥 Kundesegmentering - Avansert analyse av kundedata fra Google Workspace',
-    ],
-},
-  videographer: {
-    title: 'CreatorHub Norge + Google Workspace for Videografer',
-    benefits: [
-      '🎬 Video-filer sikker lagring - Alle råfiler lagres automatisk i Google Drive','📹 Kundemøter via Google Meet - Integrert i CreatorHub kundesystem''📅 Prosjektplanlegging - Google Calendar synkronisering for alle prosjekter','🎞️ Automatisk backup - Råfiler sikkerhetskopieres til Google Drive''📋 Kundepresentasjoner - Del videoer direkte via Google Drive lenker','💰 Avansert fakturering - Timeføring og fakturering via Google Sheets''📧 Profesjonell kommunikasjon - Bedrifts-e-post for alle kundekontakter',
-    ],
-},
-  music_producer: {
-    title: 'CreatorHub Norge + Google Workspace for Musikkprodusenter',
-    benefits: [
-      '🎵 Audio-filer synkronisering - Alle lydfiler lagres sikkert i Google Drive','🎤 Kundemøter og feedback - Google Meet integrert for musikk-samarbeid''📅 Prosjektorganisering - Google Calendar for alle musikkprosjekter','📝 Samarbeid med artister - Google Docs for tekst og noter''🎧 Mixing og mastering - Del filer enkelt med Google Drive','💰 Royalty-fakturering - Avansert fakturering via Google Sheets''📧 Profesjonell kommunikasjon - Bedrifts-e-post for alle samarbeidspartnere',
-    ],
-},
-  designer: {
-    title: 'CreatorHub Norge + Google Workspace for Designere',
-    benefits: [
-      '🎨 Design-filer sikker lagring - Alle designfiler lagres i Google Drive','🖼️ Kundepresentasjoner - Google Meet for designpresentasjoner''📅 Prosjektplanlegging - Google Calendar for alle designprosjekter','📝 Kundesamarbeid - Google Docs for designspesifikasjoner''🖌️ Versjonskontroll - Google Drive for design-iterasjoner','💰 Design-fakturering - Avansert fakturering via Google Sheets''📧 Profesjonell kommunikasjon - Bedrifts-e-post for alle kundekontakter',
-    ],
-},
+const PROFESSION_BENEFITS: Record<string, string[]> = {
+  photographer: [
+    'Automatisk galleri og mappeflyt i Google Drive',
+    'Kundemoter direkte i Google Calendar + Meet',
+    'Kontrakter og leveranser i delt dokumentstruktur',
+  ],
+  videographer: [
+    'Prosjektfiler og proxyflyt organisert i Drive',
+    'Moteplan med team i Calendar',
+    'Deling av review-lenker til kunder med Docs/Sheets',
+  ],
+  music_producer: [
+    'Session- og stemmefiler i strukturert Drive-oppsett',
+    'Artistmoter via Meet med kalenderinvitasjoner',
+    'Royalty- og leveransesporing i Sheets',
+  ],
+  vendor: [
+    'Ordre- og lagerark i Sheets',
+    'Kundeoppfolging med domene-epost',
+    'Mote- og leveringskalender for teamet',
+  ],
 };
 
-const GENERAL_CREATORHUB_BENEFITS = [
-  '🚀 Automatisk integrasjon - Alt kobles sammen uten manuell konfigurering','📊 Avansert CRM - Alle kundedata samles fra Google Workspace''⚡ Smart automatisering - Effektiv arbeidsflyt basert på Google Workspace data', '📈 Bedre kundeservice - Rask tilgang til all kundeinformasjon', '💼 Profesjonell presentasjon - Bedrifts-e-post og domene for alle kommunikasjon', '🔒 Sikkerhet på topp - Google Workspace sikkerhet + CreatorHub beskyttelse', '📱 Mobil tilgang - Alt tilgjengelig på alle enheter via Google Workspace', '🌐 Team samarbeid - Del prosjekter og kunder med teammedlemmer',
+const GENERIC_BENEFITS = [
+  'Ett samlet identitetssystem for team og kunder',
+  'Sikker filhåndtering med tilgangsstyring',
+  'Direkte kobling mot CreatorHub arbeidsflyt',
 ];
+
+function normalizeStatus(input: unknown): GoogleWorkspaceStatus {
+  if (typeof input !== 'object' || input === null) {
+    return {
+      hasWorkspace: false,
+      isVerified: false,
+      lastChecked: new Date().toISOString(),
+      features: {
+        gmail: false,
+        drive: false,
+        calendar: false,
+        meet: false,
+        docs: false,
+        sheets: false,
+      },
+    };
+  }
+
+  const raw = input as Partial<GoogleWorkspaceStatus>;
+
+  return {
+    hasWorkspace: raw.hasWorkspace === true,
+    isVerified: raw.isVerified === true,
+    domain: raw.domain,
+    plan: raw.plan,
+    users: typeof raw.users === 'number' ? raw.users : undefined,
+    lastChecked: typeof raw.lastChecked === 'string' ? raw.lastChecked : new Date().toISOString(),
+    features: {
+      gmail: raw.features?.gmail === true,
+      drive: raw.features?.drive === true,
+      calendar: raw.features?.calendar === true,
+      meet: raw.features?.meet === true,
+      docs: raw.features?.docs === true,
+      sheets: raw.features?.sheets === true,
+    },
+  };
+}
 
 export default function GoogleWorkspaceIntegration({
   onWorkspaceDetected,
@@ -155,434 +127,217 @@ export default function GoogleWorkspaceIntegration({
   onSkip,
   profession,
 }: GoogleWorkspaceIntegrationProps) {
-  const [workspaceStatus, setWorkspaceStatus] = useState<GoogleWorkspaceStatus | null>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  
-  // Dynamic profession system
-  const { getProfessionDisplayName } = useDynamicProfessions();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const pollIntervalRef = useRef<number | null>(null);
+  const pollTimeoutRef = useRef<number | null>(null);
 
-  // Check Google Workspace status
-  const { data: workspaceData, isLoading, refetch } = useQuery({
-    queryKey: [', '],
-    queryFn: () => apiRequest('/api/google-workspace/check-status', ),
-    retry:  2,
-});
-
-  // Guide user to create Google Workspace account
-  const handleCreateWorkspace = () => {
-    // Open Google Workspace signup in new tab
-    window.open('https://workspace.google.com/signup/business/starter',', '_blank');
-    setShowCreateDialog(false);
-    
-    // Start polling for workspace detection
-    startWorkspaceDetection();
-};
-
-  const startWorkspaceDetection = () => {
-    // Poll every 30 seconds to check if workspace has been created
-    const interval = setInterval(() => {
-      refetch().then((result) => {
-        if (result.data?.hasWorkspace) {
-          clearInterval(interval);
-          onWorkspaceCreated();
+  const workspaceQuery = useQuery({
+    queryKey: ['/api/google-workspace/check-status', profession],
+    queryFn: async () => {
+      try {
+        const result = await apiRequest('/api/google-workspace/check-status');
+        return normalizeStatus(result);
+      } catch {
+        return normalizeStatus(null);
       }
-    });
-  }, 30000);
+    },
+    refetchOnWindowFocus: false,
+  });
 
-    // Clear interval after 10 minutes
-    setTimeout(() => {
-      clearInterval(interval);
-  }, 600000);
-};
+  const benefits = useMemo(
+    () => PROFESSION_BENEFITS[profession] ?? GENERIC_BENEFITS,
+    [profession],
+  );
 
   useEffect(() => {
-    if (workspaceData) {
-      setWorkspaceStatus(workspaceData);
-      setIsChecking(false);
-      
-      if (workspaceData.hasWorkspace) {
-        onWorkspaceDetected(workspaceData);
+    if (workspaceQuery.data?.hasWorkspace) {
+      onWorkspaceDetected(workspaceQuery.data);
     }
-  }
-}, [workspaceData, onWorkspaceDetected]);
+  }, [onWorkspaceDetected, workspaceQuery.data]);
 
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current !== null) {
+        window.clearInterval(pollIntervalRef.current);
+      }
+      if (pollTimeoutRef.current !== null) {
+        window.clearTimeout(pollTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  const handleSkip = () => {
-    onSkip();
-};
+  const startPollingAfterSignup = () => {
+    if (pollIntervalRef.current !== null) {
+      window.clearInterval(pollIntervalRef.current);
+    }
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+    }
 
-  const handleRetry = () => {
-    setIsChecking(true);
-    refetch();
-};
+    setPolling(true);
 
-  const professionBenefits = CREATORHUB_WORKSPACE_BENEFITS[profession as keyof typeof CREATORHUB_WORKSPACE_BENEFITS] || CREATORHUB_WORKSPACE_BENEFITS.photographer;
+    pollIntervalRef.current = window.setInterval(async () => {
+      const result = await workspaceQuery.refetch();
+      if (result.data?.hasWorkspace) {
+        setPolling(false);
+        onWorkspaceCreated();
+        if (pollIntervalRef.current !== null) {
+          window.clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+      }
+    }, 20_000);
 
-  if (isChecking || isLoading) {
+    pollTimeoutRef.current = window.setTimeout(() => {
+      setPolling(false);
+      if (pollIntervalRef.current !== null) {
+        window.clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }, 8 * 60 * 1000);
+  };
+
+  const beginWorkspaceCreation = () => {
+    window.open('https://workspace.google.com/signup/business/starter', '_blank', 'noopener,noreferrer');
+    setCreateDialogOpen(false);
+    startPollingAfterSignup();
+  };
+
+  if (workspaceQuery.isLoading) {
     return (
-      <Box sx={{ textAlign: 'center', py:  8 }}>
-        <CircularProgress size={60} sx={{ mb:  3 }} />
-        <Typography variant="h5" sx={{  mb:  2  }}>
-          Sjekker Google Workspace...
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Vi sjekker om du har en Google Workspace-konto
+      <Box sx={{ py: 8, textAlign: 'center' }}>
+        <CircularProgress sx={{ mb: 2 }} />
+        <Typography variant="h6">Sjekker Google Workspace</Typography>
+        <Typography variant="body2" color="text.secondary">
+          Henter status for kontoen din.
         </Typography>
       </Box>
     );
-}
+  }
 
-  if (workspaceStatus?.hasWorkspace) {
+  const status = workspaceQuery.data;
+
+  if (status?.hasWorkspace) {
     return (
-      <Fade in timeout={500}>
-        <Box>
-          <Box sx={{ textAlign: 'center', mb:  4 }}>
-            <Avatar
-              sx={{
-                width:  80,
-                height:  80,
-                bgcolor: 'success.main',
-                mx: 'auto',
-                mb:  3}}
-            >
-              <CheckCircle sx={{ fontSize: 40}} />
-            </Avatar>
-            <Typography variant="h4" sx={{  fontWeight: 'bold', mb: 2, color: 'success.main' }}>
-              Google Workspace funnet!
-            </Typography>
-            <Typography variant="h6" color="text.secondary" sx={{  mb:  3  }}>
-              Vi fant din Google Workspace-konto og har konfigurert integrasjonen
-            </Typography>
-          </Box>
+      <Box>
+        <Stack alignItems="center" spacing={1} sx={{ mb: 3 }}>
+          <Avatar sx={{ width: 64, height: 64, bgcolor: 'success.main' }}>
+            <CheckCircleIcon fontSize="large" />
+          </Avatar>
+          <Typography variant="h5" fontWeight={700} color="success.main">
+            Google Workspace er klart
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Domene: {status.domain ?? 'ukjent'}
+          </Typography>
+        </Stack>
 
-          <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
-                {theming.getThemedIcon('business')}
-                Workspace-informasjon
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Domene
-                  </Typography>
-                  <Typography variant="body1" fontWeight="bold">
-                    {workspaceStatus.domain}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Plan
-                  </Typography>
-                  <Typography variant="body1" fontWeight="bold">
-                    {workspaceStatus.plan}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Brukere
-                  </Typography>
-                  <Typography variant="body1" fontWeight="bold">
-                    {workspaceStatus.users}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary">
-                    Sist sjekket
-                  </Typography>
-                  <Typography variant="body1" fontWeight="bold">
-                    {new Date(workspaceStatus.lastChecked).toLocaleDateString('no-NO')}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
+        <Card>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>
+              Aktivert funksjonalitet
+            </Typography>
 
-          <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
-                <CloudSync />
-                Aktiverte integrasjoner
-              </Typography>
-              <Grid container spacing={2}>
-                {Object.entries(workspaceStatus.features).map(([feature, enabled]) => (
-                  <Grid item xs={12} key={feature}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                      <CheckCircle
-                        sx={{
-                          color: enabled ? 'success.main' : 'text.disabled',
-                          fontSize:  20}}
-                      />
-                      <Typography variant="body2" sx={{ textTransform: 'capitalize'}}>
-                        {feature}
+            <Grid container spacing={1.5}>
+              {Object.entries(status.features).map(([key, enabled]) => (
+                <Grid item xs={6} md={4} key={key}>
+                  <Paper variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <CheckCircleIcon color={enabled ? 'success' : 'disabled'} fontSize="small" />
+                      <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
+                        {key}
                       </Typography>
-                    </Box>
-                  </Grid>
-                ))}
-              </Grid>
-            </CardContent>
-          </Card>
+                    </Stack>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
 
-          <Box sx={{ textAlign: 'center'}}>
-            <Button variant="contained"
-              size="large"
-              endIcon={<ArrowForward />}
-              onClick={() => onWorkspaceDetected(workspaceStatus)}
-              sx={{ px:  4 }}
-            >
-              Fortsett med integrasjon
-            </Button>
-          </Box>
-        </Box>
-      </Fade>
+            <Divider sx={{ my: 2 }} />
+
+            <Stack direction="row" spacing={1}>
+              <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => workspaceQuery.refetch()}>
+                Oppdater status
+              </Button>
+              <Button variant="contained" onClick={onWorkspaceCreated}>
+                Fortsett onboarding
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
     );
-}
+  }
 
   return (
     <Box>
-      <Box sx={{ textAlign: 'center', mb:  4 }}>
-        <Avatar
-          sx={{
-            width:  80,
-            height:  80,
-            bgcolor: 'primary.main',
-            mx: 'auto',
-            mb:  3}}
-        >
-          <Google sx={{ fontSize: 40}} />
+      <Stack alignItems="center" spacing={1} sx={{ mb: 3 }}>
+        <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.main' }}>
+          <GoogleIcon fontSize="large" />
         </Avatar>
-        <Typography variant="h4" sx={{  fontWeight: 'bold', mb:  2  }}>
-          Google Workspace integrasjon
+        <Typography variant="h5" fontWeight={700}>
+          Koble til Google Workspace
         </Typography>
-        <Typography variant="h6" color="text.secondary" sx={{  mb:  3  }}>
-          For å få full funksjonalitet trenger du en Google Workspace-konto
+        <Typography variant="body2" color="text.secondary" textAlign="center">
+          Få en komplett arbeidsflyt med e-post, kalender, filer og møteintegrasjon direkte i CreatorHub.
         </Typography>
-      </Box>
+      </Stack>
 
-      {/* CreatorHub + Google Workspace Benefits for profession */}
-      <Card sx={{ mb:  4, border: '2px solid', borderColor: 'primary.main',  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap: 1, color: 'primary.main' }}>
-            <Work />
-            {professionBenefits.title}
+      {polling && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Vi sjekker automatisk om kontoen din er opprettet. Du kan fortsette når status er oppdatert.
+        </Alert>
+      )}
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+            Fordeler for {profession}
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-            Når du har Google Workspace får du disse eksklusive fordelene i CreatorHub Norge: </Typography>
-          <List>
-            {professionBenefits.benefits.map((benefit, index) => (
-              <ListItem key={index} sx={{ px: 0, py: 0.5}}>
+          <List dense>
+            {benefits.map((benefit) => (
+              <ListItem key={benefit}>
                 <ListItemIcon>
-                  <CheckCircle color="success" />
+                  <CheckCircleIcon color="success" fontSize="small" />
                 </ListItemIcon>
-                <ListItemText 
-                  primary={benefit}
-                  primaryTypographyProps={{ variant: 'body2'}}
-                />
+                <ListItemText primary={benefit} />
               </ListItem>
             ))}
           </List>
         </CardContent>
       </Card>
 
-      {/* General CreatorHub Benefits */}
-      <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
-            {theming.getThemedIcon('autoAwesome')}
-            Generelle fordeler med Google Workspace
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-            Uansett hvilken kreativ profesjon du har, får du disse fordelene: </Typography>
-          <Grid container spacing={1}>
-            {GENERAL_CREATORHUB_BENEFITS.map((benefit, index) => (
-              <Grid item xs={12} key={index}>
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, p:  1 }}>
-                  <CheckCircle sx={{ color: 'success.main', fontSize:  20, mt: 0.5}} />
-                  <Typography variant="body2">
-                    {benefit}
-                  </Typography>
-                </Box>
-              </Grid>
-            ))}
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* Workspace Features */}
-      <Card sx={{ mb:  4 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb:  3, display: 'flex', alignItems: 'center', gap:  1  }}>
-            <CloudSync />
-            Hva får du med Google Workspace?
-          </Typography>
-          <Grid container spacing={2}>
-            {WORKSPACE_FEATURES.map((feature, index) => (
-              <Grid item xs={12} key={index}>
-                <Paper
-                  sx={{
-                    p:  2,
-                    textAlign: 'center',
-                    border: '1px solid',
-                    borderColor: 'divider', '&:hover': {
-                      borderColor: 'primary.main',
-                      boxShadow:  2,
-                  },
-                    transition: 'all 0.2'}}
-                 sx={theming.getThemedCardSx()}>
-                  <Avatar
-                    sx={{
-                      bgcolor: 'primary.main',
-                      mx: 'auto',
-                      mb:  2,
-                      width:  48,
-                      height:  48}}
-                  >
-                    {feature.icon}
-                  </Avatar>
-                  <Typography variant="subtitle1" fontWeight="bold" sx={{ mb:  1 }}>
-                    {feature.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                    {feature.description}
-                  </Typography>
-                  <Typography variant="caption" color="primary">
-                    {feature.benefit}
-                  </Typography>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* Action Buttons */}
-      <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mb:  3 }}>
-        <Button variant="contained"
-          size="large"
-          startIcon={<Google />}
-          onClick={() => setShowCreateDialog(true)}
-          sx={{ px:  4 }}
-        >
-          Opprett Google Workspace
+      <Stack direction="row" spacing={1}>
+        <Button variant="contained" startIcon={<OpenInNewIcon />} onClick={() => setCreateDialogOpen(true)}>
+          Opprett Workspace
         </Button>
-        <Button
-          variant="outlined"
-          size="large"
-          startIcon={theming.getThemedIcon('refresh')}
-          onClick={handleRetry}
-          sx={{ px:  4 }}
-        >
+        <Button variant="outlined" startIcon={<RefreshIcon />} onClick={() => workspaceQuery.refetch()}>
           Sjekk igjen
         </Button>
-      </Box>
-
-      <Box sx={{ textAlign: 'center'}}>
-        <Button
-          variant="text"
-          onClick={handleSkip}
-          sx={{ color: 'text.secondary'}}
-        >
-          Hopp over for nå
+        <Button variant="text" onClick={onSkip}>
+          Hopp over
         </Button>
-      </Box>
+      </Stack>
 
-      {/* Create Workspace Dialog */}
-      <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} maxWidth="md" fullWidth>
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-            <Google />
-            Opprett Google Workspace
-          </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <WorkspacesIcon />
+            <Typography variant="h6">Opprett Google Workspace</Typography>
+          </Stack>
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body1" sx={{ mb:  3 }}>
-            Vi anbefaler at du oppretter en Google Workspace-konto for å få full funksjonalitet i CreatorHub Norge.
-            Dette gir deg tilgang til eksklusive integrasjoner som gjør arbeidsflyten din mye mer effektiv.
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Du sendes til Googles registreringsside i ny fane. Etter opprettelse fortsetter denne siden automatisk med
+            statuskontroll.
           </Typography>
-
-          <Alert severity="info" sx={{ mb:  3 }}>
-            <Typography variant="body2">
-              <strong>Gratis prøveperiode: </strong> Google Workspace tilbyr 14 dager gratis prøveperiode, så du kan teste alt uten kostnad.
-            </Typography>
-          </Alert>
-
-          {/* CreatorHub Benefits Preview */}
-          <Box sx={{ mb:  3, p: 2, bgcolor: 'primary.5', borderRadius:  1 }}>
-            <Typography variant="h6" sx={{  mb: 2, color: 'primary.main' }}>
-              🎯 Hva får du i CreatorHub Norge med Google Workspace?
-            </Typography>
-            <Typography variant="body2" sx={{ mb:  2 }}>
-              <strong>For {getProfessionDisplayName(profession).toLowerCase()}er:</strong>
-            </Typography>
-            <List dense>
-              {professionBenefits.benefits.slice(0, 3).map((benefit, index) => (
-                <ListItem key={index} sx={{ px: 0, py: 0.2, 5}}>
-                  <ListItemIcon sx={{ minWidth: 24}}>
-                    <CheckCircle sx={{ color: 'success.main', fontSize: 16}} />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={benefit}
-                    primaryTypographyProps={{ variant: 'body2'}}
-                  />
-                </ListItem>
-              ))}
-            </List>
-            <Typography variant="caption" color="text.secondary">
-              + {professionBenefits.benefits.length - 3} flere fordeler...
-            </Typography>
-          </Box>
-
-          <List>
-            <ListItem>
-              <ListItemIcon>
-                <CheckCircle color="success" />
-              </ListItemIcon>
-              <ListItemText
-                primary="Gratis prøveperiode"
-                secondary="14 dager gratis testing"
-              />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon>
-                <CheckCircle color="success" />
-              </ListItemIcon>
-              <ListItemText
-                primary="Enkel opprettelse"
-                secondary="Opprett konto direkte hos Google"
-              />
-            </ListItem>
-            <ListItem>
-              <ListItemIcon>
-                <CheckCircle color="success" />
-              </ListItemIcon>
-              <ListItemText
-                primary="Automatisk deteksjon"
-                secondary="CreatorHub oppdager din konto automatisk"
-              />
-            </ListItem>
-          </List>
-
-          <Box sx={{ mt:  3, p: 2, bgcolor: 'grey.5', borderRadius:  1 }}>
-            <Typography variant="body2" color="text.secondary">
-              <strong>Neste steg: </strong> Du vil bli omdirigert til Google Workspace sin offisielle side hvor du kan opprette din konto. 
-              Etter opprettelse vil CreatorHub automatisk detektere din nye konto og fullføre integrasjonen.
-            </Typography>
-          </Box>
+          <Alert severity="info">CreatorHub starter automatisk polling i opptil 8 minutter etter at du åpner registreringen.</Alert>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowCreateDialog(false)}>
-            Avbryt
-          </Button>
-          <Button variant="contained"
-            onClick={handleCreateWorkspace}
-            startIcon={<OpenInNew />}
-          >
-            Gå til Google Workspace
+          <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={beginWorkspaceCreation} startIcon={<OpenInNewIcon />}>
+            Gå til Google
           </Button>
         </DialogActions>
       </Dialog>

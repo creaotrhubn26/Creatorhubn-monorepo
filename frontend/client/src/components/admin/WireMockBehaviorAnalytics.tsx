@@ -22,7 +22,11 @@ import {
 } from '@mui/icons-material';
 import { harRecorder } from '../../utils/harRecorder';
 import { useWireMockTestHistory } from '../../hooks/useWireMockTestHistory';
-import { aggregateAnalytics, formatBytes } from '../../utils/wireMockAnalytics';
+import {
+  aggregateAnalytics,
+  formatBytes,
+  type WireMockTestResult as AnalyticsWireMockTestResult,
+} from '../../utils/wireMockAnalytics';
 
 interface EndpointStats {
   endpoint: string;
@@ -49,8 +53,27 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
 
   useEffect(() => {
     const updateStats = () => {
+      const normalizedHistory: AnalyticsWireMockTestResult[] = history.map((result) => ({
+        apiName: result.apiName,
+        success: result.status === 'success',
+        responseTime: result.responseTime ?? 0,
+        statusCode: result.statusCode ?? (result.status === 'success' ? 200 : 500),
+        timestamp: result.timestamp.toISOString(),
+        requestDetails: {
+          method: result.method,
+          endpoint: result.endpoint,
+          headers: result.request?.headers,
+          body: result.request?.body,
+        },
+        responseDetails: {
+          body: result.response?.body ?? {},
+          headers: result.response?.headers ?? {},
+        },
+        error: result.error?.message,
+      }));
+
       // Aggregate analytics from test history (Gap 6 fix)
-      const analytics = aggregateAnalytics(history);
+      const analytics = aggregateAnalytics(normalizedHistory);
 
       // Convert to EndpointStats format for display
       const stats: EndpointStats[] = analytics.endpoints.map(endpoint => ({
@@ -246,4 +269,3 @@ export const WireMockBehaviorAnalytics: React.FC = () => {
     </Card>
   );
 };
-

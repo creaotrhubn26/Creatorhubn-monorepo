@@ -312,8 +312,8 @@ interface TicketSuggestion {
   id: string;
   title: string;
   description: string;
-  category: string;
-  priority: string;
+  category: TicketFormData['category'];
+  priority: TicketFormData['priority'];
   icon: React.ReactNode;
   color: string
 }
@@ -399,7 +399,7 @@ export default function UniversalChatWidget({
       profession: profession,
       version: '2.1',
       capabilities: ['chat', 'email', 'feedback', 'evendi-bridge', 'ticket-creation'],
-      props: { profession, userEmail, userId },
+      props: ['profession', 'userEmail', 'userId'],
     });
 
     // Register integration actions for cross-component communication
@@ -421,9 +421,8 @@ export default function UniversalChatWidget({
     // Register data flow node for chat data syncing
     const chatNodeId = dataFlow.registerNode({
       componentId: 'universal-chat-widget',
-      type: 'both',
+      type: 'processor',
       dataKey: 'chat-messages',
-      label: 'Chat Widget Data',
     });
 
     return () => {
@@ -435,7 +434,7 @@ export default function UniversalChatWidget({
 
   // Listen to global events and update accordingly
   useEffect(() => {
-    const unsubscribe = communication.onMessage((message: Record<string, unknown>) => {
+    const unsubscribe = communication.onMessage((message) => {
       const msgType = message.type as string;
       const msgData = message.data as Record<string, unknown> | undefined;
       if (msgType === 'project:selected' && msgData) {
@@ -1358,8 +1357,8 @@ export default function UniversalChatWidget({
       ...ticketFormData,
       title: suggestion.title,
       description: suggestion.description,
-      category: suggestion.category as 'bug' | 'feature' | 'question' | 'other',
-      priority: suggestion.priority as 'low' | 'medium' | 'high' | 'urgent'
+      category: suggestion.category,
+      priority: suggestion.priority
     });
     setShowTicketSuggestions(false);
   };
@@ -1495,7 +1494,7 @@ export default function UniversalChatWidget({
   const handleFeedbackStatusUpdate = () => {
     if (selectedFeedback && newFeedbackStatus) {
       updateFeedbackStatusMutation.mutate({
-        id: selectedFeedback.d,
+        id: selectedFeedback.id,
         status: newFeedbackStatus,
         adminNotes
   });
@@ -1645,7 +1644,7 @@ export default function UniversalChatWidget({
                     sx={{
                       width:  8,
                       height:  8,
-                      borderRadius: '50, %',
+                      borderRadius: '50%',
                       backgroundColor: communicationStatus.googleChatStatus === 'connected' ? '#4caf50' : '#',
                       border: '1px solid white'
               }}
@@ -2137,7 +2136,7 @@ export default function UniversalChatWidget({
                       <List sx={{ p:  0 }}>
                         {feedbackList.map((feedback: FeedbackItem) => (
                           <ListItem 
-                            key={feedback.d}
+                            key={feedback.id}
                             sx={{
                               border: `1px solid ${getFeedbackStatusColor(feedback.status)}20`,
                               borderRadius:  1,
@@ -2933,25 +2932,25 @@ export default function UniversalChatWidget({
                   >
                     <MenuItem value="open">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#2196f3'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#2196f3'}} />
                         Åpen
                       </Box>
                     </MenuItem>
                     <MenuItem value="in_progress">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#ff9800'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#ff9800'}} />
                         Pågår
                       </Box>
                     </MenuItem>
                     <MenuItem value="resolved">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#4caf50'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#4caf50'}} />
                         Løst
                       </Box>
                     </MenuItem>
                     <MenuItem value="closed">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#757575'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#757575'}} />
                         Lukket
                       </Box>
                     </MenuItem>
@@ -2967,25 +2966,25 @@ export default function UniversalChatWidget({
                   >
                     <MenuItem value="low">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#4caf50'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#4caf50'}} />
                         Lav
                       </Box>
                     </MenuItem>
                     <MenuItem value="medium">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#ff9800'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#ff9800'}} />
                         Medium
                       </Box>
                     </MenuItem>
                     <MenuItem value="high">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#f44336'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#f44336'}} />
                         Høy
                       </Box>
                     </MenuItem>
                     <MenuItem value="critical">
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ width:  12, height:  12, borderRadius: '50, %', bgcolor: '#9c27b0'}} />
+                        <Box sx={{ width:  12, height:  12, borderRadius: '50%', bgcolor: '#9c27b0'}} />
                         Kritisk
                       </Box>
                     </MenuItem>

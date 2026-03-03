@@ -68,6 +68,13 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '../../lib/queryClient';
 
+const getErrorStatusCode = (error: unknown): number | null => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const prefixedMatch = message.match(/^(\d{3})[:\s]/);
+  if (prefixedMatch) return Number(prefixedMatch[1]);
+  return null;
+};
+
 // Source type colors and labels
 const SOURCE_TYPE_CONFIG = {
   official: { color: '#4CAF50', label: 'Offisiell', icon: Verified },
@@ -144,6 +151,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
   const [filterBy, setFilterBy] = useState<'all' | 'critical' | 'recommended' | 'optional'>('all');
   const [sortBy, setSortBy] = useState<'date' | 'priority' | 'brand'>('priority');
+  const [firmwareEndpointUnavailable, setFirmwareEndpointUnavailable] = useState(false);
   const queryClient = useQueryClient();
   
   // Theming system
@@ -158,7 +166,20 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
     refetch,
   } = useQuery({
     queryKey: ['/api/equipment/firmware-updates', userId],
-    queryFn: () => apiRequest(`/api/equipment/firmware-updates/${userId}`),
+    enabled: Boolean(userId) && !firmwareEndpointUnavailable,
+    queryFn: async () => {
+      try {
+        return await apiRequest(`/api/equipment/firmware-updates/${userId}`);
+      } catch (error) {
+        const status = getErrorStatusCode(error);
+        if (status === 401 || status === 403 || status === 404) {
+          setFirmwareEndpointUnavailable(true);
+          return [];
+        }
+        throw error;
+      }
+    },
+    retry: false,
   });
 
   // Manual firmware check
@@ -575,7 +596,17 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
       </Box>
 
       {/* Updates List */}
-      {sortedUpdates.length === 0 && !isLoading && (
+      {firmwareEndpointUnavailable && !isLoading && (
+        <Alert severity="info" sx={{ textAlign: 'center', py: 4 }}>
+          <Info sx={{ fontSize: '3rem', mb: 2, color: 'info.main' }} />
+          <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
+            Firmware-data er ikke tilgjengelig i dette miljøet ennå
+          </Typography>
+          <Typography>Panelet viser oppdateringer automatisk når endepunktet blir aktivt.</Typography>
+        </Alert>
+      )}
+
+      {!firmwareEndpointUnavailable && sortedUpdates.length === 0 && !isLoading && (
         <Alert severity="info" sx={{ textAlign: 'center', py: 4 }}>
           <CheckCircle sx={{ fontSize: '3rem', mb: 2, color: 'success.main' }} />
           <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
@@ -598,7 +629,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
       >
         {selectedUpdate && (
           <>
-            <DialogTitle>
+            <DialogTitle component="div">
               <Box
                 sx={{
                   display: 'flex',

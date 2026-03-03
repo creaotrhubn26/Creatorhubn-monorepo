@@ -53,7 +53,7 @@ export interface UseThemeReturn {
  */
 export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onThemeChanged,
     onThemeChangeFailed,
     onSystemThemeChanged,
@@ -88,8 +88,8 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
   // Initialize theme manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      themeManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      themeManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -163,7 +163,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onThemeChanged, onThemeChangeFailed, onSystemThemeChanged, onCustomThemeCreated, onCustomThemeCreateFailed, onError, onInitialized]);
+}, [optionConfig, onThemeChanged, onThemeChangeFailed, onSystemThemeChanged, onCustomThemeCreated, onCustomThemeCreateFailed, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -205,7 +205,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return themeManager.getConfig();
 }, []);
 
@@ -231,7 +231,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
     setSystemTheme,
     createCustomTheme,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -257,7 +257,7 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
     setSystemTheme,
     createCustomTheme,
     state,
-    config,
+    currentConfig,
     updateConfig,
     getCurrentTheme,
     getThemes,
@@ -268,7 +268,6 @@ export const useTheme = (options: UseThemeOptions = {}): UseThemeReturn => {
 };
 
 export default useTheme;
-
 
 
 

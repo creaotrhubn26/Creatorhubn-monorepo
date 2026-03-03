@@ -49,7 +49,7 @@ export interface UseAnalyticsReturn {
  */
 export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onEventTracked,
     onSessionStarted,
     onSessionEnded,
@@ -72,43 +72,44 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
 });
 
   const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const eventHandlersRef = useRef<Map<string, Function>>(new Map());
+  const eventHandlersRef = useRef<Map<string, (data?: unknown) => void>>(new Map());
 
   // Initialize analytics manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      analyticsManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      analyticsManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
-    const handleEventTracked = (event: AnalyticsEvent) => {
+    const handleEventTracked = (data?: unknown) => {
       if (onEventTracked) {
-        onEventTracked(event);
+        onEventTracked(data as AnalyticsEvent);
   }
   };
 
-    const handleSessionStarted = (session: any) => {
+    const handleSessionStarted = (data?: unknown) => {
       if (onSessionStarted) {
-        onSessionStarted(session);
+        onSessionStarted(data);
   }
   };
 
-    const handleSessionEnded = (session: any) => {
+    const handleSessionEnded = (data?: unknown) => {
       if (onSessionEnded) {
-        onSessionEnded(session);
+        onSessionEnded(data);
   }
   };
 
-    const handleEventsFlushed = (data: { count: number }) => {
+    const handleEventsFlushed = (data?: unknown) => {
       if (onEventsFlushed) {
-        onEventsFlushed(data);
+        onEventsFlushed(data as { count: number });
     }
   };
 
-    const handleError = (data: { error: string }) => {
+    const handleError = (data?: unknown) => {
+      const errorData = data as { error?: string } | undefined;
       if (onError) {
-        onError(data.error);
+        onError(errorData?.error || 'Unknown analytics error');
     }
   };
 
@@ -144,7 +145,7 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onEventTracked, onSessionStarted, onSessionEnded, onEventsFlushed, onError, onInitialized]);
+}, [optionConfig, onEventTracked, onSessionStarted, onSessionEnded, onEventsFlushed, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -227,7 +228,7 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
     trackPerformance,
     flush,
     state,
-    currentConfig,
+    config: currentConfig,
     updateConfig,
     isTracking: state.isTracking,
     isInitialized: state.isInitialized,
@@ -256,8 +257,5 @@ export const useAnalytics = (options: UseAnalyticsOptions = {}): UseAnalyticsRet
 };
 
 export default useAnalytics;
-
-
-
 
 

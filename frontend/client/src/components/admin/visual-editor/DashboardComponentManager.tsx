@@ -11,7 +11,6 @@ import {
   Card,
   CardContent,
   Typography,
-  Grid,
   Tabs,
   Tab,
   Button,
@@ -43,6 +42,7 @@ import {
   Tooltip,
   Paper,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 
 import {
   ExpandMore,
@@ -92,7 +92,12 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { useTheming } from '../../../utils/theming-helper';
 
 interface DashboardComponentManagerProps {
-  selectedProject?: { id: string; name?: string };
+  selectedProject?: {
+    id: string;
+    name?: string;
+    status?: string;
+    customizations?: ComponentCustomization[];
+  };
   onProjectUpdate?: (project: Record<string, unknown>) => void;
   onNotificationCreate?: (notification: Record<string, unknown>) => void;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
@@ -130,9 +135,9 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   
   // Theming system
-  const theming = useTheming('prototype_tester,');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [professionFilter, setProfessionFilter] = useState<string>(profession);
+  const theming = useTheming('prototype_tester');
+  const [categoryFilter, setCategoryFilter] = useState<ComponentMetadata['category'] | 'all'>('all');
+  const [professionFilter, setProfessionFilter] = useState<'all' | '' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise'>(profession);
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [showComponentDialog, setShowComponentDialog] = useState(false);
@@ -144,18 +149,38 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
   const [componentEnabled, setComponentEnabled] = useState<Record<string, boolean>>({});
   const [fontSize, setFontSize] = useState(14);
   const [spacing, setSpacing] = useState(8);
+  const resolvedProfessionFilter = useMemo<'' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | null>(() => {
+    if (professionFilter === 'all') {
+      return null;
+    }
+    if (professionFilter === 'enterprise') {
+      return 'admin';
+    }
+    return professionFilter;
+  }, [professionFilter]);
+  const resolvedProfessionForStats = useMemo<'' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin'>(() => {
+    if (profession === 'enterprise') {
+      return 'admin';
+    }
+    return profession;
+  }, [profession]);
 
   // Performance tracking
+  const integrationPerformanceMetrics = useMemo<{
+    renderCount?: number;
+    avgRenderTime?: number;
+    memoryUsage?: number;
+  }>(() => performance?.getPerformanceMetrics?.() ?? {}, [performance]);
   const performanceData = useMemo(() => ({
-    renderCount: performance?.renderCount ?? 0,
-    avgRenderTime: performance?.avgRenderTime ?? 0,
-    memoryUsage: performance?.memoryUsage ?? 0
-  }), [performance]);
+    renderCount: integrationPerformanceMetrics.renderCount ?? 0,
+    avgRenderTime: integrationPerformanceMetrics.avgRenderTime ?? 0,
+    memoryUsage: integrationPerformanceMetrics.memoryUsage ?? 0
+  }), [integrationPerformanceMetrics]);
 
   // Component registration
   useEffect(() => {
     lifecycle.registerComponent({
-      id: 'DashboardComponentManager,',
+      id: 'DashboardComponentManager',
       type: 'component-manager',
       version: '1.0.0',
       capabilities: {
@@ -190,8 +215,8 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
     let components = UNIVERSAL_DASHBOARD_COMPONENTS;
 
     // Filter by profession
-    if (professionFilter !== 'all') {
-      components = components.filter(comp => comp.profession.includes(professionFilter as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise'));
+    if (resolvedProfessionFilter) {
+      components = components.filter(comp => comp.profession.includes(resolvedProfessionFilter));
     }
 
     // Filter by category
@@ -215,10 +240,10 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
     }
 
     return components;
-  }, [searchTerm, categoryFilter, professionFilter, sortOrder]);
+  }, [searchTerm, categoryFilter, resolvedProfessionFilter, sortOrder]);
 
   // Get component categories
-  const categories = [
+  const categories: Array<{ id: ComponentMetadata['category'] | 'all'; label: string; icon: React.ReactElement }> = [
     { id: 'all', label: 'All Components', icon: <Dashboard /> },
     { id: 'orchestrator', label: 'Orchestrators', icon: <Settings /> },
     { id: 'management', label: 'Management', icon: <SettingsIcon /> },
@@ -414,9 +439,9 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
         <Grid size={{ xs:  12, md:  3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
-                {getComponentsByProfession(profession).length}
-              </Typography>
+                <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
+                  {getComponentsByProfession(resolvedProfessionForStats).length}
+                </Typography>
               <Typography variant="body2" color="text.secondary">
                 {profession} Components
               </Typography>
@@ -446,7 +471,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
               </Typography>
               <Grid container spacing={2}>
                 {categories.slice(1).map(category => {
-                  const count = getComponentsByCategory(category.id as string).length;
+                  const count = getComponentsByCategory(category.id as ComponentMetadata['category']).length;
                   return (
                     <Grid size={{ xs:  6, sm:  4, md:  3 }} key={category.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
@@ -483,7 +508,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
           <InputLabel>Category</InputLabel>
           <Select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => setCategoryFilter(e.target.value as ComponentMetadata['category'] | 'all')}
             label="Category"
           >
             {categories.map(category => (
@@ -501,7 +526,7 @@ const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
           <InputLabel>Profession</InputLabel>
           <Select
             value={professionFilter}
-            onChange={(e) => setProfessionFilter(e.target.value)}
+            onChange={(e) => setProfessionFilter(e.target.value as 'all' | '' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise')}
             label="Profession"
           >
             <MenuItem value="all">All Professions</MenuItem>

@@ -415,7 +415,7 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
                         startIcon={<Download />}
                         sx={{ bgcolor: professionColor }}
                         size="small"
-                        onClick={() => window.open(update.firmwareUpdate.downloadUrl'_blank')}
+                        onClick={() => window.open(update.firmwareUpdate.downloadUrl, '_blank')}
                       >
                         Last ned
                       </Button>
@@ -637,10 +637,12 @@ const EquipmentManagement: React.FC<EquipmentManagementProps> = ({ profession, u
           position: 'fixed',
           bottom: 24,
           right: 24,
-          bgcolor: professionColor'&:hover': {
+          bgcolor: professionColor,
+          '&:hover': {
             bgcolor: professionColor,
             opacity: 0.9,
-          }}}
+          },
+        }}
       >
         Legg til utstyr
       </Button>

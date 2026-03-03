@@ -123,7 +123,7 @@ const extractRealExifData = useCallback(async (arrayBuffer: ArrayBuffer, filenam
           "Content-Type" : "application/json"
     },
         
-      method: 'POS',
+      method: 'POST',
       body: formData
 });
     

@@ -1129,7 +1129,7 @@ export default function SubmissionsOverview({
                               sx={{
                                 width:  48,
                                 height:  48,
-                                borderRadius: '50, %',
+                                borderRadius: '50%',
                                 background: 'linear-gradient(135deg, #4ECDC4 0%, #36C7B8 100%)',
                                 display: 'flex',
                                 alignItems: 'center',

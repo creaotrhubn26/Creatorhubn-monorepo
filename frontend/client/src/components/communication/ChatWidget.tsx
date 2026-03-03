@@ -1,71 +1,59 @@
 /**
  * Enhanced Chat Widget with Smart Response Integration
- * Combines existing chat functionality with intelligent response suggestions
+ * Floating communication widget for internal/customer messaging.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
-import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  IconButton,
-  Fab,
-  Badge,
-  useTheme,
-  useMediaQuery,
-  Zoom,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Tabs,
-  Tab,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
   Avatar,
-  Menu,
-  MenuItem,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
   Divider,
+  Fab,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
   Tooltip,
+  Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
-  Chat as ChatIcon,
-  Close as CloseIcon,
-  SmartToy as SmartToyIcon,
-  Settings as SettingsIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Google,
-  Groups,
   Add,
-  MoreVert,
-  AlternateEmail,
-  Notifications,
-  NotificationsActive,
+  Chat as ChatIcon,
+  Close,
+  Send,
+  SmartToy,
 } from '@mui/icons-material';
-import { IntelligentChatWidget } from './IntelligentChatWidget';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import WorklogContextShortcuts from '../worklog/WorklogContextShortcuts';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+type IntegrationPayload = Record<string, unknown>;
 
 interface ChatMessage {
   id: string;
   content: string;
   sender: 'customer' | 'photographer';
   timestamp: Date;
-  leadId?: string
+  leadId?: string;
+}
+
+interface ConversationItem {
+  id: string;
+  title: string;
+  participantName?: string;
+  updatedAt?: string;
+  unreadCount?: number;
 }
 
 interface ChatWidgetProps {
@@ -74,24 +62,134 @@ interface ChatWidgetProps {
   enableSmartSuggestions?: boolean;
   defaultExpanded?: boolean;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
-  // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  onMeetingCreate?: (meeting: IntegrationPayload) => void;
+  onProjectUpdate?: (project: IntegrationPayload) => void;
+  onWorklogCreate?: (worklog: IntegrationPayload) => void;
+  onClientSelect?: (client: IntegrationPayload) => void;
+  onClientUpdate?: (client: IntegrationPayload) => void;
+  onShowcaseCreate?: (showcase: IntegrationPayload) => void;
+  onFileUpload?: (file: IntegrationPayload) => void;
+  onFileDownload?: (file: IntegrationPayload) => void;
+  selectedProject?: IntegrationPayload;
+  onProjectSelect?: (project: IntegrationPayload) => void;
+  selectedClient?: IntegrationPayload;
+  onSettingsUpdate?: (settings: IntegrationPayload) => void;
+  onNotificationCreate?: (notification: IntegrationPayload) => void;
+}
+
+function parseConversationList(payload: unknown): ConversationItem[] {
+  if (Array.isArray(payload)) {
+    return payload as ConversationItem[];
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: ConversationItem[] }).data;
+  }
+
+  return [];
+}
+
+function parseMessages(payload: unknown): ChatMessage[] {
+  const source = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === 'object' && Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+
+  return source
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+    .map((item, index) => ({
+      id: typeof item.id === 'string' ? item.id : `message-${index}`,
+      content: typeof item.content === 'string' ? item.content : '',
+      sender:
+        typeof item.sender === 'string' && item.sender === 'customer'
+          ? 'customer'
+          : typeof item.senderType === 'string' && item.senderType === 'customer'
+            ? 'customer'
+            : 'photographer',
+      timestamp: item.timestamp ? new Date(String(item.timestamp)) : new Date(),
+      leadId: typeof item.leadId === 'string' ? item.leadId : undefined,
+    }))
+    .filter((message) => message.content.length > 0);
+}
+
+function maybeExecuteSlashCommand(
+  input: string,
+  handlers: {
+    onMeetingCreate?: (meeting: IntegrationPayload) => void;
+    onProjectUpdate?: (project: IntegrationPayload) => void;
+    onWorklogCreate?: (worklog: IntegrationPayload) => void;
+    onClientSelect?: (client: IntegrationPayload) => void;
+    onClientUpdate?: (client: IntegrationPayload) => void;
+    onShowcaseCreate?: (showcase: IntegrationPayload) => void;
+    onFileUpload?: (file: IntegrationPayload) => void;
+    onFileDownload?: (file: IntegrationPayload) => void;
+    onProjectSelect?: (project: IntegrationPayload) => void;
+    onSettingsUpdate?: (settings: IntegrationPayload) => void;
+    onNotificationCreate?: (notification: IntegrationPayload) => void;
+  },
+): boolean {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith('/')) {
+    return false;
+  }
+
+  const [command, ...parts] = trimmed.slice(1).split(' ');
+  const detail = parts.join(' ').trim();
+
+  if (command === 'meeting' && handlers.onMeetingCreate) {
+    handlers.onMeetingCreate({ title: detail || 'Quick meeting request' });
+    return true;
+  }
+  if (command === 'project' && handlers.onProjectUpdate) {
+    handlers.onProjectUpdate({ update: detail || 'Project update from chat' });
+    return true;
+  }
+  if (command === 'worklog' && handlers.onWorklogCreate) {
+    handlers.onWorklogCreate({ note: detail || 'Worklog created from chat' });
+    return true;
+  }
+  if (command === 'client' && handlers.onClientUpdate) {
+    const payload = { note: detail || 'Client update from chat' };
+    handlers.onClientUpdate(payload);
+    handlers.onClientSelect?.(payload);
+    return true;
+  }
+  if (command === 'showcase' && handlers.onShowcaseCreate) {
+    handlers.onShowcaseCreate({ summary: detail || 'Showcase action from chat' });
+    return true;
+  }
+  if (command === 'upload' && handlers.onFileUpload) {
+    handlers.onFileUpload({ filename: detail || 'upload-placeholder' });
+    return true;
+  }
+  if (command === 'download' && handlers.onFileDownload) {
+    handlers.onFileDownload({ filename: detail || 'download-placeholder' });
+    return true;
+  }
+  if (command === 'select-project' && handlers.onProjectSelect) {
+    handlers.onProjectSelect({ id: detail || 'project-from-chat' });
+    return true;
+  }
+  if (command === 'settings' && handlers.onSettingsUpdate) {
+    handlers.onSettingsUpdate({ value: detail || 'chat-settings-updated' });
+    return true;
+  }
+  if (command === 'notify' && handlers.onNotificationCreate) {
+    handlers.onNotificationCreate({ message: detail || 'Chat notification' });
+    return true;
+  }
+
+  return false;
 }
 
 export const ChatWidget: React.FC<ChatWidgetProps> = ({
-  userd,
+  userId,
   position = 'bottom-right',
   enableSmartSuggestions = true,
   defaultExpanded = false,
@@ -108,453 +206,290 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({
   onProjectSelect,
   selectedClient,
   onSettingsUpdate,
-  onNotificationCreate
+  onNotificationCreate,
 }) => {
   const theme = useTheme();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession);
-  const isMobile = useMediaQuery(theme.breakpoints.down( 'md,'));
-  
-  const [isOpen, setIsOpen] = useState(defaultExpanded);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const [open, setOpen] = useState(defaultExpanded);
+  const [activeTab, setActiveTab] = useState(0);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isCustomerTyping, setIsCustomerTyping] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [tabValue, setTabValue] = useState(0); // 0 = Internal Chat, 1 = Google Chat
-  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
-  
-  // Push notifications
-  const { pushEnabled, isSupported } = usePushNotifications(userId);
+  const [draft, setDraft] = useState('');
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
 
-  // Get active conversations
-  const { data: conversations = [, ],} = useQuery({
-    queryKey: ['conversations', userId],
-    queryFn: () => apiRequest(`/api/communication/conversations?userId=${userId}`),
-    refetchInterval: 5000 // Poll for new messages
-});
+  const { data: conversations = [] } = useQuery({
+    queryKey: ['communication-conversations', userId],
+    queryFn: async () => {
+      const payload = await apiRequest(`/api/communication/conversations?userId=${userId}`);
+      return parseConversationList(payload);
+    },
+    refetchInterval: 10_000,
+  });
 
-  // Get messages for active conversation
-  const { data: conversationMessages = [, ],} = useQuery({
-    queryKey: ['conversation-messages', activeConversationId],
-    queryFn: () => activeConversationId 
-      ? apiRequest(`/api/communication/conversations/${activeConversationd}/messages`)
-      : Promise.resolve([]),
-    enabled: !!activeConversationd,
-    refetchInterval: 2000 });
+  const { data: conversationMessages = [] } = useQuery({
+    queryKey: ['communication-messages', activeConversationId],
+    enabled: Boolean(activeConversationId),
+    queryFn: async () => {
+      const payload = await apiRequest(`/api/communication/conversations/${activeConversationId}/messages`);
+      return parseMessages(payload);
+    },
+    refetchInterval: 4_000,
+  });
 
-  // Set up the first conversation as active if none selected
   useEffect(() => {
     if (conversations.length > 0 && !activeConversationId) {
       setActiveConversationId(conversations[0].id);
-  }
-}, [conversations, activeConversationId]);
+    }
+  }, [activeConversationId, conversations]);
 
-  // Update messages when conversation changes
-  useEffect(() => {
-    if (conversationMessages.length > 0) {
-      const formattedMessages: ChatMessage[] = conversationMessages.map(msg => ({
-        id: msg.d,
-        content: msg.content,
-        sender: msg.senderId === userId ? 'photographer' : 'customer',
-        timestamp: new Date(msg.timestamp),
-        leadId: msg.leadId
-  }));
-      setMessages(formattedMessages);
-      
-      // Calculate unread count
-      const unread = formattedMessages.filter(msg => 
-        msg.sender === 'customer' && !msg.timestamp
-      ).length;
-      setUnreadCount(unread);
-  }
-}, [conversationMessages, userId]);
+  const messages = useMemo(() => {
+    if (localMessages.length === 0) {
+      return conversationMessages;
+    }
+    return [...conversationMessages, ...localMessages];
+  }, [conversationMessages, localMessages]);
 
-  const handleSendMessage = async (content: string) => {
-    if (!activeConversationId) return;
+  const unreadCount = useMemo(
+    () => conversations.reduce((sum, conversation) => sum + (conversation.unreadCount ?? 0), 0),
+    [conversations],
+  );
 
-    try {
-      const newMessage = await apiRequest(`/api/communication/conversations/${activeConversationd}/messages`, {
-        headers: {
-          "Content-Type" : "application/json"
-    },
-        method: 'POS',
-        body: JSON.stringify({
-          content,
-          senderId: userd,
-          senderType: 'photographer'
-    })
+  const sendMessage = async () => {
+    const content = draft.trim();
+    if (!content) {
+      return;
+    }
+
+    const handledByCommand = maybeExecuteSlashCommand(content, {
+      onMeetingCreate,
+      onProjectUpdate,
+      onWorklogCreate,
+      onClientSelect,
+      onClientUpdate,
+      onShowcaseCreate,
+      onFileUpload,
+      onFileDownload,
+      onProjectSelect,
+      onSettingsUpdate,
+      onNotificationCreate,
     });
 
-      // Add to local messages immediately for better UX
-      const messageObj: ChatMessage = {
-        id: newMessage.d,
+    if (!handledByCommand && activeConversationId) {
+      try {
+        await apiRequest(`/api/communication/conversations/${activeConversationId}/messages`, {
+          method: 'POST',
+          body: {
+            content,
+            senderId: userId,
+            senderType: 'photographer',
+          },
+        });
+      } catch {
+        // Keep local fallback message to avoid losing user input when API fails.
+      }
+    }
+
+    setLocalMessages((previous) => [
+      ...previous,
+      {
+        id: `local-${Date.now()}`,
         content,
         sender: 'photographer',
         timestamp: new Date(),
-        leadId: newMessage.leadId
+      },
+    ]);
+    setDraft('');
   };
-      
-      setMessages(prev => [...prev, messageObj]);
-      
-  } catch (error) {
-      console.error('Failed to send message: ', error);
-  }
-};
 
-  const positionStyles = {
-    'bottom-right': {
-      bottom:  20,
-      right: 10, // Leave space for SpeedDial
-  }, 'bottom-left': {
-      bottom:  20,
-      left:  20,
-  }
-};
+  const quickSuggestions = useMemo(() => {
+    if (!enableSmartSuggestions) {
+      return [] as string[];
+    }
 
-  if (isMobile && !isOpen) {
-    // Mobile: Show only floating button when closed
+    const base = ['Takk for meldingen! Jeg følger opp straks.', 'Kan du dele ønsket leveringsdato?', 'Skal jeg sette opp et tilbud?'];
+
+    if (profession === 'photographer') {
+      return [...base, 'Ønsker du forslag til foto-pakker?'];
+    }
+    if (profession === 'videographer') {
+      return [...base, 'Skal vi avklare lengde og format på videoen?'];
+    }
+    if (profession === 'music_producer') {
+      return [...base, 'Vil du at vi starter med demo-utkast?'];
+    }
+    return base;
+  }, [enableSmartSuggestions, profession]);
+
+  const floatingPosition = position === 'bottom-left' ? { left: 20 } : { right: 20 };
+
+  if (!open) {
     return (
-      <Zoom in={true}>
-        <Fab
-          color="primary"
-          sx={{
-            position: 'fixed',
-            ...positionStyles[position],
-            zIndex: 1000}}
-          onClick={() => setIsOpen(true)}
-        >
-          <Badge badgeContent={unreadCount} color="error">
-            <ChatIcon />
-          </Badge>
-        </Fab>
-      </Zoom>
-    );
-}
-
-  if (isMobile && isOpen) {
-    // Mobile: Full screen dialog
-    return (
-      <Dialog
-        fullScreen
-        open={isOpen}
-        onClose={() => setIsOpen(false)}
-        sx={{ zIndex: 130}}
+      <Fab
+        color="primary"
+        onClick={() => setOpen(true)}
+        sx={{ position: 'fixed', bottom: 20, zIndex: 1200, ...floatingPosition }}
       >
-        <Box sx={{ bgcolor: 'primary.main', color: 'white' }}>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            p: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-              <ChatIcon />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Google Chat Integration v2.1</Typography>
-              <Chip 
-                label={tabValue === 0 ? "INTERN CHAT" : "GOOGLE CHAT"}
-                size="small" 
-                sx={{ 
-                  bgcolor: tabValue === 0 ? '#FF5722' : '#4285F0', 
-                  color: 'white',
-                  fontSize: '0.75rem',
-                  fontWeight: 'bold'
-            }}
-              />
-            </Box>
-            <Box>
-              {isSupported && (
-                <Tooltip title="Push-varsler innstillinger">
-                  <IconButton
-                    color="inherit"
-                    onClick={() => setPushSettingsOpen(true)}
-                    sx={{ color: pushEnabled ? 'rgba(255, 255, 255, 0.9)' : 'white' }}
-                  >
-                    {pushEnabled ? <NotificationsActive /> : <Notifications />}
-                  </IconButton>
-                </Tooltip>
-              )}
-              {tabValue === 1 && (
-                <IconButton
-                  color="inherit"
-                  onClick={(e) => setMenuAnchorEl(e.currentTarget)}
-                >
-                  {theming.getThemedIcon('moreVert')}
-                </IconButton>
-              )}
-              <IconButton
-                color="inherit"
-                onClick={() => setIsOpen(false)}
-              >
-                <CloseIcon />
-              </IconButton>
-            </Box>
-          </Box>
-          
-          {/* Google Chat Tabs */}
-          <Tabs 
-            value={tabValue}
-            onChange={(e, newValue) => setTabValue(newValue)}
-            variant="fullWidth"
-            sx={{
-              '& .MuiTab-root': { 
-                color: 'rgba(25,255,255,0.7)',
-                minHeight:  60,
-                fontSize: '1rem',
-                fontWeight: 60
-               , border: '2px solid rgba(25,255,255,0.2)',
-                borderRadius:  2,
-                mx: 0.5, '&:hover': {
-                  bgcolor: 'rgba(25,255,255,0.1)'
-              }
-            }, '& .Mui-selected': { 
-                color: 'white !important',
-                bgcolor: 'rgba(25,255,255,0.2)',
-                border: '2px solid white'
-          }, '& .MuiTabs-indicator': {
-                display: 'none'
-          }
-          }}
-          >
-            <Tab 
-              icon={<ChatIcon sx={{ fontSize: 24}} />}
-              label="INTERN CHAT" 
-              iconPosition="start"
-              sx={{ textTransform: 'none' }}
-            />
-            <Tab 
-              icon={<Google sx={{ fontSize: 24}} />}
-              label="GOOGLE CHAT" 
-              iconPosition="start" 
-              sx={{ textTransform: 'none' }}
-            />
-          </Tabs>
-        </Box>
-        <DialogContent sx={{ p: 0, height: '100%' }}>
-          {tabValue === 0 ? (
-            // Internal Chat Tab
-            activeConversationId && enableSmartSuggestions ? (
-              <IntelligentChatWidget
-                conversationId={activeConversationId}
-                leadId={messages[0]?.leadId}
-                onSendMessage={handleSendMessage}
-                messages={messages}
-                isCustomerTyping={isCustomerTyping}
-              />
-            ) : (
-              <Box sx={{ p:  2 }}>
-                <Typography>Standard internal chat interface</Typography>
-              </Box>
-            )
-          ) : (
-            // Google Chat Tab
-            <Box sx={{ p: 2, textAlign: 'center', mt:  4 }}>
-              <Google sx={{ fontSize:  64, color: '#4285F0', mb:  2 }} />
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Google Chat Integration</Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                Connect with your Google Chat spaces and colleagues directly from CreatorHub Norge
-              </Typography>
-              <Button variant="contained" 
-                startIcon={<Google />}
-                sx={{ bgcolor: '#4285F0','&:hover': { bgcolor: '#3367D6' } }}
-                onClick={() => console.log('Google Chat authorization')}
-              >
-                Connect Google Chat
-              </Button>
-            </Box>
-          )}
-        </DialogContent>
-        
-        {/* Google Chat Actions Menu */}
-        <Menu
-          anchorEl={menuAnchorEl}
-          open={Boolean(menuAnchorEl)}
-          onClose={() => setMenuAnchorEl(null)}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        >
-          <MenuItem onClick={() => console.log('Create Chat Space')}>
-            <Add sx={{ mr:  1 }} />
-            Opprett nytt Chat-rom
-          </MenuItem>
-          <MenuItem onClick={() => console.log('Mention Someone')}>
-            <AlternateEmail sx={{ mr:  1 }} />
-            @nevn noen
-          </MenuItem>
-          <Divider />
-          <MenuItem onClick={() => console.log('Chat Settings')}>
-            <SettingsIcon sx={{ mr:  1 }} />
-            Chat-innstillinger
-          </MenuItem>
-        </Menu>
-      </Dialog>
+        <Badge badgeContent={unreadCount} color="error">
+          <ChatIcon />
+        </Badge>
+      </Fab>
     );
-}
+  }
 
-  // Desktop: Floating widget
   return (
-    <>
-      <Zoom in={true}>
-        <Paper
-          elevation={8}
-          sx={{
-            position: 'fixed',
-            ...positionStyles[position],
-            width: isMinimized ? 'auto' : 40,
-            height: isMinimized ? 'auto' : 60,
-            zIndex: 10,
-            borderRadius:  2,
-            overflow: 'hidden',
-            background: `linear-gradient(135deg, ${theme.palette.primary.main}15 0%, ${theme.palette.background.paper} 100%)`,
-            backdropFilter: 'blur(10px)',
-            border: `1px solid ${theme.palette.divider}`,
-            transition: 'all 0.3s ease-in-out'
+    <Paper
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        bottom: 20,
+        width: isMobile ? 'calc(100vw - 24px)' : 430,
+        height: isMobile ? '70vh' : 560,
+        zIndex: 1200,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        ...floatingPosition,
       }}
-         sx={theming.getThemedCardSx()}>
-          {/* Header */}
-          <Box
-            sx={{
-              bgcolor: 'primary.main',
-              color: 'white',
-              p:  2,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              cursor: 'pointer'
-        }}
-            onClick={() => setIsMinimized(!isMinimized)}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-              <ChatIcon />
-              <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                Kunde Chat
-              </Typography>
-              {enableSmartSuggestions && (
-                <SmartToyIcon sx={{ opacity: 0, .fontSize: 20}} />
-              )}
-              {unreadCount > 0 && (
-                <Badge badgeContent={unreadCount} color="error" />
-              )}
-            </Box>
-            <Box>
-              <IconButton
-                size="small"
-                color="inherit"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSettingsOpen(true);
-              }}
-              >
-                <SettingsIcon />
+    >
+      <Box sx={{ p: 1.25, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ChatIcon fontSize="small" />
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Chat Widget
+            </Typography>
+            <Chip label={`${unreadCount} unread`} size="small" />
+          </Stack>
+          <Stack direction="row" spacing={0.5}>
+            <Tooltip title="New conversation">
+              <IconButton size="small" color="inherit">
+                <Add fontSize="small" />
               </IconButton>
-              <IconButton
-                size="small"
-                color="inherit"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMinimized(!isMinimized);
-              }}
-              >
-                {isMinimized ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </Tooltip>
+            <Tooltip title="Close">
+              <IconButton size="small" color="inherit" onClick={() => setOpen(false)}>
+                <Close fontSize="small" />
               </IconButton>
-              <IconButton
-                size="small"
-                color="inherit"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsOpen(false);
-              }}
-              >
-                <CloseIcon />
-              </IconButton>
-            </Box>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Box>
+
+      <Tabs value={activeTab} onChange={(_, value) => setActiveTab(value)}>
+        <Tab label="Conversations" />
+        <Tab label="Smart Replies" icon={<SmartToy fontSize="small" />} iconPosition="start" />
+      </Tabs>
+
+      <Divider />
+
+      {activeTab === 0 && (
+        <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          <Box sx={{ width: 150, borderRight: '1px solid', borderColor: 'divider', overflowY: 'auto' }}>
+            <List dense disablePadding>
+              {conversations.map((conversation) => (
+                <ListItemButton
+                  key={conversation.id}
+                  selected={activeConversationId === conversation.id}
+                  onClick={() => setActiveConversationId(conversation.id)}
+                >
+                  <ListItemText
+                    primary={conversation.title || conversation.participantName || 'Conversation'}
+                    secondary={conversation.updatedAt ? new Date(conversation.updatedAt).toLocaleDateString('nb-NO') : ''}
+                    primaryTypographyProps={{ noWrap: true }}
+                    secondaryTypographyProps={{ noWrap: true }}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
           </Box>
 
-          {/* Content */}
-          {!isMinimized && (
-            <Box sx={{ height: 'calc(100% - 64px)' }}>
-              {activeConversationId && enableSmartSuggestions ? (
-                <>
-                  {/* Worklog Context Shortcuts for Chat */}
-                  <WorklogContextShortcuts
-                    userId="daniel@creatorhubnorge.com"
-                    contextType="chat"
-                    timeframe="week"
-                    onWorklogSelect={(worklog) => {
-                      // Send worklog as chat message
-                      const worklogMessage = `📝 Fra worklog: ${worklog.title}\n${worklog.description}${worklog.nextSteps ? '\n\nNeste steg: ' + worklog.nextSteps :', '}`;
-                      handleSendMessage(worklogMessage);
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            <Box sx={{ p: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {selectedProject ? <Chip size="small" label="Project linked" /> : null}
+                {selectedClient ? <Chip size="small" label="Client linked" /> : null}
+              </Stack>
+            </Box>
+
+            <Box sx={{ flex: 1, overflowY: 'auto', p: 1.25 }}>
+              <Stack spacing={1.25}>
+                {messages.map((message) => (
+                  <Card
+                    key={message.id}
+                    variant="outlined"
+                    sx={{
+                      maxWidth: '85%',
+                      alignSelf: message.sender === 'photographer' ? 'flex-end' : 'flex-start',
+                      bgcolor: message.sender === 'photographer' ? 'primary.50' : 'background.paper',
+                    }}
+                  >
+                    <CardContent sx={{ p: '8px 10px !important' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                        <Avatar sx={{ width: 22, height: 22 }}>
+                          {message.sender === 'photographer' ? 'Y' : 'C'}
+                        </Avatar>
+                        <Typography variant="caption" color="text.secondary">
+                          {message.timestamp.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="body2">{message.content}</Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            <Box sx={{ p: 1.25 }}>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Write a message or /command"
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendMessage();
+                    }
                   }}
-                    compact={true}
-                  />
-                  <IntelligentChatWidget
-                    conversationId={activeConversationId}
-                    leadId={messages[0]?.leadId}
-                    onSendMessage={handleSendMessage}
-                    messages={messages}
-                    isCustomerTyping={isCustomerTyping}
-                  />
-                </>
-              ) : (
-                <Box sx={{ p: 2, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography color="text.secondary">
-                    Ingen aktive samtaler
-                  </Typography>
-                </Box>
-              )}
+                />
+                <Button variant="contained" onClick={() => void sendMessage()} startIcon={<Send fontSize="small" />}>
+                  Send
+                </Button>
+              </Stack>
             </Box>
-          )}
-        </Paper>
-      </Zoom>
-
-      {/* Settings Dialog */}
-      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-        <DialogTitle>Chat Innstillinger</DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ mb:  2 }}>
-            Konfigurer chat-funksjonalitet og smarte forslag.
-          </Typography>
-          
-          <Box sx={{ mt:  2 }}>
-            <Typography variant="subtitle2">Smart Forslag: </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {enableSmartSuggestions ? 'Aktivert' : 'Deaktivert'} - Automatiske svar-forslag basert på kunde-forespørsler
-            </Typography>
           </Box>
-          
-          <Box sx={{ mt:  2 }}>
-            <Typography variant="subtitle2">Aktive Samtaler: </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {conversations.length} samtaler
-            </Typography>
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSettingsOpen(false)}>
-            Lukk
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Floating Action Button when closed */}
-      {!isOpen && (
-        <Zoom in={true}>
-          <Fab
-            color="primary"
-            sx={{
-              position:'fixed',
-              ...positionStyles[position],
-              zIndex: 999}}
-            onClick={() => setIsOpen(true)}
-          >
-            <Badge badgeContent={unreadCount} color="error">
-              <ChatIcon />
-            </Badge>
-          </Fab>
-        </Zoom>
+        </Box>
       )}
-    </>
+
+      {activeTab === 1 && (
+        <Box sx={{ p: 1.5, overflowY: 'auto', flex: 1 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Smart Suggestions
+          </Typography>
+          <Stack spacing={1}>
+            {quickSuggestions.map((suggestion) => (
+              <Button
+                key={suggestion}
+                variant="outlined"
+                sx={{ justifyContent: 'flex-start', textTransform: 'none' }}
+                onClick={() => setDraft(suggestion)}
+              >
+                {suggestion}
+              </Button>
+            ))}
+          </Stack>
+
+          <Alert severity="info" sx={{ mt: 1.5 }}>
+            Pro tip: use commands like <strong>/meeting</strong>, <strong>/project</strong>, or <strong>/notify</strong> to trigger connected workflows.
+          </Alert>
+        </Box>
+      )}
+    </Paper>
   );
 };
+
+export default ChatWidget;

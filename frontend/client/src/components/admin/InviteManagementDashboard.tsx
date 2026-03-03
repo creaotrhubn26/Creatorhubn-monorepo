@@ -142,8 +142,15 @@ interface InviteStats {
     medium: number;
     high: number;
     critical: number;
-};
+  };
 }
+
+const normalizePlan = (plan?: string): 'basic' | 'pro' | 'enterprise' | null => {
+  if (plan === 'basic' || plan === 'pro' || plan === 'enterprise') {
+    return plan;
+  }
+  return 'basic';
+};
 
 export default function InviteManagementDashboard() {
   const queryClient = useQueryClient();
@@ -713,7 +720,7 @@ export default function InviteManagementDashboard() {
                     </Typography>
                     <PlanFeaturePreview
                       profession={selectedInvite.profession}
-                      selectedPlan={selectedInvite.selectedPlan || 'basic'}
+                      selectedPlan={normalizePlan(selectedInvite.selectedPlan)}
                       showLocked={true}
                       showDetails={true}
                       maxFeatures={10}

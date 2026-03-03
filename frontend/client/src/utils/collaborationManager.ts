@@ -16,7 +16,7 @@ export interface CollaborationConfig {
   enableOfflineSync: boolean;
   maxCollaborators: number;
   heartbeatInterval: number;
-  conflictResolutionStrategy: 'last-write-wins, ' | 'operational-transform' | 'manual' | 'timestamp';
+  conflictResolutionStrategy: 'last-write-wins' | 'operational-transform' | 'manual' | 'timestamp';
   presenceTimeout: number;
   cursorTimeout: number;
   commentTimeout: number;
@@ -52,7 +52,9 @@ export interface Collaborator {
 
 export interface CollaborationState {
   isEnabled: boolean;
+  isInitialized: boolean;
   isConnected: boolean;
+  isPaused: boolean;
   isReconnecting: boolean;
   hasError: boolean;
   error: string | null;
@@ -141,7 +143,9 @@ class CollaborationManager {
 
     this.state = {
       isEnabled: false,
+      isInitialized: false,
       isConnected: false,
+      isPaused: false,
       isReconnecting: false,
       hasError: false,
       error: null,
@@ -175,7 +179,7 @@ class CollaborationManager {
       this.setupIntervals();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
 } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
@@ -286,10 +290,11 @@ class CollaborationManager {
 
       // Send connection event
       await this.sendEvent({
+        id: this.generateId(),
         type: 'presence',
         data: { action: 'connected', user },
         timestamp: Date.now(),
-        userId: user.d,
+        userId: user.id,
         sessionId: this.generateSessionId()
 });
 
@@ -311,10 +316,11 @@ class CollaborationManager {
       // Send disconnection event
       if (this.state.currentUser) {
         await this.sendEvent({
+          id: this.generateId(),
           type: 'presence',
           data: { action: 'disconnected', user: this.state.currentUser },
           timestamp: Date.now(),
-          userId: this.state.currentUser.d,
+          userId: this.state.currentUser.id,
           sessionId: this.generateSessionId()
   });
   }
@@ -409,7 +415,7 @@ class CollaborationManager {
   private handleCursorEvent(event: CollaborationEvent): void {
     if (!this.config.enableCursors) return;
 
-    const { userd, data } = event;
+    const { userId, data } = event;
     this.state.activeCursors.set(userId, {
       ...data,
       timestamp: event.timestamp
@@ -424,7 +430,7 @@ class CollaborationManager {
   private handlePresenceEvent(event: CollaborationEvent): void {
     if (!this.config.enablePresence) return;
 
-    const { userd, data } = event;
+    const { userId, data } = event;
     const collaborator = this.state.collaborators.find(c => c.id === userId);
     
     if (collaborator) {
@@ -441,7 +447,7 @@ class CollaborationManager {
   private handleCommentEvent(event: CollaborationEvent): void {
     if (!this.config.enableComments) return;
 
-    const { elementd, data } = event;
+    const { elementId, data } = event;
     if (elementId) {
       this.state.activeComments.set(elementId, {
         ...data,
@@ -458,7 +464,7 @@ class CollaborationManager {
   private handleVersionEvent(event: CollaborationEvent): void {
     if (!this.config.enableVersionControl) return;
 
-    const { projectd, data } = event;
+    const { projectId, data } = event;
     if (projectId) {
       this.state.activeVersions.set(projectId, {
         ...data,
@@ -475,7 +481,7 @@ class CollaborationManager {
   private handlePermissionEvent(event: CollaborationEvent): void {
     if (!this.config.enablePermissions) return;
 
-    const { userd, data } = event;
+    const { userId, data } = event;
     this.state.activePermissions.set(userId, {
       ...data,
       timestamp: event.timestamp
@@ -490,7 +496,7 @@ class CollaborationManager {
   private handleNotificationEvent(event: CollaborationEvent): void {
     if (!this.config.enableNotifications) return;
 
-    const { userd, data } = event;
+    const { userId, data } = event;
     this.state.activeNotifications.set(userId, {
       ...data,
       timestamp: event.timestamp
@@ -506,17 +512,17 @@ class CollaborationManager {
     if (!this.config.enableConflictResolution) return;
 
     const conflict: ConflictResolution = {
-      id: event.d,
+      id: event.id,
       type: event.data.type,
       clientData: event.data.clientData,
       serverData: event.data.serverData,
-      resolution: 'pending',
+      resolution: 'manual',
       resolvedData: null,
       timestamp: event.timestamp,
-      userId: event.userd,
-      sessionId: event.sessiond,
-      elementId: event.elementd,
-      pageId: event.paged,
+      userId: event.userId,
+      sessionId: event.sessionId,
+      elementId: event.elementId,
+      pageId: event.pageId,
       projectId: event.projectId
 };
 
@@ -555,7 +561,7 @@ class CollaborationManager {
       type: 'conflict',
       data: { action: 'resolved', conflictId, resolution, resolvedData },
       timestamp: Date.now(),
-      userId: this.state.currentUser?.id ||', ',
+      userId: this.state.currentUser?.id || '',
       sessionId: this.generateSessionId()
 });
 
@@ -578,7 +584,7 @@ class CollaborationManager {
         type: 'presence',
         data: { action: 'heartbeat', user: this.state.currentUser },
         timestamp: Date.now(),
-        userId: this.state.currentUser.d,
+        userId: this.state.currentUser.id,
         sessionId: this.generateSessionId()
 });
 } catch (error) {
@@ -680,8 +686,9 @@ class CollaborationManager {
   private async syncOfflineQueue(): Promise<void> {
     if (this.state.offlineQueue.length === 0) return;
 
+    const events = [...this.state.offlineQueue];
+
     try {
-      const events = [...this.state.offlineQueue];
       this.state.offlineQueue = [];
 
       for (const event of events) {
@@ -750,7 +757,7 @@ class CollaborationManager {
     const cursor = {
       x: event.clientX,
       y: event.clientY,
-      elementId: (event.target as HTMLElement)?.d,
+      elementId: (event.target as HTMLElement)?.id,
       timestamp: Date.now()
 };
 
@@ -978,7 +985,6 @@ class CollaborationManager {
 export const collaborationManager = new CollaborationManager();
 
 export default collaborationManager;
-
 
 
 

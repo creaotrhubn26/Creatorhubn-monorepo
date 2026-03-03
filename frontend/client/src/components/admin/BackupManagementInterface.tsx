@@ -54,7 +54,16 @@ interface BackupNotification {
   type: 'backup_started' | 'backup_completed' | 'backup_failed' | 'redundant_backup_completed';
   timestamp: string;
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
+}
+
+interface CreateBackupOptions {
+  description: string;
+  redundant: boolean;
+  uploads: boolean;
+  database: boolean;
+  aiModels: boolean;
+  projectFiles: boolean;
 }
 
 export default function BackupManagementInterface() {
@@ -68,22 +77,36 @@ export default function BackupManagementInterface() {
     data: backups = [],
     isLoading: backupsLoading,
     refetch: refetchBackups,
-  } = useQuery({
+  } = useQuery<BackupItem[]>({
     queryKey: ['/api/backup/list'],
+    queryFn: async () => {
+      const response = await fetch('/api/backup/list');
+      if (!response.ok) {
+        throw new Error('Kunne ikke hente backup-liste');
+      }
+      return (await response.json()) as BackupItem[];
+    },
     refetchInterval: 3000, // Refresh every 30 seconds
   });
 
   // Fetch backup notifications
-  const { data: notifications = [], refetch: refetchNotifications } = useQuery({
+  const { data: notifications = [], refetch: refetchNotifications } = useQuery<BackupNotification[]>({
     queryKey: ['/api/backup/notifications'],
+    queryFn: async () => {
+      const response = await fetch('/api/backup/notifications');
+      if (!response.ok) {
+        throw new Error('Kunne ikke hente backup-notifikasjoner');
+      }
+      return (await response.json()) as BackupNotification[];
+    },
     refetchInterval: 1000, // Refresh every 10 seconds
   });
 
   // Create backup mutation
   const createBackupMutation = useMutation({
-    mutationFn: async (options: any) => {
+    mutationFn: async (options: CreateBackupOptions) => {
       const response = await fetch('/api/backup/create', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify(options),
       });
@@ -92,7 +115,7 @@ export default function BackupManagementInterface() {
     },
     onSuccess: () => {
       setCreateDialogOpen(false);
-      setBackupDescription(', ');
+      setBackupDescription('');
       refetchBackups();
       refetchNotifications();
     },
@@ -111,8 +134,8 @@ export default function BackupManagementInterface() {
   // Delete backup mutation
   const deleteBackupMutation = useMutation({
     mutationFn: async (backupId: string) => {
-      const response = await fetch(`/api/backup/delete/${backupd}`, {
-        method: 'DELET',
+      const response = await fetch(`/api/backup/delete/${backupId}`, {
+        method: 'DELETE',
       });
       if (!response.ok) throw new Error('Sletting feilet');
       return response.json();
@@ -133,9 +156,9 @@ export default function BackupManagementInterface() {
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
-    // Mock data removed - using database connection
+    const sizes = ['Bytes','KB','MB','GB','TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow, i).toFixed(2)) + '' + sizes[i];
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -256,7 +279,7 @@ export default function BackupManagementInterface() {
           <CardContent sx={theming.getThemedCardSx()}>
             <List>
               {notifications.slice(0, 5).map((notification: BackupNotification) => (
-                <ListItem key={notification.d}>
+                <ListItem key={notification.id}>
                   <ListItemIcon>{getNotificationIcon(notification.type)}</ListItemIcon>
                   <ListItemText
                     primary={notification.message}
@@ -272,13 +295,13 @@ export default function BackupManagementInterface() {
       {/* Zero Toast Compliance - Backup Progress as Typography */}
       {createBackupMutation.isPending && (
         <Box sx={{ mb: 4, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-          <Typography
-            variant="h6"
-            gutterBottom
-            sx={{ color: 'info.contrastText', color: theming.colors.primary }}
-          >
-            Backup pågår...
-          </Typography>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ color: theming.colors.primary }}
+            >
+              Backup pågår...
+            </Typography>
           <LinearProgress sx={{ mb: 2 }} />
           <Typography variant="body2" sx={{ color: 'info.contrastText' }}>
             {redundantBackup ? 'Oppretter redundant backup (2x sikkerhet)' : 'Oppretter backup'}
@@ -306,7 +329,7 @@ export default function BackupManagementInterface() {
           ) : (
             <List>
               {backups.map((backup: BackupItem, index: number) => (
-                <React.Fragment key={backup.d}>
+                <React.Fragment key={backup.id}>
                   <ListItem>
                     <ListItemIcon>
                       {backup.success ? (
@@ -406,7 +429,7 @@ export default function BackupManagementInterface() {
             />
 
             <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Inkluder i backup:{', '}
+              Inkluder i backup:
             </Typography>
 
             <FormControlLabel

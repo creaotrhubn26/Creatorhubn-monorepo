@@ -1,44 +1,15 @@
 /**
  * Lazy Components for Visual Editor
- * Implements React.lazy for heavy components and features to improve initial load time
+ * Implements React.lazy for heavy components and features to improve initial load time.
  */
 
 import React, { Suspense, lazy } from 'react';
-import {
-  Box,
-  CircularProgress,
-  Typography,
-  Skeleton,
-} from '@mui/material';
+import { Box, CircularProgress, Skeleton, Typography } from '@mui/material';
 
-// Lazy load heavy components
-const ScrollStoriesDialog = lazy(() => import('./ScrollStoriesDialog'));
-const AssetLibraryDialog = lazy(() => import('./AssetLibraryDialog'));
-const QualityAnalysisDialog = lazy(() => import('./QualityAnalysisDialog'));
-const GoogleServicesDialog = lazy(() => import('./GoogleServicesDialog'));
-const NoteEditorDialog = lazy(() => import('./NoteEditorDialog'));
+type LazyProps = Record<string, unknown>;
+type LazyComponent = React.ComponentType<LazyProps>;
+type LazyComponentModule = { default: LazyComponent };
 
-// Lazy load view components
-const PlanModeView = lazy(() => import('./PlanModeView'));
-const DesignerView = lazy(() => import('./DesignerView'));
-const ComponentsView = lazy(() => import('./ComponentsView'));
-const CodeView = lazy(() => import('./CodeView'));
-const PreviewView = lazy(() => import('./PreviewView'));
-const SEOView = lazy(() => import('./SEOView'));
-
-// Lazy load advanced features
-const AdvancedCanvasFeatures = lazy(() => import('./AdvancedCanvasFeatures'));
-const AnimationTimeline = lazy(() => import('./AnimationTimeline'));
-const CodeGenerationStudio = lazy(() => import('./CodeGenerationStudio'));
-const AssetManagementPanel = lazy(() => import('./AssetManagementPanel'));
-const CollaborationPanel = lazy(() => import('./CollaborationPanel'));
-
-// Lazy load utility components
-const ErrorBoundary = lazy(() => import('./ErrorBoundary'));
-const LoadingSpinner = lazy(() => import('./LoadingSpinner'));
-const PerformanceMonitor = lazy(() => import('./PerformanceMonitor'));
-
-// Loading fallback components
 const LoadingFallback: React.FC<{ message?: string }> = ({ message = 'Loading...' }) => (
   <Box
     sx={{
@@ -47,8 +18,8 @@ const LoadingFallback: React.FC<{ message?: string }> = ({ message = 'Loading...
       alignItems: 'center',
       justifyContent: 'center',
       p: 4,
-      minHeight: 200
-  }}
+      minHeight: 200,
+    }}
   >
     <CircularProgress size={40} />
     <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -65,116 +36,282 @@ const SkeletonFallback: React.FC<{ height?: number }> = ({ height = 200 }) => (
   </Box>
 );
 
-// Lazy component wrappers with error boundaries
-export const LazyScrollStoriesDialog: React.FC<Record<string, unknown>> = (props) => (
+const createUnavailableComponent = (name: string): LazyComponent => {
+  const UnavailableComponent: React.FC<LazyProps> = () => (
+    <LoadingFallback message={`${name} is unavailable in this build.`} />
+  );
+  UnavailableComponent.displayName = `Unavailable${name.replace(/\s+/g, '')}`;
+  return UnavailableComponent;
+};
+
+const toLazyModule = (component: LazyComponent): Promise<LazyComponentModule> =>
+  Promise.resolve({ default: component });
+
+const adaptComponent = <P extends object>(Component: React.ComponentType<P>): LazyComponent => {
+  const AdaptedComponent: React.FC<LazyProps> = (props) =>
+    React.createElement(Component, props as unknown as P);
+  AdaptedComponent.displayName = `Adapted(${Component.displayName ?? Component.name ?? 'Component'})`;
+  return AdaptedComponent;
+};
+
+const safeLazy = (loader: () => Promise<LazyComponentModule>, name: string) =>
+  lazy(async () => {
+    try {
+      return await loader();
+    } catch (error) {
+      console.error(`[LazyComponents] Failed to load ${name}`, error);
+      return { default: createUnavailableComponent(name) };
+    }
+  });
+
+// Lazy load heavy components (mapped to maintained modules in this codebase)
+const ScrollStoriesDialog = safeLazy(
+  () =>
+    import('./LibrarySuggestionDialog').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Scroll Stories',
+);
+const AssetLibraryDialog = safeLazy(
+  () =>
+    import('./AssetManager').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Asset Library',
+);
+const QualityAnalysisDialog = safeLazy(
+  () =>
+    import('./AdvancedTools').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Quality Analysis',
+);
+const GoogleServicesDialog = safeLazy(
+  () =>
+    import('./AISettingsDialog').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Google Services',
+);
+const NoteEditorDialog = safeLazy(
+  () =>
+    import('./NoteEditorPanel').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Note Editor',
+);
+
+// Lazy load view components
+const PlanModeView = safeLazy(
+  () =>
+    import('./VisualEditorDashboardExample').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Plan Mode View',
+);
+const DesignerView = safeLazy(
+  () =>
+    import('./EnhancedVisualEditorPage').then((module) => ({
+      default: adaptComponent(module.EnhancedVisualEditorPage),
+    })),
+  'Designer View',
+);
+const ComponentsView = safeLazy(
+  () =>
+    import('./ComponentLibrarySidebar').then((module) => ({
+      default: adaptComponent(module.ComponentLibrarySidebar),
+    })),
+  'Components View',
+);
+const CodeView = safeLazy(
+  () =>
+    import('./CodeEditorPanel').then((module) => ({
+      default: adaptComponent(module.CodeEditorPanel),
+    })),
+  'Code View',
+);
+const PreviewView = safeLazy(
+  () =>
+    import('./LivePreviewPanel').then((module) => ({
+      default: adaptComponent(module.LivePreviewPanel),
+    })),
+  'Preview View',
+);
+const SEOView = safeLazy(
+  () =>
+    import('./SEOToolsPanel').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'SEO View',
+);
+
+// Lazy load advanced features
+const AdvancedCanvasFeatures = safeLazy(
+  () =>
+    import('./VisualEditorCanvasOptimized').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Advanced Canvas Features',
+);
+const AnimationTimeline = safeLazy(
+  () =>
+    import('./AnimationDashboard').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Animation Timeline',
+);
+const CodeGenerationStudio = safeLazy(
+  () =>
+    import('../../CodeGenerationStudio').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Code Generation Studio',
+);
+const AssetManagementPanel = safeLazy(
+  () =>
+    import('./AssetManager').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Asset Management Panel',
+);
+const CollaborationPanel = safeLazy(
+  () =>
+    import('./CollaborationTools').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Collaboration Panel',
+);
+
+// Lazy load utility components
+const ErrorBoundary = safeLazy(
+  () =>
+    import('../../common/ErrorBoundary').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Error Boundary',
+);
+const LoadingSpinner = safeLazy(
+  () => toLazyModule(() => <CircularProgress size={24} />),
+  'Loading Spinner',
+);
+const PerformanceMonitor = safeLazy(
+  () =>
+    import('./PerformanceMonitorDashboard').then((module) => ({
+      default: adaptComponent(module.default),
+    })),
+  'Performance Monitor',
+);
+
+// Lazy component wrappers
+export const LazyScrollStoriesDialog: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Scroll Stories..." />}>
     <ScrollStoriesDialog {...props} />
   </Suspense>
 );
 
-export const LazyAssetLibraryDialog: React.FC<Record<string, unknown>> = (props) => (
+export const LazyAssetLibraryDialog: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Asset Library..." />}>
     <AssetLibraryDialog {...props} />
   </Suspense>
 );
 
-export const LazyQualityAnalysisDialog: React.FC<Record<string, unknown>> = (props) => (
+export const LazyQualityAnalysisDialog: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Quality Analysis..." />}>
     <QualityAnalysisDialog {...props} />
   </Suspense>
 );
 
-export const LazyGoogleServicesDialog: React.FC<Record<string, unknown>> = (props) => (
+export const LazyGoogleServicesDialog: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Google Services..." />}>
     <GoogleServicesDialog {...props} />
   </Suspense>
 );
 
-export const LazyNoteEditorDialog: React.FC<Record<string, unknown>> = (props) => (
+export const LazyNoteEditorDialog: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Note Editor..." />}>
     <NoteEditorDialog {...props} />
   </Suspense>
 );
 
-export const LazyPlanModeView: React.FC<Record<string, unknown>> = (props) => (
+export const LazyPlanModeView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <PlanModeView {...props} />
   </Suspense>
 );
 
-export const LazyDesignerView: React.FC<Record<string, unknown>> = (props) => (
+export const LazyDesignerView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={600} />}>
     <DesignerView {...props} />
   </Suspense>
 );
 
-export const LazyComponentsView: React.FC<Record<string, unknown>> = (props) => (
+export const LazyComponentsView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={500} />}>
     <ComponentsView {...props} />
   </Suspense>
 );
 
-export const LazyCodeView: React.FC<Record<string, unknown>> = (props) => (
+export const LazyCodeView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <CodeView {...props} />
   </Suspense>
 );
 
-export const LazyPreviewView: React.FC<Record<string, unknown>> = (props) => (
+export const LazyPreviewView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={600} />}>
     <PreviewView {...props} />
   </Suspense>
 );
 
-export const LazySEOView: React.FC<Record<string, unknown>> = (props) => (
+export const LazySEOView: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<SkeletonFallback height={400} />}>
     <SEOView {...props} />
   </Suspense>
 );
 
-export const LazyAdvancedCanvasFeatures: React.FC<Record<string, unknown>> = (props) => (
+export const LazyAdvancedCanvasFeatures: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Advanced Canvas Features..." />}>
     <AdvancedCanvasFeatures {...props} />
   </Suspense>
 );
 
-export const LazyAnimationTimeline: React.FC<Record<string, unknown>> = (props) => (
+export const LazyAnimationTimeline: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Animation Timeline..." />}>
     <AnimationTimeline {...props} />
   </Suspense>
 );
 
-export const LazyCodeGenerationStudio: React.FC<Record<string, unknown>> = (props) => (
+export const LazyCodeGenerationStudio: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Code Generation Studio..." />}>
     <CodeGenerationStudio {...props} />
   </Suspense>
 );
 
-export const LazyAssetManagementPanel: React.FC<Record<string, unknown>> = (props) => (
+export const LazyAssetManagementPanel: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Asset Management..." />}>
     <AssetManagementPanel {...props} />
   </Suspense>
 );
 
-export const LazyCollaborationPanel: React.FC<Record<string, unknown>> = (props) => (
+export const LazyCollaborationPanel: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Collaboration Features..." />}>
     <CollaborationPanel {...props} />
   </Suspense>
 );
 
-export const LazyErrorBoundary: React.FC<Record<string, unknown>> = (props) => (
+export const LazyErrorBoundary: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Error Boundary..." />}>
     <ErrorBoundary {...props} />
   </Suspense>
 );
 
-export const LazyLoadingSpinner: React.FC<Record<string, unknown>> = (props) => (
+export const LazyLoadingSpinner: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<CircularProgress />}>
     <LoadingSpinner {...props} />
   </Suspense>
 );
 
-export const LazyPerformanceMonitor: React.FC<Record<string, unknown>> = (props) => (
+export const LazyPerformanceMonitor: React.FC<LazyProps> = (props) => (
   <Suspense fallback={<LoadingFallback message="Loading Performance Monitor..." />}>
     <PerformanceMonitor {...props} />
   </Suspense>
@@ -182,24 +319,21 @@ export const LazyPerformanceMonitor: React.FC<Record<string, unknown>> = (props)
 
 // Preload functions for critical components
 export const preloadCriticalComponents = () => {
-  // Preload components that are likely to be used soon
-  import('./ScrollStoriesDialog');
-  import('./AssetLibraryDialog');
-  import('./QualityAnalysisDialog');
+  void import('./LibrarySuggestionDialog');
+  void import('./AssetManager');
+  void import('./AdvancedTools');
 };
 
 export const preloadViewComponents = () => {
-  // Preload view components
-  import('./PlanModeView');
-  import('./DesignerView');
-  import('./ComponentsView');
+  void import('./VisualEditorDashboardExample');
+  void import('./EnhancedVisualEditorPage');
+  void import('./ComponentLibrarySidebar');
 };
 
 export const preloadAdvancedFeatures = () => {
-  // Preload advanced features
-  import('./AdvancedCanvasFeatures');
-  import('./AnimationTimeline');
-  import('./CodeGenerationStudio');
+  void import('./VisualEditorCanvasOptimized');
+  void import('./AnimationDashboard');
+  void import('../../CodeGenerationStudio');
 };
 
 // Lazy loading utility hook
@@ -207,75 +341,75 @@ export const useLazyLoading = () => {
   const [loadedComponents, setLoadedComponents] = React.useState<Set<string>>(new Set());
 
   const loadComponent = React.useCallback((componentName: string) => {
-    if (loadedComponents.has(componentName)) return;
+    if (loadedComponents.has(componentName)) {
+      return;
+    }
 
-    setLoadedComponents(prev => new Set([...prev, componentName]));
+    setLoadedComponents((prev) => new Set([...prev, componentName]));
 
-    // Load component based on name
     switch (componentName) {
       case 'scrollStories':
-        import('./ScrollStoriesDialog');
+        void import('./LibrarySuggestionDialog');
         break;
       case 'assetLibrary':
-        import('./AssetLibraryDialog');
+        void import('./AssetManager');
         break;
       case 'qualityAnalysis':
-        import('./QualityAnalysisDialog');
+        void import('./AdvancedTools');
         break;
       case 'googleServices':
-        import('./GoogleServicesDialog');
+        void import('./AISettingsDialog');
         break;
       case 'noteEditor':
-        import('./NoteEditorDialog');
+        void import('./NoteEditorPanel');
         break;
       case 'planMode':
-        import('./PlanModeView');
+        void import('./VisualEditorDashboardExample');
         break;
       case 'designer':
-        import('./DesignerView');
+        void import('./EnhancedVisualEditorPage');
         break;
       case 'components':
-        import('./ComponentsView');
+        void import('./ComponentLibrarySidebar');
         break;
       case 'code':
-        import('./CodeView');
+        void import('./CodeEditorPanel');
         break;
       case 'preview':
-        import('./PreviewView');
+        void import('./LivePreviewPanel');
         break;
       case 'seo':
-        import('./SEOView');
+        void import('./SEOToolsPanel');
         break;
-      default: console.warn(`Unknown component: ${componentName}`);
-  }
-}, [loadedComponents]);
+      default:
+        console.warn(`Unknown component: ${componentName}`);
+    }
+  }, [loadedComponents]);
 
-  const isComponentLoaded = React.useCallback((componentName: string) => {
-    return loadedComponents.has(componentName);
-}, [loadedComponents]);
+  const isComponentLoaded = React.useCallback(
+    (componentName: string) => loadedComponents.has(componentName),
+    [loadedComponents],
+  );
 
   const preloadComponents = React.useCallback((componentNames: string[]) => {
-    componentNames.forEach(componentName => {
+    componentNames.forEach((componentName) => {
       if (!loadedComponents.has(componentName)) {
         loadComponent(componentName);
-    }
-  });
-}, [loadedComponents, loadComponent]);
+      }
+    });
+  }, [loadedComponents, loadComponent]);
 
   return {
     loadComponent,
     isComponentLoaded,
     preloadComponents,
-    loadedComponents: Array.from(loadedComponents)
-};
+    loadedComponents: Array.from(loadedComponents),
+  };
 };
 
 // Lazy loading with intersection observer
-export const useIntersectionLazyLoading = (threshold: number = 0.1) => {
+export const useIntersectionLazyLoading = (threshold = 0.1) => {
   const [isVisible, setIsVisible] = React.useState(false);
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
   const ref = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -284,32 +418,32 @@ export const useIntersectionLazyLoading = (threshold: number = 0.1) => {
         if (entry.isIntersecting) {
           setIsVisible(true);
           observer.disconnect();
-      }
-    },
-      { threshold }
+        }
+      },
+      { threshold },
     );
 
     if (ref.current) {
       observer.observe(ref.current);
-  }
+    }
 
     return () => observer.disconnect();
-}, [threshold]);
+  }, [threshold]);
 
   return { ref, isVisible };
 };
 
 // Lazy loading with timeout
-export const useTimeoutLazyLoading = (delay: number = 1000) => {
+export const useTimeoutLazyLoading = (delay = 1000) => {
   const [shouldLoad, setShouldLoad] = React.useState(false);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setShouldLoad(true);
-  }, delay);
+    }, delay);
 
     return () => clearTimeout(timer);
-}, [delay]);
+  }, [delay]);
 
   return shouldLoad;
 };
@@ -324,7 +458,7 @@ export const useInteractionLazyLoading = () => {
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
       document.removeEventListener('scroll', handleInteraction);
-  };
+    };
 
     document.addEventListener('click', handleInteraction);
     document.addEventListener('keydown', handleInteraction);
@@ -334,8 +468,8 @@ export const useInteractionLazyLoading = () => {
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
       document.removeEventListener('scroll', handleInteraction);
-  };
-}, []);
+    };
+  }, []);
 
   return shouldLoad;
 };
@@ -366,7 +500,5 @@ export default {
   useLazyLoading,
   useIntersectionLazyLoading,
   useTimeoutLazyLoading,
-  useInteractionLazyLoading
+  useInteractionLazyLoading,
 };
-
-

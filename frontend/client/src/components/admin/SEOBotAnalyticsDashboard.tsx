@@ -100,8 +100,13 @@ function TabPanel(props: TabPanelProps) {
 export default function SEOBotAnalyticsDashboard() {
   const [tabValue, setTabValue] = useState(0);
   const [testUrl, setTestUrl] = useState('');
-  const [selectedBot, setSelectedBot] = useState('Googlebot,');
+  const [selectedBot, setSelectedBot] = useState('Googlebot');
   const [days, setDays] = useState(7);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'warning' | 'info';
+  }>({ open: false, message: '', severity: 'info' });
   const queryClient = useQueryClient();
 
   // Fetch bot analytics
@@ -371,7 +376,7 @@ export default function SEOBotAnalyticsDashboard() {
                         nameKey="bot_name"
                         cx="50%"
                         cy="50%"
-                        label={(entry) => `${entry.bot_name}: ${entry.total_visits}`}
+                        label={({ name, value }) => `${name ?? 'Bot'}: ${value ?? 0}`}
                         outerRadius={100}
                       >
                         {analytics.analytics.map((_: any, index: number) => (
@@ -824,7 +829,19 @@ export default function SEOBotAnalyticsDashboard() {
           </Box>
         </TabPanel>
       </Card>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
-

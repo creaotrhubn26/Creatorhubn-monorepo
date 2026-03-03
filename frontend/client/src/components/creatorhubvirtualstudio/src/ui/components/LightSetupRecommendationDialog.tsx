@@ -287,7 +287,8 @@ export const LightSetupRecommendationDialog: React.FC<LightSetupRecommendationDi
                   transition: 'all 0.2s ease',
                   height: '100%',
                   display: 'flex',
-                  flexDirection: 'column','&:hover': {
+                  flexDirection: 'column',
+                  '&:hover': {
                     bgcolor: selectedSetup?.id === setup.id ? 'rgba(76, 175, 80, 0.25)' : '#333',
                     transform: 'translateY(-2px)',
                   }
@@ -323,7 +324,9 @@ export const LightSetupRecommendationDialog: React.FC<LightSetupRecommendationDi
                         color: 'white',
                         fontSize: '0.65rem',
                         height: 22,
-                        mb: 1'& .MuiChip-icon': { color: 'white', fontSize: 12 }}}
+                        mb: 1,
+                        '& .MuiChip-icon': { color: 'white', fontSize: 12 },
+                      }}
                     />
 
                     {/* Description */}
@@ -367,7 +370,8 @@ export const LightSetupRecommendationDialog: React.FC<LightSetupRecommendationDi
                         height: 3,
                         borderRadius: 2,
                         mt: 0.5,
-                        bgcolor: 'rgba(255,255,255,0.1)','& .MuiLinearProgress-bar': {
+                        bgcolor: 'rgba(255,255,255,0.1)',
+                        '& .MuiLinearProgress-bar': {
                           bgcolor: setup.matchScore >= 80 ? '#4caf50' : 
                                   setup.matchScore >= 50 ? '#ff9800' : '#f44336',
                         }}}
@@ -479,4 +483,3 @@ export const LightSetupRecommendationDialog: React.FC<LightSetupRecommendationDi
 };
 
 export default LightSetupRecommendationDialog;
-

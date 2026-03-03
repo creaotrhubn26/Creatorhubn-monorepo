@@ -254,7 +254,7 @@ class ThemeManager {
       this.setupSystemThemeDetection();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
 } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
@@ -441,7 +441,7 @@ class ThemeManager {
     if (!this.state.isEnabled) throw new Error('Theme manager is not enabled');
 
     const theme = this.state.themes.get(themeId) || this.state.customThemes.get(themeId);
-    if (!theme) throw new Error(`Theme not found: ${themed}`);
+    if (!theme) throw new Error(`Theme not found: ${themeId}`);
 
     try {
       const previousTheme = this.state.currentTheme;
@@ -551,7 +551,7 @@ class ThemeManager {
         root.style.setProperty(`--theme-${key}`, value);
   } else if (typeof value === 'object') {
         Object.entries(value).forEach(([subKey, subValue]) => {
-          root.style.setProperty(`--theme-${key}-${subKey}`, subValue);
+          root.style.setProperty(`--theme-${key}-${subKey}`, String(subValue));
     });
   }
 });
@@ -560,7 +560,7 @@ class ThemeManager {
     Object.entries(theme.typography).forEach(([key, value]) => {
       if (typeof value === 'object' && value !== null) {
         Object.entries(value).forEach(([subKey, subValue]) => {
-          root.style.setProperty(`--theme-typography-${key}-${subKey}`, subValue);
+          root.style.setProperty(`--theme-typography-${key}-${subKey}`, String(subValue));
     });
   }
 });
@@ -588,7 +588,7 @@ class ThemeManager {
     Object.entries(theme.animations).forEach(([key, value]) => {
       if (typeof value === 'object' && value !== null) {
         Object.entries(value).forEach(([subKey, subValue]) => {
-          root.style.setProperty(`--theme-animation-${key}-${subKey}`, subValue);
+          root.style.setProperty(`--theme-animation-${key}-${subKey}`, String(subValue));
     });
   }
 });
@@ -919,5 +919,4 @@ class ThemeManager {
 export const themeManager = new ThemeManager();
 
 export default themeManager;
-
 

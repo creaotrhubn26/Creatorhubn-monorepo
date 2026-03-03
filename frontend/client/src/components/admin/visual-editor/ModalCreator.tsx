@@ -93,6 +93,7 @@ import {
 interface CustomModal {
   id: string;
   name: string;
+  description?: string;
   type: 'dialog' | 'confirm' | 'form' | 'display';
   title: string;
   content: React.ReactNode | string;
@@ -131,7 +132,12 @@ interface CustomModal {
 }
 
 interface ModalCreatorProps {
-  selectedProject?: { id: string; name?: string };
+  selectedProject?: {
+    id: string;
+    name?: string;
+    modals?: CustomModal[];
+    modalCount?: number;
+  };
   onProjectUpdate?: (project: Record<string, unknown>) => void;
   onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
@@ -186,7 +192,7 @@ const ModalCreator: React.FC<ModalCreatorProps> = ({
       templateCategories: Array.from(new Set(MODAL_TEMPLATES.map(t => t.category)))
     });
 
-    debugging.logIntegration('info, ','ModalCreator component initialized', {
+    debugging.logIntegration('info', 'ModalCreator component initialized', {
       componentId: componentId.current,
       availableTemplates: MODAL_TEMPLATES.length
     });

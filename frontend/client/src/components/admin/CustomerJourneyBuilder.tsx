@@ -305,7 +305,7 @@ interface CustomerJourneyBuilderProps {
   selectedProfession?: string;
 }
 
-export default function CustomerJourneyBuilder({ selectedProfession = 'photographer,' }: CustomerJourneyBuilderProps) {
+export default function CustomerJourneyBuilder({ selectedProfession = 'photographer' }: CustomerJourneyBuilderProps) {
   const queryClient = useQueryClient();
   
   // 🆕 Enhanced Master Integration
@@ -323,7 +323,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
 } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
@@ -399,7 +399,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
     const unsubscribeJourneyFromNote = communication.onMessageType('create-journey-from-note', (message: any) => {
       const { noteId, noteTitle, journeyStructure, userId: noteUserId } = message.data;
       
-      debugging.logIntegration('info, ','Received journey creation request from note', {
+      debugging.logIntegration('info', 'Received journey creation request from note', {
         noteTitle,
         noteId,
         userId: noteUserId
@@ -781,7 +781,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
           await apiRequest(`/api/admin/customer-journey/templates/${templateForm.id}/notes`, {
             method: 'POST',
             headers: {
-              ...headers, , 'Content-Type': 'application/json'
+              ...headers, 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ content: journeyNotes })
         });
@@ -969,7 +969,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const result = await apiRequest(url, {
         method,
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(template)
       });
@@ -1048,7 +1048,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const result = await apiRequest('/api/ai/journey/generate-content', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(params)
       });
@@ -1140,7 +1140,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const result = await apiRequest('/api/ai/journey/analyze', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           journey,
@@ -1316,7 +1316,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
         linkedNoteId: undefined, // Templates don't link to notes
         abTestVariantId: undefined,
         abTestBaselineId: undefined,
-        tags: [...(params.journey.tags || [])'template', params.category],
+        tags: [...(params.journey.tags || []), 'template', params.category],
         createdAt: new Date().toISOString()
       };
       
@@ -1324,7 +1324,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const result = await apiRequest('/api/admin/customer-journey/templates', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(templateJourney)
       });
@@ -1364,7 +1364,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
         name: `${baseJourney.name} (Variant)`,
         status: 'draft',
         abTestBaselineId: baseJourney.id,
-        tags: [...(baseJourney.tags || [])'ab-test','variant'],
+        tags: [...(baseJourney.tags || []), 'ab-test', 'variant'],
         createdAt: new Date().toISOString()
       };
       
@@ -1372,7 +1372,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       const result = await apiRequest('/api/admin/customer-journey/templates', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(variantJourney)
       });
@@ -1393,7 +1393,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       apiRequest(`/api/admin/customer-journey/templates/${baseJourney.id}`, {
         method: 'PATCH',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({ abTestVariantId: data.id })
       });
@@ -1412,7 +1412,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
 
   // 🆕 Computed values
   const filteredTemplates = React.useMemo(() => {
-    let filtered = journeyTemplates.filter((template: JourneyTemplate) => {
+    const filtered = journeyTemplates.filter((template: JourneyTemplate) => {
       const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            template.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = filterStatus === 'all' || template.status === filterStatus;
@@ -1495,7 +1495,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
   // 🆕 Journey Map Visualizer Components
   const renderTimelineVisualization = () => (
     <Box sx={{ width: '100%', overflowX: 'auto', py: 2 }}>
-      <Stack direction="row" spacing={2}, sx={{ minWidth: 'max-content', px: 1 }}>
+      <Stack direction="row" spacing={2} sx={{ minWidth: 'max-content', px: 1 }}>
         {templateForm.stages.map((stage, index) => (
           <Card
             key={stage.id}
@@ -1961,7 +1961,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
       </Paper>
 
       {/* ✅ Tabs */}
-      <Tabs value={currentTab} onChange={(_, value) => setCurrentTab(value)}, sx={{ mb: 3 }}>
+      <Tabs value={currentTab} onChange={(_, value) => setCurrentTab(value)} sx={{ mb: 3 }}>
         <Tab icon={<Timeline />} label="Journey Oversikt" />
         <Tab icon={<Psychology />} label="Komponenter" />
         <Tab icon={<Analytics />} label="Statistikk" />
@@ -1994,7 +1994,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
                       <Typography variant="caption" color="text.secondary" gutterBottom>
                         Journey Stages:
                       </Typography>
-                      <Stack direction="row" spacing={0.5}, sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
                         {template.stages.slice(0, 6).map((stage) => (
                           <Chip
                             key={stage.id}
@@ -2896,7 +2896,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
                   📊 Journey Stages Overview
                 </Typography>
-                <Stack direction="row" spacing={2}, sx={{ mt: 2, overflowX: 'auto', pb: 1 }}>
+                <Stack direction="row" spacing={2} sx={{ mt: 2, overflowX: 'auto', pb: 1 }}>
                   {templateForm.stages.map((stage) => (
                     <Paper 
                       key={stage.id} 
@@ -3138,7 +3138,7 @@ export default function CustomerJourneyBuilder({ selectedProfession = 'photograp
                         <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                           📊 Predicted Best Path:
                         </Typography>
-                        <Stack direction="row" spacing={1}, sx={{ flexWrap: 'wrap', gap: 1 }}>
+                        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                           {templateForm.aiInsights.predictedConversionPath.map((stage, idx) => (
                             <Chip
                               key={idx}

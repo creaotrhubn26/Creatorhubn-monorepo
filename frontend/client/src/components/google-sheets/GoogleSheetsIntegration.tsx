@@ -1,65 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';";
-import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../utils/theming-helper';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Alert,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   CircularProgress,
-  Divider,
-  Select,
-  MenuItem,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
-  InputLabel,
   Grid,
   IconButton,
-  Tooltip,
+  InputLabel,
   LinearProgress,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  Stack,
+  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Switch,
+  TextField,
+  Tooltip,
+  Typography,
   FormControlLabel,
-  Stack,
 } from '@mui/material';
 import {
-  TableChart,
   Add,
-  Edit,
-  Delete,
-  Share,
-  Download,
-  Upload,
-  Refresh,
-  Visibility,
-  VisibilityOff,
-  Google as GoogleIcon,
   CheckCircle,
-  Warning,
-  Error as ErrorIcon,
   CloudDone,
-  CloudSync,
   CloudOff,
+  CloudSync,
+  Delete,
+  Download,
+  Google as GoogleIcon,
+  Refresh,
+  Share,
+  TableChart,
+  Visibility,
+  Warning,
 } from '@mui/icons-material';
 
 interface GoogleSheet {
@@ -73,592 +66,603 @@ interface GoogleSheet {
   isPublic: boolean;
   rowCount: number;
   columnCount: number;
-  projectId?: string
+  projectId?: string;
 }
 
 interface GoogleSheetsIntegrationProps {
   projectId?: string;
   onSheetCreated?: (sheet: GoogleSheet) => void;
   onSheetUpdated?: (sheet: GoogleSheet) => void;
-  onSheetDeleted?: (sheetId: string) => void
+  onSheetDeleted?: (sheetId: string) => void;
 }
 
+type CreateSheetTemplate = 'blank' | 'project-tracker' | 'client-list' | 'equipment-inventory';
+
+interface CreateSheetForm {
+  name: string;
+  description: string;
+  isPublic: boolean;
+  template: CreateSheetTemplate;
+}
+
+interface ShareForm {
+  email: string;
+  role: 'reader' | 'writer' | 'owner';
+  message: string;
+}
+
+type SheetMatrix = string[][];
+
+const defaultCreateForm: CreateSheetForm = {
+  name: '',
+  description: '',
+  isPublic: false,
+  template: 'blank',
+};
+
+const defaultShareForm: ShareForm = {
+  email: '',
+  role: 'reader',
+  message: '',
+};
+
+const getAuthHeaders = (): Record<string, string> => {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  const token = localStorage.getItem('creatorhub_auth_token') ?? localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = ({
-  projectd,
+  projectId,
   onSheetCreated,
   onSheetUpdated,
   onSheetDeleted,
 }) => {
   const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Theming system
+  const masterIntegration = useEnhancedMasterIntegration();
   const theming = useTheming('photographer');
-  
+
   const [isConnected, setIsConnected] = useState(false);
+  const [loadingConnection, setLoadingConnection] = useState(false);
+  const [loadingSheets, setLoadingSheets] = useState(false);
   const [sheets, setSheets] = useState<GoogleSheet[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedSheet, setSelectedSheet] = useState<GoogleSheet | null>(null);
+  const [sheetData, setSheetData] = useState<SheetMatrix>([]);
+
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [selectedSheet, setSelectedSheet] = useState<GoogleSheet | null>(null);
-  const [sheetData, setSheetData] = useState<any[]>([]);
   const [viewSheetDialogOpen, setViewSheetDialogOpen] = useState(false);
 
-  // Create sheet form state
-  const [createForm, setCreateForm] = useState({
-    name: ',',
-    description: '',
-    isPublic: false,
-    template: 'blank' as 'blank' | 'project-tracker' | 'client-list' | 'equipment-inventory'
-});
+  const [createForm, setCreateForm] = useState<CreateSheetForm>(defaultCreateForm);
+  const [shareForm, setShareForm] = useState<ShareForm>(defaultShareForm);
 
-  // Share form state
-  const [shareForm, setShareForm] = useState({
-    email: '',
-    role: 'reader' as 'reader' | 'writer' | 'owner',
-    message: ''
-});
+  const headers = useMemo(() => getAuthHeaders(), [user?.id]);
 
-  // Register component with MasterIntegrationProvider
-  React.useEffect(() => {
-    componentRegistry.registerComponent('GoogleSheetsIntegration', {
-      type: 'google-service',
-      capabilities: ['sheet-creation','sheet-editing''sheet-sharing','data-management','collaboration'],
-      dataFlow: {
-        sources: ['sheets','sheet-data','sharing-settings','connection-status'],
-        destinations: ['admin-dashboard','user-interface','project-management'],
-        processors: ['sheet-processing','data-processing','sharing-processing']
-    }
-  });
+  const registerIntegrationNodes = useCallback(() => {
+    const componentRegistry = masterIntegration?.componentRegistry;
+    const dataFlow = masterIntegration?.dataFlow;
 
-    // Set up data flow nodes
-    dataFlow.registerNode('sheets', {
+    componentRegistry?.registerComponent({
+      id: 'google-sheets-integration',
+      name: 'Google Sheets Integration',
+      type: 'widget',
+      category: 'integrations',
+      capabilities: ['sheet-creation', 'sheet-editing', 'sheet-sharing', 'data-management', 'collaboration'],
+      dependencies: ['google-auth'],
+      props: ['projectId'],
+      events: ['sheet-created', 'sheet-updated', 'sheet-deleted', 'sheet-shared'],
+      dataKeys: ['sheets', 'sheet-data', 'connection-status'],
+      description: 'Google Sheets workspace integration for project data and sharing',
+      version: '1.0.0',
+    });
+
+    const sheetsNodeId = dataFlow?.registerNode({
       type: 'source',
-      data: sheets,
-      metadata: { component: 'GoogleSheetsIntegration', type: 'sheets', projectId }
-  });
+      componentId: 'google-sheets-integration',
+      dataKey: 'sheets',
+    });
 
-    dataFlow.registerNode('sheet-data', {
+    const sheetDataNodeId = dataFlow?.registerNode({
       type: 'source',
-      data: sheetData,
-      metadata: { component: 'GoogleSheetsIntegration', type: 'sheet-data', projectId }
-  });
+      componentId: 'google-sheets-integration',
+      dataKey: 'sheet-data',
+    });
 
-    dataFlow.registerNode('sharing-settings', {
+    const statusNodeId = dataFlow?.registerNode({
       type: 'source',
-      data: shareForm,
-      metadata: { component: 'GoogleSheetsIntegration', type: 'sharing-settings', projectId }
-  });
+      componentId: 'google-sheets-integration',
+      dataKey: 'connection-status',
+    });
 
-    dataFlow.registerNode('connection-status', {
-      type: 'source',
-      data: { isConnected, loading },
-      metadata: { component: 'GoogleSheetsIntegration', type: 'connection-status', projectId }
-  });
+    return { sheetsNodeId, sheetDataNodeId, statusNodeId };
+  }, [masterIntegration]);
 
-    // Listen for Google Sheets events
-    communication.subscribe('google-sheets: create-sheet', (data) => {
-      if (data.projectId === projectId || !projectId) {
-        setCreateForm(data.sheetData || {});
-        setCreateDialogOpen(true);
-    }
-  });
-
-    communication.subscribe('google-sheets: share-sheet', (data) => {
-      if (data.sheetId) {
-        const sheet = sheets.find(s => s.id === data.sheetId);
-        if (sheet) {
-          setSelectedSheet(sheet);
-          setShareDialogOpen(true);
+  const checkConnection = useCallback(async () => {
+    setLoadingConnection(true);
+    try {
+      const response = await fetch('/api/google-sheets/status', { headers });
+      if (!response.ok) {
+        setIsConnected(false);
+        return;
       }
+      const data = (await response.json()) as { connected?: boolean };
+      setIsConnected(Boolean(data.connected));
+    } catch (error) {
+      console.error('Error checking Google Sheets connection:', error);
+      setIsConnected(false);
+    } finally {
+      setLoadingConnection(false);
     }
-  });
+  }, [headers]);
 
-    communication.subscribe('google-sheets: refresh-sheets', () => {
-      fetchSheets();
-  });
+  const fetchSheets = useCallback(async () => {
+    setLoadingSheets(true);
+    try {
+      const response = await fetch('/api/google-sheets/sheets', { headers });
+      if (!response.ok) {
+        setSheets([]);
+        return;
+      }
+      const data = (await response.json()) as { sheets?: GoogleSheet[] };
+      const nextSheets = Array.isArray(data.sheets) ? data.sheets : [];
+      setSheets(nextSheets);
+
+      masterIntegration?.communication?.sendBroadcast('google-sheets:loaded', {
+        projectId,
+        count: nextSheets.length,
+      });
+    } catch (error) {
+      console.error('Error fetching Google Sheets:', error);
+      setSheets([]);
+    } finally {
+      setLoadingSheets(false);
+    }
+  }, [headers, masterIntegration, projectId]);
+
+  useEffect(() => {
+    const { sheetsNodeId, sheetDataNodeId, statusNodeId } = registerIntegrationNodes();
+
+    checkConnection();
+
+    const unsubscribeCreate = masterIntegration?.communication?.onMessageType('google-sheets:create-sheet', (message) => {
+      const payload = message.data as Partial<CreateSheetForm> | undefined;
+      if (payload) {
+        setCreateForm((prev) => ({ ...prev, ...payload }));
+      }
+      setCreateDialogOpen(true);
+    });
+
+    const unsubscribeRefresh = masterIntegration?.communication?.onMessageType('google-sheets:refresh', () => {
+      void fetchSheets();
+    });
 
     return () => {
-      componentRegistry.unregisterComponent('GoogleSheetsIntegration');
-      dataFlow.unregisterNode('sheets');
-      dataFlow.unregisterNode('sheet-data');
-      dataFlow.unregisterNode('sharing-settings');
-      dataFlow.unregisterNode('connection-status');
-  };
-}, [sheets, sheetData, shareForm, isConnected, loading, projectId, componentRegistry, dataFlow, communication]);
+      unsubscribeCreate?.();
+      unsubscribeRefresh?.();
 
-  // Check Google Sheets connection status
+      if (sheetsNodeId) masterIntegration?.dataFlow?.unregisterNode(sheetsNodeId);
+      if (sheetDataNodeId) masterIntegration?.dataFlow?.unregisterNode(sheetDataNodeId);
+      if (statusNodeId) masterIntegration?.dataFlow?.unregisterNode(statusNodeId);
+      masterIntegration?.componentRegistry?.unregisterComponent('google-sheets-integration');
+    };
+  }, [checkConnection, fetchSheets, masterIntegration, registerIntegrationNodes]);
+
   useEffect(() => {
-    checkConnection();
-    if (isConnected) {
-      fetchSheets();
-  }
-}, [isConnected]);
+    if (!isConnected) {
+      setSheets([]);
+      return;
+    }
+    void fetchSheets();
+  }, [fetchSheets, isConnected]);
 
-  const checkConnection = async () => {
-    try {
-      const response = await fetch('/api/google-sheets/status', {
-        headers: auth
-  });
-      const data = await response.json();
-      setIsConnected(data.connected);
-  } catch (error) {
-      console.error('Error checking Google Sheets connection: ', error);
-      setIsConnected(false);
-  }
-};
+  useEffect(() => {
+    masterIntegration?.dataFlow?.syncData('google-sheets:sheets', sheets).catch((error: unknown) => {
+      console.warn('Failed to sync sheets data to dataFlow:', error);
+    });
+  }, [masterIntegration, sheets]);
+
+  useEffect(() => {
+    masterIntegration?.dataFlow?.syncData('google-sheets:sheet-data', sheetData).catch((error: unknown) => {
+      console.warn('Failed to sync sheet-data to dataFlow:', error);
+    });
+  }, [masterIntegration, sheetData]);
+
+  useEffect(() => {
+    masterIntegration?.dataFlow?.syncData('google-sheets:status', { isConnected, loadingConnection, loadingSheets }).catch((error: unknown) => {
+      console.warn('Failed to sync status to dataFlow:', error);
+    });
+  }, [isConnected, loadingConnection, loadingSheets, masterIntegration]);
 
   const connectToGoogleSheets = async () => {
+    setLoadingConnection(true);
     try {
       const response = await fetch('/api/google-sheets/connect', {
-        method: 'POS',
-        headers: {
-          ...auth, 'Content-Type' : 'application/json'
-      }
-    });
-      
-      if (response.ok) {
-        const data = await response.json();
-        window.location.href = data.authUrl;
-    }
-  } catch (error) {
-      console.error('Error connecting to Google Sheets:', error);
-  }
-};
+        method: 'POST',
+        headers,
+      });
 
-  const fetchSheets = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/google-sheets/sheets?projectId=${projectId || ''}`, {
-        headers: auth
-  });
-      
       if (response.ok) {
-        const data = await response.json();
-        setSheets(data.sheets || []);
+        setIsConnected(true);
+        await fetchSheets();
+      }
+    } catch (error) {
+      console.error('Error connecting to Google Sheets:', error);
+    } finally {
+      setLoadingConnection(false);
     }
-  } catch (error) {
-      console.error('Error fetching Google Sheets:', error);
-  } finally {
-      setLoading(false);
-  }
-};
+  };
 
   const createSheet = async () => {
     try {
       const response = await fetch('/api/google-sheets/create', {
-        method: 'POS',
+        method: 'POST',
         headers: {
-          ...auth, 'Content-Type' : 'application/json'
-      },
-        body: JSON.stringify({
-          ...createForm,
-          projectId
-      })
-    });
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ...createForm, projectId }),
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        const newSheet = data.sheet;
-        setSheets(prev => [newSheet, ...prev]);
-        onSheetCreated?.(newSheet);
-        
-        // Broadcast sheet created event
-        communication.broadcast('google-sheets: sheet-created', {
-          type: 'sheet_created',
-          data: { sheet: newSheet, projectId },
-          component: 'GoogleSheetsIntegration'
-    });
-        
-        setCreateDialogOpen(false);
-        resetCreateForm();
-    }
-  } catch (error) {
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as { sheet?: GoogleSheet };
+      if (!data.sheet) {
+        return;
+      }
+
+      setSheets((prev) => [data.sheet as GoogleSheet, ...prev]);
+      onSheetCreated?.(data.sheet);
+      setCreateDialogOpen(false);
+      setCreateForm(defaultCreateForm);
+
+      masterIntegration?.communication?.sendBroadcast('google-sheets:sheet-created', {
+        sheet: data.sheet,
+        projectId,
+      });
+    } catch (error) {
       console.error('Error creating Google Sheet:', error);
-  }
-};
+    }
+  };
 
   const shareSheet = async () => {
-    if (!selectedSheet) return;
+    if (!selectedSheet) {
+      return;
+    }
 
     try {
       const response = await fetch(`/api/google-sheets/${selectedSheet.id}/share`, {
-        method: 'POS',
+        method: 'POST',
         headers: {
-          ...auth'Content-Type' : 'application/json'
-      },
-        body: JSON.stringify(shareForm)
-  });
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(shareForm),
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Broadcast sheet shared event
-        communication.broadcast('google-sheets: sheet-shared', {
-          type: 'sheet_shared',
-          data: { sheet: selectedSheet, shareData: data, projectId },
-          component: 'GoogleSheetsIntegration'
-    });
-        
-        setShareDialogOpen(false);
-        resetShareForm();
-    }
-  } catch (error) {
+      if (!response.ok) {
+        return;
+      }
+
+      setShareDialogOpen(false);
+      setShareForm(defaultShareForm);
+
+      masterIntegration?.communication?.sendBroadcast('google-sheets:sheet-shared', {
+        sheet: selectedSheet,
+        share: shareForm,
+        projectId,
+      });
+    } catch (error) {
       console.error('Error sharing Google Sheet:', error);
-  }
-};
+    }
+  };
 
   const deleteSheet = async (sheetId: string) => {
     try {
-      const response = await fetch(`/api/google-sheets/${sheetd}`, {
-        method: 'DELET',
-        headers: auth
-  });
+      const response = await fetch(`/api/google-sheets/${sheetId}`, {
+        method: 'DELETE',
+        headers,
+      });
 
-      if (response.ok) {
-        setSheets(prev => prev.filter(sheet => sheet.id !== sheetId));
-        onSheetDeleted?.(sheetId);
-        
-        // Broadcast sheet deleted event
-        communication.broadcast('google-sheets: sheet-deleted', {
-          type: 'sheet_deleted',
-          data: { sheetd, projectId },
-          component: 'GoogleSheetsIntegration'
-    });
-    }
-  } catch (error) {
+      if (!response.ok) {
+        return;
+      }
+
+      setSheets((prev) => prev.filter((sheet) => sheet.id !== sheetId));
+      onSheetDeleted?.(sheetId);
+
+      masterIntegration?.communication?.sendBroadcast('google-sheets:sheet-deleted', {
+        sheetId,
+        projectId,
+      });
+    } catch (error) {
       console.error('Error deleting Google Sheet:', error);
-  }
-};
+    }
+  };
 
   const viewSheet = async (sheet: GoogleSheet) => {
     setSelectedSheet(sheet);
-    setLoading(true);
-    
+    setViewSheetDialogOpen(true);
+    setLoadingSheets(true);
+
     try {
-      const response = await fetch(`/api/google-sheets/${sheet.d}/data`, {
-        headers: auth
-  });
+      const response = await fetch(`/api/google-sheets/${sheet.id}/data`, { headers });
+      if (!response.ok) {
+        setSheetData([]);
+        return;
+      }
 
-      if (response.ok) {
-        const data = await response.json();
-        setSheetData(data.rows || []);
-        setViewSheetDialogOpen(true);
+      const data = (await response.json()) as { rows?: SheetMatrix };
+      setSheetData(Array.isArray(data.rows) ? data.rows : []);
+      onSheetUpdated?.(sheet);
+    } catch (error) {
+      console.error('Error loading sheet data:', error);
+      setSheetData([]);
+    } finally {
+      setLoadingSheets(false);
     }
-  } catch (error) {
-      console.error('Error fetching sheet data:', error);
-  } finally {
-      setLoading(false);
-  }
-};
+  };
 
-  const resetCreateForm = () => {
-    setCreateForm({
-      name: '',
-      description: ', ',
-      isPublic: false,
-      template: 'blank'
-});
-};
-
-  const resetShareForm = () => {
-    setShareForm({
-      email: ', ',
-      role: 'reader',
-      message: ', '
-});
-};
-
-  if (!isConnected) {
-    return (
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ textAlign: 'center', py:  4 }}>
-            <GoogleIcon sx={{ fontSize:  64, color: '#0F9D50', mb:  2 }} />
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Google Sheets Integration
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-              Koble til Google Sheets for å lage og administrere regneark direkte fra prosjektet
-            </Typography>
-            <Button variant="contained"
-              onClick={connectToGoogleSheets}
-              sx={{
-                bgcolor: '#0F9D50', '&:hover': { bgcolor: '#0D8043' }}}
-             sx={theming.getThemedButtonSx()}>
-              Koble til Google Sheets
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-    );
-}
+  const statusChip = isConnected ? (
+    <Chip icon={<CloudDone />} color="success" label="Tilkoblet" size="small" />
+  ) : (
+    <Chip icon={<CloudOff />} color="warning" label="Ikke tilkoblet" size="small" />
+  );
 
   return (
     <Box>
-      {/* Google Sheets Status Card */}
-      <Card sx={{ mb:  3, border: `2px solid #0F9D58, `,  ...theming.getThemedCardSx() }}>
+      <Card sx={{ mb: 2, ...theming.getThemedCardSx() }}>
         <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <GoogleIcon sx={{ color: '#0F9D50', fontSize: 32}} />
-            <Box sx={{ flexGrow:  1 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Google Sheets Tilkoblet</Typography>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'center' }}>
+            <Box>
+              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
+                <GoogleIcon /> Google Sheets
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                Klar for regneark-opprettelse og administrasjon
+                Opprett, del og synkroniser prosjektark.
               </Typography>
             </Box>
-            <Box sx={{ display: 'flex', gap:  1 }}>
+            <Stack direction="row" spacing={1} alignItems="center">
+              {statusChip}
+              <Tooltip title="Oppdater liste">
+                <span>
+                  <IconButton onClick={() => void fetchSheets()} disabled={!isConnected || loadingSheets}>
+                    <Refresh />
+                  </IconButton>
+                </span>
+              </Tooltip>
               <Button
-                variant="outlined"
-                startIcon={theming.getThemedIcon('add')}
-                onClick={() => setCreateDialogOpen(true)}
+                variant="contained"
+                startIcon={isConnected ? <Add /> : <CloudSync />}
+                onClick={isConnected ? () => setCreateDialogOpen(true) : () => void connectToGoogleSheets()}
+                disabled={loadingConnection}
+                sx={{ ...theming.getThemedButtonSx('primary') }}
               >
-                Nytt regneark
+                {isConnected ? 'Nytt ark' : 'Koble til'}
               </Button>
-              <Button
-                variant="outlined"
-                startIcon={theming.getThemedIcon('refresh')}
-                onClick={fetchSheets}
-                disabled={loading}
-              >
-                Oppdater
-              </Button>
-            </Box>
-          </Box>
+            </Stack>
+          </Stack>
+          {(loadingConnection || loadingSheets) && <LinearProgress sx={{ mt: 2 }} />}
         </CardContent>
       </Card>
 
-      {/* Sheets List */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb:  2 }}>
-          <CircularProgress />
-        </Box>
-      )}
+      {!isConnected ? (
+        <Alert severity="warning" icon={<Warning />}>
+          Google Sheets er ikke koblet til. Koble til for a bruke integrasjonen.
+        </Alert>
+      ) : null}
 
-      {sheets.length > 0 && (
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-              <TableChart sx={{ color: '#0F9D58' }} />
-              Regneark ({sheets.length})
-            </Typography>
-            <List>
-              {sheets.map((sheet) => (
-                <React.Fragment key={sheet.id}>
-                  <ListItem>
-                    <ListItemIcon>
-                      <TableChart sx={{ color: '#0F9D58' }} />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={sheet.name}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {sheet.rowCount} rader • {sheet.columnCount} kolonner
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            Sist endret: {new Date(sheet.lastModified).toLocaleString(', ')}
-                          </Typography>
-                          <Box sx={{ mt:  1 }}>
-                            <Chip
-                              label={sheet.isPublic ? 'Offentlig' : 'Privat'}
-                              size="small"
-                              color={sheet.isPublic ? 'success' : 'default'}
-                            />
-                            {sheet.projectId && (
-                              <Chip
-                                label="Prosjekt"
-                                size="small"
-                                color="primary"
-                                sx={{ ml:  1 }}
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                    }
-                    />
-                    <Box sx={{ display: 'flex', gap:  1 }}>
-                      <Tooltip title="Se regneark">
-                        <IconButton onClick={() => viewSheet(sheet)}>
-                          {theming.getThemedIcon('visibility')}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Del">
-                        <IconButton onClick={() => {
-                          setSelectedSheet(sheet);
-                          setShareDialogOpen(true);
-                      }}>
-                          {theming.getThemedIcon('share')}
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Slett">
-                        <IconButton onClick={() => deleteSheet(sheet.id)}>
-                          {theming.getThemedIcon('delete')}
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </ListItem>
-                  <Divider />
-                </React.Fragment>
-              ))}
-            </List>
-          </CardContent>
-        </Card>
-      )}
+      <Grid container spacing={2}>
+        <Grid size={{ xs: 12, md: 5 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                Tilgjengelige ark ({sheets.length})
+              </Typography>
 
-      {/* Create Sheet Dialog */}
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Opprett nytt Google Sheets regneark</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Regneark navn"
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                required
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                label="Beskrivelse"
-                value={createForm.description}
-                onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-              />
-            </Grid>
+              {loadingSheets ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress size={28} />
+                </Box>
+              ) : (
+                <List>
+                  {sheets.map((sheet) => (
+                    <ListItem key={sheet.id} divider>
+                      <ListItemIcon>
+                        <TableChart color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={sheet.name}
+                        secondary={`Rader: ${sheet.rowCount} • Kolonner: ${sheet.columnCount}`}
+                      />
+                      <Stack direction="row" spacing={0.5}>
+                        <Tooltip title="Vis">
+                          <IconButton size="small" onClick={() => void viewSheet(sheet)}>
+                            <Visibility fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Del">
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              setSelectedSheet(sheet);
+                              setShareDialogOpen(true);
+                            }}
+                          >
+                            <Share fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Slett">
+                          <IconButton size="small" color="error" onClick={() => void deleteSheet(sheet.id)}>
+                            <Delete fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
 
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Mal</InputLabel>
-                <Select
-                  value={createForm.template}
-                  onChange={(e) => setCreateForm({ ...createForm, template: e.target.value as any })}
-                >
-                  <MenuItem value="blank">Blankt regneark</MenuItem>
-                  <MenuItem value="project-tracker">Prosjekt tracker</MenuItem>
-                  <MenuItem value="client-list">Klientliste</MenuItem>
-                  <MenuItem value="equipment-inventory">Utstyr inventar</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={createForm.isPublic}
-                    onChange={(e) => setCreateForm({ ...createForm, isPublic: e.target.checked })}
+        <Grid size={{ xs: 12, md: 7 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+                Integrasjonsstatus
+              </Typography>
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckCircle color={isConnected ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText primary="Google-auth" secondary={isConnected ? 'Aktiv' : 'Frakoblet'} />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <CloudDone color={sheets.length > 0 ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText primary="Synkroniserte ark" secondary={`${sheets.length} registrert`} />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <Download color={selectedSheet ? 'success' : 'disabled'} />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Valgt ark"
+                    secondary={selectedSheet ? `${selectedSheet.name} (${selectedSheet.rowCount}x${selectedSheet.columnCount})` : 'Ingen valgt'}
                   />
+                </ListItem>
+              </List>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nytt Google Sheet</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Navn"
+              value={createForm.name}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Beskrivelse"
+              value={createForm.description}
+              onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))}
+              fullWidth
+              multiline
+              rows={3}
+            />
+            <FormControl fullWidth>
+              <InputLabel id="create-template-label">Template</InputLabel>
+              <Select
+                labelId="create-template-label"
+                label="Template"
+                value={createForm.template}
+                onChange={(event) =>
+                  setCreateForm((prev) => ({ ...prev, template: event.target.value as CreateSheetTemplate }))
+                }
+              >
+                <MenuItem value="blank">Blank</MenuItem>
+                <MenuItem value="project-tracker">Project Tracker</MenuItem>
+                <MenuItem value="client-list">Client List</MenuItem>
+                <MenuItem value="equipment-inventory">Equipment Inventory</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={createForm.isPublic}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, isPublic: event.target.checked }))}
+                />
               }
-                label="Gjør regnearket offentlig"
-              />
-            </Grid>
-          </Grid>
+              label="Offentlig ark"
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={createSheet}
-            variant="contained"
-            disabled={!createForm.name}
-            sx={{ bgcolor: '#0F9D50','&:hover': { bgcolor: '#0D8043' } }}
-           sx={theming.getThemedButtonSx()}>
+          <Button variant="contained" onClick={() => void createSheet()} disabled={!createForm.name.trim()}>
             Opprett
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Share Sheet Dialog */}
       <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Del regneark: {selectedSheet?.name}</DialogTitle>
+        <DialogTitle>Del Sheet</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="E-post adresse"
-                type="email"
-                value={shareForm.email}
-                onChange={(e) => setShareForm({ ...shareForm, email: e.target.value })}
-                required
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Tilgangsnivå</InputLabel>
-                <Select
-                  value={shareForm.role}
-                  onChange={(e) => setShareForm({ ...shareForm, role: e.target.value as any })}
-                >
-                  <MenuItem value="reader">Kun lesing</MenuItem>
-                  <MenuItem value="writer">Kan redigere</MenuItem>
-                  <MenuItem value="owner">Eier</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                label="Melding (valgfri)"
-                value={shareForm.message}
-                onChange={(e) => setShareForm({ ...shareForm, message: e.target.value })}
-              />
-            </Grid>
-          </Grid>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="E-post"
+              type="email"
+              value={shareForm.email}
+              onChange={(event) => setShareForm((prev) => ({ ...prev, email: event.target.value }))}
+              fullWidth
+            />
+            <FormControl fullWidth>
+              <InputLabel id="share-role-label">Rolle</InputLabel>
+              <Select
+                labelId="share-role-label"
+                label="Rolle"
+                value={shareForm.role}
+                onChange={(event) => setShareForm((prev) => ({ ...prev, role: event.target.value as ShareForm['role'] }))}
+              >
+                <MenuItem value="reader">Reader</MenuItem>
+                <MenuItem value="writer">Writer</MenuItem>
+                <MenuItem value="owner">Owner</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Melding"
+              value={shareForm.message}
+              onChange={(event) => setShareForm((prev) => ({ ...prev, message: event.target.value }))}
+              fullWidth
+              multiline
+              rows={3}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setShareDialogOpen(false)}>Avbryt</Button>
-          <Button onClick={shareSheet}
-            variant="contained"
-            disabled={!shareForm.email}
-            sx={{ bgcolor: '#0F9D50','&:hover': { bgcolor: '#0D8043' } }}
-           sx={theming.getThemedButtonSx()}>
+          <Button variant="contained" onClick={() => void shareSheet()} disabled={!shareForm.email.trim()}>
             Del
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* View Sheet Dialog */}
       <Dialog open={viewSheetDialogOpen} onClose={() => setViewSheetDialogOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-            <TableChart sx={{ color: '#0F9D58' }} />
-            {selectedSheet?.name}
-          </Box>
-        </DialogTitle>
+        <DialogTitle>{selectedSheet?.name ?? 'Sheet preview'}</DialogTitle>
         <DialogContent>
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py:  4 }}>
+          {loadingSheets ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
             </Box>
           ) : (
             <TableContainer component={Paper}>
-              <Table>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {sheetData[0]?.map((cell: any, index: number) => (
-                      <TableCell key={index} sx={{ fontWeight: 'bold' }}>
+                    {(sheetData[0] ?? []).map((cell, index) => (
+                      <TableCell key={`header-${index}`} sx={{ fontWeight: 'bold' }}>
                         {cell || `Kolonne ${index + 1}`}
                       </TableCell>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sheetData.slice(1).map((row: any[], rowIndex: number) => (
-                    <TableRow key={rowIndex}>
-                      {row.map((cell: any, cellIndex: number) => (
-                        <TableCell key={cellIndex}>
-                          {cell || ', '}
-                        </TableCell>
+                  {sheetData.slice(1).map((row, rowIndex) => (
+                    <TableRow key={`row-${rowIndex}`}>
+                      {row.map((cell, cellIndex) => (
+                        <TableCell key={`cell-${rowIndex}-${cellIndex}`}>{cell || ''}</TableCell>
                       ))}
                     </TableRow>
                   ))}
@@ -669,15 +673,22 @@ export const GoogleSheetsIntegration: React.FC<GoogleSheetsIntegrationProps> = (
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setViewSheetDialogOpen(false)}>Lukk</Button>
-          <Button variant="contained"
-            startIcon={theming.getThemedIcon('download')}
-            onClick={() => window.open(selectedSheet?.url', '_blank')}
-            sx={{ bgcolor: '#0F9D50','&:hover': { bgcolor:'#0D8043' } }}
+          <Button
+            variant="contained"
+            startIcon={<Download />}
+            onClick={() => {
+              if (selectedSheet?.url) {
+                window.open(selectedSheet.url, '_blank', 'noopener,noreferrer');
+              }
+            }}
+            sx={{ bgcolor: '#0F9D50', '&:hover': { bgcolor: '#0D8043' } }}
           >
-            Åpne i Google Sheets
+            Apne i Google Sheets
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
 };
+
+export default GoogleSheetsIntegration;

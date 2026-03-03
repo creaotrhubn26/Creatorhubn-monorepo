@@ -11,10 +11,10 @@ function authUrl(path: string): string {
   return isDev ? path : `${API_BASE_URL}${path}`;
 }
 
-interface User extends GoogleUser {
+interface User extends Omit<GoogleUser, 'role'> {
   userType?: string;
   loginTime?: string;
-  role?: 'learner' | 'instructor' | 'admin' | 'prototype_tester' | 'couple' | 'vendor';
+  role?: GoogleUser['role'] | 'couple' | 'vendor';
   vendorId?: string;
   businessName?: string;
   profession?: string;
@@ -185,6 +185,8 @@ export function useAuth() {
         id: data.couple.id,
         email: data.couple.email,
         name: data.couple.displayName || data.couple.email,
+        picture: '',
+        verified_email: false,
         role: 'couple',
         coupleProfileId: data.couple.id,
         displayName: data.couple.displayName,
@@ -215,6 +217,8 @@ export function useAuth() {
             id: coupleData.couple.id,
             email: coupleData.couple.email,
             name: coupleData.couple.displayName || coupleData.couple.email,
+            picture: '',
+            verified_email: false,
             role: 'couple',
             coupleProfileId: coupleData.couple.id,
             displayName: coupleData.couple.displayName,

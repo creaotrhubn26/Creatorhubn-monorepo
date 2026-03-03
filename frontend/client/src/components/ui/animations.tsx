@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { keyframes } from '@emotion/react';
 import { styled } from '@mui/material/styles';
+import { motion, type Variants, type HTMLMotionProps } from 'framer-motion';
 
 // Smooth fade-in animation component
 interface FadeInProps {
@@ -180,19 +181,12 @@ interface LoadingDotsProps {
   color?: string;
 }
 
-export function LoadingDots({ size = 8, color = 'primary.main' }: LoadingDotsProps) {
-  const theme = useTheme();
-  // Ensure at top of file:
-
-  import { motion, type Variants, type HTMLMotionProps } from "framer-motion";
-
-// Replace your variants and use with typed versions:
 const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 10 },
   show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
 };
 
-type AnimatedDivProps = HTMLMotionProps<"div"> & { delay?: number };
+type AnimatedDivProps = HTMLMotionProps<'div'> & { delay?: number };
 
 export function AnimatedFadeInUp({ delay = 0, children, ...rest }: AnimatedDivProps) {
   return (
@@ -201,8 +195,8 @@ export function AnimatedFadeInUp({ delay = 0, children, ...rest }: AnimatedDivPr
       whileInView="show"
       viewport={{ once: true, amount: 0.2 }}
       variants={{
-        hidden: fadeInUp.hidden,
-        show:   { ...fadeInUp.show, transition: { ...fadeInUp.show!.transition, delay } }
+        hidden: { opacity: 0, y: 10 },
+        show: { opacity: 1, y: 0, transition: { duration: 0.3, delay } },
       }}
       {...rest}
     >
@@ -211,12 +205,15 @@ export function AnimatedFadeInUp({ delay = 0, children, ...rest }: AnimatedDivPr
   );
 }
 
+export function LoadingDots({ size = 8, color = 'primary.main' }: LoadingDotsProps) {
+  const theme = useTheme();
+
   // Theming system
   const theming = useTheming('photographer');
   
   return (
     <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: 'center' }}>
-      {[02].map((index) => (
+      {[0, 1, 2].map((index) => (
         <Box
           key={index}
           sx={{

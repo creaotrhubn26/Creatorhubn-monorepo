@@ -88,20 +88,15 @@ export default function TemplateLibrary({
   // Fetch templates
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['/api/templates', projectId, searchTerm, selectedCategory, sortBy, sortOrder],
- return apiRequest(`/api/templates`, {
-   headers: {
-          "Content-Type" : "application/json"
+    queryFn: () => {
+      const params = new URLSearchParams();
+      params.set('projectId', projectId);
+      if (searchTerm) params.set('search', searchTerm);
+      if (selectedCategory !== 'all') params.set('category', selectedCategory);
+      params.set('sortBy', sortBy);
+      params.set('sortOrder', sortOrder);
+      return apiRequest(`/api/templates?${params.toString()}`);
     },
-      headers: {
-  },
-      params: {
-        projectd,
-        search: searchTerm,
-        category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        sortBy,
-        sortOrder
-    }
-  }),
     retry: false,
 });
 

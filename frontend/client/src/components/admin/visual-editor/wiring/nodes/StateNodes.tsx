@@ -27,6 +27,9 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 // Global State Node
 export const GlobalStateNode = memo(function GlobalStateNode({
   config,
@@ -85,7 +88,7 @@ export const GlobalStateNode = memo(function GlobalStateNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.persist || false}
+                checked={getBooleanValue(data.persist)}
                 onChange={(e) => onChange('persist', e.target.checked)}
                 size="small"
               />
@@ -570,4 +573,3 @@ export const STATE_NODE_DEFINITIONS = [
 ];
 
 export default STATE_NODE_DEFINITIONS;
-

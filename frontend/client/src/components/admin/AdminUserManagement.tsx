@@ -77,7 +77,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, isLoad
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
 
   const roleUpdateMutation = useMutation({
     mutationFn: async ({ userId, role, reason }: { userId: string; role: string; reason: string }) => {

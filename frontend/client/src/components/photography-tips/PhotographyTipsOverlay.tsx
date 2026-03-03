@@ -180,7 +180,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
   // Open tip details
   const openTipDetails = (tip: PhotographyTip) => {
     setSelectedTip(tip);
-    handleTipInteraction(tip.id'view');
+    handleTipInteraction(tip.id, 'view');
 };
 
   // Get contextual tip count
@@ -197,10 +197,11 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
             position: 'fixed',
             bottom: 10,
             right:  24,
-            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)', '&:hover': {
-              transform: 'scale(1.1, )',
+            background: 'linear-gradient(135deg, #ff6b35 0%, #f7931e 100%)',
+            '&:hover': {
+              transform: 'scale(1.1)',
               boxShadow: '0 8px 25px rgba(25, 107, 53, 0.4)'
-          },
+            },
             transition: 'all 0.3s ease',
             zIndex: 1000}}
           onClick={() => setOpen(true)}
@@ -448,7 +449,7 @@ export const PhotographyTipsOverlay: React.FC<PhotographyTipsOverlayProps> = ({
                             size="small"
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleTipInteraction(tip.id!'bookmark');
+                              handleTipInteraction(tip.id!, 'bookmark');
                           }}
                             sx={{ color: 'white' }}
                           >
@@ -714,7 +715,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
           <IconButton
             onClick={() => {
               setHelpfulRating(true);
-              onInteraction(tip.id!'helpful');
+              onInteraction(tip.id!, 'helpful');
           }}
             sx={{ color: helpfulRating === true ? '#4caf50' : 'white' }}
           >
@@ -723,7 +724,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
           <IconButton
             onClick={() => {
               setHelpfulRating(false);
-              onInteraction(tip.id!'not_helpful');
+              onInteraction(tip.id!, 'not_helpful');
           }}
             sx={{ color: helpfulRating === false ? '#f44336' : 'white' }}
           >
@@ -733,7 +734,7 @@ const TipDetailsDialog: React.FC<TipDetailsDialogProps> = ({
         <Box sx={{ display: 'flex', gap:  1 }}>
           <Button
             startIcon={isBookmarked ? <BookmarkIcon /> : <BookmarkBorderIcon />}
-            onClick={() => onInteraction(tip.id!'bookmark')}
+            onClick={() => onInteraction(tip.id!, 'bookmark')}
             sx={{ color: 'white' }}
           >
             {isBookmarked ? 'Fjern lagring' : 'Lagre tip'}

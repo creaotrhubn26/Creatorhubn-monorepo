@@ -87,6 +87,8 @@ export interface AIWorkflow {
   name: string;
   description?: string;
   steps: AIWorkflowStep[];
+  triggers: string[];
+  isActive: boolean;
   status: AIWorkflowStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -96,9 +98,19 @@ export interface AIWorkflow {
 export interface AICodeGeneration {
   id: string;
   prompt: string;
+  context: {
+    projectType: string;
+    framework: string;
+    language: string;
+    requirements: string[];
+  };
   language: 'typescript' | 'javascript' | 'python' | 'bash' | 'go' | 'other';
   targetPath?: string;
   snippet: string;
+  quality: {
+    score: number;
+    rationale: string;
+  };
   notes?: string;
   createdAt: Date;
   metadata?: Record<string, any>;
@@ -106,6 +118,7 @@ export interface AICodeGeneration {
 
 export interface AIDesignSuggestion {
   id: string;
+  elementId: string;
   area:
     | 'layout'
     | 'typography'
@@ -116,6 +129,8 @@ export interface AIDesignSuggestion {
     | 'other';
   title: string;
   description: string;
+  suggestions: string[];
+  alternatives: string[];
   beforeAfter?: {
     before?: string;
     after?: string;
@@ -173,12 +188,12 @@ export class AIAssistant implements AIAssistantState {
     return suggestion;
 }
 
-  updateSuggestionStatus(id: string, status: AISuggestionStatus): boolean {
+  updateSuggestionStatus(id: string, status: AISuggestionStatus): AISuggestion | null {
     const it = this.suggestions.find((s) => s.id === id);
-    if (!it) return false;
+    if (!it) return null;
     it.status = status;
-    return true;
-}
+    return it;
+  }
 
   getSuggestionsByType(type: AISuggestionType): AISuggestion[] {
     return this.suggestions.filter((s) => s.type === type);
@@ -188,7 +203,38 @@ export class AIAssistant implements AIAssistantState {
     return [...this.suggestions]
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, limit);
-}
+  }
+
+  getSuggestions(filter?: { type?: string; status?: string; priority?: string }): AISuggestion[] {
+    return this.suggestions.filter((suggestion) => {
+      if (filter?.type && suggestion.type !== filter.type) {
+        return false;
+      }
+      if (filter?.status && suggestion.status !== filter.status) {
+        return false;
+      }
+      if (filter?.priority && suggestion.priority !== filter.priority) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  generateSuggestions(context: Record<string, any>): AISuggestion[] {
+    const contextLabel = typeof context.currentView === 'string' ? context.currentView : 'workspace';
+    const generated = this.addSuggestion({
+      id: `sg_${Date.now()}`,
+      type: 'performance',
+      title: `Optimize ${contextLabel} rendering`,
+      description: `AI detected optimization opportunities for ${contextLabel}.`,
+      priority: 'medium',
+      confidence: 0.74,
+      category: 'auto-analysis',
+      suggestions: ['Reduce expensive re-renders', 'Memoize derived selectors', 'Virtualize long lists'],
+      metadata: { context },
+    });
+    return [generated];
+  }
 
   /** --- Conversations ---------------------------------------------------- */
   startConversation(title: string, context: AIConversationContext = {}): AIConversation {
@@ -203,7 +249,19 @@ export class AIAssistant implements AIAssistantState {
   };
     this.conversations.push(conv);
     return conv;
-}
+  }
+
+  getConversations(): AIConversation[] {
+    return [...this.conversations].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
+  createConversation(title: string, context: AIConversationContext = {}): AIConversation {
+    return this.startConversation(title, context);
+  }
+
+  getConversation(id: string): AIConversation | undefined {
+    return this.conversations.find((conversation) => conversation.id === id);
+  }
 
   addConversationMessage(conversationId: string, msg: Omit<AIMessage, 'createdAt' | 'id'> & { id?: string }): AIMessage | null {
     const conv = this.conversations.find((c) => c.id === conversationId);
@@ -218,7 +276,35 @@ export class AIAssistant implements AIAssistantState {
     conv.messages.push(message);
     conv.updatedAt = new Date();
     return message;
-}
+  }
+
+  addMessage(conversationId: string, role: 'user' | 'assistant', content: string, metadata?: AIMessage['metadata']): AIMessage | null {
+    return this.addConversationMessage(conversationId, {
+      role,
+      content,
+      metadata,
+    });
+  }
+
+  generateAIResponse(conversationId: string, userMessage: string): AIMessage | null {
+    const lowerMessage = userMessage.toLowerCase();
+    const responseContent = lowerMessage.includes('color')
+      ? 'Try consolidating your palette into semantic tokens to keep color usage consistent.'
+      : lowerMessage.includes('performance')
+      ? 'Use memoization for expensive computations and defer non-critical rendering.'
+      : 'I analyzed your request and prepared a practical next step. Ask for code if you want a generated implementation.';
+
+    return this.addConversationMessage(conversationId, {
+      role: 'assistant',
+      content: responseContent,
+      metadata: {
+        suggestions: [
+          { title: 'Apply recommendation' },
+          { title: 'Generate patch' },
+        ],
+      },
+    });
+  }
 
   /** --- Workflows -------------------------------------------------------- */
   startWorkflow(name: string, steps: AIWorkflowStep[], description?: string, metadata?: Record<string, any>): AIWorkflow {
@@ -228,6 +314,8 @@ export class AIAssistant implements AIAssistantState {
       name,
       description,
       steps,
+      triggers: ['manual'],
+      isActive: true,
       status: 'running',
       createdAt: now,
       updatedAt: now,
@@ -235,7 +323,23 @@ export class AIAssistant implements AIAssistantState {
   };
     this.workflows.push(wf);
     return wf;
-}
+  }
+
+  getWorkflows(): AIWorkflow[] {
+    return [...this.workflows].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
+  createWorkflow(data: Omit<AIWorkflow, 'id' | 'createdAt' | 'updatedAt'>): AIWorkflow {
+    const now = new Date();
+    const workflow: AIWorkflow = {
+      id: `wf_${now.getTime()}`,
+      createdAt: now,
+      updatedAt: now,
+      ...data,
+    };
+    this.workflows.push(workflow);
+    return workflow;
+  }
 
   finishWorkflow(id: string, ok: boolean): boolean {
     const wf = this.workflows.find((w) => w.id === id);
@@ -255,14 +359,80 @@ export class AIAssistant implements AIAssistantState {
   };
     this.codeGenerations.push(cg);
     return cg;
-}
+  }
+
+  private buildCodeSnippet(prompt: string, context: AICodeGeneration['context']): string {
+    const componentName = prompt
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+      .join('') || 'GeneratedComponent';
+    return `export function ${componentName}() {\n  return (\n    <div>${context.framework} generated: ${prompt}</div>\n  );\n}\n`;
+  }
+
+  generateCode(prompt: string, context: AICodeGeneration['context']): AICodeGeneration {
+    const normalizedLanguage = context.language.toLowerCase();
+    const language: AICodeGeneration['language'] =
+      normalizedLanguage === 'typescript' || normalizedLanguage === 'javascript' || normalizedLanguage === 'python' || normalizedLanguage === 'bash' || normalizedLanguage === 'go'
+        ? (normalizedLanguage as AICodeGeneration['language'])
+        : 'other';
+    const qualityScore = Math.min(0.98, 0.65 + Math.min(context.requirements.length, 5) * 0.05);
+
+    return this.addCodeGeneration({
+      prompt,
+      context,
+      language,
+      targetPath: 'src/generated/ai-snippet.tsx',
+      snippet: this.buildCodeSnippet(prompt, context),
+      quality: {
+        score: qualityScore,
+        rationale: 'Score based on requirement coverage and context specificity.',
+      },
+      notes: `Generated for ${context.projectType}`,
+      metadata: {
+        framework: context.framework,
+      },
+    });
+  }
 
   /** --- Design Suggestions ----------------------------------------------- */
   addDesignSuggestion(s: Omit<AIDesignSuggestion, 'createdAt'>): AIDesignSuggestion {
     const ds: AIDesignSuggestion = { ...s, createdAt: new Date() };
     this.designSuggestions.push(ds);
     return ds;
-}
+  }
+
+  getCodeGenerations(): AICodeGeneration[] {
+    return [...this.codeGenerations].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  getDesignSuggestions(): AIDesignSuggestion[] {
+    return [...this.designSuggestions].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  generateDesignSuggestions(elementId: string, currentDesign: Record<string, any>): AIDesignSuggestion {
+    const keys = Object.keys(currentDesign);
+    return this.addDesignSuggestion({
+      id: `ds_${Date.now()}`,
+      elementId,
+      area: 'component',
+      title: `Enhance ${elementId} styling`,
+      description: 'AI generated refinements for hierarchy and readability.',
+      suggestions: [
+        'Increase contrast between background and text',
+        'Tighten vertical rhythm for readability',
+      ],
+      alternatives: [
+        'Compact variant',
+        'Spacious variant',
+      ],
+      tokens: {
+        '--ai-element-key-count': keys.length,
+      },
+      metadata: { currentDesign },
+    });
+  }
 
   /** --- Serialization ---------------------------------------------------- */
   toJSON(): AIAssistantState {
@@ -300,7 +470,15 @@ export class AIAssistant implements AIAssistantState {
         ...ds,
         createdAt: new Date(ds.createdAt),
     }));
-}
+  }
+
+  exportData(): Record<string, any> {
+    return this.toJSON();
+  }
+
+  importData(data: Record<string, any>): void {
+    this.loadFromJSON(data as Partial<AIAssistantState>);
+  }
 
   /** Sample content to keep the UI from being empty during development */
   private bootstrapSamples(): void {
@@ -387,6 +565,8 @@ export class AIAssistant implements AIAssistantState {
             output: {},
         },
         ],
+        triggers: ['manual'],
+        isActive: true,
         status: 'draft',
         createdAt: now,
         updatedAt: now,
@@ -397,6 +577,12 @@ export class AIAssistant implements AIAssistantState {
       {
         id: `code_${now.getTime()}`,
         prompt: 'Create a React card component with title, body, and actions.',
+        context: {
+          projectType: 'react-ui',
+          framework: 'react',
+          language: 'typescript',
+          requirements: ['responsive', 'accessible'],
+        },
         language: 'typescript',
         targetPath: 'client/src/components/ui/Card.tsx',
         snippet:
@@ -409,6 +595,10 @@ export class AIAssistant implements AIAssistantState {
     </div>
   );
 }`,
+        quality: {
+          score: 0.88,
+          rationale: 'Baseline sample quality score for starter snippet.',
+        },
         notes: 'Minimal styling; wire to your design system tokens.',
         createdAt: now,
         metadata: { framework: 'react' },
@@ -418,10 +608,13 @@ export class AIAssistant implements AIAssistantState {
     this.designSuggestions = [
       {
         id: 'ds_001',
+        elementId: 'hero-title',
         area: 'typography',
         title: 'Use optical size for display fonts',
         description:
           'At large sizes, enable optical size axis for better contrast and letter shape.',
+        suggestions: ['Enable optical sizing axis', 'Adjust letter spacing at large sizes'],
+        alternatives: ['Use a display font family', 'Use dynamic clamp() typography scale'],
         tokens: {'--font-display-size': 64 },
         createdAt: now,
     },

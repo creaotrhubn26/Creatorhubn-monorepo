@@ -360,7 +360,7 @@ class BackupRecoverySystem {
 
       // Create backup metadata
       const metadata: BackupMetadata = {
-        id: backupd,
+        id: backupId,
         name: `${type}_backup_${new Date().toISOString()}`,
         type,
         timestamp: Date.now(),
@@ -383,7 +383,7 @@ class BackupRecoverySystem {
 
       // Create backup data
       const backup: BackupData = {
-        id: backupd,
+        id: backupId,
         metadata,
         data: processedData,
         compressed,
@@ -600,7 +600,7 @@ class BackupRecoverySystem {
       location: backup.metadata.location,
       dependencies: backup.metadata.dependencies || [],
       metadata: {
-        backupId: backup.d,
+        backupId: backup.id,
         type: backup.metadata.type,
         verified: backup.metadata.verified
 }
@@ -648,7 +648,7 @@ class BackupRecoverySystem {
   public async restoreBackup(backupId: string): Promise<void> {
     const backup = this.backups.get(backupId);
     if (!backup) {
-      throw new Error(`Backup not found: ${backupd}`);
+      throw new Error(`Backup not found: ${backupId}`);
 }
 
     const startTime = Date.now();
@@ -802,7 +802,7 @@ class BackupRecoverySystem {
     const cutoff = Date.now() - (this.backupConfig.backupRetentionDays * 24 * 60 * 60 * 1000);
     const backupsToDelete: string[] = [];
     
-    for (const [, idbackup] of this.backups) {
+    for (const [id, backup] of this.backups) {
       if (backup.metadata.timestamp < cutoff) {
         backupsToDelete.push(id);
   }
@@ -922,7 +922,6 @@ export const backupRecoverySystem = new BackupRecoverySystem();
 // Export types and class
 export { BackupRecoverySystem };
 export default backupRecoverySystem;
-
 
 
 

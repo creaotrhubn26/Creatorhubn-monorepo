@@ -107,7 +107,7 @@ export default function AdminNotificationManager() {
   const { pushEnabled, isSupported } = usePushNotifications(userId);
   const [formData, setFormData] = useState<NotificationFormData>({
     title: '',
-    message: '',
+    message: ', ',
     type: 'info',
     priority: 'medium',
     targetAudience: 'all',
@@ -243,7 +243,7 @@ export default function AdminNotificationManager() {
   const resetForm = () => {
     setFormData({
       title: '',
-      message: '',
+      message: ', ',
       type: 'info',
       priority: 'medium',
       targetAudience: 'all',

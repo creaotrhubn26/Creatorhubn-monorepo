@@ -173,7 +173,7 @@ export default function AdvancedMediaProtocols() {
   const startStreaming = useMutation({
     mutationFn: async ({ protocol, config }: { protocol: string; config: any }) => {
       return apiRequest('/api/media/stream/start', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ protocol, config }),
     });
   },
@@ -188,7 +188,7 @@ export default function AdvancedMediaProtocols() {
   const stopStreaming = useMutation({
     mutationFn: async (streamId: string) => {
       return apiRequest(`/api/media/stream/stop/${streamd}`, {
-        method: 'POS' });
+        method: 'POST' });
   },
     onSuccess: () => {
       setStreamingActive(false);
@@ -245,8 +245,10 @@ export default function AdvancedMediaProtocols() {
               p:  2,
               mb:  3,
               bgcolor: 'rgba(6, 175, 80, 0.1)',
-              border: '1px solid #4caf50' }}
-           sx={theming.getThemedCardSx()}>
+              border: '1px solid #4caf50',
+              ...theming.getThemedCardSx(),
+            }}
+          >
             <Box
               sx={{
                 display: 'flex',
@@ -255,7 +257,7 @@ export default function AdvancedMediaProtocols() {
             >
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Chip
-                  icon={theming.getThemedIcon('videoCall')}}
+                  icon={theming.getThemedIcon('videoCall')}
                   label="LIVE STREAMING"
                   color="success"
                   sx={{ mr: 2, fontWeight: 'bold' }}
@@ -412,12 +414,12 @@ export default function AdvancedMediaProtocols() {
 
                 <Button fullWidth
                   variant="contained"
-                  onClick={() => sx={theming.getThemedButtonSx()}>
+                  onClick={() =>
                     startStreaming.mutate({
                       protocol: 'rtmp',
                       config: rtmpConfig,
-                  })
-                }
+                    })
+                  }
                   disabled={startStreaming.isPending || !rtmpConfig.streamKey || streamingActive}
                   startIcon={streamingActive ? theming.getThemedIcon('stop') : theming.getThemedIcon('play')}
                   sx={{ bgcolor: '#ff8c00', '&:hover': { bgcolor: '#e67c00' } }}
@@ -559,12 +561,12 @@ export default function AdvancedMediaProtocols() {
 
                 <Button fullWidth
                   variant="contained"
-                  onClick={() => sx={theming.getThemedButtonSx()}>
+                  onClick={() =>
                     startStreaming.mutate({
                       protocol: 'hls',
                       config: hlsConfig,
-                  })
-                }
+                    })
+                  }
                   disabled={startStreaming.isPending || !hlsConfig.manifestUrl || streamingActive}
                   startIcon={<OndemandVideo />}
                   sx={{ bgcolor: '#1976d0','&:hover': { bgcolor: '#1565c0' } }}
@@ -680,12 +682,12 @@ export default function AdvancedMediaProtocols() {
 
                 <Button fullWidth
                   variant="contained"
-                  onClick={() => sx={theming.getThemedButtonSx()}>
+                  onClick={() =>
                     startStreaming.mutate({
                       protocol: 'ndi',
                       config: ndiConfig,
-                  })
-                }
+                    })
+                  }
                   disabled={startStreaming.isPending || streamingActive}
                   startIcon={theming.getThemedIcon('settings')}
                   sx={{ bgcolor: '#9c27b0','&:hover': { bgcolor: '#7b1fa2' } }}
@@ -852,12 +854,12 @@ export default function AdvancedMediaProtocols() {
 
                 <Button fullWidth
                   variant="contained"
-                  onClick={() => sx={theming.getThemedButtonSx()}>
+                  onClick={() =>
                     startStreaming.mutate({
                       protocol: 'srt',
                       config: srtConfig,
-                  })
-                }
+                    })
+                  }
                   disabled={startStreaming.isPending || !srtConfig.address || streamingActive}
                   startIcon={theming.getThemedIcon('security')}
                   sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}

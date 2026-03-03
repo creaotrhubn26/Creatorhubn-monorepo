@@ -1,39 +1,35 @@
-import { useTheming } from '../../../utils/theming-helper';
-import React, { useState, useCallback } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
   CardMedia,
-  Button,
   Chip,
-  IconButton,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
+  IconButton,
   Stack,
   Tooltip,
-  Badge,
+  Typography,
 } from '@mui/material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
-  PlayArrow,
-  Download,
-  Favorite,
-  Share,
-  Visibility,
-  Edit,
   Close,
+  Download,
+  Edit,
+  PlayArrow,
+  Share,
   Star,
   StarBorder,
+  Visibility,
 } from '@mui/icons-material';
 
-interface Template {
+export interface Template {
   id: string;
   name: string;
   description: string;
@@ -51,7 +47,7 @@ interface Template {
   rating: number;
   author: string;
   createdAt: string;
-  updatedAt: string
+  updatedAt: string;
 }
 
 interface TemplatePreviewCardProps {
@@ -60,254 +56,212 @@ interface TemplatePreviewCardProps {
   onEdit?: (template: Template) => void;
   onDownload?: (template: Template) => void;
   onToggleFavorite?: (template: Template) => void;
-  showActions?: boolean
+  showActions?: boolean;
 }
 
-export default function TemplatePreviewCard({ 
-  template, 
-  onSelect, 
-  onEdit, 
-  onDownload, 
+type ChipColor = 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'default';
+
+const getCategoryColor = (category: Template['category']): ChipColor => {
+  if (category === 'lower-third') return 'primary';
+  if (category === 'transition') return 'secondary';
+  if (category === 'intro') return 'success';
+  if (category === 'outro') return 'warning';
+  if (category === 'overlay') return 'info';
+  return 'default';
+};
+
+const formatDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return `${minutes}:${remainder.toString().padStart(2, '0')}`;
+};
+
+const clampRating = (value: number): number => Math.max(0, Math.min(5, Math.round(value)));
+
+const resolveDownloadUrl = (payload: unknown, fallbackUrl: string): string => {
+  if (payload && typeof payload === 'object' && 'downloadUrl' in payload) {
+    const raw = (payload as { downloadUrl?: unknown }).downloadUrl;
+    if (typeof raw === 'string' && raw.length > 0) {
+      return raw;
+    }
+  }
+  return fallbackUrl;
+};
+
+export default function TemplatePreviewCard({
+  template,
+  onSelect,
+  onEdit,
+  onDownload,
   onToggleFavorite,
-  showActions = true 
-}: TemplatePreviewCardProps) {
-  const { user } = useAuth();
-  
-  // Theming system
-  const theming = useTheming('photographer');
+  showActions = true,
+}: TemplatePreviewCardProps): React.ReactElement {
   const queryClient = useQueryClient();
-  
   const [showPreview, setShowPreview] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
-  // Toggle favorite mutation
-  const toggleFavorite = useMutation({
-    mutationFn: async (templateId: string) => 
-      return apiRequest(`/api/templates/${templated}/favorite`, {
-        headers: {
-          "Content-Type" : "application/json"
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest(`/api/templates/${encodeURIComponent(template.id)}/favorite`, {
+        method: 'POST',
+      });
     },
-        headers: {
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/templates'] });
     },
-        method: 'POST'
-  }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/templates", ],});
-  }
-});
+  });
 
-  // Download template mutation
-  const downloadTemplate = useMutation({
-    mutationFn: async (templateId: string) => 
-      return apiRequest(`/api/templates/${templated}/download`, {
-        headers: {
-          "Content-Type" : "application/json"
+  const downloadTemplateMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest(`/api/templates/${encodeURIComponent(template.id)}/download`, {
+        method: 'POST',
+      });
     },
-        headers: {
-    },
-        method: 'POST'
-  }),
-    onSuccess: (data) => {
-      // Handle download
-      const link = document.createElement('a');
-      link.href = data.downloadUrl;
-      link.download = `${template.name}.zip`;
-      link.click();
+    onSuccess: (payload) => {
+      const url = resolveDownloadUrl(payload, template.preview);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${template.name}.zip`;
+      anchor.click();
       onDownload?.(template);
-  }
-});
+    },
+  });
 
-  const handlePlayPreview = useCallback(() => {
+  const starIcons = useMemo(() => {
+    const rating = clampRating(template.rating);
+    return Array.from({ length: 5 }, (_, index) =>
+      index < rating ? (
+        <Star key={index} sx={{ fontSize: 16, color: '#f59e0b' }} />
+      ) : (
+        <StarBorder key={index} sx={{ fontSize: 16, color: '#d1d5db' }} />
+      ),
+    );
+  }, [template.rating]);
+
+  const handleOpenPreview = useCallback(() => {
     setShowPreview(true);
-    setIsPlaying(true);
-}, []);
+    setIsPlayingPreview(true);
+  }, []);
 
-  const handleStopPreview = useCallback(() => {
-    setIsPlaying(false);
-}, []);
+  const handleClosePreview = useCallback(() => {
+    setShowPreview(false);
+    setIsPlayingPreview(false);
+  }, []);
 
   const handleToggleFavorite = useCallback(() => {
-    toggleFavorite.mutate(template.id);
+    toggleFavoriteMutation.mutate();
     onToggleFavorite?.(template);
-}, [template, toggleFavorite, onToggleFavorite]);
+  }, [onToggleFavorite, template, toggleFavoriteMutation]);
 
   const handleDownload = useCallback(() => {
-    downloadTemplate.mutate(template.id);
-}, [template, downloadTemplate]);
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'lower-third': return 'primary';
-      case 'transition': return 'secondary';
-      case 'intro': return 'success';
-      case 'outro': return 'warning';
-      case 'overlay': return 'info';
-      case 'background': return 'default';
-      default: return 'default';
-}
-};
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-};
-
-  const renderStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, index) => (
-      <Star
-        key={index}
-        sx={{ 
-          fontSize:  16, 
-          color: index < rating ? '#ffc107' : '#e0e0e0' 
-    }}
-      />
-    ));
-};
+    downloadTemplateMutation.mutate();
+  }, [downloadTemplateMutation]);
 
   return (
     <>
-      <Card 
-        sx={{ 
+      <Card
+        sx={{
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          cursor: 'pointer', '&:hover': { 
+          cursor: 'pointer',
+          transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+          '&:hover': {
             transform: 'translateY(-4px)',
-            boxShadow: 4 },
-          transition: 'all 0.2s ease-in-out'
-    }}
+            boxShadow: 4,
+          },
+        }}
         onClick={() => onSelect?.(template)}
       >
-        {/* Thumbnail */}
-        <Box sx={{ position: 'relative'}}>
-          <CardMedia component="img"
-            height="200"
-            image={template.thumbnail}
-            alt={template.name}
-            sx={{ objectFit: 'cover',  ...theming.getThemedCardSx() }}>
-          
-          {/* Overlay with play button */}
+        <Box sx={{ position: 'relative' }}>
+          <CardMedia component="img" height="200" image={template.thumbnail} alt={template.name} />
+
           <Box
             sx={{
               position: 'absolute',
-              top:  0,
-              left:  0,
-              right:  0,
-              bottom:  0,
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: 'rgba(0,0,0,0.3)',
-              opacity:  0,
-              transition: 'opacity 0.2s ease-in-out','&:hover': {
-                opacity: 1 }
-          }}
+              opacity: 0,
+              transition: 'opacity 0.2s ease-in-out',
+              '&:hover': { opacity: 1 },
+            }}
           >
             <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                handlePlayPreview();
-            }}
-              sx={{
-                backgroundColor: 'rgba(25, 255, 255, 0.9)',
-                color: 'primary.main','&:hover': {
-                  backgroundColor: 'white'
-            }
-            }}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpenPreview();
+              }}
+              sx={{ bgcolor: 'rgba(255,255,255,0.9)', color: 'primary.main' }}
             >
-              <PlayArrow sx={{ fontSize: 40}} />
+              <PlayArrow sx={{ fontSize: 36 }} />
             </IconButton>
           </Box>
 
-          {/* Category Badge */}
           <Chip
-            label={template.category.replace('-', ', ').toUpperCase()}
+            label={template.category.replace('-', ' ').toUpperCase()}
             size="small"
-            color={getCategoryColor(template.category) as any}
-            sx={{
-              position: 'absolute',
-              top:  8,
-              left:  8,
-              fontWeight: 'bold'
-        }}
+            color={getCategoryColor(template.category)}
+            sx={{ position: 'absolute', top: 8, left: 8, fontWeight: 700 }}
           />
 
-          {/* Duration Badge */}
           <Chip
             label={formatDuration(template.duration)}
             size="small"
             sx={{
               position: 'absolute',
-              top:  8,
-              right:  8,
-              backgroundColor: 'rgba(0,0,0,0.7)',
+              top: 8,
+              right: 8,
+              backgroundColor: 'rgba(0,0,0,0.72)',
               color: 'white',
-              fontWeight: 'bold'
-        }}
+            }}
           />
 
-          {/* Favorite Button */}
           <IconButton
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               handleToggleFavorite();
-          }}
+            }}
             sx={{
               position: 'absolute',
-              bottom:  8,
-              right:  8,
-              backgroundColor: 'rgba(25, 255, 255, 0.9)', '&:hover': {
-                backgroundColor: 'white'
-          }
-          }}
+              bottom: 8,
+              right: 8,
+              bgcolor: 'rgba(255,255,255,0.9)',
+            }}
           >
-            {template.isFavorite ? (
-              <Star sx={{ color: '#ffc107'}} />
-            ) : (
-              {theming.getThemedIcon('starBorder')}
-            )}
+            {template.isFavorite ? <Star sx={{ color: '#f59e0b' }} /> : <StarBorder />}
           </IconButton>
         </Box>
 
-        {/* Content */}
-        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column',  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+          <Typography variant="h6" gutterBottom>
             {template.name}
           </Typography>
-          
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, flexGrow:  1 }}>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, flexGrow: 1 }}>
             {template.description}
           </Typography>
 
-          {/* Tags */}
-          <Box sx={{ display: 'flex', gap: 0,flexWrap: 'wrap', mb:  2 }}>
-            {template.tags.slice(0, 3).map((tag, index) => (
-              <Chip
-                key={index}
-                label={tag}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.7rem'}}
-              />
+          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 2 }}>
+            {template.tags.slice(0, 3).map((tag) => (
+              <Chip key={tag} label={tag} size="small" variant="outlined" sx={{ fontSize: '0.72rem' }} />
             ))}
-            {template.tags.length > 3 && (
-              <Chip
-                label={`+${template.tags.length - 3}`}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: '0.7rem'}}
-              />
-            )}
+            {template.tags.length > 3 ? (
+              <Chip label={`+${template.tags.length - 3}`} size="small" variant="outlined" sx={{ fontSize: '0.72rem' }} />
+            ) : null}
           </Box>
 
-          {/* Stats */}
-          <Grid container spacing={1} sx={{ mb:  2 }}>
+          <Grid container spacing={1} sx={{ mb: 1.5 }}>
             <Grid item xs={6}>
               <Typography variant="caption" color="text.secondary">
                 Resolution
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
+              <Typography variant="body2" fontWeight={700}>
                 {template.resolution}
               </Typography>
             </Grid>
@@ -315,7 +269,7 @@ export default function TemplatePreviewCard({
               <Typography variant="caption" color="text.secondary">
                 Frame Rate
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
+              <Typography variant="body2" fontWeight={700}>
                 {template.frameRate}fps
               </Typography>
             </Grid>
@@ -323,7 +277,7 @@ export default function TemplatePreviewCard({
               <Typography variant="caption" color="text.secondary">
                 File Size
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
+              <Typography variant="body2" fontWeight={700}>
                 {template.fileSize}
               </Typography>
             </Grid>
@@ -331,101 +285,99 @@ export default function TemplatePreviewCard({
               <Typography variant="caption" color="text.secondary">
                 Downloads
               </Typography>
-              <Typography variant="body2" fontWeight="bold">
+              <Typography variant="body2" fontWeight={700}>
                 {template.downloads}
               </Typography>
             </Grid>
           </Grid>
 
-          {/* Rating */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-            <Box sx={{ display: 'flex'}}>
-              {renderStars(template.rating)}
-            </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 2 }}>
+            {starIcons}
             <Typography variant="caption" color="text.secondary">
-              ({template.rating}/5)
+              ({template.rating.toFixed(1)}/5)
             </Typography>
           </Box>
 
-          {/* Actions */}
-          {showActions && (
+          {showActions ? (
             <Stack direction="row" spacing={1}>
-              <Button
-                size="small"
-                startIcon={theming.getThemedIcon('visibility')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePlayPreview();
-              }}
-                fullWidth
-              >
-                Preview
-              </Button>
-              <Button
-                size="small"
-                startIcon={theming.getThemedIcon('download')}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownload();
-              }}
-                disabled={downloadTemplate.isPending}
-                fullWidth
-              >
-                Download
-              </Button>
-              {onEdit && (
+              <Tooltip title="Preview">
                 <Button
                   size="small"
-                  startIcon={theming.getThemedIcon('edit')}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(template);
-                }}
+                  startIcon={<Visibility />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleOpenPreview();
+                  }}
+                  fullWidth
                 >
-                  Edit
+                  Preview
                 </Button>
-              )}
+              </Tooltip>
+              <Tooltip title="Download">
+                <Button
+                  size="small"
+                  startIcon={<Download />}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleDownload();
+                  }}
+                  disabled={downloadTemplateMutation.isPending}
+                  fullWidth
+                >
+                  Download
+                </Button>
+              </Tooltip>
+              {onEdit ? (
+                <Tooltip title="Edit">
+                  <Button
+                    size="small"
+                    startIcon={<Edit />}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdit(template);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                </Tooltip>
+              ) : null}
             </Stack>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
-      {/* Preview Dialog */}
-      <Dialog 
-        open={showPreview} 
-        onClose={() => setShowPreview(false)}
-        maxWidth="lg"
-        fullWidth
-      >
+      <Dialog open={showPreview} onClose={handleClosePreview} maxWidth="lg" fullWidth>
         <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {template.name} - Preview
-            </Typography>
-            <IconButton onClick={() => setShowPreview(false)}>
-              {theming.getThemedIcon('close')}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">{template.name} - Preview</Typography>
+            <IconButton onClick={handleClosePreview}>
+              <Close />
             </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ p:  0 }}>
-          <Box sx={{ position: 'relative', height: '400px'}}>
-            <CardMedia component="video"
-              height="400"
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ position: 'relative', height: 420, bgcolor: 'black' }}>
+            <CardMedia
+              component="video"
+              height="420"
               src={template.preview}
               controls
-              autoPlay={isPlaying}
-              sx={{ objectFit: 'contain',  ...theming.getThemedCardSx() }}>
+              autoPlay={isPlayingPreview}
+              sx={{ objectFit: 'contain' }}
+            />
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>
-            Close
+          <Button onClick={handleClosePreview}>Close</Button>
+          <Button variant="outlined" startIcon={<Share />} onClick={() => onSelect?.(template)}>
+            Select Template
           </Button>
-          <Button variant="contained"
-            startIcon={theming.getThemedIcon('download')}
+          <Button
+            variant="contained"
+            startIcon={<Download />}
             onClick={handleDownload}
-            disabled={downloadTemplate.isPending}
-           sx={theming.getThemedButtonSx()}>
+            disabled={downloadTemplateMutation.isPending}
+          >
             Download Template
           </Button>
         </DialogActions>

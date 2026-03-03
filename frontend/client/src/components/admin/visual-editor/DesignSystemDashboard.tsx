@@ -28,7 +28,7 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Grid,
+  ChipProps,
   Card,
   CardContent,
   CardActions,
@@ -60,6 +60,7 @@ import {
   StepContent,
   StepButton,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Palette,
   Add,
@@ -452,7 +453,7 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
 }, [addTheme]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): ChipProps['color'] => {
     if (hasError) return 'error';
     if (!isInitialized) return 'warning';
     if (isEnabled) return 'success';
@@ -499,18 +500,21 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
 }, [position]);
 
   // Render minimal variant
-  const renderMinimal = () => (
-    <Tooltip title={`Design System: ${getStatusText()}`}>
-      <Chip
-        icon={getStatusIcon()}
-        label={totalTokens}
-        color={getStatusColor()}
-        size="small"
-        onClick={() => setShowDesignSystemDialog(true)}
-        sx={{ cursor: 'pointer'}}
-      />
-    </Tooltip>
-  );
+  const renderMinimal = () => {
+    const statusIcon = getStatusIcon();
+    return (
+      <Tooltip title={`Design System: ${getStatusText()}`}>
+        <Chip
+          icon={React.isValidElement(statusIcon) ? statusIcon : undefined}
+          label={totalTokens}
+          color={getStatusColor()}
+          size="small"
+          onClick={() => setShowDesignSystemDialog(true)}
+          sx={{ cursor: 'pointer'}}
+        />
+      </Tooltip>
+    );
+  };
 
   // Render detailed variant
   const renderDetailed = () => (
@@ -1176,8 +1180,6 @@ const DesignSystemDashboard: React.FC<DesignSystemDashboardProps> = memo(({
 DesignSystemDashboard.displayName ='DesignSystemDashboard';
 
 export default DesignSystemDashboard;
-
-
 
 
 

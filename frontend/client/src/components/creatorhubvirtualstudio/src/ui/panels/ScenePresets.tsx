@@ -1152,7 +1152,9 @@ export function ScenePresets({ onLoadPreset, onCaptureForComparison }: ScenePres
           variant="scrollable"
           scrollButtons="auto"
           sx={{
-            minHeight: 36'& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1.5, fontSize: '0.75rem' }}}
+            minHeight: 36,
+            '& .MuiTab-root': { minHeight: 36, py: 0.5, px: 1.5, fontSize: '0.75rem' },
+          }}
         >
           <Tab value="all" label="All" />
           {Object.entries(CATEGORY_INFO).map(([key, { label, icon }]) => (
@@ -1340,4 +1342,3 @@ export function ScenePresets({ onLoadPreset, onCaptureForComparison }: ScenePres
 
 export { SCENE_PRESETS };
 export default ScenePresets;
-

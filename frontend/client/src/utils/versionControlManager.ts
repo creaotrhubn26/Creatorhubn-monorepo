@@ -35,7 +35,7 @@ export interface Version {
   number: number;
   name: string;
   description?: string;
-  type: 'major, ' | 'minor' | 'patch' | 'hotfix' | 'feature' | 'custom';
+  type: 'major' | 'minor' | 'patch' | 'hotfix' | 'feature' | 'custom';
   data: any;
   metadata: {
     size: number;
@@ -199,6 +199,7 @@ export interface VersionControlState {
   totalTags: number;
   totalChanges: number;
   totalDiffs: number;
+  errorCount: number;
 }
 
 class VersionControlManager {
@@ -261,7 +262,8 @@ class VersionControlManager {
       totalCommits: 0,
       totalTags: 0,
       totalChanges: 0,
-      totalDiffs: 0
+      totalDiffs: 0,
+      errorCount: 0
   };
 
     this.initializeVersionControl();
@@ -279,11 +281,11 @@ class VersionControlManager {
       this.createInitialVersion();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
   } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
   }
 }
 
@@ -1033,7 +1035,6 @@ class VersionControlManager {
 export const versionControlManager = new VersionControlManager();
 
 export default versionControlManager;
-
 
 
 

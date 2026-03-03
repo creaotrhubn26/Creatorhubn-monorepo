@@ -71,7 +71,7 @@ export default function EmailSpamChecker({ template }: { template: EmailTemplate
     if (capsRatio > 0.3) {
       score += 25;
       triggers.push({
-        type: 'critical,',
+        type: 'critical',
         message: `${Math.round(capsRatio * 100)}% av teksten er store bokstaver`,
         suggestion: 'Bruk normal setningsoppbygging. For mye bruk av store bokstaver trigge spam-filtre.',
       });
@@ -218,14 +218,16 @@ export default function EmailSpamChecker({ template }: { template: EmailTemplate
     return { score, rating, triggers };
   }, [template]);
 
-  const getRatingColor = (rating: string) => {
+  const getRatingColor = (
+    rating: string,
+  ): 'success' | 'warning' | 'error' | 'info' => {
     switch (rating) {
       case 'excellent': return 'success';
       case 'good': return 'success';
       case 'fair': return 'warning';
       case 'poor': return 'error';
       case 'critical': return 'error';
-      default: return 'default';
+      default: return 'info';
     }
   };
 

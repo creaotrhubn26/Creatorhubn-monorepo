@@ -174,10 +174,11 @@ export function useWireMock() {
         enableSelfHealing: true      // ✅ Automatic self-healing
       });
 
+      const isSuccess = result.status === 'success';
       toast({
-        title: result.success ? '✅ Endpoint Test' : '❌ Endpoint Test',
-        description: `${endpoint.name}: ${result.success ? 'Vellykket' : 'Feilet'} (${result.responseTime}ms)`,
-        variant: result.success ? 'default' : 'destructive',
+        title: isSuccess ? '✅ Endpoint Test' : '❌ Endpoint Test',
+        description: `${endpoint.name}: ${isSuccess ? 'Vellykket' : 'Feilet'} (${result.responseTime}ms)`,
+        variant: isSuccess ? 'default' : 'destructive',
       });
 
       return result;
@@ -188,7 +189,7 @@ export function useWireMock() {
         description: 'Kunne ikke teste endpoint',
         variant: 'destructive',
       });
-      return { success: false, error: (error as Error).message };
+      return { status: 'error', responseTime: 0, error: { message: (error as Error).message, type: 'UNKNOWN_ERROR' } };
     }
   };
 

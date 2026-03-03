@@ -766,7 +766,7 @@ export const ProjectShowcase: React.FC<ProjectShowcaseProps> = ({
                         zIndex: 1,
                         bgcolor: '#ffd700',
                         color: '#00',
-                        borderRadius: '50, %',
+                        borderRadius: '50%',
                         width:  32,
                         height:  32,
                         display: 'flex',

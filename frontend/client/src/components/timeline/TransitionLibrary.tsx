@@ -4,7 +4,7 @@
  * Canvas2D (35) + WebGL (450+) transitions
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -19,7 +19,6 @@ import {
   CardActionArea,
   Chip,
   IconButton,
-  Tooltip,
   TextField,
   InputAdornment,
   Badge,
@@ -32,7 +31,6 @@ import {
   Check,
   Search,
   Star,
-  Speed as SpeedIcon,
 } from '@mui/icons-material';
 import { hybridTransitionEngine } from '../../services/hybrid-transition-engine';
 
@@ -40,6 +38,22 @@ interface TransitionLibraryProps {
   open: boolean;
   onClose: () => void;
   onSelectTransition: (type: string, duration: number, engine: 'canvas2d' | 'webgl') => void;
+}
+
+interface TransitionItem {
+  type: string;
+  name: string;
+  engine: 'canvas2d' | 'webgl';
+  category: string;
+  duration: number;
+  author?: string;
+}
+
+interface FeaturedTransitionItem {
+  type: string;
+  name: string;
+  engine: 'canvas2d' | 'webgl';
+  reason: string;
 }
 
 export default function TransitionLibrary({
@@ -50,26 +64,71 @@ export default function TransitionLibrary({
   const [selectedTab, setSelectedTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [previewTransition, setPreviewTransition] = useState<string | null>(null);
-  const [transitionsByCategory, setTransitionsByCategory] = useState<Map<string, any[]>>(new Map());
+  const [transitionsByCategory, setTransitionsByCategory] = useState<Map<string, TransitionItem[]>>(new Map());
+  const [featuredTransitions, setFeaturedTransitions] = useState<FeaturedTransitionItem[]>([]);
   const [transitionCount, setTransitionCount] = useState({ canvas2d: 0, webgl: 0, total: 0 });
-  
-  // Load transitions on mount
-  useEffect(() => {
-    const categories = hybridTransitionEngine.getTransitionsByCategory();
-    const count = hybridTransitionEngine.getTransitionCount();
-    
-    setTransitionsByCategory(categories);
-    setTransitionCount(count);
+
+  const loadTransitions = useCallback(() => {
+    try {
+      const categories = hybridTransitionEngine.getTransitionsByCategory();
+      const count = hybridTransitionEngine.getTransitionCount();
+      const featured = hybridTransitionEngine.getFeaturedTransitions();
+
+      setTransitionsByCategory(categories);
+      setTransitionCount(count);
+      setFeaturedTransitions(featured);
+      setSelectedTab((previous) => {
+        if (categories.size === 0) {
+          return 0;
+        }
+        return Math.min(previous, categories.size - 1);
+      });
+    } catch (error) {
+      console.error('Failed to load transition catalog:', error);
+      setTransitionsByCategory(new Map());
+      setFeaturedTransitions([]);
+      setTransitionCount({ canvas2d: 0, webgl: 0, total: 0 });
+    }
   }, []);
-  
-  // Get category array for tabs
-  const categoryNames = Array.from(transitionsByCategory.keys());
-  const featuredTransitions = hybridTransitionEngine.getFeaturedTransitions();
-  
-  // Filter transitions by search
-  const filteredTransitions = searchQuery
-    ? hybridTransitionEngine.searchTransitions(searchQuery)
-    : null;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    loadTransitions();
+  }, [loadTransitions, open]);
+
+  const categoryNames = useMemo(
+    () => Array.from(transitionsByCategory.keys()),
+    [transitionsByCategory]
+  );
+
+  const filteredTransitions = useMemo(() => {
+    if (!searchQuery) {
+      return null;
+    }
+    try {
+      return hybridTransitionEngine.searchTransitions(searchQuery);
+    } catch (error) {
+      console.error('Transition search failed:', error);
+      return [];
+    }
+  }, [searchQuery]);
+
+  const currentCategoryTransitions = useMemo(() => {
+    if (categoryNames.length === 0) {
+      return [];
+    }
+    return transitionsByCategory.get(categoryNames[selectedTab]) || [];
+  }, [categoryNames, selectedTab, transitionsByCategory]);
+
+  const transitionsToRender = searchQuery ? filteredTransitions || [] : currentCategoryTransitions;
+
+  const handleSelectTransition = useCallback((transition: TransitionItem) => {
+    setPreviewTransition(transition.type);
+    onSelectTransition(transition.type, transition.duration, transition.engine);
+    onClose();
+  }, [onClose, onSelectTransition]);
   
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -128,10 +187,16 @@ export default function TransitionLibrary({
               {featuredTransitions.slice(0, 6).map((transition) => (
                 <Grid item xs={4} sm={3} md={2} key={transition.type}>
                   <Card sx={{ bgcolor: '#F3F4F6' }}>
-                    <CardActionArea onClick={() => {
-                      onSelectTransition(transition.type, 1.0, transition.engine);
-                      onClose();
-                    }}>
+                    <CardActionArea
+                      onMouseEnter={() => setPreviewTransition(transition.type)}
+                      onMouseLeave={() => setPreviewTransition((previous) => (
+                        previous === transition.type ? null : previous
+                      ))}
+                      onClick={() => {
+                        onSelectTransition(transition.type, 1.0, transition.engine);
+                        onClose();
+                      }}
+                    >
                       <Box sx={{ p: 1, textAlign: 'center' }}>
                         <Typography variant="caption" fontWeight={600} noWrap>
                           {transition.name}
@@ -168,7 +233,7 @@ export default function TransitionLibrary({
               variant="scrollable"
               scrollButtons="auto"
             >
-              {categoryNames.map((catName, index) => {
+              {categoryNames.map((catName) => {
                 const count = transitionsByCategory.get(catName)?.length || 0;
                 return (
                   <Tab 
@@ -187,18 +252,20 @@ export default function TransitionLibrary({
         
         {/* Transition Grid */}
         <Grid container spacing={2}>
-          {(searchQuery ? filteredTransitions : transitionsByCategory.get(categoryNames[selectedTab]) || [])
-            .map((transition) => (
+          {transitionsToRender.map((transition) => (
             <Grid item xs={6} sm={4} md={3} key={transition.type}>
               <Card sx={{
                 border: previewTransition === transition.type ? '2px solid #667eea' : 'none',
                 cursor: 'pointer',
                 bgcolor: transition.engine === 'webgl' ? 'rgba(102, 126, 234, 0.05)' : 'white'
               }}>
-                <CardActionArea onClick={() => {
-                  onSelectTransition(transition.type, transition.duration, transition.engine);
-                  onClose();
-                }}>
+                <CardActionArea
+                  onMouseEnter={() => setPreviewTransition(transition.type)}
+                  onMouseLeave={() => setPreviewTransition((previous) => (
+                    previous === transition.type ? null : previous
+                  ))}
+                  onClick={() => handleSelectTransition(transition)}
+                >
                   <Box
                     sx={{
                       height: 100,
@@ -277,7 +344,7 @@ export default function TransitionLibrary({
         {searchQuery && filteredTransitions && filteredTransitions.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
             <Typography variant="body2">
-              No transitions found for"{searchQuery}"
+              No transitions found for "{searchQuery}"
             </Typography>
           </Box>
         )}
@@ -285,4 +352,3 @@ export default function TransitionLibrary({
     </Dialog>
   );
 }
-

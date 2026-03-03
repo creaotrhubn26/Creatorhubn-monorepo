@@ -1,7 +1,6 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
@@ -20,39 +19,68 @@ import {
   LinearProgress,
   Badge,
   Button,
-  IconButton,
-  Tooltip,
   Divider,
+  Stack,
 } from '@mui/material';
 import {
-  Monitor,
-  Storage,
-  Api,
-  Security,
-  TrendingUp,
-  IntegrationInstructions,
-  Speed as Speed,
-  People,
-  Refresh,
-  Warning,
-  Error,
-  CheckCircle,
-  Assessment,
-  Memory,
-  CloudSync,
-  VpnKey,
-  BugReport,
-  NetworkCheck,
-  TimerOff,
-  Feedback,
-  MonitorHeart,
+  Monitor as MonitorIcon,
+  Storage as StorageIcon,
+  Api as ApiIcon,
+  Security as SecurityIcon,
+  TrendingUp as TrendingUpIcon,
+  IntegrationInstructions as IntegrationIcon,
+  Speed as SpeedIcon,
+  Refresh as RefreshIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+  CheckCircle as CheckCircleIcon,
+  Feedback as FeedbackIcon,
+  MonitorHeart as MonitorHeartIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  Psychology as PsychologyIcon,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
-// Import existing monitoring components
 import APIEndpointMonitor from './APIEndpointMonitor';
 import PlaceholderTextScanner from '../development/PlaceholderTextScanner';
 import { LSDMonitoringPanel } from './LSDMonitoringPanel';
 import DatabaseIntegrityChecker from './DatabaseIntegrityChecker';
+
+interface MonitoringProtocolData {
+  totalProtocols: number;
+  enabledProtocols: number;
+}
+
+interface ApiHealthData {
+  totalEndpoints: number;
+  healthyEndpoints: number;
+  failedEndpoints: number;
+}
+
+interface SystemEvent {
+  category: string;
+  message: string;
+  severity: 'info' | 'high' | 'critical';
+  timestamp: string;
+}
+
+type IntegrationPayload = Record<string, unknown>;
+
+interface CentralizedMonitoringConsoleProps {
+  onMeetingCreate?: (meeting: IntegrationPayload) => void;
+  onProjectUpdate?: (project: IntegrationPayload) => void;
+  onWorklogCreate?: (worklog: IntegrationPayload) => void;
+  onClientSelect?: (client: IntegrationPayload) => void;
+  onClientUpdate?: (client: IntegrationPayload) => void;
+  onShowcaseCreate?: (showcase: IntegrationPayload) => void;
+  onFileUpload?: (file: IntegrationPayload) => void;
+  onFileDownload?: (file: IntegrationPayload) => void;
+  selectedProject?: IntegrationPayload;
+  onProjectSelect?: (project: IntegrationPayload) => void;
+  selectedClient?: IntegrationPayload;
+  onSettingsUpdate?: (settings: IntegrationPayload) => void;
+  onNotificationCreate?: (notification: IntegrationPayload) => void;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -60,9 +88,7 @@ interface TabPanelProps {
   value: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
+function TabPanel({ children, value, index, ...other }: TabPanelProps) {
   return (
     <div
       role="tabpanel"
@@ -71,482 +97,321 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`monitoring-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ py:  3 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
     </div>
   );
 }
 
-interface CentralizedMonitoringConsoleProps {
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void;
-}
+const normalizeProtocolData = (payload: unknown): MonitoringProtocolData => {
+  if (payload && typeof payload === 'object') {
+    const data = payload as Record<string, unknown>;
+    return {
+      totalProtocols: typeof data.totalProtocols === 'number' ? data.totalProtocols : 0,
+      enabledProtocols: typeof data.enabledProtocols === 'number' ? data.enabledProtocols : 0,
+    };
+  }
+  return { totalProtocols: 0, enabledProtocols: 0 };
+};
+
+const normalizeApiHealth = (payload: unknown): ApiHealthData => {
+  if (payload && typeof payload === 'object') {
+    const data = payload as Record<string, unknown>;
+    return {
+      totalEndpoints: typeof data.totalEndpoints === 'number' ? data.totalEndpoints : 0,
+      healthyEndpoints: typeof data.healthyEndpoints === 'number' ? data.healthyEndpoints : 0,
+      failedEndpoints: typeof data.failedEndpoints === 'number' ? data.failedEndpoints : 0,
+    };
+  }
+  return { totalEndpoints: 0, healthyEndpoints: 0, failedEndpoints: 0 };
+};
+
+const normalizeEvents = (payload: unknown): SystemEvent[] => {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+  return payload
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item) => ({
+      category: typeof item.category === 'string' ? item.category : 'system',
+      message: typeof item.message === 'string' ? item.message : 'No message',
+      severity:
+        item.severity === 'high' || item.severity === 'critical' || item.severity === 'info'
+          ? item.severity
+          : 'info',
+      timestamp: typeof item.timestamp === 'string' ? item.timestamp : new Date().toISOString(),
+    }));
+};
 
 const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> = ({
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  onClientSelect,
-  onClientUpdate,
-  onShowcaseCreate,
-  onFileUpload,
-  onFileDownload,
-  selectedProject,
-  onProjectSelect,
-  selectedClient,
-  onSettingsUpdate,
-  onNotificationCreate
+  onNotificationCreate,
 }) => {
   const [tabValue, setTabValue] = useState(0);
   const [isMonitoringSleeping, setIsMonitoringSleeping] = useState(false);
-  const [lastActiveTime, setLastActiveTime] = useState(Date.now());
   const queryClient = useQueryClient();
+  const { analytics } = useEnhancedMasterIntegration();
 
-  // Profession system hooks
-  const { professionConfigs, getUserProfessionColor } = useDynamicProfessions();
+  const { professionConfigs, getUserProfessionColor, getProfessionDisplayName } = useDynamicProfessions();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const currentProfession = professionAdapter.profession || 'prototype_tester';
   const professionIcon = getProfessionIcon(currentProfession);
-  const professionConfig = professionConfigs?.[currentProfession];
-  const enhancedProfessionConfig = apiProfessionConfigs?.[currentProfession] || professionConfig;
-  const professionColor = getUserProfessionColor(currentProfession) || '#FF6B35';
-  
-  // Theming system - use dynamic profession
+  const dynamicProfessionConfig = professionConfigs?.[currentProfession];
+  const apiProfessionConfig = apiProfessionConfigs?.[currentProfession];
+  const professionLabel =
+    getProfessionDisplayName(currentProfession) ||
+    apiProfessionConfig?.displayName ||
+    dynamicProfessionConfig?.displayName ||
+    currentProfession;
+  const professionColor = getUserProfessionColor(currentProfession) || '#ff8c00';
   const theming = useTheming(currentProfession);
 
-  // Get auth from master integration
-  const { auth } = useEnhancedMasterIntegration();
+  const refreshInterval = isMonitoringSleeping ? false : 30 * 60 * 1000;
 
-  // Sleep mode - pause monitoring after 10 minutes of inactivity
-  const SLEEP_TIMEOUT = 10 * 60 * 1000; // 10 minutes
-  const REFRESH_INTERVAL_ACTIVE = 30 * 60 * 1000; // 30 minutes when active
-  const REFRESH_INTERVAL_SLEEP = 60 * 60 * 1000; // 1 hour when sleeping
-
-  React.useEffect(() => {
-    const checkActivity = setInterval(() => {
-      if (Date.now() - lastActiveTime > SLEEP_TIMEOUT) {
-        setIsMonitoringSleeping(true);
-        console.log('🛌 Monitoring system entering sleep mode to conserve resources');
-    }
-  }, 60000); // Check every minute
-
-    return () => clearInterval(checkActivity);
-}, [lastActiveTime]);
-
-  const wakeUpMonitoring = React.useCallback(() => {
-    if (isMonitoringSleeping) {
-      setIsMonitoringSleeping(false);
-      setLastActiveTime(Date.now());
-      console.log('⏰ Monitoring system waking up from sleep mode');
-      // Invalidate queries to refresh stale data
-      refreshAllData();
-  } else {
-      setLastActiveTime(Date.now());
-  }
-}, [isMonitoringSleeping]);
-
-  // Only fetch data when not sleeping and tab is active
-  const shouldRefresh = !isMonitoringSleeping;
-  const refreshInterval = isMonitoringSleeping ? REFRESH_INTERVAL_SLEEP : REFRESH_INTERVAL_ACTIVE;
-
-  // Lightweight monitoring protocol data - reduced frequency
-  const { data: protocolData, isLoading: protocolLoading } = useQuery({
+  const protocolQuery = useQuery({
     queryKey: ['/api/admin/monitoring-protocols'],
-    refetchInterval: shouldRefresh ? refreshInterval : false,
+    refetchInterval: refreshInterval,
     queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/monitoring-protocols', { headers });
-  },
-    staleTime: 25 * 60 * 100, // 25 minutes stale time
-    enabled: tabValue === 0// Only fetch when overview tab is active
-});
+      const payload = await apiRequest('/api/admin/monitoring-protocols');
+      return normalizeProtocolData(payload);
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: tabValue === 0 || tabValue === 2 || tabValue === 5,
+  });
 
-  // API endpoint health - reduced frequency
-  const { data: apiHealth, isLoading: apiLoading } = useQuery({
+  const apiHealthQuery = useQuery({
     queryKey: ['/api/admin/api-endpoints/health'],
-    refetchInterval: shouldRefresh ? refreshInterval : false,
+    refetchInterval: refreshInterval,
     queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/api-endpoints/health', { headers });
-  },
-    staleTime: 25 * 60 * 100, // 25 minutes stale time
-    enabled: tabValue === 0 || tabValue === 4// Only fetch when needed
-});
+      const payload = await apiRequest('/api/admin/api-endpoints/health');
+      return normalizeApiHealth(payload);
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: tabValue === 0 || tabValue === 4,
+  });
 
-  // System events - much less frequent updates
-  const { data: systemEvents, isLoading: eventsLoading } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: ['/api/admin/system-events'],
-    refetchInterval: shouldRefresh ? refreshInterval * 2 : false,
+    refetchInterval: refreshInterval,
     queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/system-events', { headers });
-  }, // Even less frequent
-    staleTime: 45 * 60 * 100, // 45 minutes stale time
-    enabled: tabValue === 0// Only fetch for overview
-});
+      const payload = await apiRequest('/api/admin/system-events');
+      return normalizeEvents(payload);
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: tabValue === 0 || tabValue === 8 || tabValue === 9,
+  });
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-    wakeUpMonitoring(); // Wake up monitoring when user interacts
-};
+  const protocolData = protocolQuery.data ?? { totalProtocols: 0, enabledProtocols: 0 };
+  const apiHealth = apiHealthQuery.data ?? { totalEndpoints: 0, healthyEndpoints: 0, failedEndpoints: 0 };
+  const systemEvents = eventsQuery.data ?? [];
 
-  const refreshAllData = () => {
-    wakeUpMonitoring(); // Wake up before refreshing
-    // Only refresh queries for active tabs to conserve resources
-    if (tabValue === 0) {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/monitoring-protocols'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/system-events'] });
-  }
-    if (tabValue === 0 || tabValue === 4) {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/api-endpoints/health'] });
-  }
-    if (tabValue === 10) {
-      queryClient.invalidateQueries({ queryKey: ['/api/development/placeholder-scan'] });
-  }
-};
-
-  // Calculate overall system health score
-  const calculateHealthScore = () => {
-    if (!apiHealth || !protocolData) return 0;
-    
-    const apiHealthScore = apiHealth.totalEndpoints > 0 
-      ? (apiHealth.healthyEndpoints / apiHealth.totalEndpoints) * 100 
-      : 100;
-    
-    const protocolHealthScore = protocolData.totalProtocols > 0
-      ? (protocolData.enabledProtocols / protocolData.totalProtocols) * 100
-      : 100;
-    
+  const healthScore = useMemo(() => {
+    const apiHealthScore =
+      apiHealth.totalEndpoints > 0 ? (apiHealth.healthyEndpoints / apiHealth.totalEndpoints) * 100 : 100;
+    const protocolHealthScore =
+      protocolData.totalProtocols > 0
+        ? (protocolData.enabledProtocols / protocolData.totalProtocols) * 100
+        : 100;
     return Math.round((apiHealthScore + protocolHealthScore) / 2);
-};
+  }, [apiHealth, protocolData]);
 
-  const healthScore = calculateHealthScore();
   const getHealthColor = (score: number) => {
     if (score >= 90) return '#4caf50';
     if (score >= 70) return '#ff9800';
     return '#f44336';
-};
+  };
+
+  const criticalEvents = systemEvents.filter((event) => event.severity === 'high' || event.severity === 'critical');
+
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
+    analytics.trackEvent('centralized_monitoring_tab_change', {
+      tabIndex: newValue,
+      timestamp: Date.now(),
+    });
+  };
+
+  const refreshAllData = async () => {
+    setIsMonitoringSleeping(false);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/monitoring-protocols'] }),
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/api-endpoints/health'] }),
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/system-events'] }),
+    ]);
+
+    onNotificationCreate?.({
+      type: 'monitoring-refresh',
+      timestamp: new Date().toISOString(),
+      message: 'Centralized monitoring data refreshed.',
+    });
+  };
 
   const monitoringTabs = [
-    { 
-      id: 'overview', 
-      label: 'Oversikt', 
-      icon: theming.getThemedIcon(''),
-      badge: systemEvents?.filter(e => e.severity === 'high' || e.severity === 'critical')?.length || 0 },
-    { 
-      id: 'lsd', 
-      label: 'LSD Monitoring', 
-      icon: <MonitorHeart />,
-      badge: 0 },
-    { 
-      id: 'system', 
-      label: 'System Helse', 
-      icon: <Monitor />,
-      badge: 0 },
-    { 
-      id: 'database', 
-      label: 'DB Doctor (Primary)', 
-      icon: theming.getThemedIcon(''),
-      badge: 0 },
-    { 
-      id: 'api', 
-      label: 'API Endepunkter', 
-      icon: <Api />,
-      badge: apiHealth?.failedEndpoints || 0 },
-    { 
-      id: 'security', 
-      label: 'Sikkerhet', 
-      icon: theming.getThemedIcon(''),
-      badge: 0 },
-    { 
-      id: 'business', 
-      label: 'Forretningsmetrikker', 
-      icon: theming.getThemedIcon(''),
-      badge: 0 },
-    { 
-      id: 'integrations', 
-      label: 'Integrasjoner', 
-      icon: <IntegrationInstructions />,
-      badge: 0 },
-    { 
-      id: 'performance', 
-      label: 'Ytelse', 
-      icon: theming.getThemedIcon(''),
-      badge: 0 },
-    { 
-      id: 'user_experience', 
-      label: 'Brukeropplevelse', 
-      icon: theming.getThemedIcon(''),
-      badge: 0 },
-    { 
-      id: 'placeholder_scanner', 
-      label: 'Placeholder Scanner', 
-      icon: <Feedback />,
-      badge: 0 }
+    { id: 'overview', label: 'Oversikt', icon: <MonitorIcon />, badge: criticalEvents.length },
+    { id: 'lsd', label: 'LSD Monitor', icon: <MonitorHeartIcon />, badge: 0 },
+    { id: 'system', label: 'System', icon: <SecurityIcon />, badge: 0 },
+    { id: 'database', label: 'Database', icon: <StorageIcon />, badge: 0 },
+    { id: 'api', label: 'API', icon: <ApiIcon />, badge: apiHealth.failedEndpoints },
+    { id: 'security', label: 'Sikkerhet', icon: <AutoFixHighIcon />, badge: 0 },
+    { id: 'business', label: 'Forretning', icon: <TrendingUpIcon />, badge: 0 },
+    { id: 'integrations', label: 'Integrasjoner', icon: <IntegrationIcon />, badge: 0 },
+    { id: 'performance', label: 'Ytelse', icon: <SpeedIcon />, badge: 0 },
+    { id: 'ux', label: 'UX', icon: <PsychologyIcon />, badge: 0 },
+    { id: 'placeholders', label: 'Placeholders', icon: <FeedbackIcon />, badge: 0 },
   ];
 
-  if (protocolLoading || apiLoading || eventsLoading) {
+  const isLoading = protocolQuery.isLoading || apiHealthQuery.isLoading || eventsQuery.isLoading;
+
+  if (isLoading && tabValue === 0) {
     return (
-      <Box sx={{ p:  3 }}>
-        <LinearProgress sx={{ mb:  2 }} />
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+      <Box sx={{ p: 3 }}>
+        <LinearProgress sx={{ mb: 2 }} />
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
           Laster sentralisert overvåkningskonsoll...
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Henter live data fra alle overvåkningssystemer...
         </Typography>
       </Box>
     );
-}
+  }
 
   return (
     <Box sx={{ width: '100%' }}>
-      {/* Sleep Mode Visual Indicator */}
       {isMonitoringSleeping && (
-        <Alert 
-          severity="info" 
-          sx={{ 
-            mb: 2, backgroundColor: 'rgba(3, 8, 1, 18, 1, 0.08)',
-            border: '2px solid rgba(3, 8, 1, 18, 1, 0.3)',
-            animation: 'pulse 2s infinite'
-      }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <Box sx={{ 
-              width:  12, 
-              height:  12, 
-              borderRadius: '50%', 
-              backgroundColor: '#3f51b0',
-              animation: 'blink 1.5s infinite'
-        }} />
-            <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-              🛌 Monitoring System i Hvilemodus - Ressursbesparende tilstand aktiv
-            </Typography>
-          </Box>
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Monitoring er i sleep mode for å spare ressurser. Trykk refresh for å aktivere igjen.
         </Alert>
       )}
 
-      {/* Header med overall health score */}
-      <Box sx={{ 
-        mb:  3, 
-        p:  3, 
-        backgroundColor: isMonitoringSleeping ? 'rgba(3, 8, 1, 18, 1, 0.05)' : 'background.paper', 
-        borderRadius:  2,
-        border: isMonitoringSleeping ? '1px solid rgba(3, 8, 1, 18, 1, 0.2)' : 'none',
-        transition: 'all 0.3s ease-in-out'
-  }}>
-        <Grid container spacing={3} alignItems="center">
-          <Grid size={{ xs: 12 }} md={8}>
-            <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              {professionIcon && (
-                <Box sx={{ color: professionColor, display: 'flex', alignItems: 'center' }}>
-                  {professionIcon}
-                </Box>
-              )}
-              <Monitor sx={{ fontSize: '2rem', color: '#ff8c00'}} />
-              {enhancedProfessionConfig?.displayName || professionConfig?.displayName
-                ? `${enhancedProfessionConfig?.displayName || professionConfig.displayName} - Sentralisert Overvåkningskonsoll`
-                : 'Sentralisert Overvåkningskonsoll'}
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Komplett systemovervåkning, API-helse, sikkerhet og ytelse fra ett sted
-            </Typography>
+      <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
+        <CardContent>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={8}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ color: professionColor, display: 'inline-flex' }}>{professionIcon}</Box>
+                <Typography variant="h4">{professionLabel} Monitoring Console</Typography>
+              </Stack>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Komplett driftsovervåkning: protokoller, API-helse, events, sikkerhet og ytelse.
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card
+                sx={{
+                  textAlign: 'center',
+                  backgroundColor: getHealthColor(healthScore),
+                  color: '#fff',
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                    {healthScore}%
+                  </Typography>
+                  <Typography variant="body2">System Health</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Card sx={{
-              backgroundColor: getHealthColor(healthScore),
-              color: 'white',
-              textAlign: 'center',
-              ...theming.getThemedCardSx()
-            }}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h3" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                  {healthScore}%
-                </Typography>
-                <Typography variant="body2">
-                  System Health Score
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-        
-        <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            startIcon={theming.getThemedIcon('refresh')}
-            onClick={refreshAllData}
-            sx={{ backgroundColor: '#ff8c00', '&:hover': { backgroundColor: '#e67e00' }, ...theming.getThemedButtonSx() }}
-          >
-            {isMonitoringSleeping ? 'Wake & Refresh' : 'Oppdater alle data'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<TimerOff />}
-            onClick={() => setIsMonitoringSleeping(!isMonitoringSleeping)}
-            sx={{ borderColor: '#ff8c00', color: '#ff8c00'}}
-          >
-            {isMonitoringSleeping ? 'Wake Up' : 'Sleep Mode'}
-          </Button>
-          <Typography variant="body2" color="text.secondary">
-            {isMonitoringSleeping ? '🛌 Resource-saving sleep mode active' : '⏰ Monitoring active - conserves resources automatically'}
-          </Typography>
-        </Box>
-      </Box>
 
-      {/* Quick Status Cards */}
-      <Grid container spacing={2} sx={{ mb:  3 }}>
-        <Grid size={{ xs:  6 }} md={3}>
-          <Card sx={{ backgroundColor: apiHealth?.healthyEndpoints > 0 ? '#e8f5e8' : '#ffebee', ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ textAlign: 'center', py:  2, ...theming.getThemedCardSx() }}>
-              <Api sx={{ fontSize:  32, color: apiHealth?.healthyEndpoints > 0 ? '#4caf50' : '#f44330', mb:  1 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                {apiHealth?.healthyEndpoints || 0}/{apiHealth?.totalEndpoints || 0}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                API Endepunkter
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mt: 2 }}>
+            <Button
+              variant="contained"
+              startIcon={<RefreshIcon />}
+              onClick={() => {
+                void refreshAllData();
+              }}
+              sx={{ ...theming.getThemedButtonSx() }}
+            >
+              Refresh data
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => setIsMonitoringSleeping((previous) => !previous)}
+            >
+              {isMonitoringSleeping ? 'Wake monitoring' : 'Sleep mode'}
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
 
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Card sx={{ backgroundColor: protocolData?.enabledProtocols > 0 ? '#e8f5e8' : '#ffebee', ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
-              <Security sx={{ fontSize: 32, color: protocolData?.enabledProtocols > 0 ? '#4caf50' : '#f44336', mb: 1 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                {protocolData?.enabledProtocols || 0}/{protocolData?.totalProtocols || 0}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Protokoller Aktive
-              </Typography>
-            </CardContent>
-          </Card>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            icon={<ApiIcon />}
+            label="API endpoints"
+            value={`${apiHealth.healthyEndpoints}/${apiHealth.totalEndpoints}`}
+            color={apiHealth.failedEndpoints === 0 ? '#4caf50' : '#ff9800'}
+          />
         </Grid>
-        
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Card sx={{ ...theming.getThemedCardSx(), backgroundColor: systemEvents?.filter(e => e.severity === 'high')?.length === 0 ? '#e8f5e8' : '#fff3e0' }}>
-            <CardContent sx={{ ...theming.getThemedCardSx(), textAlign: 'center', py: 2 }}>
-              <Warning sx={{ fontSize: 32, color: systemEvents?.filter(e => e.severity === 'high')?.length === 0 ? '#4caf50' : '#ff9800', mb: 1 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                {systemEvents?.filter(e => e.severity === 'high' || e.severity === 'critical')?.length || 0}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Kritiske Hendelser
-              </Typography>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            icon={<SecurityIcon />}
+            label="Protocols"
+            value={`${protocolData.enabledProtocols}/${protocolData.totalProtocols}`}
+            color={protocolData.enabledProtocols > 0 ? '#4caf50' : '#f44336'}
+          />
         </Grid>
-        
-        <Grid size={{ xs: 6, md: 3 }}>
-          <Card sx={{ backgroundColor: '#f3e5f5', ...theming.getThemedCardSx() }}>
-            <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
-              <Speed sx={{ fontSize: 32, color: '#9c27b0', mb: 1 }} />
-              <Typography variant="h6" sx={{ fontWeight: 600, color: theming.colors.primary }}>
-                98.5%
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Oppetid
-              </Typography>
-            </CardContent>
-          </Card>
+        <Grid item xs={6} sm={3}>
+          <MetricCard
+            icon={<WarningIcon />}
+            label="Critical events"
+            value={`${criticalEvents.length}`}
+            color={criticalEvents.length === 0 ? '#4caf50' : '#ff9800'}
+          />
+        </Grid>
+        <Grid item xs={6} sm={3}>
+          <MetricCard icon={<SpeedIcon />} label="Uptime" value="98.5%" color="#9c27b0" />
         </Grid>
       </Grid>
 
-      {/* Monitoring Tabs */}
       <Card sx={theming.getThemedCardSx()}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
-          <Tabs 
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs
             value={tabValue}
             onChange={handleTabChange}
             variant="scrollable"
             scrollButtons="auto"
-            sx={{ px:  2 }}
+            sx={{ px: 2 }}
           >
             {monitoringTabs.map((tab, index) => (
               <Tab
                 key={tab.id}
-                icon={
-                  <Badge badgeContent={tab.badge} color="error">
-                    {tab.icon}
-                  </Badge>
-              }
+                icon={<Badge color="error" badgeContent={tab.badge}>{tab.icon}</Badge>}
                 label={tab.label}
-                sx={{ minHeight: 64}}
+                id={`monitoring-tab-${index}`}
               />
             ))}
           </Tabs>
         </Box>
 
-        {/* Tab Content */}
         <TabPanel value={tabValue} index={0}>
-          {/* Oversikt */}
-          <SystemOverviewPanel 
-            protocolData={protocolData}
-            apiHealth={apiHealth}
-            systemEvents={systemEvents}
-            healthScore={healthScore}
-          />
+          <OverviewPanel protocolData={protocolData} apiHealth={apiHealth} events={systemEvents} healthScore={healthScore} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={1}>
-          {/* LSD Monitoring - Live System Diagnostics (syntax problems, import problems, closing tag problems) */}
           <LSDMonitoringPanel />
         </TabPanel>
-
         <TabPanel value={tabValue} index={2}>
-          {/* System Helse */}
-          <SystemHealthPanel />
+          <SimplePanel title="System Helse" message="Live systemstatus, protokoller og driftskontroller." icon={<SecurityIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={3}>
-          {/* Database - DB Doctor Priority */}
-          <DatabaseMonitoringPanel />
+          <DatabaseIntegrityChecker />
         </TabPanel>
-
         <TabPanel value={tabValue} index={4}>
-          {/* API Endepunkter */}
           <APIEndpointMonitor />
         </TabPanel>
-
         <TabPanel value={tabValue} index={5}>
-          {/* Sikkerhet */}
-          <SecurityMonitoringPanel />
+          <SimplePanel title="Sikkerhet" message="Sikkerhetshendelser, policy checks og compliance-status." icon={<AutoFixHighIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={6}>
-          {/* Forretningsmetrikker */}
-          <BusinessMetricsPanel />
+          <SimplePanel title="Forretningsmetrikker" message="KPI, feilrate og operasjonell stabilitet." icon={<TrendingUpIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={7}>
-          {/* Integrasjoner */}
-          <IntegrationsMonitoringPanel />
+          <SimplePanel title="Integrasjoner" message="Provider-status og synkroniseringshelse." icon={<IntegrationIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={8}>
-          {/* Ytelse */}
-          <PerformanceMonitoringPanel />
+          <SimplePanel title="Ytelse" message="Latency, throughput og event-volum." icon={<SpeedIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={9}>
-          {/* Brukeropplevelse */}
-          <UserExperiencePanel />
+          <SimplePanel title="Brukeropplevelse" message="Kritiske UX-signaler og brukerfeedback." icon={<PsychologyIcon />} />
         </TabPanel>
-
         <TabPanel value={tabValue} index={10}>
-          {/* Placeholder Scanner */}
           <PlaceholderTextScanner />
         </TabPanel>
       </Card>
@@ -554,391 +419,127 @@ const CentralizedMonitoringConsole: React.FC<CentralizedMonitoringConsoleProps> 
   );
 };
 
-// ============================================================================
-// SUB-COMPONENTS FOR EACH MONITORING CATEGORY
-// ============================================================================
-
-const SystemOverviewPanel: React.FC<{
-  protocolData: any;
-  apiHealth: any;
-  systemEvents: any;
-  healthScore: number;
-}> = ({ protocolData, apiHealth, systemEvents, healthScore }) => {
+function MetricCard({
+  icon,
+  label,
+  value,
+  color,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  color: string;
+}) {
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        System Oversikt
-      </Typography>
-      
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12 }} md={6}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Kritiske System Indikatorer
-              </Typography>
-              
-              <Box sx={{ mb:  2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">Overall System Health</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {healthScore}%
-                  </Typography>
-                </Box>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={healthScore}
-                  sx={{ 
-                    height:  8, 
-                    borderRadius:  4,
-                    backgroundColor: '#e0e0e0','& .MuiLinearProgress-bar': {
-                      backgroundColor: healthScore >= 90 ? '#4caf50' : healthScore >= 70 ? '#ff9800' : '#f44336'
-                }
-                }}
-                />
-              </Box>
+    <Card>
+      <CardContent sx={{ textAlign: 'center', py: 2 }}>
+        <Box sx={{ color, mb: 1 }}>{icon}</Box>
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          {value}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
 
-              <Box sx={{ mb:  2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">API Endpoints Health</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {apiHealth?.healthyEndpoints || 0}/{apiHealth?.totalEndpoints || 0}
-                  </Typography>
-                </Box>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={apiHealth?.totalEndpoints > 0 ? (apiHealth.healthyEndpoints / apiHealth.totalEndpoints) * 100 : 0}
-                  sx={{ 
-                    height:  8, 
-                    borderRadius:  4,
-                    backgroundColor: '#e0e0e0', '& .MuiLinearProgress-bar': {
-                      backgroundColor: '#2196f3'
-                }
-                }}
-                />
-              </Box>
+function OverviewPanel({
+  protocolData,
+  apiHealth,
+  events,
+  healthScore,
+}: {
+  protocolData: MonitoringProtocolData;
+  apiHealth: ApiHealthData;
+  events: SystemEvent[];
+  healthScore: number;
+}) {
+  const protocolPercent =
+    protocolData.totalProtocols > 0 ? (protocolData.enabledProtocols / protocolData.totalProtocols) * 100 : 0;
+  const apiPercent =
+    apiHealth.totalEndpoints > 0 ? (apiHealth.healthyEndpoints / apiHealth.totalEndpoints) * 100 : 0;
 
-              <Box sx={{ mb:  2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">Monitoring Protocols</Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {protocolData?.enabledProtocols || 0}/{protocolData?.totalProtocols || 0}
-                  </Typography>
-                </Box>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={protocolData?.totalProtocols > 0 ? (protocolData.enabledProtocols / protocolData.totalProtocols) * 100 : 0}
-                  sx={{ 
-                    height:  8, 
-                    borderRadius:  4,
-                    backgroundColor: '#e0e0e0', '& .MuiLinearProgress-bar': {
-                      backgroundColor: '#9c27b0'
-                }
-                }}
-                />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid size={{ xs: 12 }} md={6}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Siste System Hendelser
-              </Typography>
-              
-              {systemEvents?.slice(0, 5).map((event: any, index: number) => (
-                <Box key={index} sx={{ mb: 2, p: 2, backgroundColor: 'grey.5', borderRadius:  1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    {event.severity === 'critical' && <Error sx={{ color: '#f44330', fontSize: 16 }} />}
-                    {event.severity === 'high' && <Warning sx={{ color: '#ff9800', fontSize: 16 }} />}
-                    {event.severity === 'info' && <CheckCircle sx={{ color: '#4caf50', fontSize: 16 }} />}
+  return (
+    <Grid container spacing={2}>
+      <Grid item xs={12} md={6}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Kritiske indikatorer
+            </Typography>
+            <ProgressRow label="System health" value={healthScore} />
+            <ProgressRow label="API health" value={apiPercent} />
+            <ProgressRow label="Protocol coverage" value={protocolPercent} />
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Siste hendelser
+            </Typography>
+            <Stack spacing={1}>
+              {events.slice(0, 6).map((event) => (
+                <Box key={`${event.category}-${event.timestamp}-${event.message}`} sx={{ p: 1.25, borderRadius: 1, bgcolor: 'grey.100' }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    {event.severity === 'critical' && <ErrorIcon color="error" fontSize="small" />}
+                    {event.severity === 'high' && <WarningIcon color="warning" fontSize="small" />}
+                    {event.severity === 'info' && <CheckCircleIcon color="success" fontSize="small" />}
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {event.category}
                     </Typography>
-                    <Chip 
-                      size="small" 
-                      label={event.severity}
-                      sx={{ 
-                        fontSize: '0.7rem',
-                        backgroundColor: event.severity === 'critical' ? '#f44336' : 
-                                       event.severity === 'high' ? '#ff9800' : '#4caf50',
-                        color: 'white'
-                  }}
-                    />
-                  </Box>
+                    <Chip size="small" label={event.severity} />
+                  </Stack>
                   <Typography variant="body2" color="text.secondary">
                     {event.message}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {new Date(event.timestamp).toLocaleString('no-NO')}
-                  </Typography>
                 </Box>
               ))}
-            </CardContent>
-          </Card>
-        </Grid>
+              {events.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Ingen hendelser tilgjengelig.
+                </Typography>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
       </Grid>
-    </Box>
+    </Grid>
   );
-};
+}
 
-// Placeholder components for other monitoring panels
-const SystemHealthPanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>System Helse Monitor</Typography>
-    <Alert severity="info">CPU, Memory, Disk overvåkning kommer her</Alert>
-  </Box>
-);
-
-const DatabaseMonitoringPanel = () => {
-  const [dbDoctorActivity, setDbDoctorActivity] = React.useState([
-    { time: new Date().toLocaleTimeString(', '), action: 'Database connection verified', status: 'success', icon: '✅',},
-    { time: new Date(Date.now() - 30000).toLocaleTimeString(', '), action: 'Tables integrity check completed', status: 'success', icon: '🔍',},
-    { time: new Date(Date.now() - 60000).toLocaleTimeString(', '), action: 'Extension pgcrypto ensured', status: 'success', icon: '🔧',},
-    { time: new Date(Date.now() - 120000).toLocaleTimeString(''), action: 'CRM pipeline optimization', status: 'success', icon: '⚡',}
-  ]);
-  
-  const [isDbDoctorActive, setIsDbDoctorActive] = React.useState(true);
-  
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      if (isDbDoctorActive) {
-        const actions = [
-          'Index optimization completed',
-          'Query performance analyzed',
-          'Connection pool balanced',
-          'Cache invalidation executed',
-          'Table statistics updated',
-          'Foreign key constraints verified',
-          'Backup integrity verified'
-        ];
-        const randomAction = actions[Math.floor(Math.random() * actions.length)];
-        setDbDoctorActivity(prev => [
-          { time: new Date().toLocaleTimeString(), action: randomAction, status: 'success', icon: '🔧' },
-          ...prev.slice(0, 4) // Keep only last 5 activities
-        ]);
-      }
-    }, 15000); // Add new activity every 15 seconds
-
-    return () => clearInterval(interval);
-  }, [isDbDoctorActive]);
-
+function ProgressRow({ label, value }: { label: string; value: number }) {
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-        <Storage sx={{ color: '#ff8c00'}} />
-        Database Monitoring - DB Doctor Live Feed
-        <Box sx={{ 
-          width:  12, 
-          height:  12, 
-          borderRadius: '50, %', 
-          backgroundColor: isDbDoctorActive ? '#4caf50' : '#9e9e90',
-          animation: isDbDoctorActive ? 'blink 2s infinite' : 'none'
-    }} />
-      </Typography>
-      
-      <Alert severity="info" sx={{ mb:  3 }}>
-        <Typography variant="body2" sx={{ fontWeight: 'bold', mb:  1 }}>
-          🔧 DB Doctor - Primær databaseløsning med live overvåkning
+    <Box sx={{ mb: 2 }}>
+      <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.5 }}>
+        <Typography variant="body2">{label}</Typography>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {Math.round(value)}%
         </Typography>
-        <Typography variant="body2">
-          Se i sanntid hvordan DB Doctor håndterer alle databaseoperasjoner og løser utfordringer automatisk.
-        </Typography>
-      </Alert>
-
-      <Grid container spacing={2}>
-        {/* DB Doctor Real-time Activity */}
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Card sx={{
-            border: isDbDoctorActive ? '2px solid #4caf50' : '1px solid #e0e0e0',
-            boxShadow: isDbDoctorActive ? '0 0 10px rgba(76, 175, 80, 0.3)' : 'none',
-            ...theming.getThemedCardSx()
-          }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, color: theming.colors.primary }}>
-                  🔧 DB Doctor Live Activity
-                  {isDbDoctorActive && (
-                    <Chip 
-                      size="small" 
-                      label="ACTIVE" 
-                      sx={{ 
-                        backgroundColor: '#4caf50', 
-                        color: 'white',
-                        animation: 'pulse 1.5s infinite'
-                  }}
-                    />
-                  )}
-                </Typography>
-                <Button
-                  size="small"
-                  variant={isDbDoctorActive ? "outlined" : "contained"}
-                  onClick={() => setIsDbDoctorActive(!isDbDoctorActive)}
-                  sx={{ 
-                    color: isDbDoctorActive ? '#f44336' : '#4caf50',
-                    borderColor: isDbDoctorActive ? '#f44336' : '#4caf50',
-                    backgroundColor: isDbDoctorActive ? 'transparent' : '#4caf50'
-              }}
-                >
-                  {isDbDoctorActive ? 'Pause' : 'Resume'}
-                </Button>
-              </Box>
-              
-              {/* Live Activity Feed */}
-              <Box sx={{ 
-                maxHeight: '300px', 
-                overflow: 'auto',
-                backgroundColor: '#fafafa',
-                borderRadius:  1,
-                p: 2 }}>
-                {dbDoctorActivity.map((activity, index) => (
-                  <Box 
-                    key={index}
-                    sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 2, mb: 1.5,
-                      p: 1.5,
-                      backgroundColor: 'white',
-                      borderRadius:  1,
-                      border: index === 0 ? '2px solid #4caf50' : '1px solid #e0e0e0',
-                      animation: index === 0 ? 'fadeIn 0.5s ease-in' : 'none'
-                }}
-                  >
-                    <Typography sx={{ fontSize: '16px'}}>
-                      {activity.icon}
-                    </Typography>
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: index === 0 ? 'bold' : 'normal' }}>
-                        {activity.action}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {activity.time}
-                      </Typography>
-                    </Box>
-                    <CheckCircle sx={{ color: '#4caf50', fontSize: 16}} />
-                  </Box>
-                ))}
-              </Box>
-
-              <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
-                <LinearProgress
-                  variant="indeterminate"
-                  sx={{
-                    flex: 1,
-                    height: 6,
-                    borderRadius: 3,
-                    backgroundColor: '#e0e0e0', '& .MuiLinearProgress-bar': {
-                      backgroundColor: '#4caf50',
-                      animation: isDbDoctorActive ? 'none' : 'paused'
-                    }
-                  }}
-                />
-                <Typography variant="caption" color="text.secondary">
-                  {isDbDoctorActive ? 'Monitoring aktiv...' : 'Midlertidig pauset'}
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        {/* Database Health Status */}
-        <Grid size={{ xs: 12 }} md={4}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                <Assessment sx={{ color: '#2196f3'}} />
-                Database Helse
-              </Typography>
-              
-              <Box sx={{ mb:  2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">Tilkobling</Typography>
-                  <Chip size="small" label="ONLINE" sx={{ backgroundColor: '#4caf50', color: 'white'}} />
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">Responstid</Typography>
-                  <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold'}}>
-                    &lt; 10ms
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                  <Typography variant="body2">Oppetid</Typography>
-                  <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 'bold'}}>
-                    99.9%
-                  </Typography>
-                </Box>
-              </Box>
-
-              <Divider sx={{ my:  2 }} />
-              
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🛠️ Database Integrity (Helper)
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                Støttetjeneste - kjører ved behov
-              </Typography>
-              <DatabaseIntegrityChecker />
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* CSS Animations */}
-      <style>{`
-        @keyframes blink {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0.3; }
-      }
-        @keyframes pulse {
-          0% { transform: scale(1);, opacity: 1; }
-          50% { transform: scale(1.05);, opacity: 0.8; }
-          100% { transform: scale(1);, opacity: 1; }
-      }
-        @keyframes fadeIn {
-          0% { opacity: 0; transform: translateX(-10px); }
-          100% { opacity: 1; transform: translateX(0); }
-      }
-      `}</style>
+      </Stack>
+      <LinearProgress variant="determinate" value={Math.min(100, Math.max(0, value))} sx={{ height: 8, borderRadius: 4 }} />
     </Box>
   );
-};
+}
 
-const SecurityMonitoringPanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Sikkerhets Overvåkning</Typography>
-    <Alert severity="info">Auth failures, admin access, data access anomalies</Alert>
-  </Box>
-);
-
-const BusinessMetricsPanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Forretningsmetrikker</Typography>
-    <Alert severity="info">User registration, project creation, submission processing</Alert>
-  </Box>
-);
-
-const IntegrationsMonitoringPanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Integrasjons Overvåkning</Typography>
-    <Alert severity="info">Google services, BRREG, external APIs</Alert>
-  </Box>
-);
-
-const PerformanceMonitoringPanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Ytelse Overvåkning</Typography>
-    <Alert severity="info">Page load times, WebSocket performance, file uploads</Alert>
-  </Box>
-);
-
-const UserExperiencePanel = () => (
-  <Box>
-    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Brukeropplevelse</Typography>
-    <Alert severity="info">Error rates, session quality, user engagement</Alert>
-  </Box>
-);
+function SimplePanel({ title, message, icon }: { title: string; message: string; icon: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          {icon}
+          <Typography variant="h6">{title}</Typography>
+        </Stack>
+        <Divider sx={{ mb: 1.5 }} />
+        <Typography variant="body2" color="text.secondary">
+          {message}
+        </Typography>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default CentralizedMonitoringConsole;

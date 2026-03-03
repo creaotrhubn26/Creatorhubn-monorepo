@@ -31,7 +31,7 @@ export interface KeyboardShortcut {
   id: string;
   name: string;
   description: string;
-  category: 'navigation, ' | 'editing, ' | 'formatting' | 'view' | 'file' | 'edit' | 'tools' | 'help' | 'custom';
+  category: 'navigation' | 'editing' | 'formatting' | 'view' | 'file' | 'edit' | 'tools' | 'help' | 'custom';
   key: string;
   modifiers: string[];
   context: string[];
@@ -176,11 +176,11 @@ class KeyboardShortcutsManager {
       this.loadShortcutPreferences();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
   } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
   }
 }
 
@@ -544,7 +544,7 @@ class KeyboardShortcutsManager {
     if (!this.state.isEnabled) throw new Error('Keyboard shortcuts are not enabled');
 
     const shortcut = this.state.shortcuts.get(shortcutId);
-    if (!shortcut) throw new Error(`Shortcut not found: ${shortcutd}`);
+    if (!shortcut) throw new Error(`Shortcut not found: ${shortcutId}`);
 
     if (!shortcut.enabled) return;
 
@@ -873,7 +873,6 @@ class KeyboardShortcutsManager {
 export const keyboardShortcutsManager = new KeyboardShortcutsManager();
 
 export default keyboardShortcutsManager;
-
 
 
 

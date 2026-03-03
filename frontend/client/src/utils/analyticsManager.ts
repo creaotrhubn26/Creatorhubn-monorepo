@@ -132,11 +132,11 @@ class AnalyticsManager {
       this.setupFlushInterval();
       this.state.isInitialized = true;
       this.state.isTracking = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
   } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
-      this.emit('error, ', { error: this.state.error });
+      this.emit('error', { error: this.state.error });
   }
 }
 

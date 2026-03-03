@@ -4,7 +4,7 @@
  */
 
 import { useTheming } from '../../../utils/theming-helper';
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -248,14 +248,14 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
 }, [hasError, isSaving, isPaused, pendingChanges, isEnabled]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) return <Error color="error" fontSize="small" />;
     if (isSaving) return <CircularProgress size={16} />;
-    if (isPaused) return theming.getThemedIcon('pause');
-    if (pendingChanges) return theming.getThemedIcon('sync');
-    if (isEnabled) return theming.getThemedIcon('save');
-    return theming.getThemedIcon('stop');
-}, [hasError, isSaving, isPaused, pendingChanges, isEnabled]);
+    if (isPaused) return <Pause color="warning" fontSize="small" />;
+    if (pendingChanges) return <Sync color="info" fontSize="small" />;
+    if (isEnabled) return <Save color="success" fontSize="small" />;
+    return <Stop color="disabled" fontSize="small" />;
+  }, [hasError, isSaving, isPaused, pendingChanges, isEnabled]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -295,7 +295,7 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
     <Tooltip title={`Auto-save: ${getStatusText()}`}>
       <Chip
         icon={getStatusIcon()}
-        label={queueSize > 0 ? queueSize : ', '}
+        label={queueSize > 0 ? queueSize : '0'}
         color={getStatusColor()}
         size="small"
         onClick={() => setShowAutoSaveDialog(true)}
@@ -306,7 +306,7 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
 
   // Render detailed variant
   const renderDetailed = () => (
-    <Paper elevation={2}, sx={{ p: 1, minWidth: 200,  ...theming.getThemedCardSx() }}>
+    <Paper elevation={2} sx={{ p: 1, minWidth: 200,  ...theming.getThemedCardSx() }}>
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
@@ -350,7 +350,7 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
 
   // Render full variant
   const renderFull = () => (
-    <Paper elevation={3}, sx={{ p: 2, minWidth: 300,  ...theming.getThemedCardSx() }}>
+    <Paper elevation={3} sx={{ p: 2, minWidth: 300,  ...theming.getThemedCardSx() }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
           <Save color="primary" />
@@ -402,7 +402,10 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
               <Typography variant="subtitle2" gutterBottom>
                 Queue
               </Typography>
-              <Typography variant="h4" color={queueSize  sx={{ color: theming.colors.primary }}> 0 ? 'warning' : 'text.secondary'}>
+              <Typography
+                variant="h4"
+                sx={{ color: queueSize > 0 ? 'warning.main' : 'text.secondary' }}
+              >
                 {queueSize}
               </Typography>
             </CardContent>
@@ -415,7 +418,10 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
               <Typography variant="subtitle2" gutterBottom>
                 Conflicts
               </Typography>
-              <Typography variant="h4" color={conflictCount  sx={{ color: theming.colors.primary }}> 0 ? 'error' : 'text.secondary'}>
+              <Typography
+                variant="h4"
+                sx={{ color: conflictCount > 0 ? 'error.main' : 'text.secondary' }}
+              >
                 {conflictCount}
               </Typography>
             </CardContent>
@@ -504,7 +510,10 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
                   <Typography variant="subtitle2" gutterBottom>
                     Queue
                   </Typography>
-                  <Typography variant="h4" color={queueSize  sx={{ color: theming.colors.primary }}> 0 ? 'warning' : 'text.secondary'}>
+                  <Typography
+                    variant="h4"
+                    sx={{ color: queueSize > 0 ? 'warning.main' : 'text.secondary' }}
+                  >
                     {queueSize}
                   </Typography>
                 </CardContent>
@@ -517,7 +526,10 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
                   <Typography variant="subtitle2" gutterBottom>
                     Conflicts
                   </Typography>
-                  <Typography variant="h4" color={conflictCount  sx={{ color: theming.colors.primary }}> 0 ? 'error' : 'text.secondary'}>
+                  <Typography
+                    variant="h4"
+                    sx={{ color: conflictCount > 0 ? 'error.main' : 'text.secondary' }}
+                  >
                     {conflictCount}
                   </Typography>
                 </CardContent>
@@ -687,8 +699,6 @@ const AutoSaveIndicator: React.FC<AutoSaveIndicatorProps> = memo(({
 AutoSaveIndicator.displayName ='AutoSaveIndicator';
 
 export default AutoSaveIndicator;
-
-
 
 
 

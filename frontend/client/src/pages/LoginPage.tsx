@@ -10,7 +10,16 @@ export const LoginPage: React.FC = () => {
   const location = useLocation();
 
   // Get the redirect location from state, or default to home
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (() => {
+    const state = location.state as unknown;
+    if (typeof state === 'object' && state !== null && 'from' in state) {
+      const fromState = (state as { from?: { pathname?: string } }).from;
+      if (fromState?.pathname) {
+        return fromState.pathname;
+      }
+    }
+    return '/';
+  })();
 
   const handleGoogleSignIn = async () => {
     try {
@@ -30,7 +39,8 @@ export const LoginPage: React.FC = () => {
         justifyContent: 'center',
         minHeight: '100vh',
         backgroundColor: '#f5f5f5',
-        fontFamily: '-apple-system, BlinkMacSystemFont "Segoe UI", Roboto"Helvetica Neue", Arial, sans-serif',
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         padding: '20px',
       }}>
       <div
@@ -52,7 +62,7 @@ export const LoginPage: React.FC = () => {
             style={{
               margin: '0 0 8px',
               fontSize: '28px',
-              fontWeight: 600
+              fontWeight: 600,
               color: '#202124',
             }}>
             Welcome Back
@@ -164,7 +174,7 @@ export const LoginPage: React.FC = () => {
               }}
               onMouseOut={(e) => {
                 e.currentTarget.style.textDecoration = 'none';
-              }
+              }}
             >
               Sign up
             </a>

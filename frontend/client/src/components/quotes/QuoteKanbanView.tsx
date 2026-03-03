@@ -3,47 +3,47 @@
  * Drag-and-drop board for managing quote statuses
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useTheming } from '@/utils/theming-helper';
 import {
+  Avatar,
+  Badge,
   Box,
-  Paper,
-  Typography,
   Card,
   CardContent,
   Chip,
   IconButton,
-  Avatar,
+  Paper,
   Stack,
   Tooltip,
-  Badge,
+  Typography,
 } from '@mui/material';
 import {
-  DragIndicator as DragIcon,
-  MoreVert as MoreVertIcon,
   AccessTime as ClockIcon,
-  CheckCircle as AcceptedIcon,
-  Cancel as RejectedIcon,
-  HourglassEmpty as PendingIcon,
-  Edit as DraftIcon,
   AttachMoney as MoneyIcon,
-  Person as PersonIcon,
-  Warning as WarningIcon,
+  Cancel as RejectedIcon,
+  CheckCircle as AcceptedIcon,
+  DragIndicator as DragIcon,
+  Edit as DraftIcon,
   Email as EmailIcon,
+  HourglassEmpty as PendingIcon,
   MarkEmailRead as EmailOpenIcon,
   MarkEmailUnread as EmailUnreadIcon,
+  MoreVert as MoreVertIcon,
+  Person as PersonIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
 import {
+  closestCorners,
   DndContext,
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
-  closestCorners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -69,10 +69,11 @@ interface QuoteKanbanViewProps {
   onQuoteAction: (action: string, quote: Quote) => void;
 }
 
+type QuoteStatus = Quote['status'];
+
 interface KanbanColumn {
-  id: string;
+  id: QuoteStatus;
   title: string;
-  status: string;
   color: string;
   icon: React.ReactNode;
 }
@@ -81,136 +82,123 @@ const columns: KanbanColumn[] = [
   {
     id: 'draft',
     title: 'Utkast',
-    status: 'draft',
     color: '#9e9e9e',
-    icon: <DraftIcon />,
+    icon: <DraftIcon fontSize="small" />,
   },
   {
     id: 'pending',
     title: 'Venter på svar',
-    status: 'pending',
     color: '#ff9800',
-    icon: <PendingIcon />,
+    icon: <PendingIcon fontSize="small" />,
   },
   {
     id: 'accepted',
     title: 'Godkjent',
-    status: 'accepted',
     color: '#4caf50',
-    icon: <AcceptedIcon />,
+    icon: <AcceptedIcon fontSize="small" />,
   },
   {
     id: 'rejected',
     title: 'Avvist',
-    status: 'rejected',
     color: '#f44336',
-    icon: <RejectedIcon />,
+    icon: <RejectedIcon fontSize="small" />,
   },
   {
     id: 'expired',
     title: 'Utløpt',
-    status: 'expired',
     color: '#757575',
-    icon: <ClockIcon />,
+    icon: <ClockIcon fontSize="small" />,
   },
 ];
 
-// Draggable Quote Card Component
-function QuoteCard({
+function isExpiringSoon(validUntil: string): boolean {
+  const msLeft = new Date(validUntil).getTime() - Date.now();
+  const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+  return daysLeft <= 7 && daysLeft > 0;
+}
+
+function isExpired(validUntil: string): boolean {
+  return new Date(validUntil).getTime() < Date.now();
+}
+
+function formatCurrency(amount: string): string {
+  const parsed = Number.parseFloat(amount);
+  if (Number.isNaN(parsed)) return amount;
+  return new Intl.NumberFormat('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+    minimumFractionDigits: 0,
+  }).format(parsed);
+}
+
+function getEmailStatusIcon(quote: Quote): React.ReactNode {
+  if (!quote.sentAt) return <EmailIcon fontSize="small" color="disabled" />;
+  if (quote.viewedAt) return <EmailOpenIcon fontSize="small" color="success" />;
+  return <EmailUnreadIcon fontSize="small" color="warning" />;
+}
+
+function SortableQuoteCard({
   quote,
   onQuoteClick,
   onQuoteAction,
-  isDragging,
 }: {
   quote: Quote;
   onQuoteClick: (quote: Quote) => void;
   onQuoteAction: (action: string, quote: Quote) => void;
-  isDragging?: boolean;
 }) {
-  const theming = useTheming('photographer');
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: quote.id,
+    data: {
+      type: 'quote',
+      status: quote.status,
+    },
+  });
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging: isSortableDragging,
-  } = useSortable({ id: quote.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isSortableDragging ? 0.5 : 1,
-  };
-
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat('nb-NO', {
-      style: 'currency',
-      currency: 'NOK',
-      minimumFractionDigits: 0,
-    }).format(parseFloat(amount);
-  };
-
-  const isExpiringSoon = (validUntil: string) => {
-    const daysUntilExpiry = Math.ceil()
-      (new Date(validUntil).getTime() - Date.now() / (1000 * 60 * 60 * 24),
-    );
-    return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
-  };
-
-  const isExpired = (validUntil: string) => {
-    return new Date(validUntil) < new Date();
-  };
-
-  const getEmailStatusIcon = () => {
-    if (!quote.sentAt) return <EmailIcon fontSize="small" color="disabled" />;
-    if (quote.viewedAt) return <EmailOpenIcon fontSize="small" color="success" />;
-    return <EmailUnreadIcon fontSize="small" color="warning" />;
-  };
-
-  return ()
+  return (
     <Card
       ref={setNodeRef}
-      style={style}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.45 : 1,
+      }}
       sx={{
-        mb: 1.5
-       , cursor: 'pointer',
-        transition: 'all 0.2s', '&:hover': {
-          boxShadow: 3,
-          transform: 'translateY(-2px)' },
+        mb: 1.5,
+        cursor: 'pointer',
         border: '1px solid',
-        borderColor: 'divider' }}
+        borderColor: 'divider',
+        '&:hover': {
+          boxShadow: 3,
+          transform: 'translateY(-2px)',
+        },
+      }}
       onClick={() => onQuoteClick(quote)}
     >
       <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
           <Box
             {...attributes}
             {...listeners}
             sx={{
-              cursor: 'grab',
               display: 'flex',
               alignItems: 'center',
-              color: 'text.secondary', '&:active': { cursor: 'grabbing' }}}
+              color: 'text.secondary',
+              cursor: 'grab',
+              '&:active': { cursor: 'grabbing' },
+            }}
           >
             <DragIcon fontSize="small" />
           </Box>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                mb: 1}}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold', lineHeight: 1.4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.35 }}>
                 {quote.title}
               </Typography>
               <IconButton
                 size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={(event) => {
+                  event.stopPropagation();
                   onQuoteAction('menu', quote);
                 }}
               >
@@ -218,49 +206,52 @@ function QuoteCard({
               </IconButton>
             </Box>
 
-            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 1 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
               {quote.quoteNumber}
             </Typography>
 
             <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 1 }}>
               <PersonIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: 16 }} />
-              <Typography variant="caption" color="textSecondary">
+              <Typography variant="caption" color="text.secondary">
                 {quote.clientName}
               </Typography>
             </Stack>
 
-            <Box
-              sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 'bold', color: theming.colors.primary }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: 'primary.main' }}>
                 {formatCurrency(quote.totalAmount)}
               </Typography>
-              {getEmailStatusIcon()}
+              {getEmailStatusIcon(quote)}
             </Box>
 
-            <Box sx={{ display: 'flex', gap: 0.5 flexWrap: 'wrap' }}>
-              {isExpiringSoon(quote.validUntil) && ()
+            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+              {isExpiringSoon(quote.validUntil) ? (
                 <Chip
                   icon={<WarningIcon />}
                   label="Utløper snart"
                   size="small"
                   color="warning"
-                  sx={{ fontSize: '0.65rem', height: 20 }} />
-              )}
-              {isExpired(quote.validUntil) && quote.status === 'pending' && ()
+                  sx={{ fontSize: '0.65rem', height: 20 }}
+                />
+              ) : null}
+              {isExpired(quote.validUntil) && quote.status === 'pending' ? (
                 <Chip
                   icon={<WarningIcon />}
                   label="Utløpt"
                   size="small"
                   color="error"
-                  sx={{ fontSize: '0.65rem', height: 20 }} />
-              )}
+                  sx={{ fontSize: '0.65rem', height: 20 }}
+                />
+              ) : null}
               <Chip
                 label={new Date(quote.validUntil).toLocaleDateString('nb-NO', {
                   month: 'short',
-                  day: 'numeric' })}
+                  day: 'numeric',
+                })}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: '0.65rem', height: 20 }} />
+                sx={{ fontSize: '0.65rem', height: 20 }}
+              />
             </Box>
           </Box>
         </Box>
@@ -269,8 +260,7 @@ function QuoteCard({
   );
 }
 
-// Kanban Column Component
-function KanbanColumn({
+function KanbanStatusColumn({
   column,
   quotes,
   onQuoteClick,
@@ -281,35 +271,45 @@ function KanbanColumn({
   onQuoteClick: (quote: Quote) => void;
   onQuoteAction: (action: string, quote: Quote) => void;
 }) {
-  const theming = useTheming('photographer');
+  const { setNodeRef, isOver } = useDroppable({
+    id: column.id,
+    data: {
+      type: 'column',
+      status: column.id,
+    },
+  });
 
-  const columnQuotes = quotes.filter((q) => q.status === column.status);
+  const columnQuotes = useMemo(
+    () => quotes.filter((quote) => quote.status === column.id),
+    [column.id, quotes],
+  );
 
-  return ()
+  return (
     <Paper
+      ref={setNodeRef}
       sx={{
         minWidth: 300,
         maxWidth: 350,
-        bgcolor: 'background.default',
         p: 2,
+        bgcolor: isOver ? 'action.hover' : 'background.default',
+        transition: 'background-color 120ms ease',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: 'calc(100vh - 300px)' }}>
+        maxHeight: 'calc(100vh - 300px)',
+      }}
+    >
       <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box sx={{ color: column.color }}>{column.icon}</Box>
-        <Typography variant="h6" sx={{ fontWeight: 'bold', flex: 1 }}>
+        <Avatar sx={{ bgcolor: column.color, width: 28, height: 28 }}>{column.icon}</Avatar>
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, flex: 1 }}>
           {column.title}
         </Typography>
         <Badge badgeContent={columnQuotes.length} color="primary" />
       </Box>
 
       <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 200 }}>
-        <SortableContext
-          items={columnQuotes.map((q) => q.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {columnQuotes.map((quote) => ()
-            <QuoteCard
+        <SortableContext items={columnQuotes.map((quote) => quote.id)} strategy={verticalListSortingStrategy}>
+          {columnQuotes.map((quote) => (
+            <SortableQuoteCard
               key={quote.id}
               quote={quote}
               onQuoteClick={onQuoteClick}
@@ -318,34 +318,25 @@ function KanbanColumn({
           ))}
         </SortableContext>
 
-        {columnQuotes.length === 0 && ()
-          <Box
-            sx={{
-              textAlign: 'center',
-              py: 4,
-              color: 'text.secondary' }}>
+        {columnQuotes.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
             <Typography variant="body2">Ingen tilbud</Typography>
           </Box>
-        )}
+        ) : null}
       </Box>
     </Paper>
   );
 }
 
-export default function QuoteKanbanView({
-  quotes,
-  onQuoteClick,
-  onQuoteAction,
-}: QuoteKanbanViewProps) {
+export default function QuoteKanbanView({ quotes, onQuoteClick, onQuoteAction }: QuoteKanbanViewProps) {
   const queryClient = useQueryClient();
   const [activeQuote, setActiveQuote] = useState<Quote | null>(null);
 
-  // Update quote status mutation
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ quoteId, status }: { quoteId: string; status: string }) => {
+    mutationFn: async ({ quoteId, status }: { quoteId: string; status: QuoteStatus }) => {
       return apiRequest(`/api/quotes/${quoteId}/status`, {
         method: 'PUT',
-        body: JSON.stringify({ status }),
+        body: { status },
       });
     },
     onSuccess: () => {
@@ -354,7 +345,7 @@ export default function QuoteKanbanView({
     },
   });
 
-  const sensors = useSensors()
+  const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
@@ -363,53 +354,43 @@ export default function QuoteKanbanView({
   );
 
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const quote = quotes.find((q) => q.id === active.id);
-    if (quote) {
-      setActiveQuote(quote);
-    }
+    const activeId = String(event.active.id);
+    const found = quotes.find((quote) => quote.id === activeId) ?? null;
+    setActiveQuote(found);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
+    const activeId = String(event.active.id);
+    const overId = event.over ? String(event.over.id) : null;
     setActiveQuote(null);
 
-    if (!over) return;
+    if (!overId) return;
 
-    const activeQuote = quotes.find((q) => q.id === active.id);
-    if (!activeQuote) return;
+    const movedQuote = quotes.find((quote) => quote.id === activeId);
+    if (!movedQuote) return;
 
-    // Determine the new status based on the column
-    const newStatus = columns.find()
-      (col) => quotes.find((q) => q.id === over.id)?.status === col.status || over.id === col.id,
-    )?.status;
+    const directColumn = columns.find((column) => column.id === overId)?.id;
+    const targetQuote = quotes.find((quote) => quote.id === overId);
+    const targetStatus = directColumn ?? targetQuote?.status;
 
-    if (!newStatus || newStatus === activeQuote.status) return;
+    if (!targetStatus || targetStatus === movedQuote.status) return;
 
-    // Update quote status
     updateStatusMutation.mutate({
-      quoteId: activeQuote.id,
-      status: newStatus,
+      quoteId: movedQuote.id,
+      status: targetStatus,
     });
   };
 
-  return ()
+  return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <Box
-        sx={{
-          display: 'flex',
-          gap: 2,
-          overflowX: 'auto',
-          pb: 2,
-          minHeight: 400}}>
-        {columns.map((column) => ()
-          <KanbanColumn
+      <Box sx={{ display: 'flex', gap: 2, overflowX: 'auto', pb: 2, minHeight: 400 }}>
+        {columns.map((column) => (
+          <KanbanStatusColumn
             key={column.id}
             column={column}
             quotes={quotes}
@@ -420,15 +401,19 @@ export default function QuoteKanbanView({
       </Box>
 
       <DragOverlay>
-        {activeQuote ? ()
+        {activeQuote ? (
           <Card sx={{ width: 300, opacity: 0.9 }}>
             <CardContent>
-              <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                 {activeQuote.title}
               </Typography>
-              <Typography variant="caption" color="textSecondary">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
                 {activeQuote.quoteNumber}
               </Typography>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                <MoneyIcon fontSize="small" />
+                <Typography variant="caption">{formatCurrency(activeQuote.totalAmount)}</Typography>
+              </Stack>
             </CardContent>
           </Card>
         ) : null}

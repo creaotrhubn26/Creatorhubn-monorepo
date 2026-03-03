@@ -8,7 +8,7 @@ export interface AutoSaveConfig {
   debounceDelay: number;
   maxRetries: number;
   retryDelay: number;
-  conflictResolution: 'client, ' | 'server' | 'manual' | 'timestamp';
+  conflictResolution: 'client' | 'server' | 'manual' | 'timestamp';
   enableConflictDetection: boolean;
   enableVersioning: boolean;
   maxVersions: number;
@@ -649,7 +649,6 @@ class AutoSaveManager {
 export const autoSaveManager = new AutoSaveManager();
 
 export default autoSaveManager;
-
 
 
 

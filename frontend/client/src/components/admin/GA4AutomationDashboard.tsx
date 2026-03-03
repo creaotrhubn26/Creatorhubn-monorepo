@@ -83,7 +83,7 @@ export default function GA4AutomationDashboard() {
   // Custom insight form state
   const [customInsight, setCustomInsight] = useState({
     name: ',',
-    metric: '',
+    metric: ', ',
     operator: 'LESS_THAN',
     value: ', ',
     comparisonPeriod: 'PREVIOUS_WEEK'

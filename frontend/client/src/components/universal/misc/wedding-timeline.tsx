@@ -523,8 +523,7 @@ export default function WeddingTimeline({
             </Typography>
             <Button variant="contained"
               startIcon={theming.getThemedIcon('add')}
-              sx={{ bgcolor: color }}
-             sx={theming.getThemedButtonSx()}>
+              sx={{ bgcolor: color, ...theming.getThemedButtonSx() }}>
               Legg til første event
             </Button>
           </Box>
@@ -582,53 +581,56 @@ export default function WeddingTimeline({
                   fontWeight: 700,
                   fontSize: '1.1rem',
                   color: 'rgba(25, 255, 255, 0.7)',
-                  padding: '16px 24px', '&:hover': {
+                  padding: '16px 24px',
+                  '&:hover': {
                     color: color,
                     background: `rgba(${color === '#ff8c00' ? '25, 140, 0' : '33, 150, 243'}, 0.1)`
-                }
-              }, '& .Mui-selected': {
+                  }
+                },
+                '& .Mui-selected': {
                   color: `${color} !important`,
                   background: `rgba(${color === '#ff8c00' ? '25, 140, 0' : '33, 150, 243'}, 0.15)`,
                   borderRadius: '12px 12px 0 0'
-            }, '& .MuiTabs-indicator': {
+                },
+                '& .MuiTabs-indicator': {
                   background: `linear-gradient(90deg, ${color}, ${color}aa)`,
-                  height:  4,
+                  height: 4,
                   borderRadius: '2px'
-            }
+                }
             }}
             >
               <Tab 
-                icon={theming.getThemedIcon('people')}} 
+                icon={theming.getThemedIcon('people')} 
                 label="Personer & Roller"
                 iconPosition="start"
                 sx={{
                   '& .MuiTab-iconWrapper': {
                     marginRight: '8px',
                     marginBottom: '0px'
-              }
-              }}
+                  }
+                }}
               />
               <Tab 
-                icon={theming.getThemedIcon('location')}} 
+                icon={theming.getThemedIcon('location')} 
                 label="Lokasjoner"
                 iconPosition="start"
                 sx={{
                   '& .MuiTab-iconWrapper': {
                     marginRight: '8px',
                     marginBottom: '0px'
-              }
-              }}
+                  }
+                }}
               />
               <Tab 
-                icon={theming.getThemedIcon('schedule')}} 
+                icon={theming.getThemedIcon('schedule')} 
                 label="Kjøreplan"
                 iconPosition="start"
                 sx={{
                   '& .MuiTab-iconWrapper': {
                     marginRight: '8px',
                     marginBottom: '0px'
-              }
-              }}
+                  }
+                }}
               />
               <Tab 
                 icon={<Lightbulb />} 
@@ -638,8 +640,8 @@ export default function WeddingTimeline({
                   '& .MuiTab-iconWrapper': {
                     marginRight: '8px',
                     marginBottom: '0px'
-              }
-              }}
+                  }
+                }}
               />
             </Tabs>
           </Paper>

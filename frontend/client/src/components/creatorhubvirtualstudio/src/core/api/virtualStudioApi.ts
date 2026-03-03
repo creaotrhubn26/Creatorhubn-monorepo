@@ -210,7 +210,9 @@ export const exportTemplatesApi = {
   /**
    * Create a new export template
    */
-  async create(template: Omit<ExportTemplateDB, 'id' | 'userId' | 'createdAt' | , 'updatedAt, ' | , 'usageCount,'>): Promise<ExportTemplateDB | null> {
+  async create(
+    template: Omit<ExportTemplateDB, 'id' | 'userId' | 'createdAt' | 'updatedAt' | 'usageCount'>,
+  ): Promise<ExportTemplateDB | null> {
     const result = await apiRequest<{ template: ExportTemplateDB }>('/export-templates', {
       method: 'POST',
       body: JSON.stringify(template),
@@ -286,7 +288,7 @@ export const exportJobsApi = {
   /**
    * Create a new export job
    */
-  async create(job: Omit<ExportJobDB, 'id' | 'userId' | 'createdAt' | , 'updatedAt'>): Promise<ExportJobDB | null> {
+  async create(job: Omit<ExportJobDB, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<ExportJobDB | null> {
     const result = await apiRequest<{ job: ExportJobDB }>('/export-jobs', {
       method: 'POST',
       body: JSON.stringify(job),
@@ -525,4 +527,3 @@ export const virtualStudioApi = {
 };
 
 export default virtualStudioApi;
-

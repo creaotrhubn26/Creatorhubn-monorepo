@@ -79,12 +79,12 @@ export interface TypographyConfig {
     body2: number;
     caption: number;
 };
-  fontWeight: 
+  fontWeight: {
     light: number;
     regular: number;
     medium: number;
     bold: number;
-};
+  };
   lineHeight: {
     tight: number;
     normal: number;
@@ -408,7 +408,7 @@ function TypographyEditor({ theme, onChange }: TypographyEditorProps) {
   });
 };
 
-  const handleFontSizeChange = (key: keyof ThemeConfig['typography']['fontSize']value: number) => {
+  const handleFontSizeChange = (key: keyof ThemeConfig['typography']['fontSize'], value: number) => {
     onChange({
       typography: {
         ...theme.typography,

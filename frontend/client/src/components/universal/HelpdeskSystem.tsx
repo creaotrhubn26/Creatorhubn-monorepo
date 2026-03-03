@@ -160,7 +160,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
   const createTicketMutation = useMutation({
     mutationFn: async (ticketData: any) => {
       const response = await fetch('/api/helpdesk/tickets', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(ticketData)
   });
@@ -184,7 +184,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
   const addResponseMutation = useMutation({
     mutationFn: async ({ ticketd, message }: { ticketId: string; message: string }) => {
       const response = await fetch(`/api/helpdesk/tickets/${ticketId}/responses`, {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ message })
     });
@@ -201,7 +201,7 @@ const HelpdeskSystem: React.FC<HelpdeskSystemProps> = ({
   const logSystemError = (error: Error, component: string, userAction?: string) => {
     // Send to backend for automatic ticket creation
     fetch('/api/helpdesk/log-error', {
-      method: 'POS',
+      method: 'POST',
       headers: { 'Content-Type' : 'application/json',},
       body: JSON.stringify({
         error: {

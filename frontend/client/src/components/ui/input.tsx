@@ -1,44 +1,32 @@
-import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { Box, Typography } from '@mui/material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
+import * as React from 'react';
+import { TextField, type TextFieldProps } from '@mui/material';
 
-export default function Input() {
-const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // Database connection for Input
-  const { data: componentData = {}, isLoading } = useQuery({
-    queryKey: ['/api/component', 'user-data'],
-    queryFn: () => apiRequest('/api/component/user-data'),
-    retry: false,
-});
-
-  // Mutation for updating component data
-  const updateInput = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/component/update', {
-        headers: {
-          "Content-Type" : "application/json"
-      },
-        method: 'POST',
-        body: JSON.stringify(data)
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/component'] });
-  }
-});
-
-  return (
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-        Input
-      </Typography>
-    </Box>
-  );
+export interface InputProps extends Omit<TextFieldProps, 'variant' | 'onChange'> {
+  variant?: 'outlined' | 'filled' | 'standard';
+  multiple?: boolean;
+  accept?: string;
+  capture?: boolean | 'user' | 'environment';
+  onChange?: React.ChangeEventHandler<HTMLInputElement>;
 }
+
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
+  { size = 'small', variant = 'outlined', multiple, accept, capture, ...props },
+  ref,
+) {
+  return (
+    <TextField
+      {...props}
+      size={size}
+      variant={variant}
+      inputRef={ref}
+      inputProps={{
+        ...(props.inputProps ?? {}),
+        multiple,
+        accept,
+        capture,
+      }}
+    />
+  );
+});
+
+export default Input;

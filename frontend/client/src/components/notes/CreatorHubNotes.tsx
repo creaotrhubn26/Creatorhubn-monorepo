@@ -148,7 +148,7 @@ const phases: Phase[] = [
     icon: CREATOR_HUB_ICONS.interactiveDocs,
     component: InteractiveDocumentSystem,
     status: 'completed',
-    features: ['Interactive Documents','AI Integration','Real-time Collaboration''Advanced Analytics','Gamification','Mobile Design'],
+    features: ['Interactive Documents','AI Integration','Real-time Collaboration','Advanced Analytics','Gamification','Mobile Design'],
     progress: 100 },
   {
     id: 'phase',
@@ -289,11 +289,14 @@ const CreatorHubNotes: React.FC<CreatorHubNotesProps> = ({
         open={sidebarOpen}
         sx={{
           width: 20,
-          flexShrink: 0'& .MuiDrawer-paper': { width: 20,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: 20,
             boxSizing: 'border-box',
             borderRight: '1px solid',
-            borderColor: 'divider'
-      }}}
+            borderColor: 'divider',
+          },
+        }}
       >
         <Toolbar>
           <Stack direction="row" spacing={2} alignItems="center">

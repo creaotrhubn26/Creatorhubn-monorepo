@@ -128,12 +128,65 @@ import { CallSheetGenerator } from './CallSheetGenerator';
 import { detectConflicts } from '../hooks/useCrewData';
 import crewPng from './icons/Keep/roleroom_crew.png';
 import { CrewManagementGuide } from './production/CrewManagementGuide';
+import {
+  getRoleColor as getSharedRoleColor,
+  getRoleLabel as getSharedRoleLabel,
+  isTechnicalCrewMember as isTechnicalCrewMemberFromShared,
+} from './shared/technicalCrew';
 
 // ─── Sort / view types ────────────────────────────────────────────────────────
 type SortField = 'name' | 'role' | 'rate' | 'availability';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
 type WorkspaceView = 'standard' | 'pro';
+type ProViewFocus = 'all' | 'overview' | 'risks' | 'budget' | 'planner';
+type ProActionSeverity = 'low' | 'medium' | 'high';
+type ProActionId =
+  | 'resolve-conflicts'
+  | 'reduce-overtime'
+  | 'complete-contact'
+  | 'review-budget'
+  | 'staff-unassigned'
+  | 'maintain-plan';
+
+interface ProActionItem {
+  id: ProActionId;
+  title: string;
+  detail: string;
+  focus: ProViewFocus;
+  severity: ProActionSeverity;
+}
+
+interface SavedCrewView {
+  id: string;
+  name: string;
+  createdAt: string;
+  state: {
+    searchQuery: string;
+    filterRole: CrewRole | 'all';
+    filterDept: DeptKey | 'all';
+    filterStatus: CrewStatus | 'all';
+    filterAvailable: boolean;
+    filterAssignedToday: boolean;
+    sortField: SortField;
+    sortDirection: SortDirection;
+    viewMode: ViewMode;
+    workspaceView: WorkspaceView;
+    proViewFocus: ProViewFocus;
+    showDeptSidebar: boolean;
+    showStats: boolean;
+    compactMode: boolean;
+    pinNameColumn: boolean;
+    pinContactColumn: boolean;
+  };
+}
+
+interface CrewActivityLogEntry {
+  id: string;
+  action: string;
+  details: string;
+  timestamp: number;
+}
 
 // WCAG 2.2 minimum touch target size (44x44px)
 const TOUCH_TARGET_SIZE = 44;
@@ -943,13 +996,28 @@ interface CrewManagementPanelProps {
   profession?: 'photographer' | 'videographer' | null;
   totalBudget?: number;
   onTotalBudgetChange?: (budget: number) => void;
+  onOpenTechnicalTeamDashboard?: () => void;
   /** Shoot day schedule from the Stripboard module */
   productionDays?: ProductionDay[];
   /** Scenes list for Callsheet pre-fill */
   scenes?: SceneBreakdown[];
 }
 
-export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudget = 0, onTotalBudgetChange, productionDays: propProductionDays = [], scenes: propScenes = [] }: CrewManagementPanelProps) {
+const EMPTY_PRODUCTION_DAYS: ProductionDay[] = [];
+const EMPTY_SCENES: SceneBreakdown[] = [];
+
+export function CrewManagementPanel({
+  projectId,
+  onUpdate,
+  profession,
+  totalBudget = 0,
+  onTotalBudgetChange,
+  onOpenTechnicalTeamDashboard,
+  productionDays: propProductionDays,
+  scenes: propScenes,
+}: CrewManagementPanelProps) {
+  const resolvedProductionDays = propProductionDays ?? EMPTY_PRODUCTION_DAYS;
+  const resolvedScenes = propScenes ?? EMPTY_SCENES;
   const isMobile = useMediaQuery('(max-width: 767px)');
   const dialogTitleId = useId();
   const dialogDescId = useId();
@@ -1036,9 +1104,38 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
+  const [proViewFocus, setProViewFocus] = useState<ProViewFocus>('all');
+  const [compactMode, setCompactMode] = useState(false);
   const [showStats, setShowStats] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [pinNameColumn, setPinNameColumn] = useState(true);
+  const [pinContactColumn, setPinContactColumn] = useState(false);
+  const [filterDept, setFilterDept] = useState<DeptKey | 'all'>('all');
+  const [filterStatus, setFilterStatus] = useState<CrewStatus | 'all'>('all');
+  const [showDeptSidebar, setShowDeptSidebar] = useState(true);
+  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [offlinePending, setOfflinePending] = useState<number>(() => {
+    try {
+      const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
+      return q.filter(a => a.projectId === projectId).length;
+    } catch {
+      return 0;
+    }
+  });
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
+  const commandInputRef = useRef<HTMLInputElement>(null);
+
+  const [savedViews, setSavedViews] = useState<SavedCrewView[]>([]);
+  const [savedViewAnchor, setSavedViewAnchor] = useState<HTMLElement | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityLog, setActivityLog] = useState<CrewActivityLogEntry[]>([]);
+  const [plannerSourceMemberId, setPlannerSourceMemberId] = useState<string | null>(null);
+  const [plannerDragOverDayId, setPlannerDragOverDayId] = useState<string | null>(null);
+
+  const [bulkRole, setBulkRole] = useState<CrewRole | 'none'>('none');
+  const [bulkRateInput, setBulkRateInput] = useState('');
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -1049,6 +1146,86 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [favoritesLoaded, setFavoritesLoaded] = useState(false);
 
   const FAVORITES_NAMESPACE = 'virtualStudio_crewFavorites';
+  const SAVED_VIEWS_KEY = `crew-management:saved-views:${projectId}`;
+  const ACTIVITY_LOG_KEY = `crew-management:activity-log:${projectId}`;
+
+  const logActivity = useCallback((action: string, details: string) => {
+    setActivityLog((previous) => {
+      const next: CrewActivityLogEntry[] = [
+        {
+          id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          action,
+          details,
+          timestamp: Date.now(),
+        },
+        ...previous,
+      ].slice(0, 120);
+      try {
+        localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify(next));
+      } catch {
+        // Ignore storage errors in local dev/private mode.
+      }
+      return next;
+    });
+  }, [ACTIVITY_LOG_KEY]);
+
+  const captureViewState = useCallback((): SavedCrewView['state'] => ({
+    searchQuery,
+    filterRole,
+    filterDept,
+    filterStatus,
+    filterAvailable,
+    filterAssignedToday,
+    sortField,
+    sortDirection,
+    viewMode,
+    workspaceView,
+    proViewFocus,
+    showDeptSidebar,
+    showStats,
+    compactMode,
+    pinNameColumn,
+    pinContactColumn,
+  }), [
+    searchQuery,
+    filterRole,
+    filterDept,
+    filterStatus,
+    filterAvailable,
+    filterAssignedToday,
+    sortField,
+    sortDirection,
+    viewMode,
+    workspaceView,
+    proViewFocus,
+    showDeptSidebar,
+    showStats,
+    compactMode,
+    pinNameColumn,
+    pinContactColumn,
+  ]);
+
+  const applySavedView = useCallback((view: SavedCrewView) => {
+    const state = view.state;
+    setSearchQuery(state.searchQuery);
+    setFilterRole(state.filterRole);
+    setFilterDept(state.filterDept);
+    setFilterStatus(state.filterStatus);
+    setFilterAvailable(state.filterAvailable);
+    setFilterAssignedToday(state.filterAssignedToday);
+    setSortField(state.sortField);
+    setSortDirection(state.sortDirection);
+    setViewMode(state.viewMode);
+    setWorkspaceView(state.workspaceView);
+    setProViewFocus(state.proViewFocus ?? 'all');
+    setShowDeptSidebar(state.showDeptSidebar);
+    setShowStats(state.showStats);
+    setCompactMode(state.compactMode);
+    setPinNameColumn(state.pinNameColumn ?? true);
+    setPinContactColumn(state.pinContactColumn ?? false);
+    setSavedViewAnchor(null);
+    logActivity('Saved view', `Aktiverte visning "${view.name}"`);
+  }, [logActivity]);
   
   // Load favorites from database (with settings cache fallback)
   useEffect(() => {
@@ -1075,6 +1252,45 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     };
     loadFavorites();
   }, [projectId]);
+
+  useEffect(() => {
+    try {
+      const rawSavedViews = localStorage.getItem(SAVED_VIEWS_KEY);
+      if (rawSavedViews) {
+        const parsed = JSON.parse(rawSavedViews) as SavedCrewView[];
+        if (Array.isArray(parsed)) {
+          setSavedViews(parsed);
+        }
+      } else {
+        setSavedViews([]);
+      }
+    } catch {
+      setSavedViews([]);
+    }
+
+    try {
+      const rawLog = localStorage.getItem(ACTIVITY_LOG_KEY);
+      if (rawLog) {
+        const parsed = JSON.parse(rawLog) as CrewActivityLogEntry[];
+        if (Array.isArray(parsed)) {
+          setActivityLog(parsed.slice(0, 120));
+        }
+      } else {
+        setActivityLog([]);
+      }
+    } catch {
+      setActivityLog([]);
+    }
+  }, [SAVED_VIEWS_KEY, ACTIVITY_LOG_KEY]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(savedViews));
+    } catch {
+      // Ignore storage errors in local dev/private mode.
+    }
+  }, [savedViews, SAVED_VIEWS_KEY]);
+
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [deletedCrew, setDeletedCrew] = useState<CrewMember | null>(null);
   const [showUndoSnackbar, setShowUndoSnackbar] = useState(false);
@@ -1082,30 +1298,32 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
   const [costStartDate, setCostStartDate] = useState('');
   const [costEndDate, setCostEndDate] = useState('');
 
-  // New architecture state
-  const [filterDept, setFilterDept] = useState<DeptKey | 'all'>('all');
-  const [filterStatus, setFilterStatus] = useState<CrewStatus | 'all'>('all');
-  const [showDeptSidebar, setShowDeptSidebar] = useState(true);
-  const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
-  const [offlinePending, setOfflinePending] = useState<number>(() => {
-    try {
-      const q = JSON.parse(localStorage.getItem('crewDataOfflineQueue') || '[]') as Array<{ projectId: string }>;
-      return q.filter(a => a.projectId === projectId).length;
-    } catch { return 0; }
-  });
-
   // ── Production / Stripboard integration ──────────────────────────────────
-  const [productionDays, setProductionDays] = useState<ProductionDay[]>(propProductionDays);
+  const [productionDays, setProductionDays] = useState<ProductionDay[]>(resolvedProductionDays);
   const [crewAssignments, setCrewAssignments] = useState<CrewAssignment[]>([]);
   const [callsheetOpen, setCallsheetOpen] = useState(false);
   const [callsheetDay, setCallsheetDay] = useState<ProductionDay | null>(null);
+  const [callsheetCrewScope, setCallsheetCrewScope] = useState<'all' | 'technical'>('all');
   const [doodOpen, setDoodOpen] = useState(false);
   const [assignDayOpen, setAssignDayOpen] = useState(false);
   const [assigningMember, setAssigningMember] = useState<CrewMember | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
 
+  const callsheetCrewPool = useMemo(() => {
+    const baseCrew = selectedIds.size > 0 ? crewMembers.filter((member) => selectedIds.has(member.id)) : crewMembers;
+    if (callsheetCrewScope === 'technical') {
+      return baseCrew.filter((member) => isTechnicalCrewMemberFromShared(member));
+    }
+    return baseCrew;
+  }, [callsheetCrewScope, crewMembers, selectedIds]);
+
+  const roleLegendEntries = useMemo(
+    () => Array.from(new Set(crewMembers.map((member) => String(member.role)))).slice(0, 18),
+    [crewMembers]
+  );
+
   // Keep productionDays in sync with parent prop changes
-  useEffect(() => { setProductionDays(propProductionDays); }, [propProductionDays]);
+  useEffect(() => { setProductionDays(resolvedProductionDays); }, [resolvedProductionDays]);
 
   // Load crew assignments from service
   useEffect(() => {
@@ -1438,6 +1656,230 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     };
   }, [filteredAndSortedCrew, stats.roleCount]);
 
+  const riskInsights = useMemo(() => {
+    const availabilityConflicts: CrewMember[] = [];
+    const overtimeRisk: CrewMember[] = [];
+    const missingContact: CrewMember[] = [];
+    const assignmentCountByMember = new Map<string, number>();
+
+    for (const assignment of crewAssignments) {
+      if (assignment.assignmentStatus !== 'assigned' && assignment.assignmentStatus !== 'travel') continue;
+      assignmentCountByMember.set(
+        assignment.crewMemberId,
+        (assignmentCountByMember.get(assignment.crewMemberId) ?? 0) + 1
+      );
+
+      const member = crewMembers.find((item) => item.id === assignment.crewMemberId);
+      if (!member) continue;
+      const startDate = member.availability?.startDate;
+      const endDate = member.availability?.endDate;
+      if (startDate && (assignment.shootDayDate < startDate || (endDate && assignment.shootDayDate > endDate))) {
+        if (!availabilityConflicts.some((item) => item.id === member.id)) {
+          availabilityConflicts.push(member);
+        }
+      }
+    }
+
+    for (const member of crewMembers) {
+      const assignmentCount = assignmentCountByMember.get(member.id) ?? 0;
+      if (assignmentCount >= 6) {
+        overtimeRisk.push(member);
+      }
+      if (!member.contactInfo?.email || !member.contactInfo?.phone) {
+        missingContact.push(member);
+      }
+    }
+
+    return {
+      availabilityConflicts,
+      overtimeRisk,
+      missingContact,
+      totalRisk: availabilityConflicts.length + overtimeRisk.length + stats.totalConflicts,
+    };
+  }, [crewAssignments, crewMembers, stats.totalConflicts]);
+
+  const budgetIntelligence = useMemo(() => {
+    const assignedCrewIds = new Set(
+      crewAssignments
+        .filter((assignment) => assignment.assignmentStatus === 'assigned' || assignment.assignmentStatus === 'travel')
+        .map((assignment) => assignment.crewMemberId)
+    );
+    const assignedDailyCost = crewMembers
+      .filter((member) => assignedCrewIds.has(member.id))
+      .reduce((sum, member) => sum + (member.rate || 0), 0);
+    const overallDailyCost = crewMembers.reduce((sum, member) => sum + (member.rate || 0), 0);
+    const utilizationRatio = effectiveBudget > 0 ? overallDailyCost / effectiveBudget : null;
+    const assignedUtilization = effectiveBudget > 0 ? assignedDailyCost / effectiveBudget : null;
+    const highCostMembers = [...crewMembers]
+      .filter((member) => (member.rate || 0) > 0)
+      .sort((a, b) => (b.rate || 0) - (a.rate || 0))
+      .slice(0, 3);
+
+    const recommendations: string[] = [];
+    if (utilizationRatio !== null && utilizationRatio > 1) {
+      recommendations.push('Fast honorar overstiger budsjettet. Prioriter kjernecrew og flytt resten til behovsbasert booking.');
+    } else if (utilizationRatio !== null && utilizationRatio > 0.8) {
+      recommendations.push('Budsjettutnyttelsen er høy. Vurder hold-status for roller med lav kritikalitet.');
+    }
+    if (riskInsights.overtimeRisk.length > 0) {
+      recommendations.push('Flere crew har høy dagbelastning. Spre dager for å redusere overtidsrisiko.');
+    }
+    if (recommendations.length === 0) {
+      recommendations.push('Kostnadsbildet er stabilt. Hold fokus på konfliktreduserende planlegging.');
+    }
+
+    return {
+      assignedDailyCost,
+      overallDailyCost,
+      utilizationRatio,
+      assignedUtilization,
+      highCostMembers,
+      recommendations,
+    };
+  }, [crewAssignments, crewMembers, effectiveBudget, riskInsights.overtimeRisk.length]);
+
+  const proActionItems = useMemo<ProActionItem[]>(() => {
+    const items: ProActionItem[] = [];
+    const assignedCrewIds = new Set(
+      crewAssignments
+        .filter((assignment) => assignment.assignmentStatus === 'assigned' || assignment.assignmentStatus === 'travel')
+        .map((assignment) => assignment.crewMemberId)
+    );
+    const unassignedCrewCount = crewMembers.filter((member) => !assignedCrewIds.has(member.id)).length;
+
+    if (stats.totalConflicts > 0) {
+      items.push({
+        id: 'resolve-conflicts',
+        title: 'Løs dobbelbookinger',
+        detail: `${stats.totalConflicts} konflikt${stats.totalConflicts !== 1 ? 'er' : ''} trenger avklaring.`,
+        focus: 'risks',
+        severity: 'high',
+      });
+    }
+
+    if (riskInsights.overtimeRisk.length > 0) {
+      items.push({
+        id: 'reduce-overtime',
+        title: 'Reduser overtidsrisiko',
+        detail: `${riskInsights.overtimeRisk.length} crew ligger høyt på dagbelastning.`,
+        focus: 'risks',
+        severity: 'medium',
+      });
+    }
+
+    if (riskInsights.missingContact.length > 0) {
+      items.push({
+        id: 'complete-contact',
+        title: 'Fyll inn kontaktinfo',
+        detail: `${riskInsights.missingContact.length} crew mangler e-post eller telefon.`,
+        focus: 'risks',
+        severity: 'medium',
+      });
+    }
+
+    if ((budgetIntelligence.utilizationRatio ?? 0) > 0.85) {
+      items.push({
+        id: 'review-budget',
+        title: 'Stram inn budsjett',
+        detail: `Budsjettutnyttelse på ${((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1)}%.`,
+        focus: 'budget',
+        severity: (budgetIntelligence.utilizationRatio ?? 0) > 1 ? 'high' : 'medium',
+      });
+    }
+
+    if (productionDays.length > 0 && unassignedCrewCount > 0) {
+      items.push({
+        id: 'staff-unassigned',
+        title: 'Fordel ubemannet crew',
+        detail: `${unassignedCrewCount} crew er ikke planlagt på dager.`,
+        focus: 'planner',
+        severity: 'low',
+      });
+    }
+
+    if (items.length === 0) {
+      items.push({
+        id: 'maintain-plan',
+        title: 'Planen ser stabil ut',
+        detail: 'Ingen kritiske signaler nå. Hold fokus på fremdrift og oppdatering.',
+        focus: 'overview',
+        severity: 'low',
+      });
+    }
+
+    return items.slice(0, 3);
+  }, [
+    budgetIntelligence.utilizationRatio,
+    crewAssignments,
+    crewMembers,
+    productionDays.length,
+    riskInsights.missingContact.length,
+    riskInsights.overtimeRisk.length,
+    stats.totalConflicts,
+  ]);
+
+  const plannerCandidates = useMemo(() => {
+    const selectedCrew = selectedIds.size > 0
+      ? filteredAndSortedCrew.filter((member) => selectedIds.has(member.id))
+      : filteredAndSortedCrew;
+    return selectedCrew.slice(0, 12);
+  }, [filteredAndSortedCrew, selectedIds]);
+
+  const plannerDays = useMemo(() => productionDays.slice(0, 8), [productionDays]);
+
+  const plannerAssignmentsByDay = useMemo(() => {
+    const byDay = new Map<string, Array<{
+      assignment: CrewAssignment;
+      member: CrewMember;
+      doodCode: CrewDOODCode | null;
+      status: 'assigned' | 'hold' | 'travel' | 'release' | 'unknown';
+    }>>();
+    const plannerDayIds = new Set(plannerDays.map((day) => day.id));
+    const memberById = new Map(crewMembers.map((member) => [member.id, member]));
+
+    plannerDays.forEach((day) => {
+      byDay.set(day.id, []);
+    });
+
+    crewAssignments.forEach((assignment) => {
+      if (!plannerDayIds.has(assignment.shootDayId)) return;
+      const member = memberById.get(assignment.crewMemberId);
+      if (!member) return;
+
+      const rawStatus = String(assignment.assignmentStatus ?? assignment.status ?? 'assigned').toLowerCase();
+      const status: 'assigned' | 'hold' | 'travel' | 'release' | 'unknown' =
+        rawStatus === 'assigned' || rawStatus === 'hold' || rawStatus === 'travel' || rawStatus === 'release'
+          ? rawStatus
+          : 'unknown';
+
+      const list = byDay.get(assignment.shootDayId);
+      if (!list) return;
+      list.push({
+        assignment,
+        member,
+        doodCode: getMemberDOODCode(member.id, assignment.shootDayId, crewAssignments, productionDays),
+        status,
+      });
+    });
+
+    byDay.forEach((list) => {
+      list.sort((a, b) => a.member.name.localeCompare(b.member.name, 'no'));
+    });
+
+    return byDay;
+  }, [crewAssignments, crewMembers, plannerDays, productionDays]);
+
+  const plannerAssignmentCountByMember = useMemo(() => {
+    const counts = new Map<string, number>();
+    plannerAssignmentsByDay.forEach((list) => {
+      list.forEach(({ member, status }) => {
+        if (status === 'release') return;
+        counts.set(member.id, (counts.get(member.id) ?? 0) + 1);
+      });
+    });
+    return counts;
+  }, [plannerAssignmentsByDay]);
+
   // Bulk operations
   const handleSelectAll = () => {
     if (selectedIds.size === filteredAndSortedCrew.length) {
@@ -1467,6 +1909,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         const crew = await castingService.getCrew(projectId);
         setCrewMembers(Array.isArray(crew) ? crew : []);
         setSelectedIds(new Set());
+        logActivity('Bulk', `Slettet ${selectedIds.size} crewmedlem(mer)`);
         if (onUpdate) onUpdate();
       } catch (error) {
         console.error('Error deleting crew:', error);
@@ -1493,6 +1936,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
       showSuccess(`Invitasjon sendt til ${data.name}`, 3000);
+      logActivity('Crew', `Inviterte ${data.name}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error inviting crew member:', error);
@@ -1512,6 +1956,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       const count = selectedIds.size;
       setSelectedIds(new Set());
       showSuccess(`Status oppdatert for ${count} crewmedlem(mer)`, 3000);
+      logActivity('Bulk', `Oppdaterte status (${STATUS_META[status].label}) for ${count}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error updating crew status:', error);
@@ -1524,8 +1969,12 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     const firstId = [...selectedIds][0];
     if (!firstId) return;
     const member = crewMembers.find(m => m.id === firstId);
-    if (member) { setAssigningMember(member); setAssignDayOpen(true); }
-  }, [selectedIds, crewMembers]);
+    if (member) {
+      setAssigningMember(member);
+      setAssignDayOpen(true);
+      logActivity('Bulk', `Åpnet dagtilordning for ${selectedIds.size} valgte`);
+    }
+  }, [selectedIds, crewMembers, logActivity]);
 
   // Assign crew member to active scene / shoot day
   const handleAssignToScene = useCallback((member: CrewMember) => {
@@ -1558,8 +2007,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     } catch {
       showInfo('Tilordning lagret lokalt (sync ved neste tilkobling)');
     }
+    logActivity('Plan', `${crewMembers.find(m => m.id === crewMemberId)?.name ?? 'Crew'} tilordnet ${date}`);
     if (onUpdate) onUpdate();
-  }, [crewAssignments, projectId, productionDays, crewMembers, showSuccess, showInfo, onUpdate]);
+  }, [crewAssignments, projectId, productionDays, crewMembers, showSuccess, showInfo, onUpdate, logActivity]);
 
   const handleCrewUnassign = useCallback(async (crewMemberId: string, dayId: string) => {
     const updated = crewAssignments.filter(a => !(a.crewMemberId === crewMemberId && a.shootDayId === dayId));
@@ -1570,8 +2020,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     } catch {
       showInfo('Fjernet lokalt (sync ved neste tilkobling)');
     }
+    logActivity('Plan', 'Fjernet dagtilordning');
     if (onUpdate) onUpdate();
-  }, [crewAssignments, projectId, showSuccess, showInfo, onUpdate]);
+  }, [crewAssignments, projectId, showSuccess, showInfo, onUpdate, logActivity]);
 
   // Copy to clipboard
   const handleCopy = async (text: string, fieldId: string) => {
@@ -1594,6 +2045,80 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     }
   }, [sortField, sortDirection]);
 
+  const handleSaveCurrentView = useCallback(() => {
+    const name = window.prompt('Navn på lagret visning?');
+    const trimmedName = name?.trim();
+    if (!trimmedName) return;
+
+    const nextView: SavedCrewView = {
+      id: `view-${Date.now()}`,
+      name: trimmedName,
+      createdAt: new Date().toISOString(),
+      state: captureViewState(),
+    };
+    setSavedViews((previous) => [nextView, ...previous].slice(0, 12));
+    setSavedViewAnchor(null);
+    showSuccess(`Lagret visning: ${trimmedName}`, 2500);
+    logActivity('Saved view', `Lagret visning "${trimmedName}"`);
+  }, [captureViewState, showSuccess, logActivity]);
+
+  const handleDeleteSavedView = useCallback((id: string) => {
+    setSavedViews((previous) => previous.filter((view) => view.id !== id));
+    logActivity('Saved view', 'Slettet lagret visning');
+  }, [logActivity]);
+
+  const handleBulkRoleChange = useCallback(async () => {
+    if (bulkRole === 'none' || selectedIds.size === 0) return;
+    try {
+      const selectedMembers = crewMembers.filter((member) => selectedIds.has(member.id));
+      await Promise.all(
+        selectedMembers.map((member) => castingService.saveCrew(projectId, {
+          ...member,
+          role: bulkRole,
+          updatedAt: new Date().toISOString(),
+        }))
+      );
+      const crew = await castingService.getCrew(projectId);
+      setCrewMembers(Array.isArray(crew) ? crew : []);
+      showSuccess(`Oppdaterte rolle for ${selectedMembers.length} crewmedlem(mer)`, 3000);
+      logActivity('Bulk', `Satte rolle til ${getRoleLabel(bulkRole)} for ${selectedMembers.length}`);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating bulk role:', error);
+      showError('Kunne ikke oppdatere roller');
+    }
+  }, [bulkRole, selectedIds, crewMembers, projectId, showSuccess, showError, onUpdate, logActivity]);
+
+  const handleBulkRateUpdate = useCallback(async () => {
+    const parsedRate = Number.parseInt(bulkRateInput, 10);
+    if (!Number.isFinite(parsedRate) || parsedRate < 0 || selectedIds.size === 0) return;
+    try {
+      const selectedMembers = crewMembers.filter((member) => selectedIds.has(member.id));
+      await Promise.all(
+        selectedMembers.map((member) => castingService.saveCrew(projectId, {
+          ...member,
+          rate: parsedRate,
+          updatedAt: new Date().toISOString(),
+        }))
+      );
+      const crew = await castingService.getCrew(projectId);
+      setCrewMembers(Array.isArray(crew) ? crew : []);
+      showSuccess(`Oppdaterte fast honorar for ${selectedMembers.length} crewmedlem(mer)`, 3000);
+      logActivity('Bulk', `Satte fast honorar ${parsedRate.toLocaleString('nb-NO')} kr for ${selectedMembers.length}`);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error updating bulk rate:', error);
+      showError('Kunne ikke oppdatere fast honorar');
+    }
+  }, [bulkRateInput, selectedIds, crewMembers, projectId, showSuccess, showError, onUpdate, logActivity]);
+
+  const assignCrewToDayQuick = useCallback((crewMemberId: string, dayId: string) => {
+    const targetDay = productionDays.find((day) => day.id === dayId);
+    if (!targetDay) return;
+    void handleCrewAssign(crewMemberId, targetDay.id, targetDay.date, 'assigned', 'A', '08:00');
+    logActivity('Planner', `Drog crew til ${targetDay.date}`);
+  }, [productionDays, handleCrewAssign, logActivity]);
+
   // Toggle favorite with database sync
   const toggleFavorite = async (id: string) => {
     const newFavorites = new Set(favorites);
@@ -1614,6 +2139,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       } else {
         await favoritesApi.remove(projectId, 'crew', id);
       }
+      logActivity('Crew', `${isAdding ? 'La til' : 'Fjernet'} favoritt`);
     } catch (error) {
       console.warn('Database sync failed:', error);
     }
@@ -1695,6 +2221,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       setTimeout(() => {
         printWindow.print();
       }, 250);
+      logActivity('Export', `Eksporterte crewliste (${filteredAndSortedCrew.length} rader)`);
     } catch (error) {
       console.error('Error exporting crew:', error);
       alert('Kunne ikke eksportere crewliste');
@@ -1878,6 +2405,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       await castingService.saveCrew(projectId, duplicate);
       const crew = await castingService.getCrew(projectId);
       setCrewMembers(Array.isArray(crew) ? crew : []);
+      logActivity('Crew', `Dupliserte ${member.name}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error duplicating crew member:', error);
@@ -1897,6 +2425,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       setCrewMembers(Array.isArray(crew) ? crew : []);
       setShowUndoSnackbar(true);
       showInfo(`${member.name} slettet - klikk "Angre" for å gjenopprette`, 6000);
+      logActivity('Crew', `Slettet ${member.name}`);
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error('Error deleting crew member:', error);
@@ -1912,6 +2441,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         const crew = await castingService.getCrew(projectId);
         setCrewMembers(Array.isArray(crew) ? crew : []);
         showSuccess(`${deletedCrew.name} gjenopprettet`, 3000);
+        logActivity('Crew', `Gjenopprettet ${deletedCrew.name}`);
         setDeletedCrew(null);
         setShowUndoSnackbar(false);
         if (onUpdate) onUpdate();
@@ -1943,6 +2473,53 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       crewCount: selectedCrewForCost.length,
     };
   }, [costStartDate, costEndDate, crewMembers, selectedIds]);
+
+  const costCalculatorIntelligence = useMemo(() => {
+    if (!calculateCost) return null;
+
+    const periodBudget = effectiveBudget > 0 ? effectiveBudget * calculateCost.days : null;
+    const projectedTotal = calculateCost.total;
+    const assignedProjection = budgetIntelligence.assignedDailyCost * calculateCost.days;
+    const utilization = periodBudget && periodBudget > 0 ? projectedTotal / periodBudget : null;
+    const assignedUtilization = periodBudget && periodBudget > 0 ? assignedProjection / periodBudget : null;
+    const budgetDelta = periodBudget !== null ? projectedTotal - periodBudget : null;
+
+    let severity: 'low' | 'medium' | 'high' = 'low';
+    if (utilization !== null) {
+      if (utilization > 1) severity = 'high';
+      else if (utilization > 0.85) severity = 'medium';
+    }
+
+    const recommendations: string[] = [];
+    if (periodBudget === null) {
+      recommendations.push('Legg inn totalbudsjett for å få budsjettavvik og risikonivå i kalkulatoren.');
+    } else if (budgetDelta !== null && budgetDelta > 0) {
+      recommendations.push(`Prognosen overstiger periodebudsjettet med ${budgetDelta.toLocaleString('nb-NO')} kr.`);
+    } else if (budgetDelta !== null && budgetDelta < 0) {
+      recommendations.push(`Prognosen ligger ${(Math.abs(budgetDelta)).toLocaleString('nb-NO')} kr under periodebudsjettet.`);
+    }
+
+    if (selectedIds.size > 0) {
+      recommendations.push('Visningen er filtrert til valgte crewmedlemmer. Nullstill valg for totalprognose.');
+    }
+    if (riskInsights.overtimeRisk.length > 0) {
+      recommendations.push('Overtidsrisiko registrert. Spre oppgaver for å redusere kostnadsdrift.');
+    }
+    if (recommendations.length === 0) {
+      recommendations.push('Kostnadsprognosen er innenfor ramme. Fortsett med nåværende bemanningsplan.');
+    }
+
+    return {
+      periodBudget,
+      projectedTotal,
+      assignedProjection,
+      utilization,
+      assignedUtilization,
+      budgetDelta,
+      severity,
+      recommendations,
+    };
+  }, [budgetIntelligence.assignedDailyCost, calculateCost, effectiveBudget, riskInsights.overtimeRisk.length, selectedIds.size]);
 
   // Keyboard shortcuts
   const handleOpenDialog = useCallback((crewMember?: CrewMember) => {
@@ -1982,6 +2559,55 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
     });
   }, []);
 
+  const commandActions = useMemo(() => {
+    return [
+      { id: 'new', label: 'Nytt crewmedlem', shortcut: 'Cmd/Ctrl+N', run: () => handleOpenDialog() },
+      { id: 'search', label: 'Fokuser søkefelt', shortcut: 'Cmd/Ctrl+F', run: () => searchInputRef.current?.focus() },
+      { id: 'export', label: 'Eksporter crewliste', shortcut: 'Cmd/Ctrl+E', run: () => exportToCSV() },
+      { id: 'toggle-view', label: workspaceView === 'pro' ? 'Bytt til Standard view' : 'Bytt til Pro view', shortcut: '', run: () => setWorkspaceView(workspaceView === 'pro' ? 'standard' : 'pro') },
+      ...(workspaceView === 'pro'
+        ? [
+            { id: 'focus-all', label: proViewFocus === 'all' ? 'Pro fokus: Alle seksjoner (aktiv)' : 'Pro fokus: Alle seksjoner', shortcut: '', run: () => setProViewFocus('all') },
+            { id: 'focus-overview', label: proViewFocus === 'overview' ? 'Pro fokus: Oversikt (aktiv)' : 'Pro fokus: Oversikt', shortcut: '', run: () => setProViewFocus('overview') },
+            { id: 'focus-risks', label: proViewFocus === 'risks' ? 'Pro fokus: Risiko (aktiv)' : 'Pro fokus: Risiko', shortcut: '', run: () => setProViewFocus('risks') },
+            { id: 'focus-budget', label: proViewFocus === 'budget' ? 'Pro fokus: Budsjett (aktiv)' : 'Pro fokus: Budsjett', shortcut: '', run: () => setProViewFocus('budget') },
+            { id: 'focus-planner', label: proViewFocus === 'planner' ? 'Pro fokus: Planlegger (aktiv)' : 'Pro fokus: Planlegger', shortcut: '', run: () => setProViewFocus('planner') },
+          ]
+        : []),
+      { id: 'toggle-density', label: compactMode ? 'Slå av kompakt modus' : 'Slå på kompakt modus', shortcut: '', run: () => setCompactMode((previous) => !previous) },
+      { id: 'open-dood', label: 'Åpne DOOD oversikt', shortcut: '', run: () => setDoodOpen(true) },
+      { id: 'open-callsheet', label: 'Åpne callsheet', shortcut: '', run: () => { setCallsheetCrewScope('all'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
+      { id: 'open-technical-callsheet', label: 'Daglig teknisk callsheet', shortcut: '', run: () => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); } },
+      { id: 'clear-filters', label: 'Nullstill alle filter', shortcut: '', run: () => { setFilterStatus('all'); setFilterAvailable(false); setFilterAssignedToday(false); setFilterDept('all'); setFilterRole('all'); setSearchQuery(''); } },
+      { id: 'open-invite', label: 'Inviter crewmedlem', shortcut: 'F', run: () => setInviteDialogOpen(true) },
+      { id: 'open-log', label: 'Åpne aktivitetslogg', shortcut: '', run: () => setActivityOpen(true) },
+      ...(onOpenTechnicalTeamDashboard
+        ? [{ id: 'open-technical-dashboard', label: 'Åpne teknisk team dashboard', shortcut: 'Shift+T', run: () => onOpenTechnicalTeamDashboard() }]
+        : []),
+    ];
+  }, [handleOpenDialog, exportToCSV, workspaceView, proViewFocus, compactMode, productionDays, onOpenTechnicalTeamDashboard]);
+
+  const filteredCommandActions = useMemo(() => {
+    const query = commandQuery.trim().toLowerCase();
+    if (!query) return commandActions;
+    return commandActions.filter((action) => action.label.toLowerCase().includes(query));
+  }, [commandActions, commandQuery]);
+
+  const runCommandAction = useCallback((action: { id: string; label: string; run: () => void }) => {
+    action.run();
+    setCommandPaletteOpen(false);
+    setCommandQuery('');
+    logActivity('Command', action.label);
+  }, [logActivity]);
+
+  useEffect(() => {
+    if (!commandPaletteOpen) return;
+    const handle = window.setTimeout(() => {
+      commandInputRef.current?.focus();
+    }, 20);
+    return () => window.clearTimeout(handle);
+  }, [commandPaletteOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+N or Cmd+N to add new crew
@@ -1993,6 +2619,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       if (e.key === 'Escape' && dialogOpen) {
         handleCloseDialog();
       }
+      if (e.key === 'Escape' && commandPaletteOpen) {
+        setCommandPaletteOpen(false);
+      }
       // Ctrl+E to export
       if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !dialogOpen) {
         e.preventDefault();
@@ -2003,6 +2632,11 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         e.preventDefault();
         searchInputRef.current?.focus();
       }
+      // Cmd/Ctrl+K to open command palette
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !dialogOpen) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+      }
       // F (no modifier) to open invite dialog
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target as HTMLElement)?.isContentEditable;
@@ -2010,11 +2644,16 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         e.preventDefault();
         setInviteDialogOpen(true);
       }
+      // Shift+T opens technical Team Dashboard from Crew tab
+      if (e.key.toLowerCase() === 't' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !isTyping && !dialogOpen && onOpenTechnicalTeamDashboard) {
+        e.preventDefault();
+        onOpenTechnicalTeamDashboard();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogOpen, inviteDialogOpen, handleOpenDialog, handleCloseDialog, exportToCSV]);
+  }, [dialogOpen, inviteDialogOpen, handleOpenDialog, handleCloseDialog, exportToCSV, commandPaletteOpen, onOpenTechnicalTeamDashboard]);
 
   const handleSave = async () => {
     if (!formData.name?.trim()) {
@@ -2049,8 +2688,10 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       // Show success notification
       if (editingCrewMember) {
         showSuccess(`${formData.name} oppdatert`, 3000);
+        logActivity('Crew', `Oppdaterte ${formData.name}`);
       } else {
         showSuccess(`${formData.name} lagt til i teamet`, 3000);
+        logActivity('Crew', `La til ${formData.name}`);
       }
 
       handleCloseDialog();
@@ -2060,6 +2701,24 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
       showError('Feil ved lagring av crewmedlem');
     }
   };
+
+  const showProOverview = proViewFocus === 'all' || proViewFocus === 'overview';
+  const showProRisks = proViewFocus === 'all' || proViewFocus === 'risks';
+  const showProBudget = proViewFocus === 'all' || proViewFocus === 'budget';
+  const showProPlanner = proViewFocus === 'all' || proViewFocus === 'planner';
+
+  const handleProActionClick = useCallback((action: ProActionItem) => {
+    setProViewFocus(action.focus);
+    if (action.id === 'review-budget') {
+      setShowCostCalculator(true);
+    }
+    if (action.id === 'resolve-conflicts') {
+      setFilterAssignedToday(true);
+    }
+    if (action.id === 'maintain-plan') {
+      setFilterAssignedToday(false);
+    }
+  }, []);
 
   return (
     <Box
@@ -2152,6 +2811,79 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           >
             Pro view
           </Button>
+          <Button
+            variant={compactMode ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setCompactMode((previous) => !previous)}
+            sx={{
+              minHeight: 34,
+              bgcolor: compactMode ? roleTabAccentSoft : 'transparent',
+              color: '#ffffff',
+              borderColor: compactMode ? roleTabAccent : roleBorder,
+              '&:hover': { bgcolor: compactMode ? 'rgba(184,107,255,0.28)' : 'rgba(255,255,255,0.06)' },
+            }}
+          >
+            Kompakt
+          </Button>
+          <Button
+            variant={pinNameColumn ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setPinNameColumn((previous) => !previous)}
+            sx={{ minHeight: 34, bgcolor: pinNameColumn ? roleTabAccentSoft : 'transparent', color: '#fff', borderColor: roleBorder }}
+          >
+            Pin navn
+          </Button>
+          <Button
+            variant={pinContactColumn ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => setPinContactColumn((previous) => !previous)}
+            sx={{ minHeight: 34, bgcolor: pinContactColumn ? roleTabAccentSoft : 'transparent', color: '#fff', borderColor: roleBorder }}
+          >
+            Pin kontakt
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={(event) => setSavedViewAnchor(event.currentTarget)}
+            sx={{ minHeight: 34, borderColor: roleBorder, color: '#ffffff', '&:hover': { bgcolor: 'rgba(255,255,255,0.06)' } }}
+          >
+            Saved views ({savedViews.length})
+          </Button>
+          <Menu
+            anchorEl={savedViewAnchor}
+            open={Boolean(savedViewAnchor)}
+            onClose={() => setSavedViewAnchor(null)}
+            PaperProps={{ sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', minWidth: 280 } }}
+          >
+            <MenuItem onClick={handleSaveCurrentView} sx={{ fontWeight: 700 }}>
+              <SaveIcon sx={{ fontSize: 16, mr: 1 }} />
+              Lagre nåværende visning
+            </MenuItem>
+            {savedViews.length === 0 && (
+              <MenuItem disabled sx={{ opacity: 0.7 }}>Ingen lagrede visninger</MenuItem>
+            )}
+            {savedViews.map((view) => (
+              <MenuItem
+                key={view.id}
+                sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}
+              >
+                <Button
+                  onClick={() => applySavedView(view)}
+                  sx={{ color: '#ffffff', textTransform: 'none', justifyContent: 'flex-start', flex: 1, px: 0 }}
+                >
+                  {view.name}
+                </Button>
+                <IconButton
+                  size="small"
+                  onClick={() => handleDeleteSavedView(view.id)}
+                  sx={{ color: 'rgba(255,255,255,0.55)' }}
+                  aria-label={`Slett lagret visning ${view.name}`}
+                >
+                  <DeleteIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </MenuItem>
+            ))}
+          </Menu>
           <Tooltip title="Vis/skjul avdelinger">
             <IconButton onClick={() => setShowDeptSidebar(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               {showDeptSidebar ? <ChevronLeftIcon /> : <ChevronRightIcon />}
@@ -2177,12 +2909,38 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           </Tooltip>
           <Tooltip title="Callsheet-generator">
             <IconButton
-              onClick={() => { setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
+              onClick={() => { setCallsheetCrewScope('all'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
               sx={{ color: '#ffffff', ...focusVisibleStyles }}
             >
               <CallsheetIcon sx={{ fontSize: 20 }} />
             </IconButton>
           </Tooltip>
+          <Tooltip title="Daglig teknisk callsheet">
+            <IconButton
+              onClick={() => { setCallsheetCrewScope('technical'); setCallsheetDay(productionDays[0] ?? null); setCallsheetOpen(true); }}
+              sx={{ color: '#38bdf8', ...focusVisibleStyles }}
+            >
+              <MovieIcon sx={{ fontSize: 20 }} />
+            </IconButton>
+          </Tooltip>
+          {onOpenTechnicalTeamDashboard && (
+            <Tooltip title="Åpne teknisk Team Dashboard (Shot List)">
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<MovieIcon />}
+                onClick={onOpenTechnicalTeamDashboard}
+                sx={{
+                  minHeight: 34,
+                  borderColor: roleBorder,
+                  color: '#ffffff',
+                  '&:hover': { bgcolor: roleTabAccentSoft, borderColor: roleTabAccent },
+                }}
+              >
+                Teknisk dashboard
+              </Button>
+            </Tooltip>
+          )}
           <Tooltip title="Hjelp — Crew Management guide">
             <IconButton onClick={() => setGuideOpen(true)} sx={{ color: '#ffffff', '&:hover': { color: '#ffffff' }, ...focusVisibleStyles }} aria-label="Open Crew Management guide">
               <HelpIcon />
@@ -2192,6 +2950,18 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
             <IconButton onClick={() => setShowCostCalculator(p => !p)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
               <CalculateIcon />
             </IconButton>
+          </Tooltip>
+          <Tooltip title="Command palette (Cmd/Ctrl+K)">
+            <IconButton onClick={() => setCommandPaletteOpen(true)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
+              <SearchIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Aktivitetslogg">
+            <Badge badgeContent={activityLog.length > 99 ? '99+' : activityLog.length} color="primary" max={99}>
+              <IconButton onClick={() => setActivityOpen(true)} sx={{ color: '#ffffff', ...focusVisibleStyles }}>
+                <ScheduleIcon />
+              </IconButton>
+            </Badge>
           </Tooltip>
           <ToggleButtonGroup value={viewMode} exclusive onChange={(_, v) => v && setViewMode(v)} size="small">
             <ToggleButton value="grid" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
@@ -2211,6 +2981,27 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
           </Button>
         </Box>
       </Box>
+
+      {roleLegendEntries.length > 0 && (
+        <Box sx={{ px: 2, pb: 1, mx: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+          {roleLegendEntries.map((role) => {
+            const color = getSharedRoleColor(role);
+            return (
+              <Chip
+                key={role}
+                size="small"
+                label={getSharedRoleLabel(role)}
+                sx={{
+                  bgcolor: `${color}24`,
+                  color,
+                  border: `1px solid ${color}66`,
+                  '& .MuiChip-label': { fontWeight: 600 },
+                }}
+              />
+            );
+          })}
+        </Box>
+      )}
 
       {/* ── SEARCH + FILTER TOOLBAR ── */}
       <Box sx={{ px: 2, pb: 1, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center', border: `1px solid ${roleBorder}`, borderRadius: 2, mx: 2, py: 1, bgcolor: roleSurfaceMuted }}>
@@ -2375,10 +3166,81 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
               <Box sx={{ display: 'flex', gap: 3 }}>
                 <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Dager</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.days}</Typography></Box>
                 <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Crew</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.crewCount}</Typography></Box>
+                <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Daglig fast honorar</Typography><Typography sx={{ color: '#fff', fontWeight: 700 }}>{calculateCost.dailyRate.toLocaleString('nb-NO')} kr</Typography></Box>
                 <Box><Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Total</Typography><Typography sx={{ color: '#4caf50', fontWeight: 700, fontSize: '1.1rem' }}>{calculateCost.total.toLocaleString('nb-NO')} kr</Typography></Box>
               </Box>
             )}
           </Box>
+          {costCalculatorIntelligence && (
+            <Box sx={{ mt: 1.75, p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.04)', border: `1px solid ${roleBorder}` }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
+                Budsjett-intelligens (kalkulator)
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, mb: 0.85 }}>
+                {costCalculatorIntelligence.periodBudget !== null ? (
+                  <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                    Periodebudsjett: <strong>{costCalculatorIntelligence.periodBudget.toLocaleString('nb-NO')} kr</strong>
+                  </Typography>
+                ) : (
+                  <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                    Periodebudsjett: <strong>ikke satt</strong>
+                  </Typography>
+                )}
+                <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                  Prognose: <strong>{costCalculatorIntelligence.projectedTotal.toLocaleString('nb-NO')} kr</strong>
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                  Tilordnet prognose: <strong>{costCalculatorIntelligence.assignedProjection.toLocaleString('nb-NO')} kr</strong>
+                </Typography>
+                {costCalculatorIntelligence.budgetDelta !== null && (
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      color: costCalculatorIntelligence.budgetDelta > 0 ? '#ef4444' : '#10b981',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Avvik: {costCalculatorIntelligence.budgetDelta > 0 ? '+' : ''}
+                    {costCalculatorIntelligence.budgetDelta.toLocaleString('nb-NO')} kr
+                  </Typography>
+                )}
+              </Box>
+              {costCalculatorIntelligence.utilization !== null && (
+                <Box sx={{ mb: 0.85 }}>
+                  <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', mb: 0.25 }}>
+                    Budsjettutnyttelse: {(costCalculatorIntelligence.utilization * 100).toFixed(1)}%
+                    {costCalculatorIntelligence.assignedUtilization !== null
+                      ? ` · Tilordnet: ${(costCalculatorIntelligence.assignedUtilization * 100).toFixed(1)}%`
+                      : ''}
+                  </Typography>
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(100, Math.max(0, costCalculatorIntelligence.utilization * 100))}
+                    sx={{
+                      height: 7,
+                      borderRadius: 10,
+                      bgcolor: 'rgba(255,255,255,0.1)',
+                      '& .MuiLinearProgress-bar': {
+                        bgcolor:
+                          costCalculatorIntelligence.severity === 'high'
+                            ? '#ef4444'
+                            : costCalculatorIntelligence.severity === 'medium'
+                            ? '#ffb800'
+                            : '#10b981',
+                      },
+                    }}
+                  />
+                </Box>
+              )}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                {costCalculatorIntelligence.recommendations.map((text) => (
+                  <Typography key={text} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
+                    • {text}
+                  </Typography>
+                ))}
+              </Box>
+            </Box>
+          )}
         </Box>
       </Collapse>
 
@@ -2417,51 +3279,405 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
             gap: 1.25,
           }}
         >
-          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Bekreftet</Typography>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.confirmed}</Typography>
-          </Box>
-          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Venter / Invitert</Typography>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.pending + proInsights.invited}</Typography>
-          </Box>
-          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Konflikter</Typography>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{stats.totalConflicts}</Typography>
-          </Box>
-          <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
-            <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Snitt fast honorar</Typography>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.averageRate.toLocaleString('nb-NO')} kr</Typography>
-          </Box>
-          {proInsights.topRoles.length > 0 && (
-            <Box sx={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 0.75, pt: 0.25 }}>
-              {proInsights.topRoles.map((roleLabel) => (
-                <Chip
-                  key={roleLabel}
-                  label={roleLabel}
-                  size="small"
-                  sx={{ bgcolor: roleTabAccentSoft, color: '#ffffff', border: `1px solid ${roleBorder}` }}
-                />
-              ))}
-              <Button
+          <Box sx={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Box>
+              <Typography sx={{ fontSize: 13, fontWeight: 800, color: '#ffffff' }}>
+                Pro kontrollsenter
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
+                Bytt fokus mellom oversikt, risiko, budsjett og planlegger for en ryddigere arbeidsflate.
+              </Typography>
+            </Box>
+            <Box sx={{ width: '100%', overflowX: 'auto', pb: 0.25 }}>
+              <ToggleButtonGroup
+                value={proViewFocus}
+                exclusive
                 size="small"
-                onClick={() => {
-                  setFilterStatus('pending');
-                  setShowFilters(false);
+                aria-label="Velg fokus i Pro view"
+                onChange={(_, next) => {
+                  if (next) setProViewFocus(next as ProViewFocus);
                 }}
-                sx={{ color: '#ffffff', borderColor: roleBorder }}
-                variant="outlined"
+                sx={{
+                  flexWrap: { xs: 'wrap', md: 'nowrap' },
+                  gap: 0.25,
+                  '& .MuiToggleButtonGroup-grouped': {
+                    borderColor: roleBorder,
+                    m: 0,
+                  },
+                }}
               >
-                Fokus: Venter
-              </Button>
-              <Button
+                <ToggleButton value="all" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
+                  Alle
+                </ToggleButton>
+                <ToggleButton value="overview" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
+                  Oversikt
+                </ToggleButton>
+                <ToggleButton value="risks" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
+                  Risiko
+                </ToggleButton>
+                <ToggleButton value="budget" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
+                  Budsjett
+                </ToggleButton>
+                <ToggleButton value="planner" sx={{ color: '#ffffff', borderColor: roleBorder, '&.Mui-selected': { color: '#ffffff', bgcolor: roleTabAccentSoft } }}>
+                  Planlegger
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </Box>
+
+          <Box sx={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+            <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Prioriterte neste steg
+            </Typography>
+          </Box>
+
+          <Box sx={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0,1fr))' }, gap: 0.75 }}>
+            {proActionItems.map((action) => {
+              const tone =
+                action.severity === 'high'
+                  ? { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.45)', hover: '#fca5a5' }
+                  : action.severity === 'medium'
+                  ? { bg: 'rgba(255,184,0,0.12)', border: 'rgba(255,184,0,0.42)', hover: '#fcd34d' }
+                  : { bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.35)', hover: '#6ee7b7' };
+
+              return (
+                <Button
+                  key={action.id}
+                  variant="outlined"
+                  onClick={() => handleProActionClick(action)}
+                  sx={{
+                    textTransform: 'none',
+                    justifyContent: 'flex-start',
+                    alignItems: 'flex-start',
+                    flexDirection: 'column',
+                    gap: 0.2,
+                    px: 1.1,
+                    py: 0.85,
+                    borderRadius: 1.25,
+                    borderColor: tone.border,
+                    bgcolor: tone.bg,
+                    color: '#ffffff',
+                    '&:hover': {
+                      bgcolor: tone.bg,
+                      borderColor: tone.hover,
+                    },
+                  }}
+                >
+                  <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }}>
+                    {action.title}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', lineHeight: 1.2, textAlign: 'left' }}>
+                    {action.detail}
+                  </Typography>
+                </Button>
+              );
+            })}
+          </Box>
+
+          {showProOverview && (
+            <>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Bekreftet</Typography>
+                <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.confirmed}</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Venter / Invitert</Typography>
+                <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.pending + proInsights.invited}</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Konflikter</Typography>
+                <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{stats.totalConflicts}</Typography>
+              </Box>
+              <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+                <Typography sx={{ fontSize: 11, color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>Snitt fast honorar</Typography>
+                <Typography sx={{ fontSize: 22, fontWeight: 700, color: '#ffffff' }}>{proInsights.averageRate.toLocaleString('nb-NO')} kr</Typography>
+              </Box>
+              {proInsights.topRoles.length > 0 && (
+                <Box sx={{ gridColumn: '1 / -1', display: 'flex', flexWrap: 'wrap', gap: 0.75, pt: 0.25 }}>
+                  {proInsights.topRoles.map((roleLabel) => (
+                    <Chip
+                      key={roleLabel}
+                      label={roleLabel}
+                      size="small"
+                      sx={{ bgcolor: roleTabAccentSoft, color: '#ffffff', border: `1px solid ${roleBorder}` }}
+                    />
+                  ))}
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setFilterStatus('pending');
+                      setShowFilters(false);
+                    }}
+                    sx={{ color: '#ffffff', borderColor: roleBorder }}
+                    variant="outlined"
+                  >
+                    Fokus: Venter
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setShowCostCalculator(true)}
+                    sx={{ color: '#ffffff', borderColor: roleBorder }}
+                    variant="outlined"
+                  >
+                    Åpne budsjettpanel
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
+
+          {showProRisks && (
+            <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px solid ${roleBorder}` }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
+                Konfliktmotor
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                <Chip label={`Dobbelbooking: ${stats.totalConflicts}`} size="small" sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }} />
+                <Chip label={`Utenfor tilgjengelighet: ${riskInsights.availabilityConflicts.length}`} size="small" sx={{ bgcolor: 'rgba(255,184,0,0.15)', color: '#ffb800', border: '1px solid rgba(255,184,0,0.4)' }} />
+                <Chip label={`Overtidsrisiko: ${riskInsights.overtimeRisk.length}`} size="small" sx={{ bgcolor: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.4)' }} />
+                <Chip label={`Manglende kontaktinfo: ${riskInsights.missingContact.length}`} size="small" sx={{ bgcolor: 'rgba(168,85,247,0.18)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.4)' }} />
+              </Box>
+            </Box>
+          )}
+
+          {showProBudget && (
+            <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px solid ${roleBorder}` }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
+                Budsjett-intelligens
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+                <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                  Planlagt daglig fast honorar: <strong>{budgetIntelligence.overallDailyCost.toLocaleString('nb-NO')} kr</strong>
+                </Typography>
+                <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                  Tilordnet daglig fast honorar: <strong>{budgetIntelligence.assignedDailyCost.toLocaleString('nb-NO')} kr</strong>
+                </Typography>
+                {effectiveBudget > 0 && (
+                  <Typography sx={{ fontSize: 12, color: '#ffffff' }}>
+                    Budsjettutnyttelse: <strong>{((budgetIntelligence.utilizationRatio ?? 0) * 100).toFixed(1)}%</strong>
+                  </Typography>
+                )}
+              </Box>
+              <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.35 }}>
+                {budgetIntelligence.recommendations.map((text) => (
+                  <Typography key={text} sx={{ fontSize: 12, color: 'rgba(255,255,255,0.78)' }}>
+                    • {text}
+                  </Typography>
+                ))}
+              </Box>
+              {budgetIntelligence.highCostMembers.length > 0 && (
+                <Box sx={{ mt: 0.75, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {budgetIntelligence.highCostMembers.map((member) => (
+                    <Chip
+                      key={member.id}
+                      label={`${member.name} · ${(member.rate || 0).toLocaleString('nb-NO')} kr`}
+                      size="small"
+                      onClick={() => setSearchQuery(member.name)}
+                      sx={{ bgcolor: 'rgba(255,255,255,0.06)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.15)' }}
+                    />
+                  ))}
+                </Box>
+              )}
+            </Box>
+          )}
+
+          {showProPlanner && selectedIds.size > 0 && (
+            <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}`, display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+              <Typography sx={{ color: '#ffffff', fontSize: 12, fontWeight: 700 }}>
+                Bulk tools ({selectedIds.size} valgt)
+              </Typography>
+              <FormControl size="small" sx={{ minWidth: 170 }}>
+                <InputLabel sx={{ color: 'rgba(255,255,255,0.75)' }}>Rolle</InputLabel>
+                <Select
+                  value={bulkRole}
+                  label="Rolle"
+                  onChange={(event) => setBulkRole(event.target.value as CrewRole | 'none')}
+                  sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' } }}
+                >
+                  <MenuItem value="none">Ingen endring</MenuItem>
+                  {crewRoles.map((role) => (
+                    <MenuItem key={role} value={role}>{getRoleLabel(role)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
                 size="small"
-                onClick={() => setShowCostCalculator(true)}
-                sx={{ color: '#ffffff', borderColor: roleBorder }}
-                variant="outlined"
-              >
-                Åpne budsjettpanel
+                type="number"
+                label="Fast honorar (kr)"
+                value={bulkRateInput}
+                onChange={(event) => setBulkRateInput(event.target.value)}
+                sx={{ width: 170, '& .MuiOutlinedInput-root': { color: '#fff' }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.75)' } }}
+              />
+              <Button size="small" variant="outlined" onClick={handleBulkRoleChange} sx={{ color: '#ffffff', borderColor: roleBorder }}>
+                Bruk rolle
               </Button>
+              <Button size="small" variant="outlined" onClick={handleBulkRateUpdate} sx={{ color: '#ffffff', borderColor: roleBorder }}>
+                Bruk honorar
+              </Button>
+            </Box>
+          )}
+
+          {showProPlanner && productionDays.length > 0 && (
+            <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: roleSurfaceMuted, border: `1px solid ${roleBorder}` }}>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: '#ffffff', mb: 0.75 }}>
+                Drag-and-drop dagplanlegger
+              </Typography>
+              <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', mb: 0.75 }}>
+                Dra crew-chip til ønsket dag for rask tilordning (08:00, Unit A). Dagkortene viser hvem som er lagt inn.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+                {plannerCandidates.map((member) => (
+                  <Tooltip
+                    key={member.id}
+                    title={`${getRoleLabel(member.role)} • ${plannerAssignmentCountByMember.get(member.id) ?? 0} dager planlagt`}
+                    arrow
+                  >
+                    <Chip
+                      draggable
+                      onDragStart={() => setPlannerSourceMemberId(member.id)}
+                      onDragEnd={() => { setPlannerSourceMemberId(null); setPlannerDragOverDayId(null); }}
+                      label={`${member.name} (${plannerAssignmentCountByMember.get(member.id) ?? 0})`}
+                      sx={{
+                        cursor: 'grab',
+                        bgcolor: plannerSourceMemberId === member.id ? 'rgba(184,107,255,0.34)' : 'rgba(255,255,255,0.07)',
+                        color: '#ffffff',
+                        border: `1px solid ${roleBorder}`,
+                      }}
+                    />
+                  </Tooltip>
+                ))}
+              </Box>
+              <Box sx={{ display: 'grid', gap: 0.75, gridTemplateColumns: { xs: '1fr', md: `repeat(${Math.min(plannerDays.length, 4)}, minmax(0,1fr))` } }}>
+                {plannerDays.map((day, index) => {
+                  const dayAssignments = plannerAssignmentsByDay.get(day.id) ?? [];
+                  return (
+                    <Box
+                      key={day.id}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setPlannerDragOverDayId(day.id);
+                      }}
+                      onDragLeave={() => setPlannerDragOverDayId((previous) => (previous === day.id ? null : previous))}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        if (plannerSourceMemberId) {
+                          assignCrewToDayQuick(plannerSourceMemberId, day.id);
+                        }
+                        setPlannerSourceMemberId(null);
+                        setPlannerDragOverDayId(null);
+                      }}
+                      sx={{
+                        p: 1,
+                        borderRadius: 1.25,
+                        border: `1px dashed ${plannerDragOverDayId === day.id ? roleTabAccent : 'rgba(255,255,255,0.24)'}`,
+                        bgcolor: plannerDragOverDayId === day.id ? 'rgba(184,107,255,0.24)' : 'rgba(255,255,255,0.03)',
+                        minHeight: 134,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 0.75 }}>
+                        <Box>
+                          <Typography sx={{ fontSize: 11, color: '#ffffff', fontWeight: 700 }}>
+                            Dag {index + 1}
+                          </Typography>
+                          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
+                            {day.date}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          size="small"
+                          label={`${dayAssignments.length} crew`}
+                          sx={{
+                            height: 20,
+                            bgcolor: dayAssignments.length > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.08)',
+                            color: dayAssignments.length > 0 ? '#34d399' : 'rgba(255,255,255,0.7)',
+                            border: `1px solid ${dayAssignments.length > 0 ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.2)'}`,
+                            fontWeight: 700,
+                            fontSize: 11,
+                          }}
+                        />
+                      </Box>
+                      <Box sx={{ mt: 0.75, display: 'flex', flexDirection: 'column', gap: 0.5, maxHeight: 130, overflowY: 'auto', pr: 0.25 }}>
+                        {dayAssignments.length === 0 ? (
+                          <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
+                            Ingen crew lagt inn enda
+                          </Typography>
+                        ) : (
+                          dayAssignments.map(({ member, assignment, doodCode, status }) => {
+                            const statusColor =
+                              status === 'hold'
+                                ? '#ffb800'
+                                : status === 'travel'
+                                ? '#60a5fa'
+                                : status === 'release'
+                                ? '#94a3b8'
+                                : status === 'unknown'
+                                ? '#c084fc'
+                                : '#34d399';
+                            return (
+                              <Box
+                                key={`${day.id}-${member.id}`}
+                                sx={{
+                                  px: 0.75,
+                                  py: 0.5,
+                                  borderRadius: 1,
+                                  bgcolor: 'rgba(255,255,255,0.04)',
+                                  border: `1px solid ${statusColor}55`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: 0.75,
+                                }}
+                              >
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontSize: 11, fontWeight: 700, color: '#ffffff', lineHeight: 1.2 }} noWrap>
+                                    {member.name}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: 10, color: 'rgba(255,255,255,0.72)', lineHeight: 1.2 }} noWrap>
+                                    {getRoleLabel(member.role)} · {assignment.callTime || '08:00'} · Unit {assignment.unit || 'A'}
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+                                  {doodCode && (
+                                    <Chip
+                                      size="small"
+                                      label={doodCode}
+                                      sx={{
+                                        height: 18,
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        bgcolor: `${statusColor}22`,
+                                        color: statusColor,
+                                        border: `1px solid ${statusColor}55`,
+                                      }}
+                                    />
+                                  )}
+                                  <Tooltip title="Fjern fra dag">
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => void handleCrewUnassign(member.id, day.id)}
+                                      sx={{ color: 'rgba(255,255,255,0.7)', p: 0.4 }}
+                                    >
+                                      <UnassignIcon sx={{ fontSize: 14 }} />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              </Box>
+                            );
+                          })
+                        )}
+                      </Box>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          )}
+
+          {showProPlanner && productionDays.length === 0 && (
+            <Box sx={{ gridColumn: '1 / -1', p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,255,255,0.02)', border: `1px dashed ${roleBorder}` }}>
+              <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}>
+                Planleggeren blir aktiv når produksjonsdager er lagt inn i prosjektet.
+              </Typography>
             </Box>
           )}
         </Box>
@@ -2502,11 +3718,39 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
             '&::-webkit-scrollbar': { height: 8 },
             '&::-webkit-scrollbar-track': { bgcolor: 'rgba(255,255,255,0.05)' },
             '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(0,212,255,0.3)', borderRadius: 4 },
+            ...(pinNameColumn && {
+              '& th:nth-of-type(1), & td:nth-of-type(1)': {
+                position: 'sticky',
+                left: 0,
+                zIndex: 4,
+                bgcolor: 'rgba(17, 13, 33, 0.98)',
+              },
+              '& th:nth-of-type(2), & td:nth-of-type(2)': {
+                position: 'sticky',
+                left: 52,
+                zIndex: 3,
+                bgcolor: 'rgba(17, 13, 33, 0.96)',
+              },
+            }),
+            ...(pinNameColumn && pinContactColumn && {
+              '& th:nth-of-type(4), & td:nth-of-type(4)': {
+                position: 'sticky',
+                left: 280,
+                zIndex: 2,
+                bgcolor: 'rgba(17, 13, 33, 0.95)',
+              },
+            }),
+            ...(compactMode && {
+              '& .MuiTableCell-root': {
+                py: 0.75,
+                fontSize: '0.78rem',
+              },
+            }),
           }}
         >
           <Table
             aria-label="Crewmedlemmer tabell"
-            sx={{ minWidth: { xs: 600, sm: 700, md: 750, lg: 850, xl: 1100 } }}
+            sx={{ minWidth: { xs: compactMode ? 520 : 600, sm: compactMode ? 620 : 700, md: compactMode ? 680 : 750, lg: compactMode ? 780 : 850, xl: compactMode ? 1000 : 1100 } }}
           >
             <TableHead>
               <TableRow sx={{ bgcolor: 'rgba(255,255,255,0.05)' }}>
@@ -2807,7 +4051,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         /* Grid View - Enhanced cards matching ProductionDayView */
         <Grid
           container
-          spacing={{ xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }}
+          spacing={compactMode ? { xs: 1, sm: 1.25, md: 1.1, lg: 1.25, xl: 1.5 } : { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 }}
           role="list"
           aria-label={`Liste over ${filteredAndSortedCrew.length} crewmedlemmer`}
         >
@@ -2838,7 +4082,7 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
                   },
                 }}
               >
-                <CardContent sx={{ p: { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <CardContent sx={{ p: compactMode ? { xs: 1.25, sm: 1.5, md: 1.4, lg: 1.5, xl: 1.75 } : { xs: 2, sm: 2.5, md: 2.25, lg: 2.5, xl: 3 }, flex: 1, display: 'flex', flexDirection: 'column' }}>
                   {/* Header with gradient box */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 2.5 } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.75, sm: 1, md: 0.875, lg: 1, xl: 1.25 } }}>
@@ -3474,9 +4718,9 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         open={callsheetOpen}
         onClose={() => setCallsheetOpen(false)}
         projectId={projectId}
-        crew={selectedIds.size > 0 ? crewMembers.filter(m => selectedIds.has(m.id)) : crewMembers}
+        crew={callsheetCrewPool}
         selectedDay={callsheetDay}
-        scenes={propScenes}
+        scenes={resolvedScenes}
         productionDays={productionDays}
       />
 
@@ -3485,6 +4729,93 @@ export function CrewManagementPanel({ projectId, onUpdate, profession, totalBudg
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
       />
+
+      <Drawer
+        anchor="right"
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+        PaperProps={{ sx: { width: { xs: '100vw', sm: 420 }, bgcolor: '#13181e', color: '#fff', borderLeft: '1px solid rgba(184,107,255,0.32)' } }}
+      >
+        <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Typography sx={{ fontWeight: 700, color: '#ffffff' }}>Aktivitetslogg</Typography>
+          <Button
+            size="small"
+            onClick={() => {
+              setActivityLog([]);
+              try {
+                localStorage.removeItem(ACTIVITY_LOG_KEY);
+              } catch {
+                // Ignore storage errors in local dev/private mode.
+              }
+            }}
+            sx={{ color: 'rgba(255,255,255,0.75)' }}
+          >
+            Tøm
+          </Button>
+        </Box>
+        <List dense sx={{ py: 0 }}>
+          {activityLog.length === 0 && (
+            <ListItem>
+              <ListItemText primary="Ingen aktiviteter enda" secondary="Handlinger logges når du redigerer, planlegger og kjører bulk-operasjoner." />
+            </ListItem>
+          )}
+          {activityLog.map((entry) => (
+            <ListItem key={entry.id} divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <ListItemText
+                primary={<Typography sx={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>{entry.action}</Typography>}
+                secondary={
+                  <Typography sx={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}>
+                    {entry.details} • {new Date(entry.timestamp).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })}
+                  </Typography>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Drawer>
+
+      <Dialog
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { bgcolor: '#13181e', border: '1px solid rgba(184,107,255,0.3)' } }}
+      >
+        <DialogTitle sx={{ color: '#fff', fontWeight: 700, pb: 1 }}>
+          Command palette
+        </DialogTitle>
+        <DialogContent sx={{ pt: '8px !important' }}>
+          <TextField
+            inputRef={commandInputRef}
+            fullWidth
+            placeholder="Søk etter handling..."
+            value={commandQuery}
+            onChange={(event) => setCommandQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && filteredCommandActions[0]) {
+                event.preventDefault();
+                runCommandAction(filteredCommandActions[0]);
+              }
+            }}
+            slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchIcon sx={{ color: 'rgba(255,255,255,0.6)' }} /></InputAdornment> } }}
+            sx={{ mb: 1.25, '& .MuiOutlinedInput-root': { color: '#fff', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } } }}
+          />
+          <List dense sx={{ maxHeight: 320, overflowY: 'auto', bgcolor: 'rgba(255,255,255,0.02)', borderRadius: 1.5 }}>
+            {filteredCommandActions.map((action) => (
+              <ListItemButton
+                key={action.id}
+                onClick={() => runCommandAction(action)}
+                sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+              >
+                <ListItemText
+                  primary={<Typography sx={{ fontSize: 13, color: '#fff' }}>{action.label}</Typography>}
+                  secondary={action.shortcut ? <Typography sx={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>{action.shortcut}</Typography> : null}
+                />
+              </ListItemButton>
+            ))}
+          </List>
+        </DialogContent>
+      </Dialog>
 
       {/* Undo delete snackbar */}
       <Snackbar

@@ -1,9 +1,7 @@
 /**
- * Higher-Order Component for adding file status indicators
- * Automatically wraps any component with file management status indicators
+ * Higher-order component to overlay file status indicators.
  */
 
-import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
 import { FileStatusWrapper } from './FileStatusIndicators';
 
@@ -17,8 +15,8 @@ interface WithFileStatusOptions {
 }
 
 export function withFileStatus<P extends object>(
-  Component: React.ComponentType<>,
-  options: WithFileStatusOptions = {}
+  Component: React.ComponentType<P>,
+  options: WithFileStatusOptions = {},
 ) {
   const {
     showFileSystem = true,
@@ -26,34 +24,31 @@ export function withFileStatus<P extends object>(
     showGooglePhotos = false,
     size = 'small',
     position = 'top-right',
-    onlyOnHover = false
-} = options;
+    onlyOnHover = false,
+  } = options;
 
-  return React.forwardRef<any, P>((props, ref) => {
-    const [showIndicators, setShowIndicators] = React.useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');!onlyOnHover);
+  const Wrapped = React.forwardRef<unknown, P>((props, _ref) => {
+    const [showIndicators, setShowIndicators] = React.useState(!onlyOnHover);
 
     const handleMouseEnter = () => {
       if (onlyOnHover) {
         setShowIndicators(true);
-    }
-  };
+      }
+    };
 
     const handleMouseLeave = () => {
       if (onlyOnHover) {
         setShowIndicators(false);
-    }
-  };
+      }
+    };
 
     return (
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        style={{ position: 'relative', display: 'inline-block'}}
+        style={{ position: 'relative', display: 'inline-block' }}
       >
-        <Component {...props} ref={ref} />
+        <Component {...props} />
         {showIndicators && (
           <FileStatusWrapper
             showFileSystem={showFileSystem}
@@ -67,18 +62,21 @@ export function withFileStatus<P extends object>(
         )}
       </div>
     );
-});
+  });
+
+  Wrapped.displayName = `withFileStatus(${Component.displayName ?? Component.name ?? 'Component'})`;
+
+  return Wrapped;
 }
 
-// Convenience HOCs for common use cases
 export const withUploadStatus = <P extends object>(Component: React.ComponentType<P>) =>
   withFileStatus(Component, {
     showFileSystem: true,
     showGoogleDrive: true,
     showGooglePhotos: false,
     size: 'small',
-    position: 'top-right'
-,});
+    position: 'top-right',
+  });
 
 export const withDownloadStatus = <P extends object>(Component: React.ComponentType<P>) =>
   withFileStatus(Component, {
@@ -86,8 +84,8 @@ export const withDownloadStatus = <P extends object>(Component: React.ComponentT
     showGoogleDrive: false,
     showGooglePhotos: false,
     size: 'small',
-    position: 'top-right'
-,});
+    position: 'top-right',
+  });
 
 export const withFullFileStatus = <P extends object>(Component: React.ComponentType<P>) =>
   withFileStatus(Component, {
@@ -95,8 +93,8 @@ export const withFullFileStatus = <P extends object>(Component: React.ComponentT
     showGoogleDrive: true,
     showGooglePhotos: true,
     size: 'medium',
-    position: 'top-right'
-,});
+    position: 'top-right',
+  });
 
 export const withHoverFileStatus = <P extends object>(Component: React.ComponentType<P>) =>
   withFileStatus(Component, {
@@ -105,8 +103,5 @@ export const withHoverFileStatus = <P extends object>(Component: React.Component
     showGooglePhotos: true,
     size: 'small',
     position: 'top-right',
-    onlyOnHover: true
-,});
-
-
-
+    onlyOnHover: true,
+  });

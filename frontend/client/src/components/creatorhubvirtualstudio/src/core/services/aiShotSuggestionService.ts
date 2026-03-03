@@ -37,7 +37,9 @@ export class AIShotSuggestionService {
     // Detect subjects
     const segmentation = await sam2Service.segmentImageFromUrl(
       imageUrl,
-      undefined'auto','small'
+      undefined,
+      'auto',
+      'small',
     );
 
     // Generate alternative angles
@@ -123,7 +125,6 @@ export class AIShotSuggestionService {
 }
 
 export const aiShotSuggestionService = new AIShotSuggestionService();
-
 
 
 

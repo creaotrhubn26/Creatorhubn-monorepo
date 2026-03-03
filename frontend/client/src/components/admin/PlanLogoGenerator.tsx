@@ -1,60 +1,42 @@
-/**
- * Plan Logo Generator Component
- * Admin interface for generating subscription plan logos using DALL-E 3
- */
-
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Button,
-  Grid,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Alert,
-  CircularProgress,
   Chip,
-  Avatar,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
-  ListItemSecondaryAction,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
-  Divider,
-  Fade,
-  Zoom,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
   AutoAwesome,
+  Delete,
   Download,
+  Image,
+  MusicNote,
   Refresh,
   Visibility,
-  Delete,
-  Add,
-  Palette,
-  Style,
   Work,
-  Speed as Speed,
-  MusicNote as MusicNoteNote,
+  Videocam,
   DesignServices,
-  CheckCircle,
-  Error,
 } from '@mui/icons-material';
+import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 
 interface GeneratedLogo {
   id: string;
@@ -71,160 +53,236 @@ interface PlanLogoGeneratorProps {
   onLogoGenerated?: (logo: GeneratedLogo) => void;
 }
 
-const PROFESSION_ICONS = {
-  photographer: <Work />,
-  videographer: theming.getThemedIcon(''),
-  music_producer: <MusicNote />,
-  designer: <DesignServices />,
+type PlanId = 'basic' | 'professional' | 'business';
+
+type LogoStyle = 'minimal' | 'modern' | 'professional' | 'creative';
+
+interface ColorScheme {
+  name: string;
+  value: string;
+  description: string;
+}
+
+const PLAN_LABELS: Record<PlanId, string> = {
+  basic: 'Basic Creator',
+  professional: 'Professional Creator',
+  business: 'Business Creator',
 };
 
-const PROFESSION_COLORS = {
-  photographer: '#FF6B30',
-  videographer: '#004E80',
-  music_producer: '#7209B0',
-  designer: '#2E7D30',
-};
-
-const COLOR_SCHEMES = [
-  { name: 'Grønn (Basic)', value: '#4CAF50', description: 'Vekst og komme i gang'},
-  { name: 'Blå (Professional)', value: '#2196F0', description: 'Tillit og profesjonalitet'},
-  { name: 'Lilla (Business)', value: '#9C27B0', description: 'Premium og innovasjon'},
-  { name: 'Oransje (Creative)', value: '#FF6B30', description: 'Energi og kreativitet'},
-  { name: 'Mørk blå (Expert)', value: '#004E80', description: 'Ekspertise og dybde'},
+const COLOR_SCHEMES: ColorScheme[] = [
+  { name: 'Grønn (Basic)', value: '#4CAF50', description: 'Vekst og komme i gang' },
+  { name: 'Blå (Professional)', value: '#2196F0', description: 'Tillit og profesjonalitet' },
+  { name: 'Lilla (Business)', value: '#9C27B0', description: 'Premium og innovasjon' },
+  { name: 'Oransje (Creative)', value: '#FF6B30', description: 'Energi og kreativitet' },
+  { name: 'Mørk blå (Expert)', value: '#004E80', description: 'Ekspertise og dybde' },
 ];
 
-const STYLES = [
-  { value: 'minimal', label: 'Minimalistisk', description: 'Rene linjer og enkle former'},
-  { value: 'modern', label: 'Moderne', description: 'Bold typografi og geometriske elementer'},
-  { value: 'professional', label: 'Profesjonell', description: 'Korporat stil med sofistikert fargepalett'},
-  { value: 'creative', label: 'Kreativ', description: 'Kunstnerisk og innovativt design'},
+const STYLES: Array<{ value: LogoStyle; label: string; description: string }> = [
+  { value: 'minimal', label: 'Minimalistisk', description: 'Rene linjer og enkle former' },
+  { value: 'modern', label: 'Moderne', description: 'Bold typografi og geometriske elementer' },
+  {
+    value: 'professional',
+    label: 'Profesjonell',
+    description: 'Korporat stil med sofistikert fargepalett',
+  },
+  { value: 'creative', label: 'Kreativ', description: 'Kunstnerisk og innovativt design' },
 ];
+
+function professionColor(profession: string): string {
+  switch (profession) {
+    case 'photographer':
+      return '#FF6B30';
+    case 'videographer':
+      return '#004E80';
+    case 'music_producer':
+      return '#7209B0';
+    case 'designer':
+      return '#2E7D30';
+    default:
+      return '#1976d2';
+  }
+}
+
+function professionIcon(profession: string): JSX.Element {
+  switch (profession) {
+    case 'photographer':
+      return <Work />;
+    case 'videographer':
+      return <Videocam />;
+    case 'music_producer':
+      return <MusicNote />;
+    case 'designer':
+      return <DesignServices />;
+    default:
+      return <Image />;
+  }
+}
+
+function normalizeGeneratedLogo(raw: unknown): GeneratedLogo | null {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+
+  const record = raw as Record<string, unknown>;
+  const idRaw = record.id;
+  const id = typeof idRaw === 'string' || typeof idRaw === 'number' ? String(idRaw) : '';
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    planId: typeof record.planId === 'string' ? record.planId : 'unknown',
+    url: typeof record.url === 'string' ? record.url : '',
+    prompt: typeof record.prompt === 'string' ? record.prompt : '',
+    style: typeof record.style === 'string' ? record.style : '',
+    colorScheme: typeof record.colorScheme === 'string' ? record.colorScheme : '#2196F0',
+    generatedAt: typeof record.generatedAt === 'string' ? record.generatedAt : new Date().toISOString(),
+  };
+}
+
+function normalizeGeneratedLogos(raw: unknown): GeneratedLogo[] {
+  const items = Array.isArray(raw)
+    ? raw
+    : typeof raw === 'object' && raw !== null && Array.isArray((raw as Record<string, unknown>).logos)
+      ? ((raw as Record<string, unknown>).logos as unknown[])
+      : [];
+
+  return items
+    .map((item) => normalizeGeneratedLogo(item))
+    .filter((item): item is GeneratedLogo => item !== null);
+}
 
 export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanLogoGeneratorProps) {
-  const [selectedPlan, setSelectedPlan] = useState('basic,');
-
-  // Theming system
-  const theming = useTheming('prototype_tester,');
   const { auth } = useEnhancedMasterIntegration();
-  const [customPrompt, setCustomPrompt] = useState(', ');
-  const [selectedColorScheme, setSelectedColorScheme] = useState('#2196F3');
-  const [selectedStyle, setSelectedStyle] = useState('professional');
+
+  const [selectedPlan, setSelectedPlan] = useState<PlanId>('basic');
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [selectedColorScheme, setSelectedColorScheme] = useState('#2196F0');
+  const [selectedStyle, setSelectedStyle] = useState<LogoStyle>('professional');
   const [previewLogo, setPreviewLogo] = useState<GeneratedLogo | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [generatedLogos, setGeneratedLogos] = useState<GeneratedLogo[]>([]);
 
-  // Generate single logo mutation
   const generateLogoMutation = useMutation({
-    mutationFn: async (data: {
-      planId: string;
-      planName: string;
-      profession: string;
-      description: string;
-      colorScheme: string;
-      style: string;
-}) => {
+    mutationFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest('/api/plan-logos/generate', {
+        method: 'POST',
         headers: {
           ...headers,
-          "Content-Type" : "application/json"
+          'Content-Type': 'application/json',
+        },
+        body: {
+          planId: selectedPlan,
+          planName: PLAN_LABELS[selectedPlan],
+          profession,
+          description:
+            customPrompt.trim() || `Professional ${profession} tools and features for ${PLAN_LABELS[selectedPlan]}`,
+          colorScheme: selectedColorScheme,
+          style: selectedStyle,
+        },
+      });
     },
-        method: 'POST',
-        body: JSON.stringify(data),
-    });
-  },
-    onSuccess: (data) => {
-      console.log('✅ Logo generated successfully:', data);
-      if (onLogoGenerated) {
-        onLogoGenerated(data.logo);
-    }
-  },
-    onError: (error) => {
-      console.error('❌ Logo generation failed: ', error);
-  },
-});
+    onSuccess: (data: unknown) => {
+      const normalized =
+        typeof data === 'object' && data !== null && 'logo' in (data as Record<string, unknown>)
+          ? normalizeGeneratedLogo((data as Record<string, unknown>).logo)
+          : normalizeGeneratedLogo(data);
 
-  // Generate all logos mutation
+      if (!normalized) {
+        return;
+      }
+
+      setGeneratedLogos((previous) => [normalized, ...previous.filter((logo) => logo.id !== normalized.id)]);
+      onLogoGenerated?.(normalized);
+    },
+  });
+
   const generateAllLogosMutation = useMutation({
-    mutationFn: async (profession: string) => {
+    mutationFn: async () => {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/plan-logos/generate-all/${profession}`, {
-        headers: {
-          ...headers,
-          "Content-Type" : "application/json"
-    },
         method: 'POST',
-    });
-  },
-    onSuccess: (data) => {
-      console.log(`✅ Generated ${data.count} logos for ${profession}`);
-  },
-    onError: (error) => {
-      console.error('❌ Bulk logo generation failed:', error);
-  },
-});
-
-  const handleGenerateLogo = () => {
-    const planNames = {
-      basic: 'Basic Creator',
-      professional: 'Professional Creator',
-      business: 'Business Creator',
-  };
-
-    generateLogoMutation.mutate({
-      planId: selectedPlan,
-      planName: planNames[selectedPlan as keyof typeof planNames],
-      profession,
-      description: customPrompt || `Professional ${profession} tools and features`,
-      colorScheme: selectedColorScheme,
-      style: selectedStyle,
+        headers,
+      });
+    },
+    onSuccess: (data: unknown) => {
+      const normalized = normalizeGeneratedLogos(data);
+      if (normalized.length > 0) {
+        setGeneratedLogos((previous) => {
+          const existingById = new Map(previous.map((logo) => [logo.id, logo]));
+          normalized.forEach((logo) => existingById.set(logo.id, logo));
+          return Array.from(existingById.values()).sort(
+            (left, right) => new Date(right.generatedAt).getTime() - new Date(left.generatedAt).getTime(),
+          );
+        });
+      }
+    },
   });
-};
 
-  const handleGenerateAll = () => {
-    generateAllLogosMutation.mutate(profession);
-};
-
-  const handlePreviewLogo = (logo: GeneratedLogo) => {
-    setPreviewLogo(logo);
-    setShowPreview(true);
-};
-
-  const handleDownloadLogo = (logo: GeneratedLogo) => {
-    const link = document.createElement('a');
-    link.href = logo.url;
-    link.download = `${logo.pland}_logo_${Date.now()}.png`;
-    link.click();
-};
+  const deleteLogoMutation = useMutation({
+    mutationFn: async (logoId: string) => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest(`/api/plan-logos/${logoId}`, {
+        method: 'DELETE',
+        headers,
+      });
+    },
+    onSuccess: (_, logoId) => {
+      setGeneratedLogos((previous) => previous.filter((logo) => logo.id !== logoId));
+      if (previewLogo?.id === logoId) {
+        setPreviewLogo(null);
+        setShowPreview(false);
+      }
+    },
+  });
 
   const isGenerating = generateLogoMutation.isPending || generateAllLogosMutation.isPending;
 
+  const selectedColor = useMemo(
+    () => COLOR_SCHEMES.find((item) => item.value === selectedColorScheme),
+    [selectedColorScheme],
+  );
+
+  const downloadLogo = (logo: GeneratedLogo) => {
+    if (!logo.url) {
+      return;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = logo.url;
+    anchor.download = `${logo.planId}_logo_${Date.now()}.png`;
+    anchor.rel = 'noopener';
+    anchor.click();
+  };
+
   return (
     <Box>
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
-            <Avatar sx={{ bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLOR], mr:  2 }}>
-              {PROFESSION_ICONS[profession as keyof typeof PROFESSION_ICONS]}
-            </Avatar>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+            <Avatar sx={{ bgcolor: professionColor(profession) }}>{professionIcon(profession)}</Avatar>
             <Box>
-              <Typography variant="h5" sx={{  fontWeight: 'bold' }}>
+              <Typography variant="h5" fontWeight={700}>
                 Plan Logo Generator
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Generer profesjonelle logoer for abonnementsplaner med DALL-E 3
+                Generer profesjonelle logoer for abonnementsplaner med AI.
               </Typography>
             </Box>
-          </Box>
+          </Stack>
 
-          <Grid container spacing={3}>
-            {/* Plan Selection */}
-            <Grid item xs={12} md={6}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Velg Plan</InputLabel>
+                <InputLabel id="plan-select-label">Plan</InputLabel>
                 <Select
+                  labelId="plan-select-label"
+                  label="Plan"
                   value={selectedPlan}
-                  onChange={(e) => setSelectedPlan(e.target.value)}
-                  label="Velg Plan"
+                  onChange={(event) => setSelectedPlan(event.target.value as PlanId)}
                 >
                   <MenuItem value="basic">Basic Creator</MenuItem>
                   <MenuItem value="professional">Professional Creator</MenuItem>
@@ -233,219 +291,191 @@ export default function PlanLogoGenerator({ profession, onLogoGenerated }: PlanL
               </FormControl>
             </Grid>
 
-            {/* Style Selection */}
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Stil</InputLabel>
+                <InputLabel id="style-select-label">Stil</InputLabel>
                 <Select
-                  value={selectedStyle}
-                  onChange={(e) => setSelectedStyle(e.target.value)}
+                  labelId="style-select-label"
                   label="Stil"
+                  value={selectedStyle}
+                  onChange={(event) => setSelectedStyle(event.target.value as LogoStyle)}
                 >
                   {STYLES.map((style) => (
                     <MenuItem key={style.value} value={style.value}>
-                      <Box>
-                        <Typography variant="body2" sx={{ fontWeight: 'bold'}}>
-                          {style.label}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {style.description}
-                        </Typography>
-                      </Box>
+                      {style.label}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
 
-            {/* Color Scheme */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" sx={{ mb:  2 }}>
-                Fargeskjema
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
-                {COLOR_SCHEMES.map((scheme) => (
-                  <Chip
-                    key={scheme.value}
-                    label={scheme.name}
-                    onClick={() => setSelectedColorScheme(scheme.value)}
-                    variant={selectedColorScheme === scheme.value ? 'filled' : 'outlined'}
-                    sx={{
-                      bgcolor: selectedColorScheme === scheme.value ? scheme.value : 'transparent',
-                      color: selectedColorScheme === scheme.value ? 'white' : scheme.value,
-                      borderColor: scheme.value'&:hover': { bgcolor: scheme.value + '2',
-                    }}}
-                  />
-                ))}
-              </Box>
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth>
+                <InputLabel id="color-select-label">Fargeskjema</InputLabel>
+                <Select
+                  labelId="color-select-label"
+                  label="Fargeskjema"
+                  value={selectedColorScheme}
+                  onChange={(event) => setSelectedColorScheme(event.target.value)}
+                >
+                  {COLOR_SCHEMES.map((scheme) => (
+                    <MenuItem key={scheme.value} value={scheme.value}>
+                      {scheme.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
 
-            {/* Custom Prompt */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
                 multiline
-                rows={3}
-                label="Tilpasset beskrivelse (valgfritt)"
+                minRows={2}
+                label="Tilpasset prompt (valgfritt)"
                 value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                placeholder="Beskriv hvordan logoen skal se ut, f.eks. 'Moderne logo med kamera-elementer for fotografer'"
-                helperText="La stå tom for automatisk generering basert på plan og profesjon"
+                onChange={(event) => setCustomPrompt(event.target.value)}
+                placeholder="F.eks. Premium cinematic logo med nordisk uttrykk"
               />
             </Grid>
 
-            {/* Action Buttons */}
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap'}}>
-                <Button variant="contained"
-                  startIcon={isGenerating ? <CircularProgress size={20}, sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('autoAwesome')}
-                  onClick={handleGenerateLogo}
-                  disabled={isGenerating}
-                  sx={{
-                    bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLOR]'&:hover': {
-                      bgcolor: PROFESSION_COLORS[profession as keyof typeof PROFESSION_COLORS] + 'D',
-                  }}}
-                >
-                  {isGenerating ? 'Genererer...' : 'Generer Logo'}
-                </Button>
+            {selectedColor && (
+              <Grid item xs={12}>
+                <Alert severity="info">{selectedColor.description}</Alert>
+              </Grid>
+            )}
 
+            <Grid item xs={12}>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  startIcon={<AutoAwesome />}
+                  onClick={() => generateLogoMutation.mutate()}
+                  disabled={isGenerating}
+                >
+                  Generer logo
+                </Button>
                 <Button
                   variant="outlined"
-                  startIcon={isGenerating ? <CircularProgress size={20} /> : theming.getThemedIcon('refresh')}
-                  onClick={handleGenerateAll}
+                  startIcon={<Refresh />}
+                  onClick={() => generateAllLogosMutation.mutate()}
                   disabled={isGenerating}
                 >
-                  {isGenerating ? 'Genererer alle...' : 'Generer alle planer'}
+                  Generer alle planer
                 </Button>
-              </Box>
+              </Stack>
             </Grid>
           </Grid>
-
-          {/* Status Messages */}
-          {generateLogoMutation.isSuccess && (
-            <Fade in>
-              <Alert severity="success" sx={{ mt:  2 }}>
-                <Typography variant="body2">
-                  ✅ Logo generert for {selectedPlan} plan!
-                </Typography>
-              </Alert>
-            </Fade>
-          )}
-
-          {generateLogoMutation.isError && (
-            <Fade in>
-              <Alert severity="error" sx={{ mt:  2 }}>
-                <Typography variant="body2">
-                  ❌ Feil ved generering av logo. Prøv igjen.
-                </Typography>
-              </Alert>
-            </Fade>
-          )}
-
-          {generateAllLogosMutation.isSuccess && (
-            <Fade in>
-              <Alert severity="success" sx={{ mt:  2 }}>
-                <Typography variant="body2">
-                  ✅ {generateAllLogosMutation.data?.count || 0} logoer generert for alle planer!
-                </Typography>
-              </Alert>
-            </Fade>
-          )}
         </CardContent>
       </Card>
 
-      {/* Generated Logos Preview */}
-      {generateLogoMutation.data?.logo && (
-        <Card sx={theming.getThemedCardSx()}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  mb:  2  }}>
-              Generert Logo
-            </Typography>
-            
-            <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-              <img
-                src={generateLogoMutation.data.logo.url}
-                alt={`${selectedPlan} logo`}
-                style={{
-                  maxWidth: '200px',
-                  maxHeight: '200px',
-                  objectFit: 'contain',
-                  borderRadius: '8px'}}
-              />
-              
-              <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'center'}}>
-                <Button
-                  size="small"
-                  startIcon={theming.getThemedIcon('visibility')}
-                  onClick={() => handlePreviewLogo(generateLogoMutation.data.logo)}
-                >
-                  Forhåndsvis
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={theming.getThemedIcon('download')}
-                  onClick={() => handleDownloadLogo(generateLogoMutation.data.logo)}
-                >
-                  Last ned
-                </Button>
-              </Box>
-            </Paper>
-          </CardContent>
-        </Card>
-      )}
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          Genererte logoer ({generatedLogos.length})
+        </Typography>
 
-      {/* Preview Dialog */}
-      <Dialog
-        open={showPreview}
-        onClose={() => setShowPreview(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center'}}>
-            <AutoAwesome sx={{ mr: 1, color: 'primary.main'}} />
-            Logo Forhåndsvisning
-          </Box>
-        </DialogTitle>
-        
+        {generatedLogos.length === 0 && (
+          <Alert severity="warning">Ingen logoer generert ennå. Kjør generatoren over.</Alert>
+        )}
+
+        <Grid container spacing={2}>
+          {generatedLogos.map((logo) => (
+            <Grid item xs={12} md={6} lg={4} key={logo.id}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Stack spacing={1.5}>
+                    <Box
+                      sx={{
+                        width: '100%',
+                        aspectRatio: '16 / 9',
+                        borderRadius: 1,
+                        overflow: 'hidden',
+                        bgcolor: '#0b1220',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {logo.url ? (
+                        <img
+                          src={logo.url}
+                          alt={`${logo.planId} logo`}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Image sx={{ color: '#fff' }} />
+                      )}
+                    </Box>
+
+                    <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Chip size="small" label={logo.planId} />
+                      <Chip size="small" label={logo.style || selectedStyle} variant="outlined" />
+                    </Stack>
+
+                    <Typography variant="caption" color="text.secondary">
+                      {new Date(logo.generatedAt).toLocaleString()}
+                    </Typography>
+
+                    <Stack direction="row" spacing={1}>
+                      <IconButton size="small" onClick={() => { setPreviewLogo(logo); setShowPreview(true); }}>
+                        <Visibility fontSize="small" />
+                      </IconButton>
+                      <IconButton size="small" onClick={() => downloadLogo(logo)}>
+                        <Download fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => deleteLogoMutation.mutate(logo.id)}
+                        disabled={deleteLogoMutation.isPending}
+                      >
+                        <Delete fontSize="small" />
+                      </IconButton>
+                    </Stack>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+
+      <Dialog open={showPreview} onClose={() => setShowPreview(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Logo preview</DialogTitle>
         <DialogContent>
-          {previewLogo && (
-            <Box sx={{ textAlign: 'center'}}>
-              <img
-                src={previewLogo.url}
-                alt={`${previewLogo.planId} logo`}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '400px',
-                  objectFit: 'contain',
-                  borderRadius:'8px'}}
-              />
-              
-              <Box sx={{ mt:  2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Plan: </strong> {previewLogo.pland}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Stil: </strong> {previewLogo.style}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Farge: </strong> {previewLogo.colorScheme}
-                </Typography>
+          {previewLogo ? (
+            <Stack spacing={2}>
+              <Box
+                sx={{
+                  width: '100%',
+                  minHeight: 360,
+                  borderRadius: 1,
+                  overflow: 'hidden',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                }}
+              >
+                {previewLogo.url ? (
+                  <img
+                    src={previewLogo.url}
+                    alt={`${previewLogo.planId} preview`}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <Box sx={{ p: 3 }}>
+                    <Alert severity="warning">Ingen forhåndsvisning tilgjengelig.</Alert>
+                  </Box>
+                )}
               </Box>
-            </Box>
+              <Typography variant="body2" color="text.secondary">
+                Prompt: {previewLogo.prompt || 'Ikke tilgjengelig'}
+              </Typography>
+            </Stack>
+          ) : (
+            <Alert severity="info">Velg en logo for preview.</Alert>
           )}
         </DialogContent>
-        
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>
-            Lukk
-          </Button>
-          <Button variant="contained"
-            startIcon={theming.getThemedIcon('download')}
-            onClick={() => previewLogo && handleDownloadLogo(previewLogo)}
-          >
-            Last ned
-          </Button>
+          <Button onClick={() => setShowPreview(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
     </Box>

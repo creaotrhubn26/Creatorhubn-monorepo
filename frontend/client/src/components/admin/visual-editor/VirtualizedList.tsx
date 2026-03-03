@@ -31,6 +31,7 @@ import {
   AlertTitle,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   ListItemSecondaryAction,
   Checkbox,
@@ -120,7 +121,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   onSearchChange,
   filters = [],
   sortOptions = [],
-  selectedItems = new Set(),
+  selectedItems = new Set<number>(),
   onSelectionChange,
   className,
   style
@@ -134,6 +135,21 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   const [optimizationLevel, setOptimizationLevel] = useState<'low' | 'medium' | 'high'>('medium');
   const [filteredItems, setFilteredItems] = useState(items);
   const [sortedItems, setSortedItems] = useState(items);
+
+  const toRecord = useCallback((value: unknown): Record<string, unknown> => {
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+  }, []);
+
+  const toComparableValue = useCallback((value: unknown): string | number => {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') return value.toLowerCase();
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    return '';
+  }, []);
+
+  const toDisplayString = useCallback((value: unknown, fallback: string): string => {
+    return typeof value === 'string' && value.trim().length > 0 ? value : fallback;
+  }, []);
 
   // Virtualization configuration
   const virtualizationConfig: Partial<VirtualizationConfig> = useMemo(() => ({
@@ -203,9 +219,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
     // Apply filters
     filters.forEach(filter => {
       if (filter.value) {
-        filtered = filtered.filter(item => 
-          item[filter.key] === filter.value
-        );
+        filtered = filtered.filter(item => toRecord(item)[filter.key] === filter.value);
     }
   });
 
@@ -219,12 +233,12 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
       return;
   }
 
-    let sorted = [...filteredItems];
+    const sorted = [...filteredItems];
 
     sortOptions.forEach(sort => {
       sorted.sort((a, b) => {
-        const aVal = a[sort.key];
-        const bVal = b[sort.key];
+        const aVal = toComparableValue(toRecord(a)[sort.key]);
+        const bVal = toComparableValue(toRecord(b)[sort.key]);
         
         if (aVal < bVal) return sort.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sort.direction === 'asc' ? 1 : -1;
@@ -233,7 +247,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   });
 
     setSortedItems(sorted);
-}, [filteredItems, sortOptions]);
+}, [filteredItems, sortOptions, toComparableValue, toRecord]);
 
   // Handle item click
   const handleItemClick = useCallback((item: unknown, index: number) => {
@@ -249,7 +263,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   }
     
     if (onSelectionChange) {
-      const newSelected = new Set(selectedItems);
+      const newSelected = new Set<number>(selectedItems);
       if (selected) {
         newSelected.add(index);
     } else {
@@ -262,7 +276,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   // Handle scroll
   const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = event.currentTarget.scrollTop;
-    virtualizationOptions.onScroll?.(scrollTop);
+    virtualizationOptions.onScroll?.(scrollTop, 0);
 }, [virtualizationOptions]);
 
   // Handle optimization level change
@@ -301,6 +315,10 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
   const renderItem = useCallback((item: VirtualItem) => {
     const { data, index } = item;
     const isSelected = selectedItems.has(index);
+    const dataRecord = toRecord(data);
+    const name = toDisplayString(dataRecord.name, `Item ${index + 1}`);
+    const description = toDisplayString(dataRecord.description, `Description for item ${index + 1}`);
+    const type = toDisplayString(dataRecord.type, 'default');
     
     if (onItemRender) {
       return onItemRender(data, index);
@@ -309,9 +327,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
     return (
       <ListItem
         key={item.key}
-        button
-        onClick={() => handleItemClick(data, index)}
-        selected={isSelected}
+        disablePadding
         sx={{
           height: itemHeight,
           minHeight: itemHeight,
@@ -323,21 +339,27 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
           width: '100%'
     }}
       >
-        <Checkbox
-          checked={isSelected}
-          onChange={(e) => handleItemSelect(data, index, e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-        />
-        <Avatar sx={{ mr:  2 }}>
-          {data.name ? data.name.charAt(0).toUpperCase() : '?'}
-        </Avatar>
-        <ListItemText
-          primary={data.name || `Item ${index + 1}`}
-          secondary={data.description || `Description for item ${index + 1}`}
-        />
+        <ListItemButton
+          onClick={() => handleItemClick(data, index)}
+          selected={isSelected}
+          sx={{ height: '100%' }}
+        >
+          <Checkbox
+            checked={isSelected}
+            onChange={(e) => handleItemSelect(data, index, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+          />
+          <Avatar sx={{ mr:  2 }}>
+            {name.charAt(0).toUpperCase()}
+          </Avatar>
+          <ListItemText
+            primary={name}
+            secondary={description}
+          />
+        </ListItemButton>
         <ListItemSecondaryAction>
           <Chip
-            label={data.type || 'default'}
+            label={type}
             size="small"
             color="primary"
             variant="outlined"
@@ -345,7 +367,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
         </ListItemSecondaryAction>
       </ListItem>
     );
-}, [itemHeight, selectedItems, onItemRender, handleItemClick, handleItemSelect]);
+}, [itemHeight, selectedItems, onItemRender, handleItemClick, handleItemSelect, toDisplayString, toRecord]);
 
   return (
     <Box className={className} style={style}>
@@ -434,7 +456,7 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
                     value={searchQuery}
                     onChange={(e) => onSearchChange?.(e.target.value)}
                     label="Search"
-                    startAdornment={theming.getThemedIcon('search')}}
+                    startAdornment={theming.getThemedIcon('search')}
                   />
                 </FormControl>
               </Grid>
@@ -576,8 +598,5 @@ const VirtualizedList: React.FC<VirtualizedListProps> = memo(({
 VirtualizedList.displayName ='VirtualizedList';
 
 export default VirtualizedList;
-
-
-
 
 

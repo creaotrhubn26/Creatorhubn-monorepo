@@ -3,49 +3,42 @@
  * Browse and select quote templates for quick quote creation
  */
 
-import React, { useState } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
+import React, { useMemo, useState } from 'react';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '@/lib/queryClient';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Typography,
-  Chip,
+  Alert,
+  Badge,
   Box,
-  TextField,
-  MenuItem,
-  IconButton,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  Grid,
+  IconButton,
   List,
   ListItem,
   ListItemText,
-  Alert,
-  Tabs,
+  MenuItem,
   Tab,
-  Badge,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
+  Add as AddIcon,
+  Check as CheckIcon,
   Close as CloseIcon,
   Description as DescriptionIcon,
   Star as StarIcon,
-  ContentCopy as CopyIcon,
-  Add as AddIcon,
-  Check as CheckIcon,
-  AttachMoney as MoneyIcon,
-  Event as EventIcon,
   ViewModule as ViewModuleIcon,
 } from '@mui/icons-material';
 
@@ -77,53 +70,145 @@ interface QuoteTemplatesDialogProps {
   profession?: string;
 }
 
+const TABS = [
+  { label: 'Alle', key: 'all' },
+  { label: 'Populære', key: 'public' },
+  { label: 'Mine maler', key: 'mine' },
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function toStringValue(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => toStringValue(entry)).filter(Boolean) : [];
+}
+
+function toServiceArray(value: unknown): Array<{ name: string; price: string }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      return {
+        name: toStringValue(entry.name),
+        price: toStringValue(entry.price, '0'),
+      };
+    })
+    .filter((entry): entry is { name: string; price: string } => entry !== null && Boolean(entry.name));
+}
+
+function normalizeTemplate(value: unknown): QuoteTemplate | null {
+  if (!isRecord(value)) return null;
+
+  const template: QuoteTemplate = {
+    id: toStringValue(value.id),
+    name: toStringValue(value.name),
+    description: toStringValue(value.description),
+    profession: toStringValue(value.profession),
+    projectType: toStringValue(value.projectType),
+    category: toStringValue(value.category),
+    basePrice: toStringValue(value.basePrice, '0'),
+    services: toServiceArray(value.services),
+    additionalServices: toServiceArray(value.additionalServices),
+    includedItems: toStringArray(value.includedItems),
+    deliverables: toStringArray(value.deliverables),
+    validityDays: Number(value.validityDays) || 0,
+    notes: toStringValue(value.notes),
+    isPublic: Boolean(value.isPublic),
+    usageCount: Number(value.usageCount) || 0,
+    tags: toStringArray(value.tags),
+    createdBy: toStringValue(value.createdBy),
+    createdAt: toStringValue(value.createdAt),
+  };
+
+  if (!template.id || !template.name) {
+    return null;
+  }
+
+  return template;
+}
+
+function extractTemplates(payload: unknown): QuoteTemplate[] {
+  if (Array.isArray(payload)) {
+    return payload
+      .map(normalizeTemplate)
+      .filter((template): template is QuoteTemplate => template !== null);
+  }
+
+  if (!isRecord(payload)) return [];
+
+  if (Array.isArray(payload.templates)) {
+    return payload.templates
+      .map(normalizeTemplate)
+      .filter((template): template is QuoteTemplate => template !== null);
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data
+      .map(normalizeTemplate)
+      .filter((template): template is QuoteTemplate => template !== null);
+  }
+
+  return [];
+}
+
+function formatCurrency(amount: string): string {
+  const value = Number.parseFloat(amount);
+  if (!Number.isFinite(value)) return amount;
+  return new Intl.NumberFormat('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+  }).format(value);
+}
+
 export default function QuoteTemplatesDialog({
   open,
   onClose,
   onSelectTemplate,
   profession,
 }: QuoteTemplatesDialogProps) {
-  // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
-  
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const [selectedTab, setSelectedTab] = useState(0);
-  const [filterProfession, setFilterProfession] = useState(profession || 'all,');
+  const [filterProfession, setFilterProfession] = useState(profession || 'all');
   const [selectedTemplate, setSelectedTemplate] = useState<QuoteTemplate | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Fetch templates
-  const { data: templatesData, isLoading } = useQuery({
+  const templatesQuery = useQuery({
     queryKey: ['/api/quotes/templates', user?.id, filterProfession],
     queryFn: async () => {
       const url =
         filterProfession === 'all'
-          ? `/api/quotes/templates?userId=${user?.id}`
-          : `/api/quotes/templates?userId=${user?.id}&profession=${filterProfession}`;
+          ? `/api/quotes/templates?userId=${user?.id ?? ''}`
+          : `/api/quotes/templates?userId=${user?.id ?? ''}&profession=${filterProfession}`;
       return apiRequest(url);
     },
-    enabled: open && !!user?.id,
+    enabled: open && Boolean(user?.id),
   });
 
-  const templates = templatesData?.templates || [];
+  const templates = useMemo(() => extractTemplates(templatesQuery.data), [templatesQuery.data]);
 
-  // Filter templates by tab
-  const getFilteredTemplates = () => {
-    switch (selectedTab) {
-      case 0: // All
-        return templates;
-      case 1: // Public/Popular
-        return templates.filter((t: QuoteTemplate) => t.isPublic);
-      case 2: // My Templates
-        return templates.filter((t: QuoteTemplate) => t.createdBy === user?.id);
-      default: return templates;
+  const filteredTemplates = useMemo(() => {
+    if (selectedTab === 1) {
+      return templates.filter((template) => template.isPublic);
     }
-  };
+    if (selectedTab === 2) {
+      return templates.filter((template) => template.createdBy === user?.id);
+    }
+    return templates;
+  }, [selectedTab, templates, user?.id]);
 
-  const filteredTemplates = getFilteredTemplates();
+  const publicTemplateCount = useMemo(
+    () => templates.filter((template) => template.isPublic).length,
+    [templates],
+  );
 
   const handleSelectTemplate = (template: QuoteTemplate) => {
     onSelectTemplate(template);
@@ -135,17 +220,7 @@ export default function QuoteTemplatesDialog({
     setPreviewOpen(true);
   };
 
-  const formatCurrency = (amount: string) => {
-    return new Intl.NumberFormat('nb-NO', {
-      style: 'currency',
-      currency: 'NOK' }).format(parseFloat(amount);
-  };
-
-  const getProfessionLabel = (prof: string) => {
-    return getProfessionDisplayName(prof);
-  };
-
-  return ()
+  return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
         <DialogTitle>
@@ -167,58 +242,53 @@ export default function QuoteTemplatesDialog({
             </Alert>
           </Box>
 
-          {/* Filters */}
-          <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <TextField
               select
               label="Fagområde"
               value={filterProfession}
-              onChange={(e) => setFilterProfession(e.target.value)}
-              sx={{ minWidth: 200 }}
+              onChange={(event) => setFilterProfession(event.target.value)}
+              sx={{ minWidth: 220 }}
               size="small"
             >
               <MenuItem value="all">Alle fagområder</MenuItem>
               <MenuItem value="photographer">Fotograf</MenuItem>
               <MenuItem value="videographer">Videograf</MenuItem>
-              <MenuItem value="music_producer">Musikk produsent</MenuItem>
+              <MenuItem value="music_producer">Musikkprodusent</MenuItem>
             </TextField>
 
-            <Tabs value={selectedTab} onChange={(_, newValue) => setSelectedTab(newValue)}>
-              <Tab label="Alle" />
+            <Tabs value={selectedTab} onChange={(_, nextValue) => setSelectedTab(nextValue)}>
+              <Tab label={TABS[0].label} />
               <Tab
                 label={
-                  <Badge
-                    badgeContent={templates.filter((t: QuoteTemplate) => t.isPublic).length}
-                    color="primary"
-                  >
-                    Populære
+                  <Badge badgeContent={publicTemplateCount} color="primary">
+                    {TABS[1].label}
                   </Badge>
                 }
               />
-              <Tab label="Mine maler" />
+              <Tab label={TABS[2].label} />
             </Tabs>
           </Box>
 
-          {/* Templates Grid */}
-          {isLoading ? ()
+          {templatesQuery.isLoading ? (
             <Typography>Laster maler...</Typography>
-          ) : filteredTemplates.length === 0 ? ()
-            <Alert severity="info">
-              Ingen maler funnet. Opprett din første mal for å komme i gang!
-            </Alert>
-          ) : ()
+          ) : filteredTemplates.length === 0 ? (
+            <Alert severity="info">Ingen maler funnet. Opprett din første mal for å komme i gang.</Alert>
+          ) : (
             <Grid container spacing={2}>
-              {filteredTemplates.map((template: QuoteTemplate) => ()
+              {filteredTemplates.map((template) => (
                 <Grid item xs={12} md={6} key={template.id}>
                   <Card
                     sx={{
                       height: '100%',
                       display: 'flex',
                       flexDirection: 'column',
-                      transition: 'all 0.2s', '&:hover': {
+                      transition: 'all 0.2s',
+                      '&:hover': {
                         transform: 'translateY(-4px)',
                         boxShadow: 3,
-                      }}}
+                      },
+                    }}
                   >
                     <CardContent sx={{ flexGrow: 1 }}>
                       <Box
@@ -226,69 +296,68 @@ export default function QuoteTemplatesDialog({
                           display: 'flex',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
-                          mb: 1}}>
-                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                          mb: 1,
+                        }}
+                      >
+                        <Typography variant="h6" sx={{ fontWeight: 700 }}>
                           {template.name}
                         </Typography>
-                        {template.isPublic && ()
+                        {template.isPublic ? (
                           <Chip icon={<StarIcon />} label="Populær" size="small" color="warning" />
-                        )}
+                        ) : null}
                       </Box>
 
-                      <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                         {template.description}
                       </Typography>
 
                       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
                         <Chip
-                          label={getProfessionLabel(template.profession)}
+                          label={getProfessionDisplayName(template.profession)}
                           size="small"
                           variant="outlined"
                         />
                         <Chip label={template.projectType} size="small" variant="outlined" />
-                        {template.tags.slice(0, 2).map((tag) => ()
+                        {template.tags.slice(0, 2).map((tag) => (
                           <Chip key={tag} label={tag} size="small" variant="outlined" />
                         ))}
                       </Box>
 
                       <Divider sx={{ my: 2 }} />
 
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center' }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Box>
-                          <Typography variant="caption" color="textSecondary">
+                          <Typography variant="caption" color="text.secondary">
                             Startpris
                           </Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#FF6B35' }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700, color: '#FF6B35' }}>
                             {formatCurrency(template.basePrice)}
                           </Typography>
                         </Box>
                         <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="caption" color="textSecondary">
+                          <Typography variant="caption" color="text.secondary">
                             Brukt
                           </Typography>
-                          <Typography variant="body2">{template.usageCount || 0} ganger</Typography>
+                          <Typography variant="body2">{template.usageCount} ganger</Typography>
                         </Box>
                       </Box>
 
                       <Box sx={{ mt: 2 }}>
-                        <Typography variant="caption" color="textSecondary">
-                          Inkluderer: </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Inkluderer:
+                        </Typography>
                         <List dense sx={{ py: 0 }}>
-                          {template.includedItems.slice(0, 3).map((item, index) => ()
-                            <ListItem key={index} sx={{ py: 0.5, px: 0 }}>
+                          {template.includedItems.slice(0, 3).map((item, index) => (
+                            <ListItem key={`${template.id}-included-${index}`} sx={{ py: 0.5, px: 0 }}>
                               <CheckIcon fontSize="small" sx={{ mr: 1, color: 'success.main' }} />
                               <Typography variant="caption">{item}</Typography>
                             </ListItem>
                           ))}
-                          {template.includedItems.length > 3 && ()
-                            <Typography variant="caption" color="textSecondary" sx={{ ml: 4 }}>
+                          {template.includedItems.length > 3 ? (
+                            <Typography variant="caption" color="text.secondary" sx={{ ml: 4 }}>
                               +{template.includedItems.length - 3} mer...
                             </Typography>
-                          )}
+                          ) : null}
                         </List>
                       </Box>
                     </CardContent>
@@ -307,8 +376,11 @@ export default function QuoteTemplatesDialog({
                         startIcon={<AddIcon />}
                         onClick={() => handleSelectTemplate(template)}
                         sx={{
-                          bgcolor: '#FF6B35', '&:hover': {
-                            bgcolor: '#E55A25' }}}
+                          bgcolor: '#FF6B35',
+                          '&:hover': {
+                            bgcolor: '#E55A25',
+                          },
+                        }}
                       >
                         Bruk mal
                       </Button>
@@ -327,7 +399,7 @@ export default function QuoteTemplatesDialog({
             startIcon={<AddIcon />}
             onClick={() => {
               onClose();
-              navigate('/quotes/templates/create');
+              window.location.assign('/quotes/templates/create');
             }}
           >
             Opprett ny mal
@@ -335,7 +407,6 @@ export default function QuoteTemplatesDialog({
         </DialogActions>
       </Dialog>
 
-      {/* Template Preview Dialog */}
       <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -347,7 +418,7 @@ export default function QuoteTemplatesDialog({
         </DialogTitle>
 
         <DialogContent>
-          {selectedTemplate && ()
+          {selectedTemplate ? (
             <Box>
               <Typography variant="body1" sx={{ mb: 2 }}>
                 {selectedTemplate.description}
@@ -359,33 +430,27 @@ export default function QuoteTemplatesDialog({
                 Tjenester
               </Typography>
               <List>
-                {selectedTemplate.services.map((service, index) => ()
-                  <ListItem key={index}>
-                    <ListItemText
-                      primary={service.name}
-                      secondary={formatCurrency(service.price)}
-                    />
+                {selectedTemplate.services.map((service, index) => (
+                  <ListItem key={`${selectedTemplate.id}-service-${index}`}>
+                    <ListItemText primary={service.name} secondary={formatCurrency(service.price)} />
                   </ListItem>
                 ))}
               </List>
 
-              {selectedTemplate.additionalServices.length > 0 && ()
+              {selectedTemplate.additionalServices.length > 0 ? (
                 <>
                   <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
                     Tilleggsvalg
                   </Typography>
                   <List>
-                    {selectedTemplate.additionalServices.map((service, index) => ()
-                      <ListItem key={index}>
-                        <ListItemText
-                          primary={service.name}
-                          secondary={formatCurrency(service.price)}
-                        />
+                    {selectedTemplate.additionalServices.map((service, index) => (
+                      <ListItem key={`${selectedTemplate.id}-extra-${index}`}>
+                        <ListItemText primary={service.name} secondary={formatCurrency(service.price)} />
                       </ListItem>
                     ))}
                   </List>
                 </>
-              )}
+              ) : null}
 
               <Divider sx={{ my: 2 }} />
 
@@ -393,27 +458,27 @@ export default function QuoteTemplatesDialog({
                 Inkludert i pakken
               </Typography>
               <List>
-                {selectedTemplate.includedItems.map((item, index) => ()
-                  <ListItem key={index}>
+                {selectedTemplate.includedItems.map((item, index) => (
+                  <ListItem key={`${selectedTemplate.id}-included-preview-${index}`}>
                     <CheckIcon sx={{ mr: 1, color: 'success.main' }} />
                     <ListItemText primary={item} />
                   </ListItem>
                 ))}
               </List>
 
-              {selectedTemplate.notes && ()
+              {selectedTemplate.notes ? (
                 <>
                   <Divider sx={{ my: 2 }} />
                   <Typography variant="h6" gutterBottom>
                     Notater
                   </Typography>
-                  <Typography variant="body2" color="textSecondary">
+                  <Typography variant="body2" color="text.secondary">
                     {selectedTemplate.notes}
                   </Typography>
                 </>
-              )}
+              ) : null}
             </Box>
-          )}
+          ) : null}
         </DialogContent>
 
         <DialogActions>
@@ -425,11 +490,14 @@ export default function QuoteTemplatesDialog({
               if (selectedTemplate) {
                 handleSelectTemplate(selectedTemplate);
                 setPreviewOpen(false);
-              }}
-            }
+              }
+            }}
             sx={{
-              bgcolor: '#FF6B35','&:hover': {
-                bgcolor: '#E55A25' }}}
+              bgcolor: '#FF6B35',
+              '&:hover': {
+                bgcolor: '#E55A25',
+              },
+            }}
           >
             Bruk denne malen
           </Button>

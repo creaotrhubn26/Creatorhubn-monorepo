@@ -524,7 +524,7 @@ class ACESService {
     }
 
     // Step 1: IDT - Convert input to ACES2065-1
-    result = this.convertColorSpace(result, config.inputColorSpace 'ACES2065-1');
+    result = this.convertColorSpace(result, config.inputColorSpace, 'ACES2065-1');
 
     // Step 2: LMT - Apply look modification (optional)
     if (config.enableLMT && config.lmtPreset) {

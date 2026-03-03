@@ -134,7 +134,7 @@ export default function FikenIntegrationRequestsPanel() {
     mutationFn: async ({ id, status, notes }: { id: string; status: string; notes: string }) => {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/fiken-requests/${id}/status`, {
-        headers: { ...headers, , 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' },
         method: 'PUT',
         body: JSON.stringify({ status, notes }),
       });
@@ -221,7 +221,7 @@ export default function FikenIntegrationRequestsPanel() {
 
     // Header background with CreatorHub branding
     doc.setFillColor(creatorHubOrange[0], creatorHubOrange[1], creatorHubOrange[2]);
-    doc.rect(0, 0, pageWidth, 40'F');
+    doc.rect(0, 0, pageWidth, 4, 'F');
 
     // CreatorHub text logo in header
     doc.setTextColor(255, 255, 255);
@@ -246,7 +246,7 @@ export default function FikenIntegrationRequestsPanel() {
 
     // Fiken logo area (small box with Fiken branding)
     doc.setFillColor(82, 57, 186); // Fiken purple
-    doc.roundedRect(14, 45, 50, 18, 2, 2'F');
+    doc.roundedRect(14, 45, 50, 18, 2, 2, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(12);
     doc.setFont('helvetica','bold');
@@ -256,7 +256,7 @@ export default function FikenIntegrationRequestsPanel() {
 
     // Stats summary box
     doc.setFillColor(248, 249, 250);
-    doc.roundedRect(70, 45, pageWidth - 84, 18, 2, 2'F');
+    doc.roundedRect(70, 45, pageWidth - 84, 18, 2, 2, 'F');
     doc.setTextColor(60, 60, 60);
     doc.setFontSize(9);
     doc.setFont('helvetica','normal');
@@ -430,7 +430,7 @@ export default function FikenIntegrationRequestsPanel() {
       </Box>
 
       {/* Tabs */}
-      <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)}, sx={{ mb: 2 }}>
+      <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} sx={{ mb: 2 }}>
         <Tab label={`Alle (${stats.total})`} />
         <Tab label={`Venter (${stats.pending})`} />
         <Tab label={`Kontaktet (${stats.contacted})`} />

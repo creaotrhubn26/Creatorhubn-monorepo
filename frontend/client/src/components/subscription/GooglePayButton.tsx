@@ -255,8 +255,10 @@ export default function GooglePayButton({
       }
     } catch (error: unknown) {
       console.error('Payment failed:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Kunne ikke fullfore betalingen';
 
-      if (error.message?.includes('cancelled') || error.message?.includes('canceled') {
+      if (errorMessage.includes('cancelled') || errorMessage.includes('canceled')) {
         toast({
           title: 'Betaling avbrutt',
           description: 'Du avbrøt betalingen',
@@ -266,7 +268,7 @@ export default function GooglePayButton({
         onPaymentError?.(error);
         toast({
           title: 'Betalingsfeil',
-          description: error.message || 'Kunne ikke fullføre betalingen',
+          description: errorMessage,
           variant: 'destructive',
         });
       }

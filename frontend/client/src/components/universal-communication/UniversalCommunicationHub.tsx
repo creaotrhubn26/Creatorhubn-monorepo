@@ -167,7 +167,7 @@ export default function UniversalCommunicationHub({
   const createChannelMutation = useMutation({
     mutationFn: async (channelData: any) =>
       apiRequest('/api/communication/channels', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(channelData),
     }),
     onSuccess: (result) => {
@@ -186,7 +186,7 @@ export default function UniversalCommunicationHub({
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData: any) =>
       apiRequest('/api/communication/messages', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(messageData),
     }),
     onSuccess: () => {
@@ -265,7 +265,7 @@ export default function UniversalCommunicationHub({
 
     sendMessageMutation.mutate({
       channelId: selectedChannel,
-      senderId: userd,
+      senderId: userId,
       messageType: 'text',
       content: messageInput.trim(),
       isPriority: false,
@@ -292,13 +292,13 @@ export default function UniversalCommunicationHub({
 
   const getChannelColor = (type: string) => {
     const typeData = communicationTypes.find((t) => t.value === type);
-    return typeData ? typeData.color : '#666',;
-};
+    return typeData ? typeData.color : '#666';
+  };
 
   const filteredChannels = channels.filter(
     (channel: CommunicationChannel) =>
       channel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      channel.description?.toLowerCase().includes(searchQuery.toLowerCase(, ), ),
+      channel.description?.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -307,16 +307,18 @@ export default function UniversalCommunicationHub({
       <Paper
         elevation={2}
         sx={{
-          p:  2,
-          borderRadius:  0,
+          p: 2,
+          borderRadius: 0,
           background: 'linear-gradient(135deg, #ff6f00 0%, #ff8f00 100%)',
-          color: 'white' }}
-       sx={theming.getThemedCardSx()}>
+          color: 'white',
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'between' }}
+            justifyContent: 'space-between' }}
         >
           <Box>
             <Typography variant="h6" sx={{  fontWeight: 600}}>
@@ -389,7 +391,8 @@ export default function UniversalCommunicationHub({
                   <InputAdornment position="start">
                     <SearchIcon color="action" />
                   </InputAdornment>
-               , )}}
+                ),
+              }}
             />
           </Box>
 
@@ -413,7 +416,7 @@ export default function UniversalCommunicationHub({
 
                   return (
                     <ListItemButton
-                      key={channel.d}
+                      key={channel.id}
                       selected={isSelected}
                       onClick={() => setSelectedChannel(channel.id)}
                       sx={{
@@ -475,9 +478,12 @@ export default function UniversalCommunicationHub({
               position: 'absolute',
               bottom:  80,
               right:  20,
-              bgcolor: currentType.color'&:hover': {
+              bgcolor: currentType.color,
+              '&:hover': {
                 bgcolor: currentType.color,
-                filter: 'brightness(0.9, )' }}}
+                filter: 'brightness(0.9)',
+              },
+            }}
           >
             <AddIcon />
           </Fab>
@@ -491,11 +497,13 @@ export default function UniversalCommunicationHub({
               <Paper
                 elevation={1}
                 sx={{
-                  p:  2,
-                  borderRadius:  0,
-                  borderBottom:  1,
-                  borderColor: 'divider' }}
-               sx={theming.getThemedCardSx()}>
+                  p: 2,
+                  borderRadius: 0,
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  ...theming.getThemedCardSx(),
+                }}
+              >
                 <Box
                   sx={{
                     display: 'flex',
@@ -574,11 +582,13 @@ export default function UniversalCommunicationHub({
               <Paper
                 elevation={2}
                 sx={{
-                  p:  2,
-                  borderRadius:  0,
-                  borderTop:  1,
-                  borderColor: 'divider' }}
-               sx={theming.getThemedCardSx()}>
+                  p: 2,
+                  borderRadius: 0,
+                  borderTop: 1,
+                  borderColor: 'divider',
+                  ...theming.getThemedCardSx(),
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
                   <TextField
                     fullWidth
@@ -595,7 +605,8 @@ export default function UniversalCommunicationHub({
                             <AttachIcon />
                           </IconButton>
                         </InputAdornment>
-                     , )}}
+                      ),
+                    }}
                   />
                   <IconButton size="small">
                     <EmojiIcon />

@@ -71,12 +71,12 @@ interface TimeSeriesData {
 }
 
 export default function UnifiedAnalyticsDashboard() {
-  const [timeRange, setTimeRange] = useState('30d, ');
-  const [selectedTab, setSelectedTab] = useState('overview,');
+  const [timeRange, setTimeRange] = useState('30d');
+  const [selectedTab, setSelectedTab] = useState('overview');
 
   // Fetch analytics data
   const { data: socialAnalytics, isLoading: socialLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.SOCIAL_POSTS'analytics', timeRange],
+    queryKey: [...QUERY_KEYS.SOCIAL_POSTS, 'analytics', timeRange],
     queryFn: async () => {
       const res = await fetch(`/api/social-media/analytics?range=${timeRange}`);
       if (!res.ok) throw new Error('Failed to fetch social analytics');
@@ -85,7 +85,7 @@ export default function UnifiedAnalyticsDashboard() {
   });
 
   const { data: emailAnalytics, isLoading: emailLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.EMAIL_TEMPLATES'analytics', timeRange],
+    queryKey: [...QUERY_KEYS.EMAIL_TEMPLATES, 'analytics', timeRange],
     queryFn: async () => {
       const res = await fetch(`/api/email-campaigns/analytics?range=${timeRange}`);
       if (!res.ok) throw new Error('Failed to fetch email analytics');
@@ -94,7 +94,7 @@ export default function UnifiedAnalyticsDashboard() {
   });
 
   const { data: workflowAnalytics, isLoading: workflowLoading } = useQuery({
-    queryKey: [...QUERY_KEYS.WORKFLOWS'analytics', timeRange],
+    queryKey: [...QUERY_KEYS.WORKFLOWS, 'analytics', timeRange],
     queryFn: async () => {
       const res = await fetch(`/api/marketing-automation/analytics?range=${timeRange}`);
       if (!res.ok) throw new Error('Failed to fetch workflow analytics');

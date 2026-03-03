@@ -4,7 +4,7 @@
  */
 
 import { useTheming } from '../../../utils/theming-helper';
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import React, { memo, useCallback, useMemo, useState, useEffect } from 'react';
 import {
   Box,
   Paper,
@@ -107,7 +107,7 @@ import {
   Warning,
 } from '@mui/icons-material';
 import { useCollaboration, UseCollaborationOptions } from '../../../hooks/useCollaboration';
-import { CollaborationConfig, Collaborator, ConflictResolution } from '../../../utils/collaborationManager';
+import { CollaborationConfig, CollaborationEvent, Collaborator, ConflictResolution } from '../../../utils/collaborationManager';
 
 interface CollaborationDashboardProps {
   showDetails?: boolean;
@@ -186,10 +186,10 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
     onReconnected: () => {
       setPage(0);
 },
-    onEventSent: (_event: Record<string, unknown>) => {
+    onEventSent: (_event: CollaborationEvent) => {
       setPage(0);
 },
-    onEventReceived: (_event: Record<string, unknown>) => {
+    onEventReceived: (_event: CollaborationEvent) => {
       setPage(0);
 },
     onCursorUpdated: (_data: { userId: string; cursor: Record<string, unknown> }) => {
@@ -349,11 +349,11 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
 
   // Handle conflict resolution
   const handleConflictResolution = useCallback(async (conflictId: string, resolution: 'client' | 'server' | 'merge' | 'manual') => {
-    await resolveConflict(conflictd, resolution);
+    await resolveConflict(conflictId, resolution);
 }, [resolveConflict]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'default' | 'error' | 'warning' | 'success' => {
     if (hasError) return 'error';
     if (isReconnecting) return 'warning';
     if (isConnected) return 'success';
@@ -361,12 +361,19 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
 }, [hasError, isReconnecting, isConnected]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) return <Error fontSize="small" />;
     if (isReconnecting) return <CircularProgress size={16} />;
-    if (isConnected) return theming.getThemedIcon('people');
-    return theming.getThemedIcon('person');
+    if (isConnected) return <People fontSize="small" />;
+    return <Person fontSize="small" />;
 }, [hasError, isReconnecting, isConnected]);
+
+  const getStatusTextColor = useCallback((): 'error.main' | 'warning.main' | 'success.main' | 'text.secondary' => {
+    if (hasError) return 'error.main';
+    if (isReconnecting) return 'warning.main';
+    if (isConnected) return 'success.main';
+    return 'text.secondary';
+  }, [hasError, isReconnecting, isConnected]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -419,7 +426,7 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
-          <Typography variant="body2" color={getStatusColor() + '.main'}>
+          <Typography variant="body2" color={getStatusTextColor()}>
             {getStatusText()}
           </Typography>
         </Box>
@@ -506,7 +513,10 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
               <Typography variant="subtitle2" gutterBottom>
                 Conflicts
               </Typography>
-              <Typography variant="h4" color={conflictCount  sx={{ color: theming.colors.primary }}> 0 ? 'error' : 'text.secondary'}>
+              <Typography
+                variant="h4"
+                sx={{ color: conflictCount > 0 ? 'error.main' : 'text.secondary' }}
+              >
                 {conflictCount}
               </Typography>
             </CardContent>
@@ -620,7 +630,10 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
                     <Typography variant="subtitle2" gutterBottom>
                       Conflicts
                     </Typography>
-                    <Typography variant="h4" color={conflictCount  sx={{ color: theming.colors.primary }}> 0 ? 'error' : 'text.secondary'}>
+                    <Typography
+                      variant="h4"
+                      sx={{ color: conflictCount > 0 ? 'error.main' : 'text.secondary' }}
+                    >
                       {conflictCount}
                     </Typography>
                   </CardContent>
@@ -705,13 +718,13 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
                       />
                       <ListItemSecondaryAction>
                         <ButtonGroup size="small">
-                          <Button onClick={() => handleConflictResolution(conflict.id'client')}>
+                          <Button onClick={() => handleConflictResolution(conflict.id, 'client')}>
                             Client
                           </Button>
-                          <Button onClick={() => handleConflictResolution(conflict.id'server')}>
+                          <Button onClick={() => handleConflictResolution(conflict.id, 'server')}>
                             Server
                           </Button>
-                          <Button onClick={() => handleConflictResolution(conflict.id'merge')}>
+                          <Button onClick={() => handleConflictResolution(conflict.id, 'merge')}>
                             Merge
                           </Button>
                         </ButtonGroup>
@@ -877,8 +890,5 @@ const CollaborationDashboard: React.FC<CollaborationDashboardProps> = memo(({
 CollaborationDashboard.displayName ='CollaborationDashboard';
 
 export default CollaborationDashboard;
-
-
-
 
 

@@ -93,7 +93,7 @@ export default function ScrollStoryWithToasts({
 
       // Remove from queue after showing
       setTimeout(() => {
-        setToastQueue((prev) => prev.slice(1);
+        setToastQueue((prev) => prev.slice(1));
         setCurrentToast((prev) => (prev ? { ...prev, open: false } : null));
       }, nextToast.duration);
     }
@@ -102,7 +102,7 @@ export default function ScrollStoryWithToasts({
   // Show initial load toast
   useEffect(() => {
     if (enableToasts) {
-      showToast(`📖 ${story.name} loaded`'success', 2000);
+      showToast(`📖 ${story.name} loaded`, 'success', 2000);
     }
   }, [story.id, story.name, showToast, enableToasts]);
 
@@ -192,10 +192,12 @@ export default function ScrollStoryWithToasts({
             sx={{
               width: '100%',
               minWidth: 300,
-              boxShadow: 3'& .MuiAlert-message': {
+              boxShadow: 3,
+              '& .MuiAlert-message': {
                 fontSize: '0.95rem',
                 fontWeight: 500,
-              }}}
+              },
+            }}
           >
             {currentToast.message}
           </Alert>

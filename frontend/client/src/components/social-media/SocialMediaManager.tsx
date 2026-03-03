@@ -1,1022 +1,643 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import SOMESettings from './SOMESettings';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Switch,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControlLabel,
   Grid,
-  Chip,
-  Alert,
-  LinearProgress,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Tabs,
-  Tab,
+  IconButton,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
   Paper,
-  Divider,
-  CircularProgress,
-  Tooltip,
   Snackbar,
-  Checkbox,
-  FormGroup,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
   Instagram as InstagramIcon,
   LinkedIn as LinkedInIcon,
   Facebook as FacebookIcon,
-  Share as ShareIcon,
-  Analytics as AnalyticsIcon,
-  Schedule as ScheduleIcon,
-  TrendingUp as TrendingUpIcon,
-  Settings as SettingsIcon,
-  Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Visibility as VisibilityIcon,
-  ThumbUp as ThumbUpIcon,
-  Comment as CommentIcon,
   VideoLibrary as TikTokIcon,
-  Send as SendIcon,
-  PlayArrow as PlayArrowIcon,
-  Pause as PauseIcon,
-  CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  Create as CreateIcon,
-  Image as ImageIcon,
-  VpnKey as VpnKeyIcon,
+  OpenInNew as OpenInNewIcon,
+  Share as ShareIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
+import SOMESettings from './SOMESettings';
+
+type SocialPlatform = 'instagram' | 'linkedin' | 'facebook' | 'tiktok';
+
+type PostStatus = 'draft' | 'scheduled' | 'posted' | 'failed';
 
 interface SocialMediaAccount {
   id: string;
-  platform: 'instagram' | 'linkedin' | 'facebook' | 'tiktok';
+  platform: SocialPlatform;
   username: string;
   followers: number;
   isConnected: boolean;
-  accessToken?: string;
-  lastSync: string;
   autoPost: boolean;
-  postingSchedule: {
-    enabled: boolean;
-    days: string[];
-    times: string[];
-  };
-}
+  lastSync?: string;
 }
 
 interface SocialMediaPost {
   id: string;
-  platform: string;
+  platform: SocialPlatform;
   content: string;
-  mediaUrls: string[];
+  status: PostStatus;
   scheduledTime?: string;
-  status: 'draft' | 'scheduled' | 'posted' | 'failed';
+  postedAt?: string;
   engagement: {
     likes: number;
     comments: number;
     shares: number;
     views: number;
+  };
+}
+
+interface PortfolioItem {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+const PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+  facebook: 'Facebook',
+  tiktok: 'TikTok',
 };
-  postedAt?: string;
+
+function platformIcon(platform: SocialPlatform): React.ReactNode {
+  if (platform === 'instagram') return <InstagramIcon />;
+  if (platform === 'linkedin') return <LinkedInIcon />;
+  if (platform === 'facebook') return <FacebookIcon />;
+  return <TikTokIcon />;
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
+function normalizeAccounts(payload: unknown): SocialMediaAccount[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((entry, index) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null;
+      }
+
+      const raw = entry as Partial<SocialMediaAccount>;
+      const platform: SocialPlatform =
+        raw.platform === 'instagram' || raw.platform === 'linkedin' || raw.platform === 'facebook' || raw.platform === 'tiktok'
+          ? raw.platform
+          : 'instagram';
+
+      return {
+        id: typeof raw.id === 'string' ? raw.id : `account-${index}`,
+        platform,
+        username: typeof raw.username === 'string' ? raw.username : `@${platform}`,
+        followers: typeof raw.followers === 'number' ? raw.followers : 0,
+        isConnected: raw.isConnected === true,
+        autoPost: raw.autoPost === true,
+        lastSync: raw.lastSync,
+      };
+    })
+    .filter((entry): entry is SocialMediaAccount => entry !== null);
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`social-tabpanel-${index}`}
-      aria-labelledby={`social-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
-    </div>
-  );
+function normalizePosts(payload: unknown): SocialMediaPost[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((entry, index) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null;
+      }
+
+      const raw = entry as Partial<SocialMediaPost>;
+      const platform: SocialPlatform =
+        raw.platform === 'instagram' || raw.platform === 'linkedin' || raw.platform === 'facebook' || raw.platform === 'tiktok'
+          ? raw.platform
+          : 'instagram';
+      const status: PostStatus =
+        raw.status === 'draft' || raw.status === 'scheduled' || raw.status === 'posted' || raw.status === 'failed'
+          ? raw.status
+          : 'draft';
+
+      return {
+        id: typeof raw.id === 'string' ? raw.id : `post-${index}`,
+        platform,
+        content: typeof raw.content === 'string' ? raw.content : '',
+        status,
+        scheduledTime: raw.scheduledTime,
+        postedAt: raw.postedAt,
+        engagement: {
+          likes: raw.engagement?.likes ?? 0,
+          comments: raw.engagement?.comments ?? 0,
+          shares: raw.engagement?.shares ?? 0,
+          views: raw.engagement?.views ?? 0,
+        },
+      };
+    })
+    .filter((entry): entry is SocialMediaPost => entry !== null);
+}
+
+function normalizePortfolio(payload: unknown): PortfolioItem[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((entry, index) => {
+      if (typeof entry !== 'object' || entry === null) {
+        return null;
+      }
+      const raw = entry as Partial<PortfolioItem>;
+      return {
+        id: typeof raw.id === 'string' ? raw.id : `portfolio-${index}`,
+        title: typeof raw.title === 'string' ? raw.title : `Portfolio ${index + 1}`,
+        description: raw.description,
+      };
+    })
+    .filter((entry): entry is PortfolioItem => entry !== null);
 }
 
 export default function SocialMediaManager() {
-  const [activeTab, setActiveTab] = useState(0);
-  const [shareDialog, setShareDialog] = useState(false);
-  const [createPostDialog, setCreatePostDialog] = useState(false);
-  const [postingProgress, setPostingProgress] = useState(false);
-  const [postStatus, setPostStatus] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-}>({
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  const [tabIndex, setTabIndex] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
     open: false,
     message: '',
     severity: 'info',
-});
-  const [selectedPortfolioItem, setSelectedPortfolioItem] = useState<any>(null);
+  });
+
   const [postContent, setPostContent] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('');
-  const [newPostForm, setNewPostForm] = useState({
-    content: '',
-    platforms: [] as string[],
-    mediaUrls: [] as string[],
-    scheduledTime: '',
-    postNow: true,
-});
+  const [postNow, setPostNow] = useState(true);
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>([]);
+  const [selectedPortfolio, setSelectedPortfolio] = useState<PortfolioItem | null>(null);
 
-  const { user } = useAuth();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const { getCurrentUserProfession, getProfessionDisplayName } = useDynamicProfessions();
-  const queryClient = useQueryClient();
+  const accountQuery = useQuery({
+    queryKey: ['/api/social-media/accounts', user?.id ?? 'anonymous'],
+    queryFn: async () => {
+      try {
+        const result = await apiRequest(`/api/social-media/accounts/${encodeURIComponent(user?.id ?? 'guest')}`);
+        return normalizeAccounts(result);
+      } catch {
+        return [];
+      }
+    },
+  });
 
-  // Fetch social media accounts
-  const { data: accounts = [], isLoading: accountsLoading } = useQuery({
-    queryKey: ['/api/social-media/accounts', user?.id],
-    queryFn: () => apiRequest(`/api/social-media/accounts/${user?.d}`),
-    enabled: !!user?.d,
-});
+  const postQuery = useQuery({
+    queryKey: ['/api/social-media/posts', user?.id ?? 'anonymous'],
+    queryFn: async () => {
+      try {
+        const result = await apiRequest(`/api/social-media/posts/${encodeURIComponent(user?.id ?? 'guest')}`);
+        return normalizePosts(result);
+      } catch {
+        return [];
+      }
+    },
+  });
 
-  // Fetch social media posts
-  const { data: posts = [], isLoading: postsLoading } = useQuery({
-    queryKey: ['/api/social-media/posts', user?.id],
-    queryFn: () => apiRequest(`/api/social-media/posts/${user?.d}`),
-    enabled: !!user?.d,
-});
+  const portfolioQuery = useQuery({
+    queryKey: ['/api/portfolio', user?.id ?? 'anonymous'],
+    queryFn: async () => {
+      try {
+        const result = await apiRequest(`/api/portfolio/${encodeURIComponent(user?.id ?? 'guest')}`);
+        return normalizePortfolio(result);
+      } catch {
+        return [];
+      }
+    },
+  });
 
-  // Fetch portfolio items for sharing
-  const { data: portfolioItems = [, ],} = useQuery({
-    queryKey: ['/api/portfolio', user?.id],
-    queryFn: () => apiRequest(`/api/portfolio/${user?.d}`),
-    enabled: !!user?.d,
-});
+  const connectMutation = useMutation({
+    mutationFn: async (platform: SocialPlatform) => {
+      window.open(
+        `/api/social-media/connect/${platform}?userId=${encodeURIComponent(user?.id ?? 'guest')}`,
+        '_blank',
+        'noopener,noreferrer',
+      );
+      return platform;
+    },
+    onSuccess: (platform) => {
+      setSnackbar({ open: true, message: `${PLATFORM_LABELS[platform]} OAuth startet.`, severity: 'info' });
+    },
+  });
 
-  // Connect social media account
-  const connectAccount = useMutation({
-    mutationFn: async (platform: string) => {
-      // Redirect to OAuth flow
-      window.location.href = `/api/social-media/connect/${platform}?userId=${user?.id}`;
-  },
-});
+  const createPostMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedPlatforms.length === 0) {
+        throw new Error('Velg minst en plattform.');
+      }
 
-  // Share content mutation
-  const shareContent = useMutation({
-    mutationFn: async (data: any) =>
-      apiRequest('/api/social-media/share', {
-        method: 'POS',
-        body: JSON.stringify(data),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', ],});
-      setShareDialog(false);
-      setPostContent('');
-      setSelectedPlatforms([]);
-  },
-});
-
-  // Create and post social media content
-  const createPost = useMutation({
-    mutationFn: async (data: any) => {
-      setPostingProgress(true);
-      setPostStatus({
-        open: true,
-        message: 'Oppretter post...',
-        severity: 'info',
-    });
+      const payload = {
+        userId: user?.id,
+        content: postContent,
+        platforms: selectedPlatforms,
+        scheduledTime: postNow ? undefined : scheduledTime,
+        postNow,
+      };
 
       return apiRequest('/api/social-media/posts', {
-        method: 'POS',
-        body: JSON.stringify({ ...data, userId: user?.id }),
-    });
-  },
-    onSuccess: (data) => {
-      setPostingProgress(false);
-      setPostStatus({
+        method: 'POST',
+        body: payload,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', user?.id ?? 'anonymous'] });
+      setCreateDialogOpen(false);
+      setPostContent('');
+      setSelectedPlatforms([]);
+      setScheduledTime('');
+      setPostNow(true);
+      setSnackbar({ open: true, message: 'Post lagret og sendt til publiseringsflyt.', severity: 'success' });
+    },
+    onError: (error: unknown) => {
+      setSnackbar({
         open: true,
-        message: data.postNow
-          ? `Post delt på ${data.platforms?.length || 0} plattformer!`
-          : 'Post planlagt for senere!',
-        severity: 'success',
-    });
-
-      // Dispatch notification event for real-time updates
-      if (data.postNow && data.platforms) {
-        window.dispatchEvent(
-          new CustomEvent('socialMediaPostPublished', {
-            detail: {
-              platforms: data.platforms,
-              content: newPostForm.content,
-              postId: data.posts?.[0]?.d,
-          },
-        }),
-        );
-    }
-
-      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', ],});
-      setCreatePostDialog(false);
-      setNewPostForm({
-        content: '',
-        platforms:  [],
-        mediaUrls:  [],
-        scheduledTime: '',
-        postNow: true,
-    });
-  },
-    onError: (error) => {
-      setPostingProgress(false);
-      setPostStatus({
-        open: true,
-        message: 'Feil ved oppretting av post. Prøv igjen.',
+        message: error instanceof Error ? error.message : 'Kunne ikke opprette post.',
         severity: 'error',
-    });
-      console.error('Create post error: ', error);
-  },
-});
+      });
+    },
+  });
 
-  // Delete post mutation
-  const deletePost = useMutation({
-    mutationFn: async (postId: string) =>
-      apiRequest(`/api/social-media/posts/${postd}`, {
-        method: 'DELET',
-    }),
+  const shareMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPortfolio) {
+        throw new Error('Velg et portfolio-objekt.');
+      }
+      if (selectedPlatforms.length === 0) {
+        throw new Error('Velg minst en plattform for deling.');
+      }
+
+      return apiRequest('/api/social-media/share', {
+        method: 'POST',
+        body: {
+          userId: user?.id,
+          portfolioId: selectedPortfolio.id,
+          content: postContent,
+          platforms: selectedPlatforms,
+        },
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', ],});
-      setPostStatus({
+      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', user?.id ?? 'anonymous'] });
+      setShareDialogOpen(false);
+      setSelectedPortfolio(null);
+      setPostContent('');
+      setSelectedPlatforms([]);
+      setSnackbar({ open: true, message: 'Portfolio innhold delt.', severity: 'success' });
+    },
+    onError: (error: unknown) => {
+      setSnackbar({
         open: true,
-        message: 'Post slettet, !',
-        severity: 'success',
-    });
-  },
-});
+        message: error instanceof Error ? error.message : 'Deling feilet.',
+        severity: 'error',
+      });
+    },
+  });
 
-  // Update account settings
-  const updateAccountSettings = useMutation({
-    mutationFn: async ({ accountd, settings }: { accountId: string; settings: any }) =>
-      apiRequest(`/api/social-media/accounts/${accountId}`, {
-        method: 'PATC',
-        body: JSON.stringify(settings),
-    }),
+  const deleteMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      await apiRequest(`/api/social-media/posts/${encodeURIComponent(postId)}`, {
+        method: 'DELETE',
+      });
+      return postId;
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/social-media/accounts', ],
+      queryClient.invalidateQueries({ queryKey: ['/api/social-media/posts', user?.id ?? 'anonymous'] });
+      setSnackbar({ open: true, message: 'Post slettet.', severity: 'success' });
+    },
+    onError: () => {
+      setSnackbar({ open: true, message: 'Kunne ikke slette post.', severity: 'error' });
+    },
+  });
+
+  const toggleAutoPostMutation = useMutation({
+    mutationFn: async ({ accountId, autoPost }: { accountId: string; autoPost: boolean }) => {
+      await apiRequest(`/api/social-media/accounts/${encodeURIComponent(accountId)}/settings`, {
+        method: 'PATCH',
+        body: { autoPost },
+      });
+      return { accountId, autoPost };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/social-media/accounts', user?.id ?? 'anonymous'] });
+    },
+  });
+
+  const accounts = accountQuery.data ?? [];
+  const posts = postQuery.data ?? [];
+  const portfolioItems = portfolioQuery.data ?? [];
+
+  const connectedAccounts = useMemo(() => accounts.filter((account) => account.isConnected), [accounts]);
+
+  const totalEngagement = useMemo(
+    () =>
+      posts.reduce(
+        (sum, post) => sum + post.engagement.likes + post.engagement.comments + post.engagement.shares,
+        0,
+      ),
+    [posts],
+  );
+
+  const togglePlatform = (platform: SocialPlatform, enabled: boolean) => {
+    setSelectedPlatforms((previous) => {
+      if (enabled) {
+        return previous.includes(platform) ? previous : [...previous, platform];
+      }
+      return previous.filter((entry) => entry !== platform);
     });
-  },
-});
-
-  const handleSharePortfolioItem = (item: any) => {
-    setSelectedPortfolioItem(item);
-    const profession = getCurrentUserProfession();
-    const professionName = getProfessionDisplayName(profession);
-
-    const defaultContent = `🎨 Nytt arbeid fra ${professionName}! ${item.title}\n\n${item.description}\n\n#CreatorHubNorge #${profession} #NorskKreativitet #Portfolio`;
-    setPostContent(defaultContent);
-    setShareDialog(true);
-};
-
-  const handleShare = () => {
-    if (!selectedPortfolioItem || selectedPlatforms.length === 0) return;
-
-    const shareData = {
-      userId: user?.d,
-      platforms: selectedPlatforms,
-      content: postContent,
-      mediaUrls: selectedPortfolioItem.images || [],
-      portfolioItemId: selectedPortfolioItem.d,
-      scheduledTime: scheduleDate && scheduleTime ? `${scheduleDate}T${scheduleTime}` : null,
   };
 
-    shareContent.mutate(shareData);
-};
-
-  const handleCreatePost = () => {
-    if (newPostForm.platforms.length === 0 || !newPostForm.content.trim()) {
-      setPostStatus({
-        open: true,
-        message: 'Vennligst fyll ut innhold og velg minst én plattform',
-        severity: 'error',
-    });
-      return;
-  }
-
-    const postData = {
-      content: newPostForm.content,
-      platforms: newPostForm.platforms,
-      mediaUrls: newPostForm.mediaUrls,
-      scheduledTime: newPostForm.postNow ? null : newPostForm.scheduledTime,
-      postNow: newPostForm.postNw,
-  };
-
-    createPost.mutate(postData);
-};
-
-  const handlePlatformToggle = (platform: string) => {
-    setNewPostForm((prev) => ({
-      ...prev,
-      platforms: prev.platforms.includes(platform)
-        ? prev.platforms.filter((p) => p !== platform)
-        : [...prev.platforms, platform],
-  }));
-};
-
-  const getPostStatusChip = (status: string) => {
-    switch (status) {
-      case 'posted':
-        return <Chip label="Publisert" size="small" color="success" icon={<CheckCircleIcon />} />;
-      case 'scheduled':
-        return <Chip label="Planlagt" size="small" color="info" icon={<ScheduleIcon />} />;
-      case 'draft':
-        return <Chip label="Utkast" size="small" color="default" icon={<EditIcon />} />;
-      case 'failed':
-        return <Chip label="Feilet" size="small" color="error" icon={<ErrorIcon />} />;
-      default: return <Chip label={status} size="small" />;
-  }
-};
-
-  const getPlatformIcon = (platform: string) => {
-    switch (platform) {
-      case 'instagram':
-        return <InstagramIcon sx={{ color: '#E4405F'}} />;
-      case 'linkedin':
-        return <LinkedInIcon sx={{ color: '#0077B5'}} />;
-      case 'facebook':
-        return <FacebookIcon sx={{ color: '#1877F2'}} />;
-      case 'tiktok':
-        return <TikTokIcon sx={{ color: '#000000'}} />;
-      default: return <ShareIcon />;
-}
-};
-
-  const getPlatformName = (platform: string) => {
-    switch (platform) {
-      case 'instagram':
-        return 'Instagram';
-      case 'linkedin':
-        return 'LinkedIn';
-      case 'facebook':
-        return 'Facebook';
-      case 'tiktok':
-        return 'TikTok';
-      default:
-        return platform;
-}
-};
-
-  if (accountsLoading || postsLoading) {
-    return (
-      <Box sx={{ p:  3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt:  2 }}>Laster sosiale medier...</Typography>
-      </Box>
-    );
-}
+  const loading = accountQuery.isLoading || postQuery.isLoading || portfolioQuery.isLoading;
 
   return (
-    <Box sx={{ width: '100%'}}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        Sosiale Medier
-      </Typography>
+    <Box sx={{ p: 2 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h6">Social Media Manager</Typography>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => setShareDialogOpen(true)}>
+            Del portfolio
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)}>
+            Ny post
+          </Button>
+        </Stack>
+      </Stack>
 
-      <Alert severity="info" sx={{ mb:  3 }}>
-        <Typography variant="body2">
-          Del portfolioet ditt på sosiale medier for å nå flere potensielle klienter og bygge din
-          merkevare som {getProfessionDisplayName(getCurrentUserProfession()).toLowerCase()}.
-        </Typography>
-      </Alert>
+      <Tabs value={tabIndex} onChange={(_, value: number) => setTabIndex(value)} sx={{ mb: 2 }}>
+        <Tab label="Kontoer" />
+        <Tab label="Poster" />
+        <Tab label="Analytics" />
+        <Tab label="Innstillinger" />
+      </Tabs>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="Kontoer" icon={<SettingsIcon />} />
-          <Tab label="Opprett Post" icon={<CreateIcon />} />
-          <Tab label="Del Innhold" icon={<ShareIcon />} />
-          <Tab label="Innlegg" icon={<ScheduleIcon />} />
-          <Tab label="Analyse" icon={<AnalyticsIcon />} />
-          <Tab label="SOME Settings" icon={<VpnKeyIcon />} />
-        </Tabs>
-      </Box>
+      {loading && <Alert severity="info">Laster social data...</Alert>}
 
-      <TabPanel value={activeTab} index={0}>
-        <Grid container spacing={3}>
-          {['instagram','linkedin','facebook','tiktok'].map((platform) => {
-            const account = accounts.find((acc: SocialMediaAccount) => acc.platform === platform);
+      {tabIndex === 0 && (
+        <Grid container spacing={2}>
+          {(['instagram', 'linkedin', 'facebook', 'tiktok'] as SocialPlatform[]).map((platform) => {
+            const account = accounts.find((entry) => entry.platform === platform);
+            const connected = account?.isConnected === true;
+
             return (
               <Grid item xs={12} md={6} key={platform}>
-                <Card sx={theming.getThemedCardSx()}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Box display="flex" alignItems="center" mb={2}>
-                      {getPlatformIcon(platform)}
-                      <Typography variant="h6" sx={{  ml:  1  }}>
-                        {getPlatformName(platform)}
-                      </Typography>
-                      <Chip
-                        label={account?.isConnected ? 'Tilkoblet' : 'Ikke tilkoblet'}
-                        color={account?.isConnected ? 'success' : 'default'}
-                        size="small"
-                        sx={{ ml: 'auto'}}
-                      />
-                    </Box>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {platformIcon(platform)}
+                        <Typography fontWeight={700}>{PLATFORM_LABELS[platform]}</Typography>
+                      </Stack>
+                      {connected ? <Chip label="Koblet" color="success" /> : <Chip label="Ikke koblet" />}
+                    </Stack>
 
-                    {account?.isConnected ? (
-                      <Box>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          @{account.username} • {account.followers.toLocaleString()} følgere
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Sist synkronisert: {''}
-                          {new Date(account.lastSync).toLocaleDateString('no-NO')}
-                        </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      {connected ? account?.username : 'Konto ikke autentisert.'}
+                    </Typography>
 
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={account.autoPost}
-                              onChange={(e) =>
-                                updateAccountSettings.mutate({
-                                  accountId: account.d,
-                                  settings: { autoPost: e.target.checked },
-                              })
-                            }
-                            />
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={account?.autoPost === true}
+                            disabled={!connected}
+                            onChange={(event) => {
+                              if (!account) {
+                                return;
+                              }
+                              toggleAutoPostMutation.mutate({ accountId: account.id, autoPost: event.target.checked });
+                            }}
+                          />
                         }
-                          label="Automatisk deling"
-                        />
+                        label="Auto-post"
+                      />
 
-                        <Box mt={2}>
-                          <Button variant="outlined" size="small" sx={{ mr:  1 }}>
-                            Innstillinger
-                          </Button>
-                          <Button variant="outlined" size="small" color="error">
-                            Koble fra
-                          </Button>
-                        </Box>
-                      </Box>
-                    ) : (
-                      <Box>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Koble til {getPlatformName(platform)} for å dele portfolioet ditt
-                          automatisk.
-                        </Typography>
-                        <Button variant="contained"
-                          onClick={() => connectAccount.mutate(platform)}
-                          disabled={connectAccount.isPending}
-                        >
-                          Koble til {getPlatformName(platform)}
-                        </Button>
-                      </Box>
-                    )}
+                      <Button
+                        size="small"
+                        variant={connected ? 'outlined' : 'contained'}
+                        startIcon={<OpenInNewIcon />}
+                        onClick={() => connectMutation.mutate(platform)}
+                      >
+                        {connected ? 'Koble pa nytt' : 'Koble til'}
+                      </Button>
+                    </Stack>
                   </CardContent>
                 </Card>
               </Grid>
             );
-        })}
+          })}
         </Grid>
-      </TabPanel>
+      )}
 
-      <TabPanel value={activeTab} index={1}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Opprett Ny Post
-                </Typography>
+      {tabIndex === 1 && (
+        <List>
+          {posts.map((post) => (
+            <ListItem
+              key={post.id}
+              secondaryAction={
+                <Stack direction="row" spacing={1}>
+                  <Chip size="small" label={post.status} color={post.status === 'posted' ? 'success' : 'default'} />
+                  <IconButton color="error" onClick={() => deleteMutation.mutate(post.id)}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
+              }
+            >
+              <ListItemText
+                primary={`${PLATFORM_LABELS[post.platform]} · ${post.content.slice(0, 80)}`}
+                secondary={`Likes ${post.engagement.likes} · Comments ${post.engagement.comments} · Shares ${post.engagement.shares}`}
+              />
+            </ListItem>
+          ))}
 
-                <TextField
-                  label="Post innhold"
-                  multiline
-                  rows={4}
-                  fullWidth
-                  value={newPostForm.content}
-                  onChange={(e) => setNewPostForm({ ...newPostForm, content: e.target.value })}
-                  placeholder="Skriv din post her..."
-                  sx={{ mb:  3 }}
-                />
+          {posts.length === 0 && <Alert severity="info">Ingen poster registrert ennå.</Alert>}
+        </List>
+      )}
 
-                <Typography variant="subtitle1" gutterBottom>
-                  Velg plattformer: </Typography>
-                <FormGroup sx={{ mb: 3 }}>
-                  <Grid container spacing={2}>
-                    {['instagram','linkedin','facebook','tiktok'].map((platform) => {
-                      const account = accounts.find(
-                        (acc: SocialMediaAccount) => acc.platform === platform,
-                      );
-                      const isConnected = account?.isConnected || false;
-
-                      return (
-                        <Grid item xs={6} sm={3} key={platform}>
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                checked={newPostForm.platforms.includes(platform)}
-                                onChange={() => handlePlatformToggle(platform)}
-                                disabled={!isConnected}
-                                icon={getPlatformIcon(platform)}
-                                checkedIcon={getPlatformIcon(platform)}
-                              />
-                          }
-                            label={
-                              <Box display="flex" alignItems="center" gap={1}>
-                                {getPlatformIcon(platform)}
-                                <Typography variant="body2">
-                                  {getPlatformName(platform)}
-                                  {!isConnected && ' (ikke tilkoblet)'}
-                                </Typography>
-                              </Box>
-                          }
-                          />
-                        </Grid>
-                      );
-                  })}
-                  </Grid>
-                </FormGroup>
-
-                <Grid container spacing={2} sx={{ mb:  3 }}>
-                  <Grid item xs={12} sm={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={newPostForm.postNow}
-                          onChange={(e) =>
-                            setNewPostForm({
-                              ...newPostForm,
-                              postNow: e.target.checked,
-                          })
-                        }
-                        />
-                    }
-                      label="Post nå"
-                    />
-                  </Grid>
-
-                  {!newPostForm.postNow && (
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        label="Planlagt tid"
-                        type="datetime-local"
-                        fullWidth
-                        value={newPostForm.scheduledTime}
-                        onChange={(e) =>
-                          setNewPostForm({
-                            ...newPostForm,
-                            scheduledTime: e.target.value,
-                        })
-                      }
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                  )}
-                </Grid>
-
-                <Box display="flex" gap={2}>
-                  <Button variant="contained"
-                    onClick={handleCreatePost}
-                    disabled={createPost.isPending || postingProgress}
-                    startIcon={
-                      postingProgress ? (
-                        <CircularProgress size={20} sx={theming.getThemedButtonSx()}>
-                      ) : newPostForm.postNow ? (
-                        <SendIcon />
-                      ) : (
-                        <ScheduleIcon />
-                      )
-                  }
-                  >
-                    {postingProgress
-                      ? 'Publiserer...'
-                      : newPostForm.postNow
-                        ? 'Publiser Nå'
-                        : 'Planlegg Post'}
-                  </Button>
-
-                  <Button
-                    variant="outlined"
-                    onClick={() =>
-                      setNewPostForm({
-                        content: ', ',
-                        platforms:  [],
-                        mediaUrls:  [],
-                        scheduledTime: ', ',
-                        postNow: true,
-                    })
-                  }
-                  >
-                    Tilbakestill
-                  </Button>
-                </Box>
-              </CardContent>
-            </Card>
+      {tabIndex === 2 && (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Koblede kontoer
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {connectedAccounts.length}
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Publiserte poster
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {posts.filter((post) => post.status === 'posted').length}
+              </Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Paper variant="outlined" sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Total engagement
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {totalEngagement}
+              </Typography>
+            </Paper>
           </Grid>
         </Grid>
-      </TabPanel>
+      )}
 
-      <TabPanel value={activeTab} index={2}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Del Portfolio-elementer
-                </Typography>
-                <Grid container spacing={2}>
-                  {portfolioItems.map((item: any) => (
-                    <Grid item xs={12} sm={6} md={4} key={item.id}>
-                      <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                        <Box sx={{ height: 20, overflow: 'hidden'}}>
-                          {item.thumbnail && (
-                            <img
-                              src={item.thumbnail}
-                              alt={item.title}
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover'}}
-                            />
-                          )}
-                        </Box>
-                        <CardContent sx={theming.getThemedCardSx()}>
-                          <Typography variant="subtitle2" gutterBottom>
-                            {item.title}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" gutterBottom>
-                            {item.description?.substring(0, 100)}...
-                          </Typography>
-                          <Button variant="contained"
-                            size="small"
-                            onClick={() => handleSharePortfolioItem(item)}
-                            startIcon={<ShareIcon />}
-                          >
-                            Del
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </TabPanel>
+      {tabIndex === 3 && <SOMESettings />}
 
-      <TabPanel value={activeTab} index={2}>
-        <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Dine Innlegg
-          </Typography>
-          <List>
-            {posts.map((post: SocialMediaPost) => (
-              <React.Fragment key={post.d}>
-                <ListItem>
-                  <ListItemIcon>{getPlatformIcon(post.platform)}</ListItemIcon>
-                  <ListItemText
-                    primary={
-                      post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ', ')
-                  }
-                    secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Status: {post.status} •{', '}
-                          {post.postedAt
-                            ? new Date(post.postedAt).toLocaleDateString('no-NO')
-                            : 'Ikke publisert'}
-                        </Typography>
-                        {post.status === 'posted' && (
-                          <Box display="flex" gap={2} mt={1}>
-                            <Box display="flex" alignItems="center">
-                              <ThumbUpIcon fontSize="small" sx={{ mr: 0.5}} />
-                              <Typography variant="caption">{post.engagement.likes}</Typography>
-                            </Box>
-                            <Box display="flex" alignItems="center">
-                              <CommentIcon fontSize="small" sx={{ mr: 0.5}} />
-                              <Typography variant="caption">{post.engagement.comments}</Typography>
-                            </Box>
-                            <Box display="flex" alignItems="center">
-                              <VisibilityIcon fontSize="small" sx={{ mr: 0.5}} />
-                              <Typography variant="caption">{post.engagement.views}</Typography>
-                            </Box>
-                          </Box>
-                        )}
-                      </Box>
-                  }
-                  />
-                  <ListItemSecondaryAction>
-                    <IconButton edge="end">
-                      <EditIcon />
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-                <Divider />
-              </React.Fragment>
-            ))}
-          </List>
-        </Paper>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Dine Innlegg</Typography>
-                  <Button variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={() => setActiveTab(1)}
-                  >
-                    Ny Post
-                  </Button>
-                </Box>
-
-                {posts.length === 0 ? (
-                  <Alert severity="info">
-                    <Typography variant="body2">
-                      Du har ikke opprettet noen poster ennå. Gå til "Opprett Post" for å lage din
-                      første post!
-                    </Typography>
-                  </Alert>
-                ) : (
-                  <Grid container spacing={2}>
-                    {posts.map((post: SocialMediaPost) => (
-                      <Grid item xs={12} md={6} key={post.id}>
-                        <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                          <CardContent sx={theming.getThemedCardSx()}>
-                            <Box
-                              display="flex"
-                              justifyContent="space-between"
-                              alignItems="flex-start"
-                              mb={2}
-                            >
-                              <Box>
-                                {getPostStatusChip(post.status)}
-                                <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
-                                  {post.postedAt
-                                    ? `Publisert: ${new Date(post.postedAt).toLocaleDateString(', ')}`
-                                    : post.scheduledTime
-                                      ? `Planlagt: ${new Date(post.scheduledTime).toLocaleDateString('')}`
-                                      : 'Utkast'}
-                                </Typography>
-                              </Box>
-
-                              <Box display="flex" gap={1}>
-                                {post.platform && getPlatformIcon(post.platform)}
-                                <IconButton
-                                  size="small"
-                                  color="error"
-                                  onClick={() => deletePost.mutate(post.id)}
-                                >
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Box>
-                            </Box>
-
-                            <Typography variant="body1" sx={{ mb: 2 }}>
-                              {post.content.length > 150
-                                ? `${post.content.substring(0, 150)}...`
-                                : post.content}
-                            </Typography>
-
-                            {post.engagement && (
-                              <Box display="flex" gap={2} mt={2}>
-                                <Tooltip title="Likes">
-                                  <Box display="flex" alignItems="center" gap={0.5}>
-                                    <ThumbUpIcon fontSize="small" color="action" />
-                                    <Typography variant="caption">
-                                      {post.engagement.likes}
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                                <Tooltip title="Kommentarer">
-                                  <Box display="flex" alignItems="center" gap={0.5}>
-                                    <CommentIcon fontSize="small" color="action" />
-                                    <Typography variant="caption">
-                                      {post.engagement.comments}
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                                <Tooltip title="Visninger">
-                                  <Box display="flex" alignItems="center" gap={0.5}>
-                                    <VisibilityIcon fontSize="small" color="action" />
-                                    <Typography variant="caption">
-                                      {post.engagement.views}
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                              </Box>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={4}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Engagement Oversikt
-                </Typography>
-                <Box display="flex" justifyContent="space-between" mb={2}>
-                  <Box textAlign="center">
-                    <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                      {posts.reduce(
-                        (sum: number, post: SocialMediaPost) => sum + post.engagement.likes,
-                        0,
-                      )}
-                    </Typography>
-                    <Typography variant="caption">Totale likes</Typography>
-                  </Box>
-                  <Box textAlign="center">
-                    <Typography variant="h4" color="secondary" sx={{ color: theming.colors.primary }}>
-                      {posts.reduce(
-                        (sum: number, post: SocialMediaPost) => sum + post.engagement.comments,
-                        0,
-                      )}
-                    </Typography>
-                    <Typography variant="caption">Kommentarer</Typography>
-                  </Box>
-                  <Box textAlign="center">
-                    <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
-                      {posts.reduce(
-                        (sum: number, post: SocialMediaPost) => sum + post.engagement.views,
-                        0,
-                      )}
-                    </Typography>
-                    <Typography variant="caption">Visninger</Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Platform Performance
-                </Typography>
-                {['instagram','linkedin','facebook', 'tiktok'].map((platform) => {
-                  const platformPosts = posts.filter(
-                    (post: SocialMediaPost) => post.platform === platform,
-                  );
-                  const totalEngagement = platformPosts.reduce(
-                    (sum: number, post: SocialMediaPost) =>
-                      sum +
-                      post.engagement.likes +
-                      post.engagement.comments +
-                      post.engagement.shares,
-                    0,
-                  );
-
-                  return (
-                    <Box key={platform} display="flex" alignItems="center" mb={1}>
-                      {getPlatformIcon(platform)}
-                      <Typography sx={{ ml: 1, flex:  1 }}>{getPlatformName(platform)}</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {totalEngagement} interaksjoner
-                      </Typography>
-                    </Box>
-                  );
-              })}
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={5}>
-        <SOMESettings />
-      </TabPanel>
-
-      {/* Share Dialog */}
-      <Dialog open={shareDialog} onClose={() => setShareDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Del Portfolio-element</DialogTitle>
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Opprett post</DialogTitle>
         <DialogContent>
-          <Box mb={3}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              {selectedPortfolioItem?.title}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {selectedPortfolioItem?.description}
-            </Typography>
-          </Box>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Innhold"
+              multiline
+              minRows={4}
+              value={postContent}
+              onChange={(event) => setPostContent(event.target.value)}
+            />
 
-          <TextField
-            label="Innhold"
-            multiline
-            rows={4}
-            fullWidth
-            value={postContent}
-            onChange={(e) => setPostContent(e.target.value)}
-            margin="normal"
-          />
-
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-            Velg plattformer: </Typography>
-          <Box mb=, {, 2}>
-            {accounts
-              .filter((acc: SocialMediaAccount) => acc.isConnected)
-              .map((acc: SocialMediaAccount) => (
+            <Typography variant="subtitle2">Plattformer</Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {connectedAccounts.map((account) => (
                 <FormControlLabel
-                  key={acc.platform}
+                  key={account.id}
                   control={
                     <Switch
-                      checked={selectedPlatforms.includes(acc.platform)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedPlatforms([...selectedPlatforms, acc.platform]);
-                      } else {
-                          setSelectedPlatforms(selectedPlatforms.filter((p) => p !== acc.platform));
-                      }
-                    }}
+                      checked={selectedPlatforms.includes(account.platform)}
+                      onChange={(event) => togglePlatform(account.platform, event.target.checked)}
                     />
-                }
-                  label={
-                    <Box display="flex" alignItems="center">
-                      {getPlatformIcon(acc.platform)}
-                      <Typography sx={{ ml:  1 }}>{getPlatformName(acc.platform)}</Typography>
-                    </Box>
-                }
+                  }
+                  label={PLATFORM_LABELS[account.platform]}
                 />
               ))}
-          </Box>
+            </Stack>
 
-          <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
-            Planlegg publisering (valgfritt):
-          </Typography>
-          <Box display="flex" gap={2}>
-            <TextField
-              type="date"
-              label="Dato"
-              value={scheduleDate}
-              onChange={(e) => setScheduleDate(e.target.value)}
-              InputLabelProps={{ shrink: true }}
+            <FormControlLabel
+              control={<Switch checked={postNow} onChange={(event) => setPostNow(event.target.checked)} />}
+              label="Publiser nå"
             />
-            <TextField
-              type="time"
-              label="Tidspunkt"
-              value={scheduleTime}
-              onChange={(e) => setScheduleTime(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Box>
+
+            {!postNow && (
+              <TextField
+                type="datetime-local"
+                label="Planlagt tidspunkt"
+                InputLabelProps={{ shrink: true }}
+                value={scheduledTime}
+                onChange={(event) => setScheduledTime(event.target.value)}
+              />
+            )}
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShareDialog(false)}>Avbryt</Button>
-          <Button onClick={handleShare}
+          <Button onClick={() => setCreateDialogOpen(false)}>Avbryt</Button>
+          <Button
             variant="contained"
-            disabled={shareContent.isPending || selectedPlatforms.length === 0}
-           sx={theming.getThemedButtonSx()}>
-            {scheduleDate && scheduleTime ? 'Planlegg innlegg': 'Del nå'}
+            onClick={() => createPostMutation.mutate()}
+            disabled={postContent.trim().length === 0 || selectedPlatforms.length === 0}
+          >
+            Lagre post
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Status Snackbar */}
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Del portfolio element</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Typography variant="subtitle2">Velg element</Typography>
+            <List dense>
+              {portfolioItems.map((item) => (
+                <ListItem
+                  key={item.id}
+                  button
+                  selected={selectedPortfolio?.id === item.id}
+                  onClick={() => setSelectedPortfolio(item)}
+                >
+                  <ListItemText primary={item.title} secondary={item.description} />
+                </ListItem>
+              ))}
+            </List>
+
+            <TextField
+              label="Posttekst"
+              multiline
+              minRows={3}
+              value={postContent}
+              onChange={(event) => setPostContent(event.target.value)}
+            />
+
+            <Typography variant="subtitle2">Plattformer</Typography>
+            <Stack direction="row" spacing={1}>
+              {connectedAccounts.map((account) => (
+                <FormControlLabel
+                  key={`share-${account.id}`}
+                  control={
+                    <Switch
+                      checked={selectedPlatforms.includes(account.platform)}
+                      onChange={(event) => togglePlatform(account.platform, event.target.checked)}
+                    />
+                  }
+                  label={PLATFORM_LABELS[account.platform]}
+                />
+              ))}
+            </Stack>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareDialogOpen(false)}>Avbryt</Button>
+          <Button
+            variant="contained"
+            onClick={() => shareMutation.mutate()}
+            disabled={!selectedPortfolio || selectedPlatforms.length === 0}
+          >
+            Del
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Snackbar
-        open={postStatus.open}
-        autoHideDuration={6000}
-        onClose={() => setPostStatus({ ...postStatus, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center'}}
+        open={snackbar.open}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
       >
         <Alert
-          onClose={() => setPostStatus({ ...postStatus, open: false })}
-          severity={postStatus.severity}
-          sx={{ width:'100%'}}
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
+          variant="filled"
         >
-          {postStatus.message}
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Box>

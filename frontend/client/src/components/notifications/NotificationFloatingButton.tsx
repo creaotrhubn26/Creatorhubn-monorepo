@@ -1,93 +1,170 @@
 /**
  * Floating Notification Button
- * Always visible notification access button with unread count
+ * Always-available entrypoint to notification center with unread indicator.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import {
-  Fab,
-  Badge,
-  Zoom,
-  useTheme,
-  useMediaQuery,
-  Box,
-} from '@mui/material';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Badge, Box, Fab, Tooltip, Zoom, useMediaQuery, useTheme } from '@mui/material';
 import { Notifications as NotificationsIcon } from '@mui/icons-material';
 import NotificationCenter from './NotificationCenter';
 import { useUniversalNotificationContext } from '../universal/UniversalNotificationProvider';
+import { useTheming } from '../../utils/theming-helper';
+
+type SupportedProfession =
+  | 'photographer'
+  | 'videographer'
+  | 'music_producer'
+  | 'vendor'
+  | 'enterprise';
 
 interface NotificationFloatingButtonProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
+  profession: SupportedProfession;
   userId: string;
   position?: {
     bottom?: number;
     right?: number;
     left?: number;
     top?: number;
-};
+  };
+}
+
+interface NotificationRecord {
+  read?: boolean;
+}
+
+interface NotificationResponse {
+  unreadCount?: number;
+  notifications?: NotificationRecord[];
+}
+
+function isNotificationResponse(value: unknown): value is NotificationResponse {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const candidate = value as NotificationResponse;
+  const unreadOk =
+    candidate.unreadCount === undefined || typeof candidate.unreadCount === 'number';
+  const notificationsOk =
+    candidate.notifications === undefined || Array.isArray(candidate.notifications);
+  return unreadOk && notificationsOk;
 }
 
 export default function NotificationFloatingButton({
   profession,
   userId,
-  position = { bottom:  24, right: 24,}
+  position = { bottom: 24, right: 24 },
 }: NotificationFloatingButtonProps) {
   const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [lastNotification, setLastNotification] = useState<any>(null);
   const [showPulse, setShowPulse] = useState(false);
-  
-  const theme = useTheme();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'sm'));
-  const notifications_context = useUniversalNotificationContext();
+  const [lastNotificationTitle, setLastNotificationTitle] = useState<string | null>(null);
 
-  // Don't show button if no unread notifications
-  const shouldShowButton = unreadCount > 0;
+  const theme = useTheme();
+  const theming = useTheming(profession);
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const notificationsContext = useUniversalNotificationContext();
+
+  const readServerUnreadCount = useCallback(async (): Promise<number> => {
+    try {
+      const response = await fetch('/api/notifications', { credentials: 'include' });
+      if (!response.ok) {
+        return 0;
+      }
+
+      const payload: unknown = await response.json();
+      if (!isNotificationResponse(payload)) {
+        return 0;
+      }
+
+      if (typeof payload.unreadCount === 'number') {
+        return Math.max(0, payload.unreadCount);
+      }
+
+      if (Array.isArray(payload.notifications)) {
+        return payload.notifications.reduce((count, item) => {
+          return item.read ? count : count + 1;
+        }, 0);
+      }
+
+      return 0;
+    } catch {
+      return 0;
+    }
+  }, []);
+
+  const refreshUnreadCount = useCallback(async () => {
+    const count = await readServerUnreadCount();
+    setUnreadCount(count);
+  }, [readServerUnreadCount]);
 
   useEffect(() => {
-    // Load count from server
-    fetch('/api/notifications', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setUnreadCount(j?.unreadCount || 0))
-      .catch(() => setUnreadCount(0));
+    void refreshUnreadCount();
 
-    // Subscribe to new notifications
-    const unsubscribe = notifications_context.subscribe('all', (notification) => {
-      setUnreadCount(prev => prev + 1);
-      setLastNotification(notification);
+    const intervalId = window.setInterval(() => {
+      void refreshUnreadCount();
+    }, 30000);
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        void refreshUnreadCount();
+      }
+    };
+
+    window.addEventListener('focus', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibility);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    const unsubscribe = notificationsContext.subscribe('all', (notification: unknown) => {
+      const notificationLike =
+        typeof notification === 'object' && notification !== null
+          ? (notification as { title?: string })
+          : {};
+
+      setLastNotificationTitle(notificationLike.title ?? null);
+      setUnreadCount((prev) => prev + 1);
       setShowPulse(true);
-      
-      // Remove pulse after animation
-      setTimeout(() => setShowPulse(false), 2000);
-  });
+
+      window.setTimeout(() => setShowPulse(false), 1800);
+    });
 
     return unsubscribe;
-}, [userId, notifications_context]);
+  }, [notificationsContext, userId]);
 
-  const handleNotificationCenterClose = () => {
+  const handleNotificationCenterClose = useCallback(() => {
     setNotificationCenterOpen(false);
-    // Recalculate unread count from server
-    fetch('/api/notifications', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setUnreadCount(j?.unreadCount || 0))
-      .catch(() => {});
-  };
+    void refreshUnreadCount();
+  }, [refreshUnreadCount]);
 
-  const getFabColor = () => {
+  const fabColor = useMemo(() => {
     switch (profession) {
-      case 'photographer': return '#FFC107'; // Amber
-      case 'videographer': return '#2196F3'; // Blue
-      case 'music_producer': return '#9C27B0'; // Purple
-      case 'vendor': return '#4CAF50'; // Green
-      default: return theme.palette.primary.main;
-}
-};
+      case 'photographer':
+        return '#FFC107';
+      case 'videographer':
+        return '#2196F3';
+      case 'music_producer':
+        return '#9C27B0';
+      case 'vendor':
+        return '#4CAF50';
+      case 'enterprise':
+        return theming.colors.primary;
+      default:
+        return theme.palette.primary.main;
+    }
+  }, [profession, theme.palette.primary.main, theming.colors.primary]);
 
-  // Only render floating button if there are unread notifications or center is open
+  const shouldShowButton = unreadCount > 0;
+  const tooltipTitle =
+    unreadCount > 0
+      ? `${unreadCount} uleste varsler${lastNotificationTitle ? `: ${lastNotificationTitle}` : ''}`
+      : 'Varsler';
+
   if (!shouldShowButton && !notificationCenterOpen) {
     return (
       <NotificationCenter
@@ -97,7 +174,7 @@ export default function NotificationFloatingButton({
         userId={userId}
       />
     );
-}
+  }
 
   return (
     <>
@@ -105,51 +182,60 @@ export default function NotificationFloatingButton({
         sx={{
           position: 'fixed',
           ...position,
-          zIndex: , theme.zIndex.speedDial}}
+          zIndex: theme.zIndex.speedDial,
+        }}
       >
-        <Zoom in={shouldShowButton}>
-          <Fab
-            color="primary"
-            onClick={() => setNotificationCenterOpen(true)}
-            sx={{
-              backgroundColor: getFabColor()'&:hover': {
-                backgroundColor: getFabColor(),
-                filter: 'brightness(0.9)'
-          },
-              animation: showPulse ? 'pulse 0.6s ease-in-out' : 'none', '@keyframes pulse': {
-                '0%': {
-                  transform: 'scale(1, )',
-                  boxShadow: `0 0 0 0 ${getFabColor()}40`
-              }'70%': {
-                  transform: 'scale(1.05, )',
-                  boxShadow: `0 0 0 10px ${getFabColor()}00`
-              }'100%': {
-                  transform: 'scale(1, )',
-                  boxShadow: `0 0 0 0 ${getFabColor()}00`
-              }
-            },
-              // Softer design
-              boxShadow: theme.shadows[]'&:active': {
-                boxShadow: theme.shadows[6]
-          }
-          }}
-            size={isMobile ? 'small' : 'medium'}
-          >
-            <Badge 
-              badgeContent={unreadCount}
-              color="error"
-              max={99}
+        <Zoom in={shouldShowButton || notificationCenterOpen}>
+          <Tooltip title={tooltipTitle}>
+            <Fab
+              color="primary"
+              aria-label="Apne varsler"
+              onClick={() => setNotificationCenterOpen(true)}
+              size={isMobile ? 'small' : 'medium'}
               sx={{
-                '& .MuiBadge-badge': {
-                  fontSize: '0.7rem',
-                  height:  16,
-                  minWidth:  16,
-                  fontWeight: 600}
-            }}
+                backgroundColor: fabColor,
+                '&:hover': {
+                  backgroundColor: fabColor,
+                  filter: 'brightness(0.9)',
+                },
+                animation: showPulse ? 'notification-pulse 0.6s ease-in-out' : 'none',
+                '@keyframes notification-pulse': {
+                  '0%': {
+                    transform: 'scale(1)',
+                    boxShadow: `0 0 0 0 ${fabColor}4a`,
+                  },
+                  '70%': {
+                    transform: 'scale(1.06)',
+                    boxShadow: `0 0 0 12px ${fabColor}00`,
+                  },
+                  '100%': {
+                    transform: 'scale(1)',
+                    boxShadow: `0 0 0 0 ${fabColor}00`,
+                  },
+                },
+                boxShadow: theme.shadows[4],
+                '&:active': {
+                  boxShadow: theme.shadows[8],
+                },
+              }}
             >
-              <NotificationsIcon fontSize={isMobile ? 'small' : 'medium'} />
-            </Badge>
-          </Fab>
+              <Badge
+                badgeContent={unreadCount}
+                color="error"
+                max={99}
+                sx={{
+                  '& .MuiBadge-badge': {
+                    fontSize: '0.72rem',
+                    height: 18,
+                    minWidth: 18,
+                    fontWeight: 700,
+                  },
+                }}
+              >
+                <NotificationsIcon fontSize={isMobile ? 'small' : 'medium'} />
+              </Badge>
+            </Fab>
+          </Tooltip>
         </Zoom>
       </Box>
 
@@ -162,3 +248,4 @@ export default function NotificationFloatingButton({
     </>
   );
 }
+

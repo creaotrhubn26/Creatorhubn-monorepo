@@ -64,7 +64,6 @@ import {
   CloudSync,
   Sync,
   CheckCircle,
-  Error,
   Warning,
   ExpandMore,
 } from '@mui/icons-material';
@@ -226,15 +225,24 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
 
   // Component registration
   useEffect(() => {
-    lifecycle.registerComponent('multi-site-manager', {
-      capabilities: [
-        'site:create', 'site:update', 'site:delete', 'site:deploy', 'workspace:manage', 'brand:configure', 'domain:manage'
-      ],
-      metadata: {
-        version: '1.0.0',
-        sitesCount: sites.length,
-        workspacesCount: workspaces.length
-      }
+    lifecycle.registerComponent({
+      id: 'multi-site-manager',
+      type: 'site-management',
+      version: '1.0.0',
+      capabilities: {
+        data: ['site:create', 'site:update', 'site:delete', 'workspace:manage'],
+        events: ['site:deployed', 'site:deploy_failed'],
+        actions: ['site:deploy', 'workspace:create', 'workspace:update'],
+        ui: ['site:list', 'workspace:list', 'deploy:status'],
+        system: ['analytics:track', 'performance:monitor'],
+      },
+      dependencies: ['@mui/material'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0,
+      },
     });
 
     // Initialize with sample data
@@ -507,7 +515,7 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
       
       analytics.trackEvent('site_deploy_failed', {
         siteId,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof globalThis.Error ? error.message : 'Unknown error',
         timestamp: Date.now()
   });
   } finally {
@@ -866,4 +874,3 @@ export const MultiSiteManager: React.FC<MultiSiteManagerProps> = ({
 };
 
 export default MultiSiteManager;
-

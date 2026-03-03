@@ -122,7 +122,7 @@ interface LSDMonitoringStatus {
 
 export function LSDMonitoringPanel(): JSX.Element {
   const { auth } = useEnhancedMasterIntegration();
-  const user = auth.user;
+  const user = auth.state.user;
 
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -225,7 +225,6 @@ export function LSDMonitoringPanel(): JSX.Element {
           "Content-Type" : "application/json"
         }
       });
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/lsd-monitoring/status'] });

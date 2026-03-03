@@ -458,9 +458,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     description: string;
     iconColor: string;
     sortOrder: number;
-}) => {
+  }) => {
     try {
-      const result = await apiRequest('POST','/api/admin/profession-types', data);
+      const result = await apiRequest('/api/admin/profession-types', {
+        method: 'POST',
+        body: data,
+      });
       
       // Create feature flags
       await apiRequest(`/api/admin/profession-types/${result.id}/create-feature-flags`, {
@@ -498,7 +501,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateProfessionType = async (id: string, updates: Partial<UnifiedProfessionType>) => {
     try {
-      await apiRequest('PATCH', `/api/admin/profession-types/${id}`, updates);
+      await apiRequest(`/api/admin/profession-types/${id}`, {
+        method: 'PATCH',
+        body: updates,
+      });
       dispatch({ type: 'UPDATE_PROFESSION_TYPE', payload: { id, updates } });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
       notify('Profession type updated successfully','success');
@@ -510,7 +516,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProfessionType = async (id: string) => {
     try {
-      await apiRequest('DELETE', `/api/admin/profession-types/${id}`);
+      await apiRequest(`/api/admin/profession-types/${id}`, { method: 'DELETE' });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
       notify('Profession type deleted successfully','success');
   } catch (error) {
@@ -522,7 +528,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Product management functions
   const createProduct = async (data: Partial<UnifiedProduct>) => {
     try {
-      await apiRequest('POST', '/api/admin/products', data);
+      await apiRequest('/api/admin/products', { method: 'POST', body: data });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product created successfully','success');
   } catch (error) {
@@ -533,7 +539,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateProduct = async (id: string, updates: Partial<UnifiedProduct>) => {
     try {
-      await apiRequest('PUT', `/api/admin/products/${id}`, updates);
+      await apiRequest(`/api/admin/products/${id}`, { method: 'PUT', body: updates });
       dispatch({ type: 'UPDATE_PRODUCT', payload: { id, updates } });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product updated successfully','success');
@@ -545,7 +551,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteProduct = async (id: string) => {
     try {
-      await apiRequest('DELETE', `/api/admin/products/${id}`);
+      await apiRequest(`/api/admin/products/${id}`, { method: 'DELETE' });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/products'] });
       notify('Product deleted successfully','success');
   } catch (error) {
@@ -631,6 +637,5 @@ export const useAdmin = () => {
 };
 
 export default AdminContext;
-
 
 

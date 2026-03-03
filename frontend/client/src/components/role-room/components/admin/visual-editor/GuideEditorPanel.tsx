@@ -23,6 +23,7 @@ import {
   IconButton,
   Switch,
   TextField,
+  MenuItem,
   Tooltip,
   Chip,
   Divider,
@@ -61,6 +62,13 @@ import {
   NotificationsActive as BadgeIcon,
   Notes as NoteIcon,
   LiveTv as LiveSetIcon,
+  Groups as CrewIcon,
+  TheaterComedy as AuditionIcon,
+  Place as LocationManagementIcon,
+  Analytics as LocationAnalysisIcon,
+  Delete as DeleteIcon,
+  ContentCopy as DuplicateIcon,
+  Tune as AnnotationIcon,
 } from '@mui/icons-material';
 
 import {
@@ -69,9 +77,14 @@ import {
   type GuideMeta,
   type GuideConfig,
   type GuideStepOverride,
+  type GuideStepAnnotation,
   buildDefaultRegistry,
 } from './guideTypes';
 import { useGuideConfig } from './useGuideConfig';
+import {
+  GUIDE_ANNOTATION_STYLE_OPTIONS,
+  GuideAnnotatedScreenshot,
+} from '../../shared/guide/GuideAnnotationOverlay';
 
 // ── Lazy imports for guide preview ────────────────────────────────────────
 // Using React.lazy to avoid circular-dep issues and keep the admin bundle lean.
@@ -79,6 +92,10 @@ import { ShotListGuide } from '../../production/ShotListGuide';
 import { StripboardGuide } from '../../production/StripboardGuide';
 import { ScreenplayGuide } from '../../ScreenplayGuide';
 import { LiveSetModeGuide } from '../../production/LiveSetModeGuide';
+import { CrewManagementGuide } from '../../production/CrewManagementGuide';
+import { AuditionGuide } from '../../production/AuditionGuide';
+import { LocationManagementGuide } from '../../production/LocationManagementGuide';
+import { LocationAnalysisGuide } from '../../production/LocationAnalysisGuide';
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
@@ -87,6 +104,10 @@ const GUIDE_ICONS: Record<GuideId, React.ReactNode> = {
   'stripboard':   <StripboardIcon sx={{ fontSize: 20 }} />,
   'screenplay':   <ScreenplayIcon sx={{ fontSize: 20 }} />,
   'live-set-mode': <LiveSetIcon   sx={{ fontSize: 20 }} />,
+  'crew-management': <CrewIcon sx={{ fontSize: 20 }} />,
+  'audition': <AuditionIcon sx={{ fontSize: 20 }} />,
+  'location-management': <LocationManagementIcon sx={{ fontSize: 20 }} />,
+  'location-analysis': <LocationAnalysisIcon sx={{ fontSize: 20 }} />,
 };
 
 const BADGE_PRESETS = ['New', 'Updated', 'Beta', 'Coming Soon', '!'];
@@ -278,6 +299,11 @@ function StepRow({
           <ImageIcon sx={{ fontSize: 12, color: '#10b981' }} />
         </Tooltip>
       )}
+      {!!override.annotations?.length && (
+        <Tooltip title={`${override.annotations.length} annotasjon${override.annotations.length !== 1 ? 'er' : ''}`}>
+          <AnnotationIcon sx={{ fontSize: 12, color: '#38bdf8' }} />
+        </Tooltip>
+      )}
       {override.adminNote && (
         <Tooltip title="Har admin-notat">
           <NoteIcon sx={{ fontSize: 12, color: '#f59e0b' }} />
@@ -305,11 +331,13 @@ function StepEditor({
   stepMeta,
   override,
   accentColor,
+  suggestedColors,
   onSave,
 }: {
   stepMeta: { id: string; label: string; sectionCount: number };
   override: GuideStepOverride;
   accentColor: string;
+  suggestedColors: string[];
   onSave: (partial: Partial<GuideStepOverride>) => void;
 }) {
   const [labelOverride, setLabelOverride] = useState(override.labelOverride ?? '');
@@ -318,6 +346,10 @@ function StepEditor({
   const [screenshotUrl, setScreenshotUrl] = useState(override.screenshotUrl ?? '');
   const [videoUrl, setVideoUrl]           = useState(override.videoUrl ?? '');
   const [badge, setBadge]                 = useState(override.badge ?? '');
+  const [annotations, setAnnotations]     = useState<GuideStepAnnotation[]>(override.annotations ?? []);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(
+    override.annotations?.[0]?.id ?? null
+  );
   const [dirty, setDirty]                 = useState(false);
 
   // Reset local state when the selected step changes
@@ -328,6 +360,8 @@ function StepEditor({
     setScreenshotUrl(override.screenshotUrl ?? '');
     setVideoUrl(override.videoUrl ?? '');
     setBadge(override.badge ?? '');
+    setAnnotations(override.annotations ?? []);
+    setActiveAnnotationId(override.annotations?.[0]?.id ?? null);
     setDirty(false);
   }, [override]);
 
@@ -339,6 +373,7 @@ function StepEditor({
       screenshotUrl:   screenshotUrl || undefined,
       videoUrl:        videoUrl || undefined,
       badge:           badge || undefined,
+      annotations:     annotations.length ? annotations : undefined,
     });
     setDirty(false);
   }
@@ -347,6 +382,93 @@ function StepEditor({
     setter(e.target.value);
     setDirty(true);
   };
+
+  const updateAnnotation = useCallback(
+    (id: string, partial: Partial<GuideStepAnnotation>) => {
+      setAnnotations(prev =>
+        prev.map(annotation => (annotation.id === id ? { ...annotation, ...partial } : annotation))
+      );
+      setDirty(true);
+    },
+    [],
+  );
+
+  const removeAnnotation = useCallback((id: string) => {
+    setAnnotations(prev => {
+      const next = prev.filter(annotation => annotation.id !== id);
+      setActiveAnnotationId(next[0]?.id ?? null);
+      return next;
+    });
+    setDirty(true);
+  }, []);
+
+  const duplicateAnnotation = useCallback((id: string) => {
+    setAnnotations(prev => {
+      const source = prev.find(annotation => annotation.id === id);
+      if (!source) return prev;
+      const copy: GuideStepAnnotation = {
+        ...source,
+        id: `${source.id}-copy-${Date.now()}`,
+        x: Math.min(95, source.x + 2),
+        y: Math.min(95, source.y + 2),
+        label: source.label ? `${source.label} copy` : source.label,
+      };
+      setActiveAnnotationId(copy.id);
+      return [...prev, copy];
+    });
+    setDirty(true);
+  }, []);
+
+  const addAnnotation = useCallback(() => {
+    const next: GuideStepAnnotation = {
+      id: `ann-${Date.now()}`,
+      style: 'precise-box',
+      x: 78,
+      y: 62,
+      width: 12,
+      height: 16,
+      color: accentColor,
+      opacity: 100,
+      thickness: 3,
+      radius: 12,
+      labelPosition: 'top-left',
+    };
+    setAnnotations(prev => [...prev, next]);
+    setActiveAnnotationId(next.id);
+    setDirty(true);
+  }, [accentColor]);
+
+  const addViewModePreset = useCallback(() => {
+    const timestamp = Date.now();
+    const preset: GuideStepAnnotation[] = [
+      { id: `preset-${timestamp}-1`, style: 'precise-box', x: 90.9, y: 56.2, width: 2.3, height: 7.3, label: 'Table', color: '#22c55e', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
+      { id: `preset-${timestamp}-2`, style: 'precise-box', x: 93.5, y: 56.2, width: 2.3, height: 7.3, label: 'Compact', color: '#60a5fa', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
+      { id: `preset-${timestamp}-3`, style: 'precise-box', x: 96.1, y: 56.2, width: 2.3, height: 7.3, label: 'Grid', color: '#f59e0b', thickness: 3, radius: 12, opacity: 100, labelPosition: 'top-center' },
+    ];
+    setAnnotations(prev => [...prev, ...preset]);
+    setActiveAnnotationId(preset[0].id);
+    setDirty(true);
+  }, []);
+
+  const activeAnnotation =
+    annotations.find(annotation => annotation.id === activeAnnotationId) ?? annotations[0] ?? null;
+
+  const normalizedSuggestedColors = React.useMemo(
+    () =>
+      [...new Set(suggestedColors.map(color => color.trim().toLowerCase()).filter(Boolean))]
+        .slice(0, 12),
+    [suggestedColors],
+  );
+
+  const isActiveColorConsistent = activeAnnotation?.color
+    ? normalizedSuggestedColors.includes(activeAnnotation.color.trim().toLowerCase())
+    : true;
+
+  const clampNumeric = useCallback((raw: string, fallback: number, min: number, max: number) => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, parsed));
+  }, []);
 
   const inputSx = {
     '& .MuiInputBase-root': { bgcolor: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.87)', fontSize: '0.83rem' },
@@ -477,13 +599,290 @@ function StepEditor({
           sx={inputSx}
         />
         {screenshotUrl && (
-          <Box
-            component="img"
+          <GuideAnnotatedScreenshot
             src={screenshotUrl}
             alt="preview"
-            sx={{ mt: 1, width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.1)' }}
-            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            annotations={annotations}
+            containerSx={{ mt: 1, borderRadius: 1.5, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}
+            imageSx={{ maxHeight: 220, objectFit: 'cover' }}
           />
+        )}
+      </Box>
+
+      {/* Annotation studio */}
+      <Box>
+        <SectionLabel>
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}>
+            <AnnotationIcon sx={{ fontSize: 11 }} />
+            Annotation Studio ({GUIDE_ANNOTATION_STYLE_OPTIONS.length} stiler)
+          </Box>
+        </SectionLabel>
+        {!screenshotUrl ? (
+          <Alert
+            severity="info"
+            sx={{
+              bgcolor: 'rgba(59,130,246,0.08)',
+              color: '#93c5fd',
+              border: '1px solid rgba(59,130,246,0.2)',
+              fontSize: '0.75rem',
+            }}
+          >
+            Legg inn en bilde-URL først for å aktivere annotering.
+          </Alert>
+        ) : (
+          <Box sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, p: 1.25, bgcolor: 'rgba(255,255,255,0.02)' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap', mb: 1 }}>
+              <Button
+                size="small"
+                startIcon={<AddIcon sx={{ fontSize: 13 }} />}
+                onClick={addAnnotation}
+                sx={{ textTransform: 'none', fontSize: '0.72rem', minHeight: 26 }}
+              >
+                Ny annotasjon
+              </Button>
+              <Button
+                size="small"
+                startIcon={<AnnotationIcon sx={{ fontSize: 13 }} />}
+                onClick={addViewModePreset}
+                sx={{ textTransform: 'none', fontSize: '0.72rem', minHeight: 26 }}
+              >
+                Preset: View mode trio
+              </Button>
+              <Chip
+                label={`${annotations.length} aktive`}
+                size="small"
+                sx={{ height: 20, fontSize: '0.62rem', bgcolor: 'rgba(56,189,248,0.12)', color: '#38bdf8' }}
+              />
+            </Box>
+
+            {annotations.length > 0 && (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.25 }}>
+                {annotations.map((annotation, idx) => (
+                  <Chip
+                    key={annotation.id}
+                    size="small"
+                    clickable
+                    label={annotation.label?.trim() || `${idx + 1}. ${annotation.style}`}
+                    onClick={() => setActiveAnnotationId(annotation.id)}
+                    sx={{
+                      height: 22,
+                      fontSize: '0.63rem',
+                      bgcolor: activeAnnotation?.id === annotation.id ? `${accentColor}22` : 'rgba(255,255,255,0.05)',
+                      color: activeAnnotation?.id === annotation.id ? accentColor : 'rgba(255,255,255,0.58)',
+                      border: activeAnnotation?.id === annotation.id ? `1px solid ${accentColor}44` : '1px solid transparent',
+                    }}
+                  />
+                ))}
+              </Box>
+            )}
+
+            {activeAnnotation ? (
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Stil"
+                  value={activeAnnotation.style}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { style: event.target.value as GuideStepAnnotation['style'] })
+                  }
+                  sx={inputSx}
+                >
+                  {GUIDE_ANNOTATION_STYLE_OPTIONS.map(option => (
+                    <MenuItem key={option.id} value={option.id}>
+                      {option.group} · {option.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  label="Label (valgfritt)"
+                  value={activeAnnotation.label ?? ''}
+                  onChange={event => updateAnnotation(activeAnnotation.id, { label: event.target.value || undefined })}
+                  sx={inputSx}
+                />
+
+                <TextField
+                  size="small"
+                  type="number"
+                  label="X (%)"
+                  value={activeAnnotation.x}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { x: clampNumeric(event.target.value, activeAnnotation.x, 0, 100) })
+                  }
+                  sx={inputSx}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Y (%)"
+                  value={activeAnnotation.y}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { y: clampNumeric(event.target.value, activeAnnotation.y, 0, 100) })
+                  }
+                  sx={inputSx}
+                />
+
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Bredde (%)"
+                  value={activeAnnotation.width}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { width: clampNumeric(event.target.value, activeAnnotation.width, 1, 100) })
+                  }
+                  sx={inputSx}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Høyde (%)"
+                  value={activeAnnotation.height}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { height: clampNumeric(event.target.value, activeAnnotation.height, 1, 100) })
+                  }
+                  sx={inputSx}
+                />
+
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Linjetykkelse"
+                  value={activeAnnotation.thickness ?? 3}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { thickness: clampNumeric(event.target.value, activeAnnotation.thickness ?? 3, 1, 12) })
+                  }
+                  sx={inputSx}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Radius"
+                  value={activeAnnotation.radius ?? 12}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { radius: clampNumeric(event.target.value, activeAnnotation.radius ?? 12, 0, 40) })
+                  }
+                  sx={inputSx}
+                />
+
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Opacity (0-100)"
+                  value={activeAnnotation.opacity ?? 100}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { opacity: clampNumeric(event.target.value, activeAnnotation.opacity ?? 100, 0, 100) })
+                  }
+                  sx={inputSx}
+                />
+                <TextField
+                  size="small"
+                  type="number"
+                  label="Rotasjon (grader)"
+                  value={activeAnnotation.rotation ?? 0}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { rotation: clampNumeric(event.target.value, activeAnnotation.rotation ?? 0, -180, 180) })
+                  }
+                  sx={inputSx}
+                />
+
+                <TextField
+                  select
+                  size="small"
+                  label="Label-posisjon"
+                  value={activeAnnotation.labelPosition ?? 'top-left'}
+                  onChange={event =>
+                    updateAnnotation(activeAnnotation.id, { labelPosition: event.target.value as GuideStepAnnotation['labelPosition'] })
+                  }
+                  sx={inputSx}
+                >
+                  <MenuItem value="top-left">Top left</MenuItem>
+                  <MenuItem value="top-center">Top center</MenuItem>
+                  <MenuItem value="top-right">Top right</MenuItem>
+                  <MenuItem value="center">Center</MenuItem>
+                  <MenuItem value="bottom-left">Bottom left</MenuItem>
+                  <MenuItem value="bottom-center">Bottom center</MenuItem>
+                  <MenuItem value="bottom-right">Bottom right</MenuItem>
+                </TextField>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ColorSwatch
+                    value={activeAnnotation.color ?? accentColor}
+                    onChange={value => updateAnnotation(activeAnnotation.id, { color: value })}
+                  />
+                  <ColorSwatch
+                    value={activeAnnotation.secondaryColor ?? '#ffb800'}
+                    onChange={value => updateAnnotation(activeAnnotation.id, { secondaryColor: value })}
+                  />
+                </Box>
+                <Box
+                  sx={{
+                    p: 0.75,
+                    borderRadius: 1,
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    bgcolor: 'rgba(255,255,255,0.02)',
+                  }}
+                >
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', display: 'block', mb: 0.5 }}>
+                    Konsistens-sjekk: tidligere brukte annoteringsfarger i denne guiden
+                  </Typography>
+                  {normalizedSuggestedColors.length > 0 ? (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {normalizedSuggestedColors.map(color => (
+                        <Chip
+                          key={color}
+                          size="small"
+                          clickable
+                          label={color}
+                          onClick={() => updateAnnotation(activeAnnotation.id, { color })}
+                          sx={{
+                            height: 20,
+                            fontSize: '0.58rem',
+                            bgcolor: `${color}22`,
+                            color,
+                            border: `1px solid ${color}55`,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  ) : (
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)' }}>
+                      Ingen historiske farger ennå. Første fargevalg blir palettgrunnlaget.
+                    </Typography>
+                  )}
+                  {!isActiveColorConsistent && (
+                    <Alert
+                      severity="warning"
+                      sx={{
+                        mt: 0.75,
+                        bgcolor: 'rgba(245,158,11,0.08)',
+                        color: '#fbbf24',
+                        border: '1px solid rgba(245,158,11,0.24)',
+                        fontSize: '0.72rem',
+                      }}
+                    >
+                      Denne annotasjonsfargen avviker fra eksisterende palett.
+                    </Alert>
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                  <Tooltip title="Dupliser annotasjon">
+                    <IconButton size="small" onClick={() => duplicateAnnotation(activeAnnotation.id)} sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                      <DuplicateIcon sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Slett annotasjon">
+                    <IconButton size="small" onClick={() => removeAnnotation(activeAnnotation.id)} sx={{ color: '#ef4444' }}>
+                      <DeleteIcon sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+            ) : (
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>
+                Ingen annotasjoner lagt til ennå.
+              </Typography>
+            )}
+          </Box>
         )}
       </Box>
 
@@ -530,6 +929,8 @@ function StepEditor({
               setScreenshotUrl(override.screenshotUrl ?? '');
               setVideoUrl(override.videoUrl ?? '');
               setBadge(override.badge ?? '');
+              setAnnotations(override.annotations ?? []);
+              setActiveAnnotationId(override.annotations?.[0]?.id ?? null);
               setDirty(false);
             }}
             sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '0.78rem' }}
@@ -664,6 +1065,14 @@ export function GuideEditorPanel() {
 
   const selectedMeta   = GUIDE_META.find(m => m.id === selectedGuideId)!;
   const selectedConfig = getConfig(selectedGuideId);
+  const suggestedAnnotationColors = React.useMemo(
+    () =>
+      selectedConfig.steps
+        .flatMap(step => step.annotations ?? [])
+        .map(annotation => annotation.color)
+        .filter((color): color is string => Boolean(color)),
+    [selectedConfig.steps],
+  );
 
   // Sorted step list for the selected guide
   const sortedSteps = [...selectedMeta.steps]
@@ -1028,6 +1437,7 @@ export function GuideEditorPanel() {
               stepMeta={selectedStepMeta}
               override={selectedStepOverride}
               accentColor={selectedMeta.accentColor}
+              suggestedColors={suggestedAnnotationColors}
               onSave={handleStepSave}
             />
           ) : (
@@ -1070,6 +1480,33 @@ export function GuideEditorPanel() {
       )}
       {previewGuide === 'live-set-mode' && (
         <LiveSetModeGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+          initialStepId={previewStep}
+        />
+      )}
+      {previewGuide === 'crew-management' && (
+        <CrewManagementGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+          initialStepId={previewStep}
+        />
+      )}
+      {previewGuide === 'audition' && (
+        <AuditionGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+        />
+      )}
+      {previewGuide === 'location-management' && (
+        <LocationManagementGuide
+          open
+          onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
+          initialStepId={previewStep}
+        />
+      )}
+      {previewGuide === 'location-analysis' && (
+        <LocationAnalysisGuide
           open
           onClose={() => { setPreviewGuide(null); setPreviewStep(undefined); }}
           initialStepId={previewStep}

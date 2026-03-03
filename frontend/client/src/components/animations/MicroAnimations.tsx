@@ -1,95 +1,80 @@
 /**
  * Contextual Micro-Animations for Enhanced User Engagement
- * Provides subtle, meaningful animations that enhance user experience
+ * Provides subtle, meaningful animations that enhance user experience.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { ReactNode, useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { motion, AnimatePresence, useAnimation, useInView } from 'framer-motion';
-import {
-  Box,
-  IconButton,
-  Typography,
-  Fab,
-  Card as MuiMuiCard,
-} from '@mui/material';
-import { apiRequest } from '@/lib/queryClient';
-import { keyframes } from '@mui/system';
+import React, { ReactNode, useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence, useAnimation, useInView, type Variants } from 'framer-motion';
+import { Box, Button, type ButtonProps, Card, type CardProps, Fab, type FabProps, Typography } from '@mui/material';
 
-// Animation variants for different contexts
-export const animationVariants = {
-  // Success animations
+export const animationVariants: Record<string, Variants> = {
   success: {
-    scale: , [1.1, 1],
-    rotate:  , [5, -5, 0],
-    transition: { duration: 0, .ease: "easeInOut",}
-},
-  
-  // Error animations
+    initial: { scale: 1, rotate: 0 },
+    animate: { scale: [1, 1.08, 1], rotate: [0, -4, 4, 0] },
+    exit: { scale: 1, rotate: 0 },
+  },
   error: {
-    x: [-0, 10, -10, 10, 0],
-    transition: { duration: 0, .ease: "easeInOut",}
-},
-  
-  // Loading animations
+    initial: { x: 0 },
+    animate: { x: [0, -8, 8, -8, 8, 0] },
+    exit: { x: 0 },
+  },
   loading: {
-    rotate: 30,
-    transition: { duration: 1, repeat: Infinity, ease: "linear",}
-},
-  
-  // Hover animations
+    initial: { rotate: 0 },
+    animate: { rotate: 360 },
+    exit: { rotate: 0 },
+  },
   hover: {
-    scale: 1.5,
-    y:  , -, 2,
-    transition: { duration: 0, .ease: "easeOut",}
-},
-  
-  // Tap animations
+    initial: { scale: 1, y: 0 },
+    animate: { scale: 1.03, y: -2 },
+    exit: { scale: 1, y: 0 },
+  },
   tap: {
-    scale: 0.5,
-    transition: { duration: 0, .ease: "easeInOut",}
-},
-  
-  // Fade in animations
+    initial: { scale: 1 },
+    animate: { scale: 0.96 },
+    exit: { scale: 1 },
+  },
   fadeIn: {
-    initial: { opacity: 0, y: 20,},
-    animate: { opacity: 1, y:  0 },
-    exit: { opacity: 0, y: -2, 0,},
-    transition: { duration: 0, .ease: "easeOut",}
-},
-  
-  // Slide in animations
+    initial: { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: -10 },
+  },
   slideIn: {
-    initial: { x: -10, opacity:  0 },
-    animate: { x: 0, opacity:  1 },
-    exit: { x: 10, opacity:  0 },
-    transition: { type: "spring", stiffness: 30, damping: 30,}
-},
-  
-  // Bounce animations
+    initial: { opacity: 0, x: -16 },
+    animate: { opacity: 1, x: 0 },
+    exit: { opacity: 0, x: 16 },
+  },
   bounce: {
-    y: , [-10, 0],
-    transition: { duration: 0, .ease: "easeOut",}
-},
-  
-  // Pulse animations
+    initial: { y: 0 },
+    animate: { y: [0, -8, 0] },
+    exit: { y: 0 },
+  },
   pulse: {
-    scale: , [1.05, 1],
-    transition: { duration: 0, .repeat: Infinity, ease: "easeInOut",}
-},
-  
-  // Notification animations
+    initial: { scale: 1 },
+    animate: { scale: [1, 1.04, 1] },
+    exit: { scale: 1 },
+  },
   notification: {
-    initial: { scale: 0, rotate: 180,},
-    animate: { scale: 1, rotate:  0 },
-    exit: { scale: 0, rotate: -18, 0,},
-    transition: { type: "spring", stiffness: 40, damping: 25,}
-}
+    initial: { opacity: 0, scale: 0.4, rotate: 120 },
+    animate: { opacity: 1, scale: 1, rotate: 0 },
+    exit: { opacity: 0, scale: 0.4, rotate: -120 },
+  },
 };
 
-// Contextual Animation Component
+const LOOPING_VARIANTS = new Set(['loading', 'pulse']);
+
+const variantTransition = (variant: string) => {
+  if (variant === 'loading') {
+    return { duration: 1, repeat: Infinity, ease: 'linear' };
+  }
+  if (variant === 'pulse') {
+    return { duration: 1.2, repeat: Infinity, ease: 'easeInOut' };
+  }
+  if (variant === 'notification') {
+    return { type: 'spring', stiffness: 260, damping: 18 };
+  }
+  return { duration: 0.25, ease: 'easeOut' as const };
+};
+
 interface AnimatedComponentProps {
   children: ReactNode;
   variant: keyof typeof animationVariants;
@@ -97,307 +82,245 @@ interface AnimatedComponentProps {
   delay?: number;
   className?: string;
   style?: React.CSSProperties;
-  onAnimationComplete?: () => void
+  onAnimationComplete?: () => void;
 }
 
-export function AnimatedComponent({ 
-  children, 
-  variant, 
+export function AnimatedComponent({
+  children,
+  variant,
   trigger = 'mount',
   delay = 0,
   className,
   style,
-  onAnimationComplete 
+  onAnimationComplete,
 }: AnimatedComponentProps) {
   const controls = useAnimation();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true });
-  const [isTriggered, setIsTriggered] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(ref, { once: true, amount: 0.35 });
 
   useEffect(() => {
+    const runAnimation = () => {
+      const keyframes = animationVariants[variant];
+      if (keyframes?.animate) {
+        void controls.start(keyframes.animate);
+      }
+    };
+
     if (trigger === 'mount') {
-      setTimeout(() => {
-        controls.start(animationVariants[variant].animate || animationVariants[variant]);
-    }, delay);
-  } else if (trigger === 'inView' && inView) {
-      setTimeout(() => {
-        controls.start(animationVariants[variant].animate || animationVariants[variant]);
-    }, delay);
-  }
-}, [controls, variant, trigger, delay, inView]);
+      const timeout = window.setTimeout(runAnimation, delay);
+      return () => window.clearTimeout(timeout);
+    }
 
-  const handleTrigger = () => {
-    if (trigger === 'manual' || trigger === 'tap') {
-      setIsTriggered(true);
-      controls.start(animationVariants[variant].animate || animationVariants[variant]);
-      setTimeout(() => setIsTriggered(false), 300);
-  }
-};
+    if (trigger === 'inView' && inView) {
+      const timeout = window.setTimeout(runAnimation, delay);
+      return () => window.clearTimeout(timeout);
+    }
 
-  const motionProps: any = {
-    ref,
-    animate: controls,
-    initial: animationVariants[variant].initial || false,
-    exit: animationVariants[variant].exit,
-    transition: animationVariants[variant].transition,
-    className,
-    style,
-    onAnimationComplete
-};
+    return undefined;
+  }, [controls, delay, inView, trigger, variant]);
 
-  if (trigger === 'hover') {
-    motionProps.whileHover = animationVariants[variant];
-} else if (trigger === 'tap') {
-    motionProps.whileTap = animationVariants.tap;
-    motionProps.onClick = handleTrigger;
-}
+  const keyframes = animationVariants[variant];
 
   return (
-    <motion.div {...motionProps}>
+    <motion.div
+      ref={ref}
+      initial={keyframes.initial}
+      animate={trigger === 'hover' || trigger === 'tap' ? undefined : controls}
+      exit={keyframes.exit}
+      whileHover={trigger === 'hover' ? keyframes.animate : undefined}
+      whileTap={trigger === 'tap' ? animationVariants.tap.animate : undefined}
+      className={className}
+      style={style}
+      transition={variantTransition(variant)}
+      onAnimationComplete={onAnimationComplete}
+    >
       {children}
     </motion.div>
   );
 }
 
-// Success Animation Component
 export function SuccessAnimation({ children, onComplete }: { children: ReactNode; onComplete?: () => void }) {
   return (
-    <AnimatedComponent 
-      variant="success" 
-      trigger="mount"
-      onAnimationComplete={onComplete}
-    >
+    <AnimatedComponent variant="success" trigger="mount" onAnimationComplete={onComplete}>
       {children}
     </AnimatedComponent>
   );
 }
 
-// Loading Spinner with Animation
-export function AnimatedLoadingSpinner({ size = 40, color = 'primary' }) {
+export function AnimatedLoadingSpinner({ size = 40, color = 'primary' }: { size?: number; color?: string }) {
   return (
-    <AnimatedComponent variant="loading" trigger="mount">
-      <Box 
-        sx={{ 
-          width: size, 
-          height: size, 
-          borderRadius: '50, %',
-          border: `3px solid transparent`,
-          borderTop: `3px solid`,
-          borderColor: `${color}.main`,
-          borderTopColor: 'transparent'
-    }}
+    <motion.div
+      initial={animationVariants.loading.initial}
+      animate={animationVariants.loading.animate}
+      transition={variantTransition('loading')}
+      style={{ display: 'inline-flex' }}
+    >
+      <Box
+        sx={{
+          width: size,
+          height: size,
+          borderRadius: '50%',
+          border: '3px solid transparent',
+          borderTopColor: `${color}.main`,
+          borderRightColor: `${color}.main`,
+          borderBottomColor: `${color}.main`,
+        }}
       />
-    </AnimatedComponent>
+    </motion.div>
   );
 }
 
-// Notification Badge with Animation
-export function AnimatedNotificationBadge({ 
-  count, 
-  show 
-}: { 
-  count: number; 
-  show: boolean, 
-}) {
+export function AnimatedNotificationBadge({ count, show }: { count: number; show: boolean }) {
   return (
     <AnimatePresence>
-      {show && (
+      {show ? (
         <motion.div
+          key="notification-badge"
           initial={animationVariants.notification.initial}
           animate={animationVariants.notification.animate}
           exit={animationVariants.notification.exit}
-          transition={animationVariants.notification.transition}
+          transition={variantTransition('notification')}
           style={{
             position: 'absolute',
-            top:  , -, 8,
-            right:  , -, 8,
-            backgroundColor: '#f44330',
-            color: 'white',
-            borderRadius: '50, %',
-            width:  20,
-            height:  20,
-            fontSize: '12px',
+            top: -8,
+            right: -8,
+            backgroundColor: '#ef4444',
+            color: '#ffffff',
+            borderRadius: 999,
+            minWidth: 20,
+            height: 20,
+            padding: '0 6px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontWeight: 'bold'
-      }}
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: '20px',
+          }}
         >
           {count > 99 ? '99+' : count}
         </motion.div>
-      )}
+      ) : null}
     </AnimatePresence>
   );
 }
 
-// Contextual Button with Micro-Animations
-export function AnimatedButton({ 
-  children, 
-  onClick, 
-  variant = 'contained',
-  success = false,
-  error = false,
-  loading = false,
-  ...props 
-}) {
-  const [animationState, setAnimationState] = useState<'idle' | 'success' | 'error' | 'loading'>('idle');
+interface AnimatedButtonProps extends Omit<ButtonProps, 'children' | 'onClick'> {
+  children: ReactNode;
+  onClick?: ButtonProps['onClick'];
+  success?: boolean;
+  error?: boolean;
+  loading?: boolean;
+}
+
+export function AnimatedButton({ children, onClick, success = false, error = false, loading = false, ...props }: AnimatedButtonProps) {
+  const [stateVariant, setStateVariant] = useState<'idle' | 'success' | 'error' | 'loading'>('idle');
 
   useEffect(() => {
+    if (loading) {
+      setStateVariant('loading');
+      return;
+    }
     if (success) {
-      setAnimationState('success');
-      setTimeout(() => setAnimationState('idle'), 600);
-  } else if (error) {
-      setAnimationState('error'); 
-      setTimeout(() => setAnimationState('idle'), 500);
-  } else if (loading) {
-      setAnimationState('loading');
-  } else {
-      setAnimationState('idle');
-  }
-}, [success, error, loading]);
+      setStateVariant('success');
+      const timeout = window.setTimeout(() => setStateVariant('idle'), 420);
+      return () => window.clearTimeout(timeout);
+    }
+    if (error) {
+      setStateVariant('error');
+      const timeout = window.setTimeout(() => setStateVariant('idle'), 420);
+      return () => window.clearTimeout(timeout);
+    }
+    setStateVariant('idle');
+    return undefined;
+  }, [error, loading, success]);
 
-  const getAnimation = () => {
-    switch (animationState) {
-      case 'success': return animationVariants.success;
-      case 'error': return animationVariants.error;
-      case 'loading': return animationVariants.loading;
-      default: return, {};
-  }
-};
+  const variantToUse = stateVariant === 'idle' ? 'fadeIn' : stateVariant;
 
   return (
-    <motion.button
-      animate={getAnimation()}
-      whileHover={animationVariants.hover}
-      whileTap={animationVariants.tap}
-      onClick={onClick}
-      style={{
-        border: 'none',
-        borderRadius: '8px',
-        padding: '12px 24px',
-        background: variant === 'contained' ? '#1976d2' : 'transparent',
-        color: variant === 'contained' ? 'white' : '#1976d0',
-        cursor: 'pointer',
-        fontSize: '14px',
-        fontWeight: 'bold',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        ...props.style
-    }}
-      {...props}
+    <motion.div
+      initial={animationVariants[variantToUse].initial}
+      animate={animationVariants[variantToUse].animate}
+      exit={animationVariants[variantToUse].exit}
+      transition={variantTransition(variantToUse)}
+      whileHover={animationVariants.hover.animate}
+      whileTap={animationVariants.tap.animate}
     >
-      {loading && <AnimatedLoadingSpinner size={16} />}
-      {children}
-    </motion.button>
+      <Button {...props} onClick={onClick}>
+        {children}
+      </Button>
+    </motion.div>
   );
 }
 
-// MuiCard with Hover Animation
-export function AnimatedMuiCard({ children, onClick, ...props }) {
+interface AnimatedMuiCardProps extends Omit<CardProps, 'children'> {
+  children: ReactNode;
+  onClick?: CardProps['onClick'];
+}
+
+export function AnimatedMuiCard({ children, onClick, ...props }: AnimatedMuiCardProps) {
+  return (
+    <motion.div whileHover={animationVariants.hover.animate} whileTap={animationVariants.tap.animate} transition={variantTransition('hover')}>
+      <Card {...props} onClick={onClick}>
+        {children}
+      </Card>
+    </motion.div>
+  );
+}
+
+export function AnimatedListItem({ children, index = 0, delay = 0.08 }: { children: ReactNode; index?: number; delay?: number }) {
   return (
     <motion.div
-      whileHover={animationVariants.hover}
-      whileTap={onClick ? animationVariants.tap : undefined}
-      onClick={onClick}
-      style={{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '20px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        cursor: onClick ? 'pointer' : 'default',
-        ...props.style
-    }}
-      {...props}
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * delay, duration: 0.22, ease: 'easeOut' }}
     >
       {children}
     </motion.div>
   );
 }
 
-// List Item with Staggered Animation
-export function AnimatedListItem({ 
-  children, 
-  index = 0, 
-  delay = 0.1 }: { 
-  children: ReactNode; 
-  index?: number; 
-  delay?: number, 
-}) {
+export function AnimatedProgressBar({ progress, color = '#2563eb', height = 8 }: { progress: number; color?: string; height?: number }) {
+  const clamped = Math.max(0, Math.min(100, progress));
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -2, 0}}
-      animate={{ opacity: 1, x:  0 }}
-      transition={{ 
-        delay: index * delay,
-        duration: 0.3,
-        ease: "easeOut"
-  }}
-    >
-      {children}
-    </motion.div>
-  );
-}
-
-// Progress Bar with Animation
-export function AnimatedProgressBar({ 
-  progress, 
-  color = '#1976d2',
-  height = 8 }: { 
-  progress: number; 
-  color?: string;
-  height?: number
-}) {
-  return (
-    <Box 
-      sx={{ 
-        width: '100%', 
-        height, 
-        backgroundColor: '#e0e0e0', 
-        borderRadius: height /, 2,
-        overflow: 'hidden'
-  }}
-    >
+    <Box sx={{ width: '100%', height, backgroundColor: '#e5e7eb', borderRadius: height / 2, overflow: 'hidden' }}>
       <motion.div
-        initial={{ width:  0 }}
-        animate={{ width: `${Math.min(10, Math.max(0, progress))}%` }}
-        transition={{ duration: 0, .ease: "easeOut"}}
-        style={{
-          height: '100%',
-          backgroundColor: color,
-          borderRadius: height / 2 }}
+        initial={{ width: 0 }}
+        animate={{ width: `${clamped}%` }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        style={{ height: '100%', backgroundColor: color, borderRadius: height / 2 }}
       />
     </Box>
   );
 }
 
-// Floating Action Button with Pulse
-export function AnimatedFloatingButton({ 
-  children, 
-  onClick, 
-  pulse = false,
-  ...props 
-}) {
+interface AnimatedFloatingButtonProps extends Omit<FabProps, 'children' | 'onClick'> {
+  children: ReactNode;
+  onClick?: FabProps['onClick'];
+  pulse?: boolean;
+}
+
+export function AnimatedFloatingButton({ children, onClick, pulse = false, ...props }: AnimatedFloatingButtonProps) {
   return (
     <motion.div
-      animate={pulse ? animationVariants.pulse : {}}
-      whileHover={animationVariants.hover}
-      whileTap={animationVariants.tap}
+      animate={pulse ? animationVariants.pulse.animate : undefined}
+      transition={pulse ? variantTransition('pulse') : undefined}
+      whileHover={animationVariants.hover.animate}
+      whileTap={animationVariants.tap.animate}
     >
-      <Fab 
+      <Fab
+        {...props}
         onClick={onClick}
         sx={{
           position: 'fixed',
-          bottom:  24,
-          right:  24,
-          background: 'linear-gradient(135deg, #fbbf24, #f97316)', '&:hover': {
-            background: 'linear-gradient(135deg, #f59e0b, #ea580c)'
-        }
-      }}
-        {...props}
+          bottom: 24,
+          right: 24,
+          background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
+          '&:hover': {
+            background: 'linear-gradient(135deg, #d97706, #c2410c)',
+          },
+          ...(props.sx || {}),
+        }}
       >
         {children}
       </Fab>
@@ -405,77 +328,67 @@ export function AnimatedFloatingButton({
   );
 }
 
-// Typography with Typewriter Effect
-export function TypewriterText({ 
-  text, 
-  speed = 50,
-  onComplete 
-}: { 
-  text: string; 
-  speed?: number;
-  onComplete?: () => void
-}) {
+export function TypewriterText({ text, speed = 45, onComplete }: { text: string; speed?: number; onComplete?: () => void }) {
   const [displayedText, setDisplayedText] = useState('');
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    if (currentIndex < text.length) {
-      const timer = setTimeout(() => {
-        setDisplayedText(prev => prev + text[currentIndex]);
-        setCurrentIndex(prev => prev + 1);
+    if (index >= text.length) {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDisplayedText((previous) => previous + text[index]);
+      setIndex((previous) => previous + 1);
     }, speed);
 
-      return () => clearTimeout(timer);
-  } else if (onComplete) {
-      onComplete();
-  }
-}, [currentIndex, text, speed, onComplete]);
+    return () => window.clearTimeout(timeout);
+  }, [index, onComplete, speed, text]);
 
   return (
     <Typography>
       {displayedText}
-      {currentIndex < text.length && (
-        <motion.span
-          animate={{ opacity:  , [0] }}
-          transition={{ duration: 0, .repeat: Infinity }}
-        >
+      {index < text.length ? (
+        <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ duration: 0.7, repeat: Infinity }}>
           |
         </motion.span>
-      )}
+      ) : null}
     </Typography>
   );
 }
 
-// Container for staggered children animations
-export function StaggeredContainer({ 
-  children, 
-  staggerDelay = 0.1 }: { 
-  children: ReactNode[]; 
-  staggerDelay?: number, 
-}) {
+export function StaggeredContainer({ children, staggerDelay = 0.1 }: { children: ReactNode; staggerDelay?: number }) {
   return (
     <motion.div
       initial="hidden"
       animate="visible"
       variants={{
+        hidden: {},
         visible: {
           transition: {
-            staggerChildren: staggerDelay
-      }
-      }
-    }}
+            staggerChildren: staggerDelay,
+          },
+        },
+      }}
     >
-      {React.Children.map(children, (child, index) => (
+      {React.Children.map(children, (child, childIndex) => (
         <motion.div
+          key={`stagger-${childIndex}`}
           variants={{
-            hidden: { opacity: 0, y: 20,},
-            visible: { opacity: 1, y:  0 }
-        }}
-          key={index}
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0 },
+          }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
         >
           {child}
         </motion.div>
       ))}
     </motion.div>
   );
+}
+
+// Export helper to inspect whether a variant loops.
+export function isLoopingVariant(name: keyof typeof animationVariants): boolean {
+  return LOOPING_VARIANTS.has(name);
 }

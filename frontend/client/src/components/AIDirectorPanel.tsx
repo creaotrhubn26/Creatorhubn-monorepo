@@ -110,7 +110,7 @@ export const AIDirectorPanel: React.FC<AIDirectorPanelProps> = ({
     try {
       await fetch('/api/ai/feedback', {
         method: 'POST',
-        headers: { , 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trackingId: analysis._trackingId,
           action,
@@ -399,7 +399,7 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ label, score, details }) => {
             ...styles.scoreBarFill,
             width: `${score}%`,
             backgroundColor: getScoreColor(score),
-          }
+          }}
         />
       </div>
       <div style={styles.scoreCardDetails}>

@@ -222,7 +222,7 @@ export default function BillingManagementPanel({
   // Register component and data flow nodes with MasterIntegrationProvider
   useEffect(() => {
     componentRegistry.registerComponent({
-      id: 'billing-management,',
+      id: 'billing-management',
       name: 'Billing Management',
       type: 'admin',
       category: 'administration',
@@ -433,7 +433,7 @@ export default function BillingManagementPanel({
   const fetchWithAuth = async (url: string) => {
     return apiRequest(url, {
       headers: {
-        'Authorization': `Bearer ${user?.id || ''}`,
+        'Authorization': `Bearer ${user?.id || ', '}`,
         'x-user-email': user?.email || ''
       }
     });
@@ -668,7 +668,7 @@ export default function BillingManagementPanel({
     const [formData, setFormData] = useState({
       name: '',
       profession: 'photographer',
-      price: '',
+      price: ', ',
       features: '',
       maxUsers: '1',
       maxProjects: '100',

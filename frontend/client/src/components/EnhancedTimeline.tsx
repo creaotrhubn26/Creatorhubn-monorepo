@@ -372,10 +372,12 @@ export default function EnhancedTimeline({
             display: 'flex',
             alignItems: 'center',
             px:  1,
-            overflow: 'hidden','&:hover': {
+            overflow: 'hidden',
+            '&:hover': {
               bgcolor: clip.color,
-          }}}
-          onMouseDown={(e) => handleClipMouseDown(e, clip.id'move')}
+            },
+          }}
+          onMouseDown={(e) => handleClipMouseDown(e, clip.id, 'move')}
           onContextMenu={(e) => handleContextMenu(e, clip.id)}
           onClick={(e) => {
             e.stopPropagation();
@@ -394,7 +396,7 @@ export default function EnhancedTimeline({
               bgcolor: 'rgba(25,255,255,0.5)', '&:hover': { bgcolor: '#fff'}}}
             onMouseDown={(e) => {
               e.stopPropagation();
-              handleClipMouseDown(e, clip.id'resize-left');
+              handleClipMouseDown(e, clip.id, 'resize-left');
           }}
           />
           <Box
@@ -408,7 +410,7 @@ export default function EnhancedTimeline({
               bgcolor: 'rgba(25,255,255,0.5)', '&:hover': { bgcolor: '#fff'}}}
             onMouseDown={(e) => {
               e.stopPropagation();
-              handleClipMouseDown(e, clip.id'resize-right');
+              handleClipMouseDown(e, clip.id, 'resize-right');
           }}
           />
           
@@ -417,7 +419,7 @@ export default function EnhancedTimeline({
             variant="caption"
             sx={{
               color: 'white',
-              fontWeight: 60
+              fontWeight: 600,
               fontSize: '0.7rem',
               textShadow: '1px 1px 2px rgba(0,0,0,0.7)',
               whiteSpace: 'nowrap',
@@ -597,9 +599,9 @@ export default function EnhancedTimeline({
               sx={{
                 position: 'absolute',
                 left:  0,
-                top: index * TIMELINE_HEIGT,
+                top: index * TIMELINE_HEIGHT,
                 right:  0,
-                height: TIMELINE_HEIGT,
+                height: TIMELINE_HEIGHT,
                 borderBottom:  1,
                 borderColor: 'divider',
                 display: 'flex',
@@ -607,7 +609,7 @@ export default function EnhancedTimeline({
                 px:  2,
                 bgcolor: index % 2 === 0 ? 'background.paper' : 'background.default'}}
             >
-              <Typography variant="body2" sx={{ fontWeight: 600,minWidth: TRACK_HEADER_WIDTH - 1, 6}}>
+              <Typography variant="body2" sx={{ fontWeight: 600, minWidth: TRACK_HEADER_WIDTH - 16 }}>
                 {track.name}
               </Typography>
             </Box>
@@ -625,7 +627,7 @@ export default function EnhancedTimeline({
         anchorReference="anchorPosition"
         anchorPosition={
           contextMenu !== null
-            ? { top: contextMenu.mouseY, left: contextMenu.mouse, X}
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
       }
       >
@@ -642,7 +644,7 @@ export default function EnhancedTimeline({
           Paste
         </MenuItem>
         <Divider />
-        <MenuItem onClick={handleDeleteClip}, sx={{ color: 'error.main'}}>
+        <MenuItem onClick={handleDeleteClip} sx={{ color: 'error.main'}}>
           <Delete fontSize="small" sx={{ mr:  1 }} />
           Delete
         </MenuItem>
@@ -652,7 +654,7 @@ export default function EnhancedTimeline({
       <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Timeline Settings</DialogTitle>
         <DialogContent>
-          <Stack spacing={2}, sx={{ mt:  1 }}>
+          <Stack spacing={2} sx={{ mt:  1 }}>
             <FormControlLabel
               control={
                 <Switch
@@ -682,11 +684,11 @@ export default function EnhancedTimeline({
                 max={4}
                 step={0.25}
                 marks={[
-                  { value: 0.5, label: '0.25x'},
-                  { value: 0, .label: '0.5x'},
-                  { value: 1, label: '1x'},
-                  { value: 2, label: '2x'},
-                  { value:  4, label: '4x'},
+                  { value: 0.25, label: '0.25x' },
+                  { value: 0.5, label: '0.5x' },
+                  { value: 1, label: '1x' },
+                  { value: 2, label: '2x' },
+                  { value: 4, label: '4x' },
                 ]}
               />
             </Box>

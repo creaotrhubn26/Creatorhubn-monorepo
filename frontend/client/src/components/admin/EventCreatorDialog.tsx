@@ -94,7 +94,7 @@ export default function EventCreatorDialog({
     description: editEvent?.description || '',
     event_type: editEvent?.event_type || 'announcement',
     status: editEvent?.status || 'planned',
-    scheduled_date: editEvent?.scheduled_date || (selectedDate ? format(selectedDate, 'yyyy-MM-dd,') : ','),
+    scheduled_date: editEvent?.scheduled_date || (selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ','),
     scheduled_time: editEvent?.scheduled_time || '12:00',
     marketing_purpose: editEvent?.marketing_purpose || 'brand-awareness',
     target_audience: editEvent?.target_audience || [],

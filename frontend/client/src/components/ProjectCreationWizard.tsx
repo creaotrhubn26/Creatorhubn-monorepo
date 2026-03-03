@@ -91,7 +91,7 @@ export default function ProjectCreationWizard({
   const createProjectMutation = useMutation({
     mutationFn: (data: ProjectData) =>
       apiRequest('/api/project-integration/create,', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: (result) => {

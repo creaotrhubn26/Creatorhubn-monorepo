@@ -37,6 +37,7 @@ import {
   Snackbar,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   ListItemIcon,
   Divider,
@@ -44,11 +45,13 @@ import {
   Avatar,
   InputAdornment,
   Fab,
+  ChipProps,
 } from '@mui/material';
 import {
   Psychology,
   Chat,
   Code,
+  Accessibility,
   Palette,
   Lightbulb,
   Refresh,
@@ -68,6 +71,7 @@ import {
   Insights,
 } from '@mui/icons-material';
 import { useAIAssistant } from '../../../hooks/useAIAssistant';
+import type { AISuggestionStatus } from '../../../utils/aiAssistant';
 
 interface AIAssistanceDashboardProps {
   onSettingsClick: () => void;
@@ -86,7 +90,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
   onDesignSuggestionsClick,
   onWorkflowsClick
 }) => {
-  const [activeTab, setActiveTab] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   
   // Theming system
   const theming = useTheming('prototype_tester');
@@ -163,15 +167,15 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
     });
       setSnackbar({ open: true, message: 'Code generated successfully', severity: 'success',});
       setShowCodeGenerationDialog(false);
-      setCodePrompt(', ');
+      setCodePrompt('');
   } catch (err) {
       setSnackbar({ open: true, message: 'Failed to generate code', severity: 'error',});
   }
 };
 
-  const handleUpdateSuggestionStatus = (id: string, status: string) => {
+  const handleUpdateSuggestionStatus = (id: string, status: AISuggestionStatus) => {
     try {
-      updateSuggestionStatus(id, status as string);
+      updateSuggestionStatus(id, status);
       setSnackbar({ open: true, message: 'Suggestion status updated', severity: 'success' });
     } catch (err) {
       setSnackbar({ open: true, message: 'Failed to update suggestion status', severity: 'error' });
@@ -208,7 +212,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
     reader.readAsText(file);
 };
 
-  const getPriorityColor = (priority: string) => {
+  const getPriorityColor = (priority: string): ChipProps['color'] => {
     switch (priority) {
       case 'critical': return 'error';
       case 'high': return 'error';
@@ -220,7 +224,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'design': return theming.getThemedIcon(', ');
+      case 'design': return <Palette />;
       case 'code': return <Code />;
       case 'performance': return theming.getThemedIcon('speed');
       case 'accessibility': return <Accessibility />;
@@ -320,7 +324,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                   {conversations.length}
                 </Typography>
                 <Typography color="textSecondary">
-                  {conversations.filter(c => c.status === 'active').length} active
+                  {conversations.filter(c => c.messages.length > 0).length} active
                 </Typography>
               </CardContent>
             </Card>
@@ -396,24 +400,22 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                 </Typography>
                 <List dense>
                   {conversations.slice(0, 5).map((conversation) => (
-                    <ListItem 
-                      key={conversation.id}
-                      button
-                      onClick={() => setSelectedConversation(conversation.id)}
-                    >
-                      <ListItemIcon>
-                        {theming.getThemedIcon('chat')}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={conversation.title}
-                        secondary={`${conversation.messages.length} messages`}
-                      />
-                      <Badge
-                        badgeContent={conversation.messages.filter(m => m.role === 'user').length}
-                        color="primary"
-                      >
-                        {theming.getThemedIcon('smartToy')}
-                      </Badge>
+                    <ListItem key={conversation.id} disablePadding>
+                      <ListItemButton onClick={() => setSelectedConversation(conversation.id)}>
+                        <ListItemIcon>
+                          {theming.getThemedIcon('chat')}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={conversation.title}
+                          secondary={`${conversation.messages.length} messages`}
+                        />
+                        <Badge
+                          badgeContent={conversation.messages.filter(m => m.role === 'user').length}
+                          color="primary"
+                        >
+                          {theming.getThemedIcon('smartToy')}
+                        </Badge>
+                      </ListItemButton>
                     </ListItem>
                   ))}
                 </List>
@@ -488,7 +490,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                           <TableCell>
                             <Select
                               value={suggestion.status}
-                              onChange={(e) => handleUpdateSuggestionStatus(suggestion.id, e.target.value)}
+                              onChange={(e) => handleUpdateSuggestionStatus(suggestion.id, e.target.value as AISuggestionStatus)}
                               size="small"
                               sx={{ minWidth: 120}}
                             >
@@ -529,19 +531,19 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                 </Box>
                 <List>
                   {conversations.map((conversation) => (
-                    <ListItem
-                      key={conversation.id}
-                      button
-                      selected={selectedConversation === conversation.id}
-                      onClick={() => setSelectedConversation(conversation.id)}
-                    >
-                      <ListItemIcon>
-                        {theming.getThemedIcon('chat')}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={conversation.title}
-                        secondary={`${conversation.messages.length} messages`}
-                      />
+                    <ListItem key={conversation.id} disablePadding>
+                      <ListItemButton
+                        selected={selectedConversation === conversation.id}
+                        onClick={() => setSelectedConversation(conversation.id)}
+                      >
+                        <ListItemIcon>
+                          {theming.getThemedIcon('chat')}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={conversation.title}
+                          secondary={`${conversation.messages.length} messages`}
+                        />
+                      </ListItemButton>
                     </ListItem>
                   ))}
                 </List>
@@ -571,10 +573,10 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                                 <Typography variant="body1">{message.content}</Typography>
                                 {message.metadata?.suggestions && (
                                   <Box sx={{ mt:  1 }}>
-                                    {message.metadata.suggestions.map((suggestion, index) => (
+                                    {(message.metadata.suggestions as Array<{ title?: string }>).map((suggestion, index) => (
                                       <Chip
                                         key={index}
-                                        label={suggestion.title}
+                                        label={suggestion.title ?? `Suggestion ${index + 1}`}
                                         size="small"
                                         sx={{ mr: 1, mb: 1 }}
                                       />
@@ -583,7 +585,7 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
                                 )}
                               </Box>
                           }
-                            secondary={new Date(message.timestamp).toLocaleTimeString()}
+                            secondary={new Date(message.createdAt).toLocaleTimeString()}
                           />
                         </ListItem>
                       ))}
@@ -864,7 +866,3 @@ const AIAssistanceDashboard: React.FC<AIAssistanceDashboardProps> = ({
 };
 
 export default AIAssistanceDashboard;
-
-
-
-

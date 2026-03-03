@@ -251,7 +251,7 @@ export function useProfessionAdapter() {
   }
 
     // Fallback to hardcoded titles
-    const titles = {
+    const titles: Record<string, string> = {
       photographer: 'Fotografdashboard',
       videographer: 'Videografdashboard',
       music_producer: 'Musikkprodusentdashboard',
@@ -419,7 +419,7 @@ export function useProfessionAdapter() {
 
   const getProfessionAnalytics = async () => {
     try {
-      const analyticsData = await googleAnalyticsService.getRealTimeData('profession-dashboard');
+      const analyticsData = await googleAnalyticsService.getRealTimeData();
       return analyticsData;
   } catch (error) {
       console.error('Error fetching profession analytics:', error);

@@ -655,7 +655,9 @@ class MultiCameraRecordingService {
   downloadRecording(recording: CameraRecording) {
     if (!recording.url) return;
     
-    const filename = `${recording.cameraName.replace(/\s+/g'_')}_${new Date().toISOString().replace(/[:.]/g'-')}.${this.config.format}`;
+    const filename = `${recording.cameraName.replace(/\s+/g, '_')}_${new Date()
+      .toISOString()
+      .replace(/[:.]/g, '-')}.${this.config.format}`;
     
     const a = document.createElement('a');
     a.href = recording.url;
@@ -707,7 +709,7 @@ class MultiCameraRecordingService {
       // Create FormData with all recordings
       const formData = new FormData();
       
-      const timestamp = new Date().toISOString().replace(/[:.]/g'-').slice(0, 19);
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       formData.append('timestamp', timestamp);
       formData.append('optimize', String(optimize));
       
@@ -718,7 +720,7 @@ class MultiCameraRecordingService {
       for (const recording of validRecordings) {
         if (recording.blob) {
           const extension = recording.blob.type.includes('mp4') ? 'mp4' : 'webm';
-          const safeName = recording.cameraName.replace(/[^a-zA-Z0-9-_]/g'_');
+          const safeName = recording.cameraName.replace(/[^a-zA-Z0-9-_]/g, '_');
           const filename = `${safeName}_${recording.cameraId.slice(0, 8)}.${extension}`;
           
           formData.append('recordings', recording.blob, filename);
@@ -820,4 +822,3 @@ class MultiCameraRecordingService {
 export const multiCameraRecordingService = new MultiCameraRecordingService();
 
 export default multiCameraRecordingService;
-

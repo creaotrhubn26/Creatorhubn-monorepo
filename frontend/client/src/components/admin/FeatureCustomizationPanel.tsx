@@ -51,7 +51,10 @@ import {
   History as HistoryIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
-import { CREATORHUB_FEATURES } from '@server/creatorhub-features';
+import {
+  CREATORHUB_FEATURES,
+  type CreatorHubFeature,
+} from '../../../../shared/creatorhub-features';
 
 // Material UI icons for selection
 const AVAILABLE_ICONS = [
@@ -107,23 +110,31 @@ interface Props {
   userId: string;
 }
 
+interface FeatureCustomizationsResponse {
+  customizations: FeatureCustomization[];
+}
+
+type FeatureWithCustomization = CreatorHubFeature & {
+  customization: FeatureCustomization | null;
+};
+
 export function FeatureCustomizationPanel({ userId }: Props) {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTab, setSelectedTab] = useState(0);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [selectedFeature, setSelectedFeature] = useState<any>(null);
+  const [selectedFeature, setSelectedFeature] = useState<FeatureWithCustomization | null>(null);
   const [formData, setFormData] = useState<Partial<FeatureCustomization>>({});
 
   // Fetch customizations
-  const { data: customizationsData, isLoading } = useQuery({
+  const { data: customizationsData, isLoading } = useQuery<FeatureCustomizationsResponse>({
     queryKey: ['/api/admin/feature-customizations'],
     queryFn: () => apiRequest('/api/admin/feature-customizations'),
   });
 
   // Save mutation
   const saveMutation = useMutation({
-    mutationFn: (data: any) =>
+    mutationFn: (data: Partial<FeatureCustomization> & { featureId: string }) =>
       apiRequest('/api/admin/feature-customizations', {
         method: 'POST',
         body: JSON.stringify({ ...data, userId }),
@@ -147,9 +158,11 @@ export function FeatureCustomizationPanel({ userId }: Props) {
   });
 
   // Combine all features with customizations
-  const allFeatures = useMemo(() => {
+  const allFeatures = useMemo<FeatureWithCustomization[]>(() => {
     const customizations = customizationsData?.customizations || [];
-    const customizationMap = new Map(customizations.map((c: any) => [c.featureId, c]));
+    const customizationMap = new Map(
+      customizations.map((customization) => [customization.featureId, customization]),
+    );
 
     return CREATORHUB_FEATURES.map((feature) => ({
       ...feature,
@@ -164,30 +177,33 @@ export function FeatureCustomizationPanel({ userId }: Props) {
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(
-        (f) =>
-          f.id.toLowerCase().includes(term) ||
-          f.name.toLowerCase().includes(term) ||
-          f.customization?.customName?.toLowerCase().includes(term)
+        (feature) =>
+          feature.id.toLowerCase().includes(term) ||
+          feature.name.toLowerCase().includes(term) ||
+          feature.customization?.customName?.toLowerCase().includes(term)
       );
     }
 
     // Filter by tab
     if (selectedTab === 1) {
-      filtered = filtered.filter((f) => f.customization);
+      filtered = filtered.filter((feature) => feature.customization);
     } else if (selectedTab === 2) {
-      filtered = filtered.filter((f) => !f.customization);
+      filtered = filtered.filter((feature) => !feature.customization);
     }
 
     return filtered;
   }, [allFeatures, searchTerm, selectedTab]);
 
-  const handleEditClick = (feature: any) => {
+  const handleEditClick = (feature: FeatureWithCustomization) => {
     setSelectedFeature(feature);
     setFormData(feature.customization || { featureId: feature.id });
     setEditDialogOpen(true);
   };
 
   const handleSave = () => {
+    if (!selectedFeature) {
+      return;
+    }
     saveMutation.mutate({
       ...formData,
       featureId: selectedFeature.id,
@@ -228,10 +244,10 @@ export function FeatureCustomizationPanel({ userId }: Props) {
             )}}
           sx={{ width: 300 }}
         />
-        <Tabs value={selectedTab} onChange={(_, v) => setSelectedTab(v)}>
+        <Tabs value={selectedTab} onChange={(_event, value) => setSelectedTab(value)}>
           <Tab label={`Alle (${allFeatures.length})`} />
-          <Tab label={`Tilpasset (${allFeatures.filter(f => f.customization).length})`} />
-          <Tab label={`Standard (${allFeatures.filter(f => !f.customization).length})`} />
+          <Tab label={`Tilpasset (${allFeatures.filter((feature) => feature.customization).length})`} />
+          <Tab label={`Standard (${allFeatures.filter((feature) => !feature.customization).length})`} />
         </Tabs>
       </Box>
 
@@ -416,7 +432,14 @@ export function FeatureCustomizationPanel({ userId }: Props) {
                 label="Visningsrekkefølge"
                 type="number"
                 value={formData.displayOrder || 0}
-                onChange={(e) => setFormData({ ...formData, displayOrder: parseInt(e.target.value) })}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    displayOrder: Number.isNaN(Number(e.target.value))
+                      ? 0
+                      : Number(e.target.value),
+                  })
+                }
               />
               <TextField
                 label="Kategori"
@@ -426,7 +449,7 @@ export function FeatureCustomizationPanel({ userId }: Props) {
             </Box>
             <TextField
               label="Markedsføringstekst"
-              value={formData.marketingText || ', '}
+              value={formData.marketingText || ''}
               onChange={(e) => setFormData({ ...formData, marketingText: e.target.value })}
               placeholder="Kort tekst for markedsføring..."
               multiline
@@ -474,4 +497,3 @@ export function FeatureCustomizationPanel({ userId }: Props) {
 }
 
 export default FeatureCustomizationPanel;
-

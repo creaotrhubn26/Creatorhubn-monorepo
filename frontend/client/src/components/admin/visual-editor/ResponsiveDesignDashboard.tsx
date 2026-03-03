@@ -255,6 +255,11 @@ const ResponsiveDesignDashboard: React.FC<ResponsiveDesignDashboardProps> = memo
     return theming.getThemedIcon('warning');
 }, [hasError, isInitialized, isEnabled]);
 
+  const statusChipIcon = useMemo(() => {
+    const icon = getStatusIcon();
+    return React.isValidElement(icon) ? icon : <Devices />;
+  }, [getStatusIcon]);
+
   // Get status text
   const getStatusText = useCallback(() => {
     if (hasError) return 'Error';
@@ -305,7 +310,7 @@ const ResponsiveDesignDashboard: React.FC<ResponsiveDesignDashboardProps> = memo
   const renderMinimal = () => (
     <Tooltip title={`Responsive: ${getStatusText()}`}>
       <Chip
-        icon={getStatusIcon()}
+        icon={statusChipIcon}
         label={currentBreakpoint}
         color={getStatusColor()}
         size="small"
@@ -1024,7 +1029,6 @@ const ResponsiveDesignDashboard: React.FC<ResponsiveDesignDashboardProps> = memo
 ResponsiveDesignDashboard.displayName ='ResponsiveDesignDashboard';
 
 export default ResponsiveDesignDashboard;
-
 
 
 

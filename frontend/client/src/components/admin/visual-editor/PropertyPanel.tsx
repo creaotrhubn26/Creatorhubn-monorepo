@@ -58,7 +58,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
     const endTiming = performance.startTiming('property_panel_render');
 
     lifecycle.registerComponent({
-      id: 'PropertyPanel,',
+      id: 'PropertyPanel',
       type: 'property-panel',
       version: '1.0.0',
       capabilities: {
@@ -122,16 +122,33 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   }, [selectedElements, onUpdateElements]);
 
   // Get common properties across selected elements
-  const getCommonProperty = (property: string, type: 'styles' | 'props' = 'styles') => {
+  const getCommonProperty = (property: string, type: 'style' | 'prop' = 'style') => {
     if (selectedElements.length === 0) return '';
 
     const values = selectedElements.map(el => {
-      const obj = type === 'styles' ? el.styles : el.props;
+      const obj = type === 'style' ? el.styles : el.props;
       return obj[property];
     });
 
     const unique = Array.from(new Set(values));
     return unique.length === 1 ? unique[0] : '';
+  };
+
+  const getCommonPropertyString = (property: string, type: 'style' | 'prop' = 'style', fallback = ''): string => {
+    const value = getCommonProperty(property, type);
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    return fallback;
+  };
+
+  const getCommonPropertyNumber = (property: string, type: 'style' | 'prop' = 'style', fallback = 0): number => {
+    const value = getCommonProperty(property, type);
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+    return fallback;
   };
 
   const getFirstElement = () => selectedElements[0];
@@ -295,7 +312,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                     fullWidth
                     label="Border Radius"
                     type="number"
-                    value={getCommonProperty('borderRadius')?.replace('px',',') || 0}
+                    value={getCommonPropertyString('borderRadius').replace('px', '') || 0}
                     onChange={(e) => handlePropertyUpdate('borderRadius', `${e.target.value}px`)}
                   />
                 </Grid>
@@ -340,15 +357,15 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
         <Box sx={{ p:  2 }}>
           {isTextElement && (
             <Box sx={{ mb: 2 }}>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Text Content"
-                value={getCommonProperty('text', 'props') || ''}
-                onChange={(e) => handlePropertyUpdate('text', e.target.value, 'props')}
-              />
-            </Box>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Text Content"
+                  value={getCommonPropertyString('text', 'prop')}
+                  onChange={(e) => handlePropertyUpdate('text', e.target.value, 'prop')}
+                />
+              </Box>
           )}
 
           {isImageElement && (
@@ -357,14 +374,14 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
               <TextField
                 fullWidth
                 label="Image URL"
-                value={getCommonProperty('src','props') || ', '}
-                onChange={(e) => handlePropertyUpdate('src', e.target.value, 'props')}
+                value={getCommonPropertyString('src', 'prop')}
+                onChange={(e) => handlePropertyUpdate('src', e.target.value, 'prop')}
               />
               <TextField
                 fullWidth
                 label="Alt Text"
-                value={getCommonProperty('alt', 'props') || ''}
-                onChange={(e) => handlePropertyUpdate('alt', e.target.value, 'props')}
+                value={getCommonPropertyString('alt', 'prop')}
+                onChange={(e) => handlePropertyUpdate('alt', e.target.value, 'prop')}
               />
             </Box>
           )}
@@ -374,8 +391,8 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
               <TextField
                 fullWidth
                 label="Button Text"
-                value={getCommonProperty('text', 'props') || ', '}
-                onChange={(e) => handlePropertyUpdate('text', e.target.value, 'props')}
+                value={getCommonPropertyString('text', 'prop')}
+                onChange={(e) => handlePropertyUpdate('text', e.target.value, 'prop')}
               />
             </Box>
           )}
@@ -456,7 +473,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
             <Grid item xs={12}>
               <Typography variant="subtitle2" gutterBottom>Opacity</Typography>
               <Slider
-                value={parseFloat(getCommonProperty('opacity') || '1') * 100}
+                value={getCommonPropertyNumber('opacity', 'style', 1) * 100}
                 onChange={(_, value) => handlePropertyUpdate('opacity', (value as number) / 100)}
                 valueLabelDisplay="auto"
                 valueLabelFormat={(value) => `${value}%`}

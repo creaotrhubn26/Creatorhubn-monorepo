@@ -179,7 +179,7 @@ class ExportSchedulerService {
 
   createJob(
     config: VideoExportConfig,
-    options: Partial<Omit<ExportJob, 'id' | 'config' | 'status' | 'createdAt' | , 'retryCount, '>> = {}
+    options: Partial<Omit<ExportJob, 'id' | 'config' | 'status' | 'createdAt' | 'retryCount'>> = {}
   ): ExportJob {
     const job: ExportJob = {
       id: `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -200,7 +200,7 @@ class ExportSchedulerService {
   createJobFromPreset(
     presetId: string,
     duration: number,
-    options: Partial<Omit<ExportJob, 'id' | 'config' | 'status' | 'createdAt' | , 'retryCount'>> = {}
+    options: Partial<Omit<ExportJob, 'id' | 'config' | 'status' | 'createdAt' | 'retryCount'>> = {}
   ): ExportJob | null {
     const preset = EXPORT_PRESETS.find((p) => p.id === presetId);
     if (!preset) return null;
@@ -562,7 +562,7 @@ class ExportSchedulerService {
   /**
    * Convert internal job to database format
    */
-  private jobToDbFormat(job: ExportJob): Omit<ExportJobDB, 'id' | 'userId' | 'createdAt' | , 'updatedAt'> {
+  private jobToDbFormat(job: ExportJob): Omit<ExportJobDB, 'id' | 'userId' | 'createdAt' | 'updatedAt'> {
     return {
       name: job.name,
       presetId: job.preset?.id || 'custom',
@@ -763,4 +763,3 @@ if (typeof window !=='undefined') {
 }
 
 export default exportScheduler;
-

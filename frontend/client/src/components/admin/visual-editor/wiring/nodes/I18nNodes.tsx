@@ -30,6 +30,19 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
+const getStringValue = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const getStringArrayValue = (value: unknown, fallback: string[] = []): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
+};
+
 // Supported locales
 const SUPPORTED_LOCALES = [
   { code: 'nb-NO', name: 'Norwegian Bokmål', flag: '🇳🇴' },
@@ -95,7 +108,7 @@ export const TranslationKeyNode = memo(function TranslationKeyNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.returnKeyOnMissing || false}
+                checked={getBooleanValue(data.returnKeyOnMissing)}
                 onChange={(e) => onChange('returnKeyOnMissing', e.target.checked)}
                 size="small"
               />
@@ -105,7 +118,7 @@ export const TranslationKeyNode = memo(function TranslationKeyNode({
 
           <Alert severity="info" sx={{ mt: 1, py: 0 }}>
             <Typography variant="caption">
-              Uses i18next: t('{data.namespace || 'common'}:{data.key || 'key'}')
+              {`Uses i18next: t('${getStringValue(data.namespace, 'common')}:${getStringValue(data.key, 'key')}')`}
             </Typography>
           </Alert>
         </Box>
@@ -312,7 +325,7 @@ export const FormatDateNode = memo(function FormatDateNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.includeTime || false}
+                checked={getBooleanValue(data.includeTime)}
                 onChange={(e) => onChange('includeTime', e.target.checked)}
                 size="small"
               />
@@ -321,7 +334,7 @@ export const FormatDateNode = memo(function FormatDateNode({
           />
 
           <Typography variant="caption" color="rgba(255,255,255,0.5)" sx={{ mt: 1, display: 'block' }}>
-            Formats using current locale: {data.locale || 'nb-NO'}
+            {`Formats using current locale: ${getStringValue(data.locale, 'nb-NO')}`}
           </Typography>
         </Box>
       )}
@@ -507,12 +520,12 @@ export const LanguageSwitcherNode = memo(function LanguageSwitcherNode({
                 key={loc.code}
                 control={
                   <Switch
-                    checked={(data.enabledLocales || ['nb-NO', 'en-US']).includes(loc.code)}
+                    checked={getStringArrayValue(data.enabledLocales, ['nb-NO', 'en-US']).includes(loc.code)}
                     onChange={(e) => {
-                      const current = data.enabledLocales || ['nb-NO', 'en-US'];
+                      const current = getStringArrayValue(data.enabledLocales, ['nb-NO', 'en-US']);
                       const updated = e.target.checked
                         ? [...current, loc.code]
-                        : current.filter((c: string) => c !== loc.code);
+                        : current.filter((c) => c !== loc.code);
                       onChange('enabledLocales', updated);
                     }}
                     size="small"
@@ -596,7 +609,7 @@ export const I18N_NODE_DEFINITIONS = [
     outputs: [
       { id: 'text', name: 'text', type: 'output' as const, dataType: 'string' as const },
     ],
-    defaultData: { singular: '', plural: '', zero: '' },
+    defaultData: { singular: '', plural: ', ', zero: '' },
     component: PluralNode,
   },
   {
@@ -665,4 +678,3 @@ export const I18N_NODE_DEFINITIONS = [
 ];
 
 export default I18N_NODE_DEFINITIONS;
-

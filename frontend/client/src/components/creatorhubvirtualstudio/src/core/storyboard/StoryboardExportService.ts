@@ -534,7 +534,7 @@ export class StoryboardExportService {
     notify({ stage: 'encoding', progress: 95, message: 'Encoding image...' });
 
     const blob = await new Promise<Blob>((resolve) => {
-      canvas.toBlob((b) => resolve(b!)'image/png');
+      canvas.toBlob((b) => resolve(b!), 'image/png');
     });
 
     const url = URL.createObjectURL(blob);
@@ -591,7 +591,7 @@ export class StoryboardExportService {
     const totalDuration = storyboard.frames.reduce((sum, f) => sum + f.duration, 0);
     const totalFrameCount = Math.ceil(totalDuration * fps);
     let frameCount = 0;
-    let accTime = 0;
+    const accTime = 0;
 
     for (let i = 0; i < storyboard.frames.length; i++) {
       const frame = storyboard.frames[i];
@@ -708,7 +708,7 @@ export class StoryboardExportService {
 
       const zipBlob = await response.blob();
       const url = URL.createObjectURL(zipBlob);
-      const optimizedFilename = filename.replace(/\.webm$/i'_optimized.zip');
+      const optimizedFilename = filename.replace(/\.webm$/i, '_optimized.zip');
 
       log.info(`Animatic optimized for streaming: ${(zipBlob.size / 1024 / 1024).toFixed(2)} MB`);
 
@@ -823,7 +823,7 @@ export class StoryboardExportService {
     ctx.drawImage(img, 0, 0);
     
     return new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b!)'image/png');
+      canvas.toBlob((b) => resolve(b!), 'image/png');
     });
   }
 
@@ -850,4 +850,3 @@ export class StoryboardExportService {
 export const storyboardExportService = new StoryboardExportService();
 
 export default storyboardExportService;
-

@@ -3657,7 +3657,7 @@ export function getFolderAccessOverview(profession: string) {
   
   const featureFolders = Object.entries(professionConfig.availableFeatures).map(([featureId, feature]) => ({
     featureId,
-    featureName: feature.name,
+    featureName: feature.description || featureId,
     folders: [`${featureId}-data`, `${featureId}-assets`],
     isEnabled: feature.enabled,
     plan: feature.plan,

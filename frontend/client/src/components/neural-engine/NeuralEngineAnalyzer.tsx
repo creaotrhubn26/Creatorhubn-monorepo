@@ -1,58 +1,54 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  LinearProgress,
-  Alert,
   Chip,
-  Grid,
-  Paper,
-  Divider,
+  LinearProgress,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  IconButton,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Paper,
+  Stack,
+  Typography,
 } from '@mui/material';
-import { Psychology,
-  VideographyIconDescription,
-  CloudUpload,
+import Grid from '@mui/material/Grid2';
+import {
   AutoFixHigh,
+  CheckCircle,
+  CloudUpload,
   ColorLens,
+  ExpandMore,
   Face,
   Lightbulb,
-  TrendingUp,
-  CheckCircle,
-  Error,
-  Info,
-  ExpandMore,
-  PlayArrowArrow,
-  Stop,
+  Movie,
+  Psychology,
   Refresh,
-  Download,
   Settings,
-  Visibility, } from '../shared/CreatorHubIcons';
+  TrendingUp,
+} from '@mui/icons-material';
+import { useMutation } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
 
 interface NeuralEngineAnalyzerProps {
-  onAnalysisComplete?: (analysis: any) => void;
-  onProjectCreated?: (project: any) => void
+  onAnalysisComplete?: (analysis: AnalysisResponse) => void;
+  onProjectCreated?: (project: IntelligentProjectResponse) => void;
 }
 
-interface AnalysisResult {
+interface AnalysisResponse {
+  fileInfo?: {
+    path?: string;
+    durationSeconds?: number;
+    fileName?: string;
+  };
   analysis: {
     sceneType: string;
     confidence: number;
@@ -63,7 +59,7 @@ interface AnalysisResult {
     contrastLevel: number;
     audioType?: string;
     transcript?: string;
-};
+  };
   recommendations: {
     projectType: string;
     recommendedFrameRate: number;
@@ -73,282 +69,273 @@ interface AnalysisResult {
     lightingAdjustment: string;
     exportFormats: string[];
     timelineStructure: string;
-};
+  };
   colorOptimization: {
     recommendedLUT: string;
     brightnessAdjustment: number;
     contrastAdjustment: number;
     saturationAdjustment: number;
     temperatureAdjustment: number;
-};
+  };
 }
 
-export default function NeuralEngineAnalyzer({ 
-  onAnalysisComplete, 
-  onProjectCreated 
-}: NeuralEngineAnalyzerProps) {
-  const [selectedFile, setSelectedFile] = useState<Description | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [showResults, setShowResults] = useState(false);
+interface IntelligentProjectResponse {
+  projectId?: string;
+  projectName?: string;
+  projectResult?: unknown;
+}
+
+function getSceneBadgeColor(sceneType: string): 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'error' {
+  const normalized = sceneType.toLowerCase();
+  if (normalized.includes('wedding')) {
+    return 'secondary';
+  }
+  if (normalized.includes('corporate')) {
+    return 'primary';
+  }
+  if (normalized.includes('music')) {
+    return 'warning';
+  }
+  if (normalized.includes('documentary')) {
+    return 'success';
+  }
+  return 'default';
+}
+
+function getSceneIcon(sceneType: string): string {
+  const normalized = sceneType.toLowerCase();
+  if (normalized.includes('wedding')) {
+    return 'W';
+  }
+  if (normalized.includes('corporate')) {
+    return 'C';
+  }
+  if (normalized.includes('music')) {
+    return 'M';
+  }
+  if (normalized.includes('documentary')) {
+    return 'D';
+  }
+  return 'V';
+}
+
+const EMPTY_ANALYSIS_ERROR = 'Analysis response was missing required fields.';
+
+export default function NeuralEngineAnalyzer({
+  onAnalysisComplete,
+  onProjectCreated,
+}: NeuralEngineAnalyzerProps): React.ReactElement {
+  const { user } = useAuth();
+  const theming = useTheming('videographer');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Full analysis mutation
-  const fullAnalysis = useMutation({
-    mutationFn: async (file: File) => {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [lastError, setLastError] = useState<string>('');
+
+  const fullAnalysisMutation = useMutation({
+    mutationFn: async (file: File): Promise<AnalysisResponse> => {
       const formData = new FormData();
       formData.append('video', file);
-      
-      const response = await fetch('/api/neural-engine/full-analysis,', {
-        headers: {
-          ...auth, 'Authorization': `Bearer ${localStorage.getItem('token,')}`,
-      },
-        method: 'POS',
+      const data = await apiRequest('/api/neural-engine/full-analysis', {
+        method: 'POST',
         body: formData,
-    });
-      
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-    }
-      
-      return response.json();
-  },
+      });
+
+      if (typeof data !== 'object' || data === null || !('analysis' in data) || !('recommendations' in data)) {
+        throw new Error(EMPTY_ANALYSIS_ERROR);
+      }
+
+      return data as AnalysisResponse;
+    },
     onSuccess: (data) => {
-      console.log('✅ Full analysis complete, :', data);
       setAnalysisResult(data);
       setShowResults(true);
+      setLastError('');
       onAnalysisComplete?.(data);
-  },
+    },
     onError: (error) => {
-      console.error('❌ Analysis failed, :', error);
-  },
-});
+      setLastError(error instanceof Error ? error.message : 'Analysis failed');
+    },
+  });
 
-  // Create intelligent project mutation
-  const createProject = useMutation({
-    mutationFn: async ({ projectName, recommendations }: { projectName: string, recommendations: any }) => {
-      const response = await fetch('/api/neural-engine/create-intelligent-project', {
-        headers: {
-          ...auth, 'Content-Type' : 'application/json','Authorization': `Bearer ${localStorage.getItem('token')}`,
-      },
-        body: JSON.stringify({
-          projectName,
-          videoPath: analysisResult?.fileInfo?.path,
-          recommendations,
-      }),
-    });
-      
-      if (!response.ok) {
-        throw new Error('Project creation failed');
-    }
-      
-      return response.json();
-  },
+  const createProjectMutation = useMutation({
+    mutationFn: async (payload: {
+      projectName: string;
+      recommendations: AnalysisResponse['recommendations'];
+      sourceVideoPath?: string;
+    }): Promise<IntelligentProjectResponse> => {
+      const data = await apiRequest('/api/neural-engine/create-intelligent-project', {
+        method: 'POST',
+        body: {
+          ...payload,
+          userId: user?.id ?? null,
+        },
+      });
+      return (typeof data === 'object' && data !== null ? data : {}) as IntelligentProjectResponse;
+    },
     onSuccess: (data) => {
-      console.log('✅ Intelligent project created, :', data);
-      onProjectCreated?.(data.projectResult);
-  },
+      setLastError('');
+      onProjectCreated?.(data);
+    },
     onError: (error) => {
-      console.error('❌ Project creation failed, :', error);
-  },
-});
+      setLastError(error instanceof Error ? error.message : 'Project creation failed');
+    },
+  });
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setAnalysisResult(null);
-      setShowResults(false);
-}
-}, []);
+    const file = event.target.files?.[0] ?? null;
+    setSelectedFile(file);
+    setShowResults(false);
+    setAnalysisResult(null);
+    setLastError('');
+  }, []);
 
   const handleAnalyze = useCallback(() => {
-    if (selectedFile) {
-      fullAnalysis.mutate(selectedFile);
-  }
-}, [selectedFile, fullAnalysis]);
+    if (!selectedFile) {
+      return;
+    }
+    fullAnalysisMutation.mutate(selectedFile);
+  }, [fullAnalysisMutation, selectedFile]);
 
   const handleCreateProject = useCallback(() => {
-    if (analysisResult?.recommendations) {
-      const projectName = `${analysisResult.analysis.sceneType}_${Date.now()}`;
-      createProject.mutate({ 
-        projectName, 
-        recommendations: analysisResult.recommendations 
-  });
-  }
-}, [analysisResult, createProject]);
+    if (!analysisResult) {
+      return;
+    }
 
-  const getSceneTypeIcon = (sceneType: string) => {
-    if (sceneType.includes('wedding')) return '💒';
-    if (sceneType.includes('corporate')) return '🏢';
-    if (sceneType.includes('music')) return '🎵';
-    if (sceneType.includes('documentary')) return '📽️';
-    return '🎬';
-};
+    const sceneName = analysisResult.analysis.sceneType.replace(/\s+/g, '_');
+    createProjectMutation.mutate({
+      projectName: `${sceneName}_${Date.now()}`,
+      recommendations: analysisResult.recommendations,
+      sourceVideoPath: analysisResult.fileInfo?.path,
+    });
+  }, [analysisResult, createProjectMutation]);
 
-  const getSceneTypeColor = (sceneType: string) => {
-    if (sceneType.includes('wedding')) return '#e91e63';
-    if (sceneType.includes('corporate')) return '#9c27b0';
-    if (sceneType.includes('music')) return '#f44336';
-    if (sceneType.includes('documentary')) return '#795548';
-    return '#2196f3';
-};
+  const confidencePercent = useMemo(() => {
+    if (!analysisResult) {
+      return 0;
+    }
+    return Math.round(analysisResult.analysis.confidence * 100);
+  }, [analysisResult]);
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-          <Psychology sx={{ color: '#3b82f0', mr: 1, fontSize: 32}} />
-          <Typography variant="h5" sx={{  fontWeight: 'bold', color: '#1e3a8a'  }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', p: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+          <Psychology sx={{ color: theming.colors.primary }} />
+          <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
             Neural Engine Analyzer
           </Typography>
-        </Box>
-        
+        </Stack>
         <Typography variant="body2" color="text.secondary">
-          Upload a video to get AI-powered analysis, recommendations, and automatic project setup
+          Upload a video, run AI analysis, and generate an editor-ready project profile.
         </Typography>
       </Box>
 
-      {/* Main Content */}
-      <Box sx={{ flex: 1, p: 2, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
         {!showResults ? (
-          /* Upload and Analysis Section */
-          <Box>
-            {/* File Upload */}
-            <Card sx={{ mb:  3 }}>
+          <Stack spacing={2}>
+            <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Upload Video for Analysis
+                <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
+                  Upload Video
                 </Typography>
-                
-                <Box sx={{ mb:  2 }}>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="video/*"
-                    onChange={handleFileSelect}
-                    style={{ display: 'none' }}
-                  />
-                  
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}>
                   <Button
                     variant="outlined"
-                    startIcon={theming.getThemedIcon('cloudUpload')}
+                    startIcon={<CloudUpload />}
                     onClick={() => fileInputRef.current?.click()}
-                    sx={{ mr:  2 }}
                   >
                     Select Video File
                   </Button>
-                  
-                  {selectedFile && (
+                  {selectedFile ? (
                     <Chip
+                      color="primary"
                       label={`${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(1)} MB)`}
                       onDelete={() => setSelectedFile(null)}
-                      color="primary"
                     />
-                  )}
-                </Box>
+                  ) : null}
+                </Stack>
 
-                {selectedFile && (
-                  <Alert severity="info" sx={{ mb:  2 }}>
-                    <Typography variant="body2">
-                      Ready to analyze: <strong>{selectedFile.name}</strong>
-                    </Typography>
-                  </Alert>
-                )}
-
-                <Button variant="contained"
-                  startIcon={fullAnalysis.isPending ? <LinearProgress sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('autoFixHigh')}
+                <Button
+                  variant="contained"
+                  startIcon={<AutoFixHigh />}
                   onClick={handleAnalyze}
-                  disabled={!selectedFile || fullAnalysis.isPending}
-                  sx={{
-                    background: 'linear-gradient(45deg, #3b82f6, #8b5cf6)', '&:hover': {
-                      background: 'linear-gradient(45deg, #2563eb, #7c3aed)' }}}
+                  disabled={!selectedFile || fullAnalysisMutation.isPending}
+                  sx={theming.getThemedButtonSx()}
                 >
-                  {fullAnalysis.isPending ? 'Analyzing...' : 'Start AI Analysis'}
+                  {fullAnalysisMutation.isPending ? 'Analyzing...' : 'Start AI Analysis'}
                 </Button>
 
-                {fullAnalysis.isPending && (
-                  <Box sx={{ mt:  2 }}>
-                    <LinearProgress />
-                    <Typography variant="body2" sx={{ mt: 1, textAlign: 'center' }}>
-                      AI is analyzing your video content...
-                    </Typography>
-                  </Box>
-                )}
+                {fullAnalysisMutation.isPending ? <LinearProgress sx={{ mt: 2 }} /> : null}
               </CardContent>
             </Card>
 
-            {/* Analysis Features */}
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  What the Neural Engine Analyzes
+                <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
+                  Analysis Capabilities
                 </Typography>
-                
                 <Grid container spacing={2}>
-                  <Grid item xs={12}>
+                  <Grid size={{ xs: 12, md: 6 }}>
                     <List>
                       <ListItem>
                         <ListItemIcon>
-                          <VideoFile color="primary" />
+                          <Movie color="primary" />
                         </ListItemIcon>
                         <ListItemText
-                          primary="Scene Detection"
-                          secondary="Identifies wedding, corporate, music video, documentary"
+                          primary="Scene Classification"
+                          secondary="Identifies scene context and project category."
                         />
                       </ListItem>
-                      
                       <ListItem>
                         <ListItemIcon>
                           <Face color="primary" />
                         </ListItemIcon>
                         <ListItemText
-                          primary="Face Detection"
-                          secondary="Counts faces and analyzes composition"
+                          primary="Face and Subject Detection"
+                          secondary="Detects people and counts subjects in frame."
                         />
                       </ListItem>
-                      
+                    </List>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <List>
                       <ListItem>
                         <ListItemIcon>
                           <Lightbulb color="primary" />
                         </ListItemIcon>
                         <ListItemText
-                          primary="Lighting Analysis"
-                          secondary="Analyzes brightness and contrast conditions"
+                          primary="Lighting Diagnostics"
+                          secondary="Rates exposure balance and lighting quality."
                         />
                       </ListItem>
-                    </List>
-                  </Grid>
-                  
-                  <Grid item xs={12}>
-                    <List>
-                      <ListItem>
-                        <ListItemIcon>
-                          <AutoFixHigh color="primary" />
-                        </ListItemIcon>
-                        <ListItemText
-                          primary="Smart Recommendations"
-                          secondary="Suggests optimal project settings"
-                        />
-                      </ListItem>
-                      
                       <ListItem>
                         <ListItemIcon>
                           <ColorLens color="primary" />
                         </ListItemIcon>
                         <ListItemText
                           primary="Color Optimization"
-                          secondary="Recommends color grading presets"
+                          secondary="Proposes LUT and grade tuning suggestions."
                         />
                       </ListItem>
-                      
                       <ListItem>
                         <ListItemIcon>
                           <TrendingUp color="primary" />
                         </ListItemIcon>
                         <ListItemText
-                          primary="Export Optimization"
-                          secondary="Suggests best export formats"
+                          primary="Export Recommendations"
+                          secondary="Suggests delivery codecs and formats."
                         />
                       </ListItem>
                     </List>
@@ -356,98 +343,98 @@ export default function NeuralEngineAnalyzer({
                 </Grid>
               </CardContent>
             </Card>
-          </Box>
-        ) : (
-          /* Results Section */
-          <Box>
-            {/* Analysis Summary */}
-            <Card sx={{ mb:  3 }}>
+          </Stack>
+        ) : analysisResult ? (
+          <Stack spacing={2}>
+            <Card>
               <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                  <CheckCircle sx={{ color: 'success.main', mr:  1 }} />
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                  <CheckCircle color="success" />
                   <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                    AI Analysis Complete
+                    Analysis Complete
                   </Typography>
-                </Box>
-                
+                </Stack>
+
                 <Grid container spacing={2}>
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: 2, backgroundColor: 'grey.50' }}>
-                      <Typography variant="subtitle2" gutterBottom>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">
                         Scene Type
                       </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                        <Typography variant="h4" sx={{  mr:  1  }}>
-                          {getSceneTypeIcon(analysisResult!.analysis.sceneType)}
-                        </Typography>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+                        <Chip label={getSceneIcon(analysisResult.analysis.sceneType)} size="small" />
                         <Chip
-                          label={analysisResult!.analysis.sceneType}
-                          sx={{ 
-                            backgroundColor: getSceneTypeColor(analysisResult!.analysis.sceneType),
-                            color: 'white',
-                            fontWeight: 'bold'
-                      }}
+                          label={analysisResult.analysis.sceneType}
+                          color={getSceneBadgeColor(analysisResult.analysis.sceneType)}
                         />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Confidence: {(analysisResult!.analysis.confidence * 100).toFixed()}%
+                      </Stack>
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        Confidence: {confidencePercent}%
                       </Typography>
                     </Paper>
                   </Grid>
-                  
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: 2, backgroundColor: 'grey.50' }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Content Analysis
+
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Content Detection
+                      </Typography>
+                      <Typography variant="body2">Faces: {analysisResult.analysis.faceCount}</Typography>
+                      <Typography variant="body2">
+                        Lighting: {analysisResult.analysis.lightingCondition}
                       </Typography>
                       <Typography variant="body2">
-                        <strong>Faces: </strong> {analysisResult!.analysis.faceCount}
+                        Objects: {analysisResult.analysis.objectsDetected.join(', ') || 'None'}
                       </Typography>
-                      <Typography variant="body2">
-                        <strong>Lighting: </strong> {analysisResult!.analysis.lightingCondition}
-                      </Typography>
-                      <Typography variant="body2">
-                        <strong>Objects: </strong> {analysisResult!.analysis.objectsDetected.join(', ') || 'None detected'}
-                      </Typography>
-                      {analysisResult!.analysis.audioType && (
-                        <Typography variant="body2">
-                          <strong>Audio: </strong> {analysisResult!.analysis.audioType}
-                        </Typography>
-                      )}
                     </Paper>
                   </Grid>
                 </Grid>
               </CardContent>
             </Card>
 
-            {/* Recommendations */}
-            <Card sx={{ mb:  3 }}>
+            <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  AI Recommendations
+                <Typography variant="h6" sx={{ color: theming.colors.primary, mb: 1 }}>
+                  Recommendations
                 </Typography>
-                
-                <Accordion>
+
+                <Accordion defaultExpanded>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Typography variant="subtitle1">Project Settings</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Frame Rate</Typography>
-                        <Typography variant="body1">{analysisResult!.recommendations.recommendedFrameRate} fps</Typography>
+                    <Grid container spacing={1}>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Frame Rate
+                        </Typography>
+                        <Typography variant="body1">
+                          {analysisResult.recommendations.recommendedFrameRate} fps
+                        </Typography>
                       </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Resolution</Typography>
-                        <Typography variant="body1">{analysisResult!.recommendations.recommendedResolution}</Typography>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Resolution
+                        </Typography>
+                        <Typography variant="body1">
+                          {analysisResult.recommendations.recommendedResolution}
+                        </Typography>
                       </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Color Space</Typography>
-                        <Typography variant="body1">{analysisResult!.recommendations.colorSpace}</Typography>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Color Space
+                        </Typography>
+                        <Typography variant="body1">
+                          {analysisResult.recommendations.colorSpace}
+                        </Typography>
                       </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Color Preset</Typography>
-                        <Typography variant="body1">{analysisResult!.recommendations.suggestedColorPreset}</Typography>
+                      <Grid size={{ xs: 12, md: 6 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Suggested Preset
+                        </Typography>
+                        <Typography variant="body1">
+                          {analysisResult.recommendations.suggestedColorPreset}
+                        </Typography>
                       </Grid>
                     </Grid>
                   </AccordionDetails>
@@ -458,11 +445,11 @@ export default function NeuralEngineAnalyzer({
                     <Typography variant="subtitle1">Export Formats</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap:  1 }}>
-                      {analysisResult!.recommendations.exportFormats.map((format, index) => (
-                        <Chip key={index} label={format} variant="outlined" />
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      {analysisResult.recommendations.exportFormats.map((format) => (
+                        <Chip key={format} label={format} size="small" variant="outlined" />
                       ))}
-                    </Box>
+                    </Stack>
                   </AccordionDetails>
                 </Accordion>
 
@@ -471,88 +458,56 @@ export default function NeuralEngineAnalyzer({
                     <Typography variant="subtitle1">Color Optimization</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Recommended LUT</Typography>
-                        <Typography variant="body1">{analysisResult!.colorOptimization.recommendedLUT}</Typography>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Brightness</Typography>
-                        <Typography variant="body1">
-                          {analysisResult!.colorOptimization.brightnessAdjustment > 0 ? '+' : ', '}
-                          {(analysisResult!.colorOptimization.brightnessAdjustment * 100).toFixed(1)}%
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Contrast</Typography>
-                        <Typography variant="body1">
-                          {analysisResult!.colorOptimization.contrastAdjustment > 1 ? '+' : ', '}
-                          {((analysisResult!.colorOptimization.contrastAdjustment - 1) * 100).toFixed(1)}%
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="body2" color="text.secondary">Saturation</Typography>
-                        <Typography variant="body1">
-                          {analysisResult!.colorOptimization.saturationAdjustment > 1 ? '+' : ', '}
-                          {((analysisResult!.colorOptimization.saturationAdjustment - 1) * 100).toFixed(1)}%
-                        </Typography>
-                      </Grid>
-                    </Grid>
+                    <Typography variant="body2">
+                      LUT: {analysisResult.colorOptimization.recommendedLUT}
+                    </Typography>
+                    <Typography variant="body2">
+                      Brightness: {(analysisResult.colorOptimization.brightnessAdjustment * 100).toFixed(1)}%
+                    </Typography>
+                    <Typography variant="body2">
+                      Contrast: {((analysisResult.colorOptimization.contrastAdjustment - 1) * 100).toFixed(1)}%
+                    </Typography>
+                    <Typography variant="body2">
+                      Saturation: {((analysisResult.colorOptimization.saturationAdjustment - 1) * 100).toFixed(1)}%
+                    </Typography>
                   </AccordionDetails>
                 </Accordion>
               </CardContent>
             </Card>
 
-            {/* Action Buttons */}
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+            <Stack direction="row" spacing={1} justifyContent="center">
               <Button
                 variant="outlined"
-                startIcon={theming.getThemedIcon('refresh')}
+                startIcon={<Refresh />}
                 onClick={() => {
-                  setShowResults(false);
-                  setAnalysisResult(null);
                   setSelectedFile(null);
-              }}
+                  setAnalysisResult(null);
+                  setShowResults(false);
+                  setLastError('');
+                }}
               >
                 Analyze Another Video
               </Button>
-              
-              <Button variant="contained"
-                startIcon={createProject.isPending ? <LinearProgress sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('settings')}
+
+              <Button
+                variant="contained"
+                startIcon={<Settings />}
+                disabled={createProjectMutation.isPending}
                 onClick={handleCreateProject}
-                disabled={createProject.isPending}
-                sx={{
-                  background: 'linear-gradient(45deg, #10b981, #059669)','&:hover': {
-                    background: 'linear-gradient(45deg, #059669, #047857)' }}}
+                sx={theming.getThemedButtonSx()}
               >
-                {createProject.isPending ? 'Creating Project...' : 'Create DaVinci Resolve Project'}
+                {createProjectMutation.isPending ? 'Creating Project...' : 'Create Intelligent Project'}
               </Button>
-            </Box>
-          </Box>
-        )}
+            </Stack>
+          </Stack>
+        ) : null}
       </Box>
 
-      {/* Error Handling */}
-      {(fullAnalysis.isError || createProject.isError) && (
-        <Alert 
-          severity="error" 
-          sx={{ m:  2 }}
-          action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                fullAnalysis.reset();
-                createProject.reset();
-            }}
-            >
-              Dismiss
-            </Button>
-        }
-        >
-          {fullAnalysis.error?.message || createProject.error?.message ||'An error occurred'}
+      {lastError ? (
+        <Alert severity="error" sx={{ m: 2 }}>
+          {lastError}
         </Alert>
-      )}
+      ) : null}
     </Box>
   );
 }

@@ -17,16 +17,43 @@ import {
   Grid,
   Chip,
   IconButton,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
 import { Close } from '@mui/icons-material';
-import { pixiFilterEngine } from '../../services/pixi-filter-engine';
+import {
+  PixiFilterEngine,
+  pixiFilterEngine,
+  type FilterConfig,
+} from '../../services/pixi-filter-engine';
 
 interface GPUFiltersPanelProps {
   open: boolean;
   onClose: () => void;
-  onApplyFilter: (filterId: string, config: any) => void;
+  onApplyFilter: (filterId: string, config: FilterConfig) => void;
+}
+
+type FilterPreset = { name: string; config: FilterConfig };
+
+function getSafeFilterPresets(): FilterPreset[] {
+  const maybeEngine = pixiFilterEngine as Partial<PixiFilterEngine> & {
+    getFilterPresets?: () => FilterPreset[];
+  };
+
+  if (typeof maybeEngine.getFilterPresets === 'function') {
+    try {
+      const presets = maybeEngine.getFilterPresets();
+      if (Array.isArray(presets) && presets.length > 0) {
+        return presets;
+      }
+    } catch (error) {
+      console.warn('GPU preset instance API failed, using static fallback.', error);
+    }
+  }
+
+  return PixiFilterEngine.getFilterPresets();
+}
+
+function sliderValueToNumber(value: number | number[]): number {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export default function GPUFiltersPanel({
@@ -40,9 +67,9 @@ export default function GPUFiltersPanel({
   const [saturation, setSaturation] = useState(1);
   const [noise, setNoise] = useState(0);
   
-  const presets = pixiFilterEngine.getFilterPresets();
+  const presets = getSafeFilterPresets();
   
-  const handleApplyPreset = (preset: any) => {
+  const handleApplyPreset = (preset: FilterPreset) => {
     onApplyFilter('preset-' + preset.name, preset.config);
     
     // Update sliders
@@ -89,8 +116,9 @@ export default function GPUFiltersPanel({
           <Slider
             value={blur}
             onChange={(_, v) => {
-              setBlur(v as number);
-              onApplyFilter('blur', { type: 'blur', params: { strength: v, quality: 4 } });
+              const nextValue = sliderValueToNumber(v);
+              setBlur(nextValue);
+              onApplyFilter('blur', { type: 'blur', params: { strength: nextValue, quality: 4 } });
             }}
             min={0}
             max={32}
@@ -104,8 +132,9 @@ export default function GPUFiltersPanel({
           <Slider
             value={brightness}
             onChange={(_, v) => {
-              setBrightness(v as number);
-              onApplyFilter('brightness', { type: 'color_matrix', params: { brightness: v } });
+              const nextValue = sliderValueToNumber(v);
+              setBrightness(nextValue);
+              onApplyFilter('brightness', { type: 'color_matrix', params: { brightness: nextValue } });
             }}
             min={0}
             max={2}
@@ -120,8 +149,9 @@ export default function GPUFiltersPanel({
           <Slider
             value={contrast}
             onChange={(_, v) => {
-              setContrast(v as number);
-              onApplyFilter('contrast', { type: 'color_matrix', params: { contrast: v } });
+              const nextValue = sliderValueToNumber(v);
+              setContrast(nextValue);
+              onApplyFilter('contrast', { type: 'color_matrix', params: { contrast: nextValue } });
             }}
             min={0}
             max={2}
@@ -136,8 +166,9 @@ export default function GPUFiltersPanel({
           <Slider
             value={saturation}
             onChange={(_, v) => {
-              setSaturation(v as number);
-              onApplyFilter('saturation', { type: 'color_matrix', params: { saturate: v } });
+              const nextValue = sliderValueToNumber(v);
+              setSaturation(nextValue);
+              onApplyFilter('saturation', { type: 'color_matrix', params: { saturate: nextValue } });
             }}
             min={0}
             max={2}
@@ -152,8 +183,9 @@ export default function GPUFiltersPanel({
           <Slider
             value={noise}
             onChange={(_, v) => {
-              setNoise(v as number);
-              onApplyFilter('noise', { type: 'noise', params: { noise: v } });
+              const nextValue = sliderValueToNumber(v);
+              setNoise(nextValue);
+              onApplyFilter('noise', { type: 'noise', params: { noise: nextValue } });
             }}
             min={0}
             max={1}
@@ -167,5 +199,4 @@ export default function GPUFiltersPanel({
     </Dialog>
   );
 }
-
 

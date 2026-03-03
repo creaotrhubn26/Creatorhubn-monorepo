@@ -242,14 +242,14 @@ export const BrandKitShowcase: React.FC = () => {
                 <Button
                   size="small"
                   startIcon={<ContentCopy />}
-                  onClick={() => handleCopy(brandKit.logos.icon'logo-icon')}
+                  onClick={() => handleCopy(brandKit.logos.icon, 'logo-icon')}
                 >
                   {copied === 'logo-icon' ? 'Copied!' : 'Copy SVG'}
                 </Button>
                 <Button
                   size="small"
                   startIcon={<Download />}
-                  onClick={() => handleDownloadSVG(brandKit.logos.icon'virtual-studio-icon')}
+                  onClick={() => handleDownloadSVG(brandKit.logos.icon, 'virtual-studio-icon')}
                 >
                   Export PNG
                 </Button>
@@ -271,7 +271,7 @@ export const BrandKitShowcase: React.FC = () => {
                 <Button
                   size="small"
                   startIcon={<ContentCopy />}
-                  onClick={() => handleCopy(brandKit.watermark'watermark')}
+                  onClick={() => handleCopy(brandKit.watermark, 'watermark')}
                 >
                   {copied === 'watermark' ? 'Copied!' : 'Copy SVG'}
                 </Button>

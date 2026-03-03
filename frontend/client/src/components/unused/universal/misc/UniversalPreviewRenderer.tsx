@@ -99,7 +99,7 @@ export default function UniversalPreviewRenderer({
       return apiRequest('/api/component/update', {
         headers: auth,
         headers: {},
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {

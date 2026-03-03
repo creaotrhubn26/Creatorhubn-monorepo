@@ -82,8 +82,8 @@ export default function ViralContentCreator({
     colorScheme: 'warm',
     style: 'professional',
 });
-  const [scheduledTime, setScheduledTime] = useState('19: 00');
-  const [creativeToolsT, absetCreativeToolsTab] = useState(0);
+  const [scheduledTime, setScheduledTime] = useState('19:00');
+  const [creativeToolsTab, setCreativeToolsTab] = useState(0);
 
   // Viral analysis mutation
   const viralAnalysisMutation = useMutation({
@@ -93,7 +93,7 @@ export default function ViralContentCreator({
       return await apiRequest('/api/viral-content/analyze', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           showcaseId: showcaseData.id,
@@ -123,7 +123,7 @@ export default function ViralContentCreator({
       return await apiRequest('/api/youtube/upload-showcase', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(uploadData),
     });
@@ -141,7 +141,7 @@ export default function ViralContentCreator({
       return await apiRequest('/api/creative-tools/launch', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify(toolData),
     });
@@ -154,7 +154,7 @@ export default function ViralContentCreator({
 
   const handleCreateViralPost = async () => {
     const uploadData = {
-      showcaseId: showcase.d,
+      showcaseId: showcase.id,
       title: selectedTitle,
       description: customDescription,
       thumbnailConfig,
@@ -167,9 +167,9 @@ export default function ViralContentCreator({
 
   const handleLaunchCreativeTool = (toolType: 'video' | 'photo') => {
     const toolData = {
-      showcaseId: showcase.d,
+      showcaseId: showcase.id,
       toolType,
-      mediaUrl: showcase.mediaUl,
+      mediaUrl: showcase.mediaUrl,
       profession: showcase.profession,
   };
 
@@ -184,9 +184,11 @@ export default function ViralContentCreator({
 
       <Card
         sx={{
-          mb:  3,
-          background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)'}}
-       sx={theming.getThemedCardSx()}>
+          ...theming.getThemedCardSx(),
+          mb: 3,
+          background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+        }}
+      >
         <CardContent sx={theming.getThemedCardSx()}>
           <Grid container spacing={2} alignItems="center">
             <Grid item xs={8} >
@@ -195,14 +197,15 @@ export default function ViralContentCreator({
                 {showcase.profession} • {showcase.category}
               </Typography>
             </Grid>
-            <Grid item xs={4}, sx={{ textAlign: 'right'}}>
+            <Grid item xs={4} sx={{ textAlign: 'right'}}>
               <Button variant="contained"
                 onClick={handleAnalyzeContent}
                 disabled={isAnalyzing}
                 sx={{
                   background: 'linear-gradient(45deg, #f57c00 30%, #ff9800 90%)',
-                  minWidth: 10}}
-                startIcon={isAnalyzing ? <Refresh className="animate-spin" sx={theming.getThemedButtonSx()}> : <Psychology />}
+                  minWidth: 10,
+                }}
+                startIcon={isAnalyzing ? <Refresh className="animate-spin" /> : <Psychology />}
               >
                 {isAnalyzing ? 'Analyserer...' : 'Analyser Viral Potensial'}
               </Button>
@@ -262,7 +265,7 @@ export default function ViralContentCreator({
                   <Grid item xs={4} >
                     <Box sx={{ textAlign: 'center'}}>
                       <Chip
-                        icon={theming.getThemedIcon('star')}}
+                        icon={<Star fontSize="small" />}
                         label={
                           viralStrategy.analysis?.qualityScore > 85
                             ? 'HØYT POTENSIAL'
@@ -350,8 +353,10 @@ export default function ViralContentCreator({
           <Grid item xs={12}>
             <Card
               sx={{
-                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)'}}
-             sx={theming.getThemedCardSx()}>
+                ...theming.getThemedCardSx(),
+                background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+              }}
+            >
               <CardContent sx={theming.getThemedCardSx()}>
                 <Typography variant="h6" gutterBottom sx={{  color: theming.colors.primary }}>
                   🎨 Kreative Verktøy - Rask Tilgang
@@ -362,8 +367,8 @@ export default function ViralContentCreator({
                   onChange={(e, newValue) => setCreativeToolsTab(newValue)}
                   sx={{ mb:  2 }}
                 >
-                  <Tab icon={theming.getThemedIcon('videoLibrary')}} label="Video Suite" />
-                  <Tab icon={theming.getThemedIcon('photoLibrary')}} label="Photo Enhancer" />
+                  <Tab icon={<VideocamLibrary />} label="Video Suite" />
+                  <Tab icon={<PhotoLibrary />} label="Photo Enhancer" />
                 </Tabs>
 
                 {creativeToolsTab === 0 && (
@@ -466,7 +471,7 @@ export default function ViralContentCreator({
                   sx={{ mr:  2 }}
                 />
                 <Chip
-                  icon={theming.getThemedIcon('schedule')}}
+                  icon={<Schedule fontSize="small" />}
                   label="Optimal for norske seere: 19:00-21:00"
                   color="info"
                 />

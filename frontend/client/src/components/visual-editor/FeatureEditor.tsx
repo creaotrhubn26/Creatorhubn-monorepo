@@ -438,7 +438,7 @@ export function FeatureEditor({ onFeatureUpdate, onClose }: FeatureEditorProps) 
                           sx={{
                             width:  12,
                             height:  12,
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             backgroundColor: tier.color}}
                         />
                         <Typography variant="body2">

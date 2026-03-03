@@ -109,7 +109,7 @@ export default function IntelligentVideoAnalyzer() {
       formData.append('userId, ', 'daniel@creatorhubn.com,');
 
       const response = await fetch('/api/intelligent-video/analyze', {
-        method: 'POS',
+        method: 'POST',
         body: formData,
     });
 
@@ -140,7 +140,7 @@ export default function IntelligentVideoAnalyzer() {
   const generateClipMutation = useMutation({
     mutationFn: async (config: CustomClipConfig & { videoPath: string }) => {
       return apiRequest('/api/intelligent-video/generate-clip', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(config),
     });
   },
@@ -154,7 +154,7 @@ export default function IntelligentVideoAnalyzer() {
   const generateThumbnailMutation = useMutation({
     mutationFn: async ({ videoPath, timestamp }: { videoPath: string; timestamp: number }) => {
       return apiRequest('/api/intelligent-video/generate-thumbnail', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           videoPath,
           timestamp,

@@ -309,7 +309,7 @@ export default function ProfessionAdapter({
 
       case 'academy': {
         // Academy tab only for mentors/instructors
-        const AcademyDashboard = React.lazy(() => import('../academy/AcademyDashboard'));
+        const AcademyDashboard = React.lazy(() => import('../academy/AcademyDashboardCinematic'));
         return (
           <React.Suspense fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>

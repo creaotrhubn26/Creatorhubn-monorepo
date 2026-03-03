@@ -1,37 +1,44 @@
-import { useTheming } from '../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Button,
-  TextField,
-  Grid,
   Chip,
-  Alert,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  FormControlLabel,
-  Switch,
-  MenuItem,
-  InputAdornment,
+  DialogContent,
+  DialogTitle,
   Divider,
+  Grid,
+  IconButton,
+  InputAdornment,
+  MenuItem,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Memory,
-  Security,
+  AddCircle,
   Lock,
-  Visibility,
-  Settings,
-  AddCircle as Add,
+  Memory,
+  Search,
+  Security,
   Storage,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import { useExternalData } from '../services/ExternalDataService';
+
+interface SecuritySettings {
+  pinRequired: boolean;
+  pin?: string;
+  passwordRequired: boolean;
+  password?: string;
+  encryptionEnabled: boolean;
+  accessLevel: 'public' | 'restricted' | 'private';
+}
 
 interface MemoryCard {
   id: string;
@@ -43,1126 +50,553 @@ interface MemoryCard {
   location: string;
   notes: string;
   status: 'available' | 'in_use' | 'needs_attention';
-  securitySettings?: {
-    pinRequired: boolean;
-    pin?: string;
-    passwordRequired: boolean;
-    password?: string;
-    encryptionEnabled: boolean;
-    accessLevel: 'public' | 'restricted' | 'private';
+  securitySettings: SecuritySettings;
+}
+
+interface NewCardForm {
+  serialNumber: string;
+  brand: string;
+  type: string;
+  capacity: string;
+  speed: string;
+  location: string;
+  notes: string;
+  status: MemoryCard['status'];
+  securitySettings: SecuritySettings;
+}
+
+const LOCAL_KEY = 'memory_card_manager_cards';
+
+const EMPTY_SECURITY: SecuritySettings = {
+  pinRequired: false,
+  pin: '',
+  passwordRequired: false,
+  password: '',
+  encryptionEnabled: false,
+  accessLevel: 'public',
 };
+
+const EMPTY_FORM: NewCardForm = {
+  serialNumber: '',
+  brand: '',
+  type: 'SDXC',
+  capacity: '128GB',
+  speed: 'UHS-II',
+  location: '',
+  notes: '',
+  status: 'available',
+  securitySettings: EMPTY_SECURITY,
+};
+
+function parseCardsResponse(payload: unknown): MemoryCard[] {
+  if (Array.isArray(payload)) {
+    return payload as MemoryCard[];
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: MemoryCard[] }).data;
+  }
+
+  return [];
+}
+
+function loadLocalCards(): MemoryCard[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as MemoryCard[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalCards(cards: MemoryCard[]): void {
+  try {
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(cards));
+  } catch {
+    // Ignore persistence failures.
+  }
+}
+
+function statusColor(status: MemoryCard['status']): 'success' | 'warning' | 'error' {
+  if (status === 'available') {
+    return 'success';
+  }
+  if (status === 'in_use') {
+    return 'warning';
+  }
+  return 'error';
+}
+
+function accessColor(level: SecuritySettings['accessLevel']): 'success' | 'warning' | 'error' {
+  if (level === 'public') {
+    return 'success';
+  }
+  if (level === 'restricted') {
+    return 'warning';
+  }
+  return 'error';
+}
+
+function estimateTravelCost(kilometers: number, vehicleType: string): number {
+  const perKm = vehicleType === 'van' ? 7.5 : vehicleType === 'electric' ? 3.2 : 5.8;
+  const tollEstimate = Math.max(0, kilometers * 0.35);
+  return Math.round((kilometers * perKm + tollEstimate) * 100) / 100;
 }
 
 export default function MemoryCardManager() {
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  
-  // External Data Service integration for travel cost calculations
-  const { 
-    calculateTravelCosts,
-    getFuelPrices,
-    calculateTollCosts,
-    getCurrentWeather,
-    getKartverketAddress
-} = useExternalData();
-  
+
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showSecurityDialog, setShowSecurityDialog] = useState(false);
   const [selectedCard, setSelectedCard] = useState<MemoryCard | null>(null);
+  const [form, setForm] = useState<NewCardForm>(EMPTY_FORM);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [newCard, setNewCard] = useState({
-    serialNumber: ',',
-    brand: '',
-    type: '',
-    capacity: '',
-    speed: '',
-    location: '',
-    notes: '',
-    securitySettings: {
-      pinRequired: false,
-      pin: '',
-      passwordRequired: false,
-      password: '',
-      encryptionEnabled: false,
-      accessLevel: 'public' as 'public' | 'restricted' | 'private',
-  },
-});
-  
-  // Travel cost calculation state
-  const [travelCosts, setTravelCosts] = useState<any>(null);
-  const [travelLoading, setTravelLoading] = useState(false);
-  const [travelDistance, setTravelDistance] = useState<number>(50); // Default 50km
-  const [travelVehicleType, setTravelVehicleType] = useState<string>('car');
+  const [filterStatus, setFilterStatus] = useState<'all' | MemoryCard['status']>('all');
 
-  // Database connection for MemoryCardManager
-  const { data: memoryCardsResponse, isLoading } = useQuery({
-    queryKey: ['/api/memory-cards', ],
-    staleTime: 3000,
-});
+  const [travelDistanceKm, setTravelDistanceKm] = useState(50);
+  const [travelVehicleType, setTravelVehicleType] = useState('car');
 
-  const { data: statsResponse } = useQuery({
-    queryKey: ['/api/memory-cards/stats', ],
-    staleTime: 3000,
-});
+  const cardsQueryKey = ['/api/memory-cards'];
 
-  // Create memory card mutation
-  const createCardMutation = useMutation({
-    mutationFn: async (cardData: any) => {
-      return await apiRequest('/api/memory-cards', {
-        method: 'POS',
-        body: JSON.stringify(cardData),
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-cards', ]});
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-cards/stats', ]});
+  const { data: cards = [], isLoading, isError } = useQuery({
+    queryKey: cardsQueryKey,
+    queryFn: async () => {
+      try {
+        const response = await apiRequest('/api/memory-cards');
+        const parsed = parseCardsResponse(response);
+        if (parsed.length > 0) {
+          saveLocalCards(parsed);
+          return parsed;
+        }
+      } catch {
+        // Local fallback below.
+      }
+
+      return loadLocalCards();
+    },
+  });
+
+  const createCard = useMutation({
+    mutationFn: async (newCard: MemoryCard) => {
+      try {
+        await apiRequest('/api/memory-cards', { method: 'POST', body: newCard });
+      } catch {
+        // Local fallback handles persistence.
+      }
+
+      const next = [newCard, ...cards];
+      saveLocalCards(next);
+      return next;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(cardsQueryKey, next);
       setShowAddDialog(false);
-      resetForm();
-  },
-    onError: (error: any) => {
-      console.error('Failed to create memory card:', error);
-  },
-});
+      setForm(EMPTY_FORM);
+    },
+  });
 
-  // Update security settings mutation
-  const updateSecurityMutation = useMutation({
-    mutationFn: async ({ cardd, securitySettings }: { cardId: string; securitySettings: any }) => {
-      return await apiRequest(`/api/memory-cards/${cardId}/security`, {
-        method: 'PU',
-        body: JSON.stringify(securitySettings),
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-cards', ]});
+  const updateSecurity = useMutation({
+    mutationFn: async (payload: { cardId: string; securitySettings: SecuritySettings }) => {
+      try {
+        await apiRequest(`/api/memory-cards/${payload.cardId}/security`, {
+          method: 'PUT',
+          body: payload.securitySettings,
+        });
+      } catch {
+        // Local fallback handles persistence.
+      }
+
+      const next = cards.map((card) =>
+        card.id === payload.cardId ? { ...card, securitySettings: payload.securitySettings } : card,
+      );
+      saveLocalCards(next);
+      return next;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(cardsQueryKey, next);
       setShowSecurityDialog(false);
       setSelectedCard(null);
-  },
-});
-
-  // Travel cost calculation functions
-  const calculateTravelCostsForProject = async (distance: number, vehicleType: string) => {
-    setTravelLoading(true);
-    try {
-      const travelCost = await calculateTravelCosts({
-        kilometers: distance,
-        vehicleType: vehicleType,
-        returnTrip: true
-    });
-      
-      const fuelPrices = await getFuelPrices();
-      const tollCosts = await calculateTollCosts({
-        kilometers: distance,
-        vehicleType: vehicleType
-    });
-      
-      setTravelCosts({
-        ...travelCost,
-        fuelPrices,
-        tollCosts,
-        distance,
-        vehicleType
-    });
-      
-  } catch (error) {
-      console.warn('Failed to calculate travel costs: ', error);
-  } finally {
-      setTravelLoading(false);
-  }
-};
-
-  const handleTravelCostCalculation = () => {
-    calculateTravelCostsForProject(travelDistance, travelVehicleType);
-};
-
-  const memoryCards = memoryCardsResponse?.data || [];
-  const stats = statsResponse?.data || {
-    total:  0,
-    available:  0,
-    inUse:  0,
-    needsAttention:  0,
-};
-
-  const resetForm = () => {
-    setNewCard({
-      serialNumber: '',
-      brand: '',
-      type: '',
-      capacity: '',
-      speed: '',
-      location: '',
-      notes: '',
-      securitySettings: {
-        pinRequired: false,
-        pin: '',
-        passwordRequired: false,
-        password: ', ',
-        encryptionEnabled: false,
-        accessLevel: 'public',
+      setForm(EMPTY_FORM);
     },
   });
-};
 
-  const filteredCards = memoryCards.filter((card: MemoryCard) => {
-    const matchesSearch =
-      card.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      card.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      card.type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || card.status === filterStatus;
-    return matchesSearch && matchesFilter;
-});
+  const filteredCards = useMemo(() => {
+    return cards.filter((card) => {
+      const matchesSearch =
+        card.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        card.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        card.type.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'success';
-      case 'in_use':
-        return 'warning';
-      case 'needs_attention':
-        return 'error';
-      default:
-        return 'default';
-}
-};
+      const matchesStatus = filterStatus === 'all' || card.status === filterStatus;
+      return matchesSearch && matchesStatus;
+    });
+  }, [cards, filterStatus, searchTerm]);
 
-  const getAccessLevelColor = (level: string) => {
-    switch (level) {
-      case 'public':
-        return 'success';
-      case 'restricted':
-        return 'warning';
-      case 'private':
-        return 'error';
-      default:
-        return 'default';
-}
-};
+  const stats = useMemo(() => {
+    return {
+      total: cards.length,
+      available: cards.filter((card) => card.status === 'available').length,
+      inUse: cards.filter((card) => card.status === 'in_use').length,
+      needsAttention: cards.filter((card) => card.status === 'needs_attention').length,
+    };
+  }, [cards]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await createCardMutation.mutateAsync(newCard);
-};
+  const travelCost = estimateTravelCost(travelDistanceKm, travelVehicleType);
 
-  const handleSecurityUpdate = async () => {
-    if (!selectedCard) return;
-    await updateSecurityMutation.mutateAsync({
-      cardId: selectedCard.d,
-      securitySettings: newCard.securitySettings,
-  });
-};
+  const handleSaveCard = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!form.serialNumber || !form.brand) {
+      return;
+    }
 
-  const openSecurityDialog = (card: MemoryCard) => {
+    const payload: MemoryCard = {
+      id: `card-${Date.now()}`,
+      serialNumber: form.serialNumber,
+      brand: form.brand,
+      type: form.type,
+      capacity: form.capacity,
+      speed: form.speed,
+      location: form.location,
+      notes: form.notes,
+      status: form.status,
+      securitySettings: form.securitySettings,
+    };
+
+    await createCard.mutateAsync(payload);
+  };
+
+  const openSecurity = (card: MemoryCard) => {
     setSelectedCard(card);
-    setNewCard((prev) => ({
-      ...prev,
-      securitySettings: card.securitySettings || {
-        pinRequired: false,
-        pin: ', ',
-        passwordRequired: false,
-        password: ', ',
-        encryptionEnabled: false,
-        accessLevel: 'public',
-    },
-  }));
+    setForm({
+      serialNumber: card.serialNumber,
+      brand: card.brand,
+      type: card.type,
+      capacity: card.capacity,
+      speed: card.speed,
+      location: card.location,
+      notes: card.notes,
+      status: card.status,
+      securitySettings: card.securitySettings,
+    });
     setShowSecurityDialog(true);
-};
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          mb:  3}}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center'}}>
-          <Memory sx={{ color: '#ff8c00', mr: 1, fontSize: '2rem'}} />
-          <Typography variant="h4" sx={{  color: '#1a1f20', fontWeight: 600}}>
-            Minnekortadministrasjon
-          </Typography>
-        </Box>
-        <Button
-          onClick={() => setShowAddDialog(true)}
-          variant="contained"
-          startIcon={theming.getThemedIcon('add')}
-          sx={{
-            background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
-            color: 'white',
-            fontWeight: 600,
-            '&:hover': {
-              background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
-              transform: 'translateY(-1px)',
-              boxShadow: '0 6px 20px rgba(255,140,0,0.3)',
-            }
-          }}
-        >
-          Legg til minnekort
+    <Box sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={1.5} sx={{ mb: 2 }}>
+        <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Memory color="primary" />
+          Memory Card Manager
+        </Typography>
+        <Button variant="contained" startIcon={<AddCircle />} onClick={() => setShowAddDialog(true)}>
+          Add card
         </Button>
-      </Box>
+      </Stack>
 
-      {/* Travel Cost Calculation Section */}
-      <Card sx={{ mb: 3, bgcolor: 'background.paper' }}>
+      {isError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          API not available. Showing local memory card data.
+        </Alert>
+      )}
+
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent><Typography variant="overline">Total</Typography><Typography variant="h6">{stats.total}</Typography></CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent><Typography variant="overline">Available</Typography><Typography variant="h6">{stats.available}</Typography></CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent><Typography variant="overline">In use</Typography><Typography variant="h6">{stats.inUse}</Typography></CardContent></Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card variant="outlined"><CardContent><Typography variant="overline">Needs attention</Typography><Typography variant="h6">{stats.needsAttention}</Typography></CardContent></Card>
+        </Grid>
+      </Grid>
+
+      <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 1,
-            color: theming.colors.primary 
-        }}>
-            🚗 Reisekostnadskalkulator
-          </Typography>
-          
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Beregn reisekostnader for prosjekter basert på avstand og kjøretøytype
-          </Typography>
-          
-          <Grid container spacing={2} alignItems="center">
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <TextField
-                label="Avstand (km)"
-                type="number"
-                value={travelDistance}
-                onChange={(e) => setTravelDistance(Number(e.target.value))}
-                fullWidth
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">📏</InputAdornment>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}>
+            <TextField
+              fullWidth
+              placeholder="Search by serial, brand, type"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search fontSize="small" />
+                  </InputAdornment>
+                ),
               }}
-              />
-            </Grid>
-            
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <FormControl fullWidth>
-                <InputLabel>Kjøretøytype</InputLabel>
-                <Select
-                  value={travelVehicleType}
-                  onChange={(e) => setTravelVehicleType(e.target.value)}
-                  label="Kjøretøytype"
-                >
-                  <MenuItem value="car">🚗 Bil</MenuItem>
-                  <MenuItem value="van">🚐 Varebil</MenuItem>
-                  <MenuItem value="truck">🚛 Lastebil</MenuItem>
-                  <MenuItem value="motorcycle">🏍️ Motorsykkel</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid size={{ xs: 12, sm: 4 }}>
-              <Button
-                variant="contained"
-                onClick={handleTravelCostCalculation}
-                disabled={travelLoading}
-                fullWidth
-                startIcon={travelLoading ? <CircularProgress size={20} /> : <Storage />}
-                sx={{ 
-                  background: 'linear-gradient(45deg, #ff8c00, #ff6b35)', '&:hover': {
-                    background: 'linear-gradient(45deg, #ff6b35, #ff8c00)',
-                }
-              }}
-              >
-                {travelLoading ? 'Beregner...' : 'Beregn Kostnader'}
-              </Button>
-            </Grid>
-          </Grid>
-          
-          {/* Travel Cost Results */}
-          {travelCosts && (
-            <Box sx={{ mt: 3 }}>
-              <Divider sx={{ mb: 2 }} />
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600}}>
-                📊 Reisekostnader
-              </Typography>
-              
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Card sx={{ p: 2, bgcolor: 'success.light', border: '1px solid', borderColor: 'success.main' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      ⛽ Drivstoff
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: 'success.dark' }}>
-                      {travelCosts.fuelCost} NOK
-                    </Typography>
-                  </Card>
-                </Grid>
-                
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Card sx={{ p: 2, bgcolor: 'warning.light', border: '1px solid', borderColor: 'warning.main' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      🛣️ Bompenger
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: 'warning.dark' }}>
-                      {travelCosts.tollCost} NOK
-                    </Typography>
-                  </Card>
-                </Grid>
-                
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Card sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      🚗 Slitasje
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: 'info.dark' }}>
-                      {travelCosts.wearCost} NOK
-                    </Typography>
-                  </Card>
-                </Grid>
-                
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-                  <Card sx={{ p: 2, bgcolor: 'primary.light', border: '1px solid', borderColor: 'primary.main' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      💰 Total
-                    </Typography>
-                    <Typography variant="h6" sx={{ color: 'primary.dark', fontWeight: 600}}>
-                      {travelCosts.totalCost} NOK
-                    </Typography>
-                  </Card>
-                </Grid>
-              </Grid>
-              
-              {/* Additional Travel Information */}
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  📋 Reisedetaljer
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Avstand: {travelCosts.distance} km
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Kjøretøy: {travelCosts.vehicleType === 'car' ? 'Bil' : 
-                                travelCosts.vehicleType === 'van' ? 'Varebil' :
-                                travelCosts.vehicleType === 'truck' ? 'Lastebil' : 'Motorsykkel'}
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12, sm: 6 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Tur/retur: Ja
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      Kostnad per km: {(travelCosts.totalCost / travelCosts.distance).toFixed(2)} NOK
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Box>
-            </Box>
-          )}
+            />
+            <TextField
+              select
+              value={filterStatus}
+              onChange={(event) => setFilterStatus(event.target.value as 'all' | MemoryCard['status'])}
+              sx={{ minWidth: 180 }}
+            >
+              <MenuItem value="all">All statuses</MenuItem>
+              <MenuItem value="available">Available</MenuItem>
+              <MenuItem value="in_use">In use</MenuItem>
+              <MenuItem value="needs_attention">Needs attention</MenuItem>
+            </TextField>
+          </Stack>
         </CardContent>
       </Card>
 
-      {/* Stats Cards */}
-      <Grid container spacing={3}, sx={{ mb:  3 }}>
-        {[
-          {
-            label: 'Totalt',
-            value: stats.total,
-            icon: theming.getThemedIcon(', '),
-            color: '#1976d0',
-        },
-          {
-            label: 'Tilgjengelig',
-            value: stats.available,
-            icon: <SdCard />,
-            color: '#2e7d30',
-        },
-          {
-            label: 'I bruk',
-            value: stats.inUe,
-            icon: <Memory />,
-            color: '#ff8c00',
-        },
-          {
-            label: 'Trenger oppmerksomhet',
-            value: stats.needsAttention,
-            icon: theming.getThemedIcon(', '),
-            color: '#d32f20',
-        },
-        ].map((stat, index) => (
-          <Grid item xs={12} sm={6} md={3} key={index}>
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
-                border: `1px solid ${stat.color}30`,
-                borderRadius:  2}}
-             sx={theming.getThemedCardSx()}>
-              <CardContent sx={{ textAlign: 'center', py:  2 ,  ...theming.getThemedCardSx() }}>
-                <Box sx={{ color: stat.color, mb:  1 }}>{stat.icon}</Box>
-                <Typography variant="h4" sx={{  color: stat.color, fontWeight: 600}}>
-                  {stat.value}
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)' }}>
-                  {stat.label}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-
-      {/* Search and Filter */}
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        <TextField
-          label="Søk etter minnekort"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Serienummer, merke, type..."
-          fullWidth
-          variant="outlined"
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              bgcolor: 'rgba(25,255,255,0.9)','&:hover fieldset': { borderColor: '#ff8c00'},'&.Mui-focused fieldset': { borderColor: '#ff8c00'},
-          }}}
-        />
-        <TextField
-          select
-          label="Filtrer status"
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          sx={{
-            minWidth: 20, '& .MuiOutlinedInput-root': { bgcolor: 'rgba(25,255,255,0.9)','&:hover fieldset': { borderColor: '#ff8c00'},'&.Mui-focused fieldset': { borderColor: '#ff8c00'},
-          }}}
-        >
-          <MenuItem value="all">Alle</MenuItem>
-          <MenuItem value="available">Tilgjengelig</MenuItem>
-          <MenuItem value="in_use">I bruk</MenuItem>
-          <MenuItem value="needs_attention">Trenger oppmerksomhet</MenuItem>
-        </TextField>
-      </Box>
-
-      {/* Memory Cards Grid */}
-      {isLoading ? (
-        <Alert severity="info">Laster minnekort...</Alert>
-      ) : filteredCards.length === 0 ? (
-        <Alert severity="info">Ingen minnekort funnet.</Alert>
-      ) : (
-        <Grid container spacing={3}>
-          {filteredCards.map((card: MemoryCard) => (
-            <Grid item xs={12} sm={6} md={4} key={card.id}>
-              <Card
-                sx={{
-                  background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
-                  border: '1px solid rgba(25,140,0,0.2)',
-                  borderRadius: 2, '&:hover': { transform: 'translateY(-2px)',
-                    boxShadow: '0 8px 25px rgba(25,140,0,0.15)',
-                }}}
-               sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      mb:  2}}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center'}}>
-                      <SdCard sx={{ color: '#ff8c00', mr:  1 }} />
-                      <Typography variant="h6" sx={{  color: '#1a1f20', fontWeight: 600}}>
-                        {card.brand} {card.type}
-                      </Typography>
-                    </Box>
-                    <Chip
-                      label={
-                        card.status === 'available'
-                          ? 'Tilgjengelig'
-                          : card.status === 'in_use'
-                            ? 'I bruk'
-                            : 'Trenger oppmerksomhet'
-                    }
-                      color={getStatusColor(card.status) as any}
-                      size="small"
-                    />
-                  </Box>
-
-                  <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)', mb:  1 }}>
-                    <strong>Serienummer: </strong> {card.serialNumber}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)', mb:  1 }}>
-                    <strong>Kapasitet: </strong> {card.capacity}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)', mb:  1 }}>
-                    <strong>Hastighet: </strong> {card.speed}
-                  </Typography>
-                  <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)', mb:  2 }}>
-                    <strong>Plassering: </strong> {card.location}
-                  </Typography>
-
-                  {card.securitySettings && (
-                    <Box sx={{ mb:  2 }}>
-                      <Divider sx={{ my:  1 }} />
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                        <Security sx={{ color: '#ff8c00', mr: 1, fontSize: '1rem'}} />
-                        <Typography
-                          variant="caption"
-                          sx={{ color: 'rgba(6,31,46,0.7)', fontWeight: 600}
-                        >
-                          Sikkerhet
-                        </Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                        {card.securitySettings.pinRequired && (
-                          <Chip label="PIN" size="small" color="warning" />
-                        )}
-                        {card.securitySettings.passwordRequired && (
-                          <Chip label="Passord" size="small" color="warning" />
-                        )}
-                        {card.securitySettings.encryptionEnabled && (
-                          <Chip label="Kryptert" size="small" color="success" />
-                        )}
-                        <Chip
-                          label={
-                            card.securitySettings.accessLevel === 'public'
-                              ? 'Offentlig'
-                              : card.securitySettings.accessLevel === 'restricted'
-                                ? 'Begrenset'
-                                : 'Privat'
-                        }
-                          size="small"
-                          color={getAccessLevelColor(card.securitySettings.accessLevel) as any}
-                        />
-                      </Box>
-                    </Box>
-                  )}
-
-                  <Button
-                    onClick={() => openSecurityDialog(card)}
-                    startIcon={theming.getThemedIcon('security')}
-                    variant="outlined"
-                    fullWidth
-                    sx={{
-                      color: '#ff8c00',
-                      borderColor: '#ff8c00','&:hover': {
-                        borderColor: '#ff6b30',
-                        bgcolor: 'rgba(25,140,0,0.05)',
-                    }}}
-                  >
-                    Sikkerhetinnstillinger
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+      <Grid container spacing={2}>
+        <Grid item xs={12} lg={8}>
+          <Card variant="outlined">
+            <CardContent>
+              {isLoading ? (
+                <Typography color="text.secondary">Loading cards...</Typography>
+              ) : filteredCards.length === 0 ? (
+                <Alert severity="info">No memory cards match current filters.</Alert>
+              ) : (
+                <Stack spacing={1.25}>
+                  {filteredCards.map((card) => (
+                    <Card key={card.id} variant="outlined" sx={{ bgcolor: 'background.default' }}>
+                      <CardContent>
+                        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1}>
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {card.brand} {card.type} ({card.capacity})
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Serial: {card.serialNumber} • Speed: {card.speed} • Location: {card.location || 'N/A'}
+                            </Typography>
+                            <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                              <Chip size="small" label={card.status} color={statusColor(card.status)} />
+                              <Chip
+                                size="small"
+                                icon={<Lock fontSize="small" />}
+                                label={card.securitySettings.accessLevel}
+                                color={accessColor(card.securitySettings.accessLevel)}
+                              />
+                              {card.securitySettings.encryptionEnabled && (
+                                <Chip size="small" icon={<Security fontSize="small" />} label="Encrypted" />
+                              )}
+                            </Stack>
+                          </Box>
+                          <Box>
+                            <IconButton onClick={() => openSecurity(card)}>
+                              <Security fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
-      )}
 
-      {/* Add Memory Card Dialog */}
-      <Dialog
-        open={showAddDialog}
-        onClose={() => setShowAddDialog(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background:
-              'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(25,140,0,0.2)',
-            borderRadius:  3,
-        }}}
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            color: '#1a1f20',
-            fontWeight: 60
-        }}
-        >
-          <Add sx={{ mr: 1, .color: '#ff8c00'}} />
-          Legg til nytt minnekort
-        </DialogTitle>
-        <DialogContent>
-          <Box
-            component="form"
-            onSubmit={handleSubmit}
-            sx={{ display: 'flex', flexDirection: 'column', gap:  3, pt:  2 }}
-          >
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+        <Grid item xs={12} lg={4}>
+          <Card variant="outlined">
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1.25, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Storage fontSize="small" />
+                Travel Cost Estimator
+              </Typography>
+              <Stack spacing={1.5}>
                 <TextField
-                  label="Serienummer"
-                  value={newCard.serialNumber}
-                  onChange={(e) =>
-                    setNewCard((prev) => ({
-                      ...prev,
-                      serialNumber: e.target.value,
-                  }))
-                }
-                  required
+                  type="number"
+                  label="Distance (km)"
+                  value={travelDistanceKm}
+                  onChange={(event) => setTravelDistanceKm(Math.max(0, Number(event.target.value) || 0))}
                   fullWidth
                 />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Merke"
-                  value={newCard.brand}
-                  onChange={(e) => setNewCard((prev) => ({ ...prev, brand: e.target.value }))}
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Type"
-                  value={newCard.type}
-                  onChange={(e) => setNewCard((prev) => ({ ...prev, type: e.target.value }))}
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Kapasitet"
-                  value={newCard.capacity}
-                  onChange={(e) =>
-                    setNewCard((prev) => ({
-                      ...prev,
-                      capacity: e.target.value,
-                  }))
-                }
-                  required
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Hastighet"
-                  value={newCard.speed}
-                  onChange={(e) => setNewCard((prev) => ({ ...prev, speed: e.target.value }))}
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Plassering"
-                  value={newCard.location}
-                  onChange={(e) =>
-                    setNewCard((prev) => ({
-                      ...prev,
-                      location: e.target.value,
-                  }))
-                }
-                  fullWidth
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Notater"
-                  value={newCard.notes}
-                  onChange={(e) => setNewCard((prev) => ({ ...prev, notes: e.target.value }))}
-                  multiline
-                  rows={3}
-                  fullWidth
-                />
-              </Grid>
-            </Grid>
-
-            {/* FASE 2: Security Settings for Memory Card , *, /}
-            <Card
-              sx={{
-                background: 'linear-gradient(135deg, rgba(255,140,0,0.05) 0%, rgba(255,248,235,0.05) 100%)',
-                border: '1px solid rgba(25,140,0,0.2)',
-                borderRadius:  2}}
-             sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                  <Security sx={{ color: '#ff8c00', mr: 1.5}} />
-                  <Typography variant="h6" sx={{  color: '#1a1f20', fontWeight: 600}}>
-                    Sikkerhetinnstillinger
-                  </Typography>
-                </Box>
-
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={newCard.securitySettings.pinRequired}
-                          onChange={(e) =>
-                            setNewCard((prev) => ({
-                              ...prev,
-                              securitySettings: {
-                                ...prev.securitySettings,
-                                pinRequired: e.target.checked,
-                            },
-                          }))
-                        }
-                          sx={{
-                            '& .MuiSwitch-switchBase.Mui-checked': {
-                              color: '#ff8c00',
-                          }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                              backgroundColor: '#ff8c00',
-                          }}}
-                        />
-                    }
-                      label="Krev PIN for tilgang"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={newCard.securitySettings.passwordRequired}
-                          onChange={(e) =>
-                            setNewCard((prev) => ({
-                              ...prev,
-                              securitySettings: {
-                                ...prev.securitySettings,
-                                passwordRequired: e.target.checked,
-                            },
-                          }))
-                        }
-                          sx={{
-                            '& .MuiSwitch-switchBase.Mui-checked': {
-                              color: '#ff8c00',
-                          }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                              backgroundColor: '#ff8c00',
-                          }}}
-                        />
-                    }
-                      label="Krev passord for tilgang"
-                    />
-                  </Grid>
-
-                  {newCard.securitySettings.pinRequired && (
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        label="PIN-kode"
-                        value={newCard.securitySettings.pin}
-                        onChange={(e) =>
-                          setNewCard((prev) => ({
-                            ...prev,
-                            securitySettings: {
-                              ...prev.securitySettings,
-                              pin: e.target.value.replace(/\D, /', ').slice(0, 6),
-                          },
-                        }))
-                      }
-                        placeholder="4-6 siffer"
-                        fullWidth
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Lock sx={{ color: '#ff8c00'}} />
-                            </InputAdornment>
-                          )}}
-                      />
-                    </Grid>
-                  )}
-
-                  {newCard.securitySettings.passwordRequired && (
-                    <Grid item xs={12} sm={6}>
-                      <TextField
-                        label="Passord"
-                        value={newCard.securitySettings.password}
-                        onChange={(e) =>
-                          setNewCard((prev) => ({
-                            ...prev,
-                            securitySettings: {
-                              ...prev.securitySettings,
-                              password: e.target.value,
-                          },
-                        }))
-                      }
-                        type="password"
-                        placeholder="Sikkert passord"
-                        fullWidth
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Visibility sx={{ color: '#ff8c00'}} />
-                            </InputAdornment>
-                          )}}
-                      />
-                    </Grid>
-                  )}
-
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      select
-                      label="Tilgangsnivå"
-                      value={newCard.securitySettings.accessLevel}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          securitySettings: {
-                            ...prev.securitySettings,
-                            accessLevel: e.target.value as any,
-                        },
-                      }))
-                    }
-                      fullWidth
-                    >
-                      <MenuItem value="public">Offentlig</MenuItem>
-                      <MenuItem value="restricted">Begrenset</MenuItem>
-                      <MenuItem value="private">Privat</MenuItem>
-                    </TextField>
-                  </Grid>
-
-                  <Grid item xs={12} sm={6}>
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          checked={newCard.securitySettings.encryptionEnabled}
-                          onChange={(e) =>
-                            setNewCard((prev) => ({
-                              ...prev,
-                              securitySettings: {
-                                ...prev.securitySettings,
-                                encryptionEnabled: e.target.checked,
-                            },
-                          }))
-                        }
-                          sx={{
-                            '& .MuiSwitch-switchBase.Mui-checked': {
-                              color: '#ff8c00',
-                          }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                              backgroundColor: '#ff8c00',
-                          }}}
-                        />
-                    }
-                      label="Aktiver kryptering"
-                    />
-                  </Grid>
-                </Grid>
-              </CardContent>
-            </Card>
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ p:  3 }}>
-          <Button
-            onClick={() => setShowAddDialog(false)}
-            variant="outlined"
-            sx={{
-              color: 'rgba(6,31,46,0.7)',
-              borderColor: 'rgba(6,31,46,0.3)'}}
-          >
-            Avbryt
-          </Button>
-          <Button onClick={handleSubmit}
-            variant="contained"
-            disabled={createCardMutation.isPending}
-            sx={{
-              background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
-              color: 'white',
-              fontWeight: 60
-          }}
-           sx={theming.getThemedButtonSx()}>
-            {createCardMutation.isPending ? 'Legger til...' : 'Legg til minnekort'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Security Settings Dialog */}
-      <Dialog
-        open={showSecurityDialog}
-        onClose={() => setShowSecurityDialog(false)}
-        maxWidth="sm"
-        fullWidth
-        PaperProps={{
-          sx: {
-            background:
-              'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,248,235,0.95) 100%)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(25,140,0,0.2)',
-            borderRadius:  3,
-        }}}
-      >
-        <DialogTitle
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            color: '#1a1f20',
-            fontWeight: 60
-        }}
-        >
-          <Security sx={{ mr: 1, .color: '#ff8c00'}} />
-          Sikkerhetinnstillinger
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt:  2 }}>
-            <Typography variant="body2" sx={{ color: 'rgba(6,31,46,0.7)', mb:  3 }}>
-              Konfigurer sikkerhet for {selectedCard?.brand} {selectedCard?.type}
-            </Typography>
-
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={newCard.securitySettings.pinRequired}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          securitySettings: {
-                            ...prev.securitySettings,
-                            pinRequired: e.target.checked,
-                        },
-                      }))
-                    }
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: '#ff8c00',
-                      }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: '#ff8c00',
-                      }}}
-                    />
-                }
-                  label="Krev PIN for tilgang"
-                />
-              </Grid>
-
-              {newCard.securitySettings.pinRequired && (
-                <Grid item xs={12}>
-                  <TextField
-                    label="PIN-kode"
-                    value={newCard.securitySettings.pin}
-                    onChange={(e) =>
-                      setNewCard((prev) => ({
-                        ...prev,
-                        securitySettings: {
-                          ...prev.securitySettings,
-                          pin: e.target.value.replace(/\D, /', ').slice(0, 6),
-                      },
-                    }))
-                  }
-                    placeholder="4-6 siffer"
-                    fullWidth
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Lock sx={{ color: '#ff8c00'}} />
-                        </InputAdornment>
-                      )}}
-                  />
-                </Grid>
-              )}
-
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={newCard.securitySettings.passwordRequired}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          securitySettings: {
-                            ...prev.securitySettings,
-                            passwordRequired: e.target.checked,
-                        },
-                      }))
-                    }
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: '#ff8c00',
-                      }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: '#ff8c00',
-                      }}}
-                    />
-                }
-                  label="Krev passord for tilgang"
-                />
-              </Grid>
-
-              {newCard.securitySettings.passwordRequired && (
-                <Grid item xs={12}>
-                  <TextField
-                    label="Passord"
-                    value={newCard.securitySettings.password}
-                    onChange={(e) =>
-                      setNewCard((prev) => ({
-                        ...prev,
-                        securitySettings: {
-                          ...prev.securitySettings,
-                          password: e.target.value,
-                      },
-                    }))
-                  }
-                    type="password"
-                    placeholder="Sikkert passord"
-                    fullWidth
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Visibility sx={{ color: '#ff8c00'}} />
-                        </InputAdornment>
-                      )}}
-                  />
-                </Grid>
-              )}
-
-              <Grid item xs={12}>
                 <TextField
                   select
-                  label="Tilgangsnivå"
-                  value={newCard.securitySettings.accessLevel}
-                  onChange={(e) =>
-                    setNewCard((prev) => ({
-                      ...prev,
-                      securitySettings: {
-                        ...prev.securitySettings,
-                        accessLevel: e.target.value as any,
+                  label="Vehicle type"
+                  value={travelVehicleType}
+                  onChange={(event) => setTravelVehicleType(event.target.value)}
+                  fullWidth
+                >
+                  <MenuItem value="car">Car</MenuItem>
+                  <MenuItem value="van">Van</MenuItem>
+                  <MenuItem value="electric">Electric</MenuItem>
+                </TextField>
+                <Divider />
+                <Typography variant="body2" color="text.secondary">
+                  Estimated total (fuel + toll):
+                </Typography>
+                <Typography variant="h6">{travelCost.toFixed(2)} NOK</Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Dialog open={showAddDialog} onClose={() => setShowAddDialog(false)} maxWidth="sm" fullWidth>
+        <form onSubmit={handleSaveCard}>
+          <DialogTitle>Add Memory Card</DialogTitle>
+          <DialogContent>
+            <Stack spacing={1.5} sx={{ mt: 1 }}>
+              <TextField label="Serial number" value={form.serialNumber} onChange={(event) => setForm((prev) => ({ ...prev, serialNumber: event.target.value }))} fullWidth required />
+              <TextField label="Brand" value={form.brand} onChange={(event) => setForm((prev) => ({ ...prev, brand: event.target.value }))} fullWidth required />
+              <TextField label="Type" value={form.type} onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value }))} fullWidth />
+              <TextField label="Capacity" value={form.capacity} onChange={(event) => setForm((prev) => ({ ...prev, capacity: event.target.value }))} fullWidth />
+              <TextField label="Speed" value={form.speed} onChange={(event) => setForm((prev) => ({ ...prev, speed: event.target.value }))} fullWidth />
+              <TextField label="Location" value={form.location} onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))} fullWidth />
+              <TextField label="Notes" value={form.notes} onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))} fullWidth multiline minRows={3} />
+              <TextField
+                select
+                label="Status"
+                value={form.status}
+                onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as MemoryCard['status'] }))}
+                fullWidth
+              >
+                <MenuItem value="available">Available</MenuItem>
+                <MenuItem value="in_use">In use</MenuItem>
+                <MenuItem value="needs_attention">Needs attention</MenuItem>
+              </TextField>
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowAddDialog(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={createCard.isPending}>
+              Save
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      <Dialog open={showSecurityDialog} onClose={() => setShowSecurityDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Security Settings</DialogTitle>
+        <DialogContent>
+          <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <TextField
+              select
+              label="Access level"
+              value={form.securitySettings.accessLevel}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  securitySettings: {
+                    ...prev.securitySettings,
+                    accessLevel: event.target.value as SecuritySettings['accessLevel'],
+                  },
+                }))
+              }
+              fullWidth
+            >
+              <MenuItem value="public">Public</MenuItem>
+              <MenuItem value="restricted">Restricted</MenuItem>
+              <MenuItem value="private">Private</MenuItem>
+            </TextField>
+
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography>Require PIN</Typography>
+              <Switch
+                checked={form.securitySettings.pinRequired}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    securitySettings: {
+                      ...prev.securitySettings,
+                      pinRequired: event.target.checked,
                     },
                   }))
                 }
-                  fullWidth
-                >
-                  <MenuItem value="public">Offentlig</MenuItem>
-                  <MenuItem value="restricted">Begrenset</MenuItem>
-                  <MenuItem value="private">Privat</MenuItem>
-                </TextField>
-              </Grid>
-
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={newCard.securitySettings.encryptionEnabled}
-                      onChange={(e) =>
-                        setNewCard((prev) => ({
-                          ...prev,
-                          securitySettings: {
-                            ...prev.securitySettings,
-                            encryptionEnabled: e.target.checked,
-                        },
-                      }))
-                    }
-                      sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: '#ff8c00',
-                      }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: '#ff8c00',
-                      }}}
-                    />
+              />
+            </Stack>
+            {form.securitySettings.pinRequired && (
+              <TextField
+                label="PIN"
+                value={form.securitySettings.pin ?? ''}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    securitySettings: {
+                      ...prev.securitySettings,
+                      pin: event.target.value,
+                    },
+                  }))
                 }
-                  label="Aktiver kryptering"
-                />
-              </Grid>
-            </Grid>
-          </Box>
+                fullWidth
+              />
+            )}
+
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography>Require password</Typography>
+              <Switch
+                checked={form.securitySettings.passwordRequired}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    securitySettings: {
+                      ...prev.securitySettings,
+                      passwordRequired: event.target.checked,
+                    },
+                  }))
+                }
+              />
+            </Stack>
+            {form.securitySettings.passwordRequired && (
+              <TextField
+                label="Password"
+                value={form.securitySettings.password ?? ''}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    securitySettings: {
+                      ...prev.securitySettings,
+                      password: event.target.value,
+                    },
+                  }))
+                }
+                fullWidth
+              />
+            )}
+
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography>Enable encryption</Typography>
+              <Switch
+                checked={form.securitySettings.encryptionEnabled}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    securitySettings: {
+                      ...prev.securitySettings,
+                      encryptionEnabled: event.target.checked,
+                    },
+                  }))
+                }
+              />
+            </Stack>
+          </Stack>
         </DialogContent>
-        <DialogActions sx={{ p:  3 }}>
+        <DialogActions>
+          <Button onClick={() => setShowSecurityDialog(false)}>Cancel</Button>
           <Button
-            onClick={() => setShowSecurityDialog(false)}
-            variant="outlined"
-            sx={{
-              color: 'rgba(6,31,46,0.7)',
-              borderColor: 'rgba(6,31,46,0.3)'}}
-          >
-            Avbryt
-          </Button>
-          <Button onClick={handleSecurityUpdate}
             variant="contained"
-            disabled={updateSecurityMutation.isPending}
-            sx={{
-              background: 'linear-gradient(45deg, #ff8c00, #ff6b35)',
-              color: 'white',
-              fontWeight: 60
-          }}
-           sx={theming.getThemedButtonSx()}>
-            {updateSecurityMutation.isPending ? 'Oppdaterer...' : 'Oppdater sikkerhet'}
+            disabled={!selectedCard || updateSecurity.isPending}
+            onClick={() => {
+              if (!selectedCard) {
+                return;
+              }
+
+              updateSecurity.mutate({
+                cardId: selectedCard.id,
+                securitySettings: form.securitySettings,
+              });
+            }}
+          >
+            Save security
           </Button>
         </DialogActions>
       </Dialog>

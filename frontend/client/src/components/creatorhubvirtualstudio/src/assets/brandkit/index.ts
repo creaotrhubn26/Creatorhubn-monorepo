@@ -74,7 +74,7 @@ export const brandTypography = {
     '5xl' : '3rem', // 48px
   },
 
-  fontWeight: 
+  fontWeight: {
     light: 300,
     normal: 400,
     medium: 500,

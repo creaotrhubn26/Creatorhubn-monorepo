@@ -1,23 +1,17 @@
 /**
  * CreatorHub Norge - Calendar Conflict Checker
- * Sjekker kalenderkonflikter for prosjekt-utkast med Google Calendar
+ * Sjekker kalenderkonflikter for prosjekt-utkast mot kalenderdata.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import { useTheming } from '../../utils/theming-helper';
 import {
   Alert,
   AlertTitle,
   Box,
   Button,
-  Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -28,98 +22,208 @@ import {
   ListItemText,
   Paper,
   Typography,
-  CircularProgress,
 } from '@mui/material';
 import {
-  Warning,
-  CheckCircle,
-  Event,
-  Schedule,
-  DateRange,
-  CalendarToday,
   Add,
+  CheckCircle,
+  DateRange,
+  Event,
+  Info,
   Link,
   PlayArrow,
-  Info,
 } from '@mui/icons-material';
-import { useAutosave } from '@/hooks/useAutosave';
+
+interface DraftData {
+  projectName?: string;
+  clientName?: string;
+  projectDate?: string;
+  startTime?: string;
+  endTime?: string;
+  estimatedDuration?: number;
+  location?: string;
+}
+
+interface CalendarEventTime {
+  dateTime?: string;
+  date?: string;
+}
+
+interface CalendarConflictEvent {
+  summary?: string;
+  location?: string;
+  start?: CalendarEventTime;
+  end?: CalendarEventTime;
+}
+
+interface ConflictCheckResult {
+  hasConflicts: boolean;
+  conflicts: CalendarConflictEvent[];
+  message: string;
+}
 
 interface CalendarConflictCheckerProps {
-  draftData: any;
+  draftData: DraftData;
   open: boolean;
   onClose: () => void;
   onConfirm: (option: 'new_project' | 'link_existing' | 'continue_anyway') => void;
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toString = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
+
+const toEventTime = (value: unknown): CalendarEventTime | undefined => {
+  if (!isObject(value)) return undefined;
+  const dateTime = toString(value.dateTime);
+  const date = toString(value.date);
+  if (!dateTime && !date) return undefined;
+  return { dateTime: dateTime || undefined, date: date || undefined };
+};
+
+const toConflictEvent = (value: unknown): CalendarConflictEvent | null => {
+  if (!isObject(value)) return null;
+
+  return {
+    summary: toString(value.summary) || undefined,
+    location: toString(value.location) || undefined,
+    start: toEventTime(value.start),
+    end: toEventTime(value.end),
+  };
+};
+
+const normalizeConflictResult = (value: unknown): ConflictCheckResult => {
+  if (!isObject(value)) {
+    return {
+      hasConflicts: false,
+      conflicts: [],
+      message: 'Kunne ikke lese svar fra konflikt-sjekk.',
+    };
+  }
+
+  const rawConflicts = Array.isArray(value.conflicts) ? value.conflicts : [];
+  const conflicts = rawConflicts
+    .map(toConflictEvent)
+    .filter((event): event is CalendarConflictEvent => event !== null);
+
+  return {
+    hasConflicts: Boolean(value.hasConflicts),
+    conflicts,
+    message: toString(value.message, conflicts.length > 0 ? 'Konflikter funnet.' : 'Ingen konflikter funnet.'),
+  };
+};
+
+const resolveTimeWindow = (draftData: DraftData): { startTime: string; endTime: string } | null => {
+  if (draftData.startTime && draftData.endTime) {
+    return {
+      startTime: draftData.startTime,
+      endTime: draftData.endTime,
+    };
+  }
+
+  if (!draftData.projectDate) {
+    return null;
+  }
+
+  const start = new Date(draftData.projectDate);
+  if (Number.isNaN(start.getTime())) {
+    return null;
+  }
+
+  start.setHours(9, 0, 0, 0);
+  const durationHours = draftData.estimatedDuration && draftData.estimatedDuration > 0
+    ? draftData.estimatedDuration
+    : 2;
+  const end = new Date(start);
+  end.setHours(start.getHours() + durationHours);
+
+  return {
+    startTime: start.toISOString(),
+    endTime: end.toISOString(),
+  };
+};
+
 export default function CalendarConflictChecker({
   draftData,
   open,
   onClose,
   onConfirm,
-  profession = 'photographer'
+  profession = 'photographer',
 }: CalendarConflictCheckerProps) {
-  const [conflictCheck, setConflictCheck] = useState<any>(null);
-  const [isChecking, setIsChecking] = useState(false);
-  
-  // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
-  const [selectedOption, setSelectedOption] = useState<'new_project' | 'link_existing' | 'continue_anyway'>('continue_anyway');
-  
-  const { checkCalendarConflicts, isCheckingConflicts } = useAutosave(
-    , 'conflict-check, ', 'photographer',
-    draftData,
-    false, // Don't enable autosave for conflict checker
-    false  // Don't enable calendar sync for conflict checker
-  );
-
-  // Sjekk konflikter når dialog åpnes
-  useEffect(() => {
-    if (open && draftData) {
-      checkConflicts();
-  }
-}, [open, draftData]);
+  const [conflictCheck, setConflictCheck] = useState<ConflictCheckResult | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
+  const [selectedOption, setSelectedOption] =
+    useState<'new_project' | 'link_existing' | 'continue_anyway'>('continue_anyway');
 
   const checkConflicts = async () => {
     try {
       setIsChecking(true);
-      const result = await checkCalendarConflicts(draftData);
-      setConflictCheck(result);
-  } catch (error) {
-      console.error('Error checking calendar conflicts: ', error);
+
+      const timeWindow = resolveTimeWindow(draftData);
+      if (!timeWindow) {
+        setConflictCheck({
+          hasConflicts: false,
+          conflicts: [],
+          message: 'Mangler dato/tid for å kjøre konflikt-sjekk.',
+        });
+        return;
+      }
+
+      const result = await apiRequest('/api/calendar/check-conflicts', {
+        method: 'POST',
+        body: {
+          startTime: timeWindow.startTime,
+          endTime: timeWindow.endTime,
+          projectName: draftData.projectName,
+          clientName: draftData.clientName,
+          location: draftData.location,
+        },
+      });
+
+      setConflictCheck(normalizeConflictResult(result));
+    } catch (error) {
+      console.error('Error checking calendar conflicts:', error);
       setConflictCheck({
         hasConflicts: false,
-        conflicts:  [],
-        message: 'Kunne ikke sjekke kalenderkonflikter'
-  });
-  } finally {
+        conflicts: [],
+        message: 'Kunne ikke sjekke kalenderkonflikter.',
+      });
+    } finally {
       setIsChecking(false);
-  }
-};
+    }
+  };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('nb-N', {
+  useEffect(() => {
+    if (!open) return;
+    void checkConflicts();
+  }, [open, draftData]);
+
+  const formatDate = (value: string): string =>
+    new Date(value).toLocaleDateString('nb-NO', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
-      day: 'numeric'
-});
-};
+      day: 'numeric',
+    });
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('nb-N', {
+  const formatTime = (value: string): string =>
+    new Date(value).toLocaleTimeString('nb-NO', {
       hour: '2-digit',
-      minute: '2-digit'
-});
-};
+      minute: '2-digit',
+    });
+
+  const confirmLabel = useMemo(() => {
+    if (!conflictCheck?.hasConflicts) return 'Bekreft og fortsett';
+
+    if (selectedOption === 'new_project') return 'Opprett nytt prosjekt';
+    if (selectedOption === 'link_existing') return 'Knytt til eksisterende';
+    return 'Fortsett som planlagt';
+  }, [conflictCheck, selectedOption]);
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-    >
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={1}>
           {theming.getThemedIcon('calendar')}
@@ -130,7 +234,7 @@ export default function CalendarConflictChecker({
       </DialogTitle>
 
       <DialogContent>
-        {isChecking || isCheckingConflicts ? (
+        {isChecking ? (
           <Box display="flex" flexDirection="column" alignItems="center" gap={2} py={4}>
             <CircularProgress />
             <Typography>Sjekker kalenderkonflikter...</Typography>
@@ -138,166 +242,166 @@ export default function CalendarConflictChecker({
         ) : conflictCheck ? (
           <Box>
             {conflictCheck.hasConflicts ? (
-              <Alert severity="info" sx={{ mb:  2 }}>
-                <AlertTitle>📅 Eksisterende avtaler funnet</AlertTitle>
-                {conflictCheck.message} - Du kan likevel fortsette med flere alternativer.
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <AlertTitle>Eksisterende avtaler funnet</AlertTitle>
+                {conflictCheck.message}
               </Alert>
             ) : (
-              <Alert severity="success" sx={{ mb:  2 }}>
-                <AlertTitle>✅ Ingen konflikter</AlertTitle>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                <AlertTitle>Ingen konflikter</AlertTitle>
                 {conflictCheck.message}
               </Alert>
             )}
 
-            {conflictCheck.conflicts && conflictCheck.conflicts.length > 0 && (
-              <Paper elevation={1} sx={{ p: 2, mt: 2 ,  ...theming.getThemedCardSx() }}>
+            {conflictCheck.conflicts.length > 0 && (
+              <Paper elevation={1} sx={{ p: 2, mt: 2, ...theming.getThemedCardSx() }}>
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Eksisterende avtaler: </Typography>
+                  Eksisterende avtaler
+                </Typography>
                 <List>
-                  {conflictCheck.conflicts.map((conflict: any, index: number) => (
-                    <ListItem key={index} divider>
-                      <ListItemIcon>
-                        <Event color="warning" />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={conflict.summary || 'Ukjent avtale'}
-                        secondary={
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">
-                              📅 {formatDate(conflict.start?.dateTime || conflict.start?.date)}
-                            </Typography>
-                            {conflict.start?.dateTime && (
-                              <Typography variant="body2" color="text.secondary">
-                                ⏰ {formatTime(conflict.start.dateTime)} - {formatTime(conflict.end?.dateTime)}
-                              </Typography>
-                            )}
-                            {conflict.location && (
-                              <Typography variant="body2" color="text.secondary">
-                                📍 {conflict.location}
-                              </Typography>
-                            )}
-                          </Box>
-                      }
-                      />
-                    </ListItem>
-                  ))}
+                  {conflictCheck.conflicts.map((conflict, index) => {
+                    const startValue = conflict.start?.dateTime ?? conflict.start?.date ?? '';
+                    const endValue = conflict.end?.dateTime ?? conflict.end?.date ?? '';
+
+                    return (
+                      <ListItem key={`${conflict.summary ?? 'conflict'}-${index}`} divider>
+                        <ListItemIcon>
+                          <Event color="warning" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={conflict.summary ?? 'Ukjent avtale'}
+                          secondary={
+                            <Box>
+                              {startValue && (
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDate(startValue)}
+                                </Typography>
+                              )}
+                              {conflict.start?.dateTime && conflict.end?.dateTime && (
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatTime(conflict.start.dateTime)} - {formatTime(conflict.end.dateTime)}
+                                </Typography>
+                              )}
+                              {conflict.location && (
+                                <Typography variant="body2" color="text.secondary">
+                                  {conflict.location}
+                                </Typography>
+                              )}
+                              {!startValue && !endValue && (
+                                <Typography variant="body2" color="text.secondary">
+                                  Tidspunkt ikke tilgjengelig.
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    );
+                  })}
                 </List>
               </Paper>
             )}
 
-            {/* Prosjektinformasjon */}
-            <Paper elevation={1} sx={{ p: 2, mt: 2 ,  ...theming.getThemedCardSx() }}>
+            <Paper elevation={1} sx={{ p: 2, mt: 2, ...theming.getThemedCardSx() }}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Nytt prosjekt som skal legges til: </Typography>
-              <Box display="flex" flexDirection="column" gap=, {, 1}>
+                Nytt prosjekt som skal legges til
+              </Typography>
+              <Box display="flex" flexDirection="column" gap={1}>
                 <Typography variant="body2">
-                  <strong>📸 Prosjekt: </strong> {draftData.projectName || 'Navnløst prosjekt'}
+                  <strong>Prosjekt:</strong> {draftData.projectName || 'Navnløst prosjekt'}
                 </Typography>
                 <Typography variant="body2">
-                  <strong>👤 Klient: </strong> {draftData.clientName || 'Ukjent klient'}
+                  <strong>Klient:</strong> {draftData.clientName || 'Ukjent klient'}
                 </Typography>
                 <Typography variant="body2">
-                  <strong>📅 Dato: </strong> {draftData.projectDate ? formatDate(draftData.projectDate) : 'Ikke satt'}
+                  <strong>Dato:</strong>{' '}
+                  {draftData.projectDate ? formatDate(draftData.projectDate) : 'Ikke satt'}
                 </Typography>
                 {draftData.estimatedDuration && (
                   <Typography variant="body2">
-                    <strong>⏱️ Varighet: </strong> {draftData.estimatedDuration} timer
+                    <strong>Varighet:</strong> {draftData.estimatedDuration} timer
                   </Typography>
                 )}
                 {draftData.location && (
                   <Typography variant="body2">
-                    <strong>📍 Lokasjon: </strong> {draftData.location}
+                    <strong>Lokasjon:</strong> {draftData.location}
                   </Typography>
                 )}
               </Box>
             </Paper>
 
-            {/* Konfliktløsning alternativer */}
             {conflictCheck.hasConflicts && (
-              <Paper elevation={1} sx={{ p: 2, mt: 2, backgroundColor: 'rgba(3, 150, 243, 0.1)' ,  ...theming.getThemedCardSx() }}>
+              <Paper
+                elevation={1}
+                sx={{ p: 2, mt: 2, backgroundColor: 'rgba(3, 150, 243, 0.1)', ...theming.getThemedCardSx() }}
+              >
                 <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Velg hvordan du vil fortsette: </Typography>
-                
-                <Box display="flex" flexDirection="column" gap=, {, 2}>
-                  {/* Alternativ 1: Nytt separat prosjekt , *, /}
-                  <Paper 
-                    elevation={selectedOption === 'new_project' ? 3 : 1}
-                    sx={{ 
-                      p: 2, cursor: 'pointer',
-                      border: selectedOption === 'new_project' ? '2px solid #1976d2' : '1px solid transparent', '&:hover': { elevation:  2 }
-                  }}
-                    onClick={() => setSelectedOption('new_project')}
-                  >
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Add color="primary" />
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          Opprett som nytt separat prosjekt
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Ideelt for helt separate klienter eller forskjellige prosjekttyper samme dag
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Paper>
+                  Velg hvordan du vil fortsette
+                </Typography>
 
-                  {/* Alternativ 2: Knytt til eksisterende , *, /}
-                  <Paper 
-                    elevation={selectedOption === 'link_existing' ? 3 : 1}
-                    sx={{ 
-                      p: 2, cursor: 'pointer',
-                      border: selectedOption === 'link_existing' ? '2px solid #1976d2' : '1px solid transparent', '&:hover': { elevation:  2 }
-                  }}
-                    onClick={() => setSelectedOption('link_existing')}
-                  >
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Link color="primary" />
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          Knytt til eksisterende prosjekt
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Hvis dette er del av samme bryllup/event som eksisterende avtale
-                        </Typography>
+                <Box display="flex" flexDirection="column" gap={2}>
+                  {[ 
+                    {
+                      key: 'new_project' as const,
+                      icon: <Add color="primary" />,
+                      title: 'Opprett som nytt separat prosjekt',
+                      body: 'Anbefalt for separate klienter eller ulike typer oppdrag samme dag.',
+                    },
+                    {
+                      key: 'link_existing' as const,
+                      icon: <Link color="primary" />,
+                      title: 'Knytt til eksisterende prosjekt',
+                      body: 'Bruk hvis dette er del av samme event eller produksjon.',
+                    },
+                    {
+                      key: 'continue_anyway' as const,
+                      icon: <PlayArrow color="primary" />,
+                      title: 'Fortsett som planlagt',
+                      body: 'Opprett prosjekt og håndter planlegging manuelt i neste steg.',
+                    },
+                  ].map((option) => (
+                    <Paper
+                      key={option.key}
+                      elevation={selectedOption === option.key ? 3 : 1}
+                      sx={{
+                        p: 2,
+                        cursor: 'pointer',
+                        border:
+                          selectedOption === option.key
+                            ? '2px solid #1976d2'
+                            : '1px solid transparent',
+                      }}
+                      onClick={() => setSelectedOption(option.key)}
+                    >
+                      <Box display="flex" alignItems="center" gap={2}>
+                        {option.icon}
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            {option.title}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {option.body}
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </Paper>
-
-                  {/* Alternativ 3: Fortsett likevel , *, /}
-                  <Paper 
-                    elevation={selectedOption === 'continue_anyway' ? 3 : 1}
-                    sx={{ 
-                      p: 2, cursor: 'pointer',
-                      border: selectedOption === 'continue_anyway' ? '2px solid #1976d2' : '1px solid transparent', '&:hover': { elevation:  2 }
-                  }}
-                    onClick={() => setSelectedOption('continue_anyway')}
-                  >
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <PlayArrow color="primary" />
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          Fortsett som planlagt
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Opprett prosjekt og kalenderblokk som normalt - du kan håndtere flere prosjekter samme dag
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Paper>
+                    </Paper>
+                  ))}
                 </Box>
               </Paper>
             )}
 
-            {/* Calendar sync info */}
-            <Paper elevation={1} sx={{ p: 2, mt: 2, backgroundColor: 'rgba(6, 125, 50, 0.1)' ,  ...theming.getThemedCardSx() }}>
+            <Paper
+              elevation={1}
+              sx={{ p: 2, mt: 2, backgroundColor: 'rgba(6, 125, 50, 0.1)', ...theming.getThemedCardSx() }}
+            >
               <Typography variant="body2" color="success.main">
-                <CheckCircle sx={{ fontSize:  16, mr: 1, verticalAlign: 'middle' }} />
-                Google Calendar Sync aktivert - prosjektet vil automatisk blokkere tiden i kalenderen din
+                <CheckCircle sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                Kalender-sync er aktiv. Prosjektet kan blokkere tid automatisk når du fortsetter.
               </Typography>
               {conflictCheck.hasConflicts && (
-                <Typography variant="body2" color="info.main" sx={{ mt:  1 }}>
-                  <Info sx={{ fontSize:  16, mr: 1, verticalAlign: 'middle' }} />
-                  Fotografer kan effektivt håndtere flere prosjekter samme dag med smart tidsplanlegging
+                <Typography variant="body2" color="info.main" sx={{ mt: 1 }}>
+                  <Info sx={{ fontSize: 16, mr: 1, verticalAlign: 'middle' }} />
+                  Du kan fortsatt fortsette med valgt strategi over.
                 </Typography>
               )}
             </Paper>
@@ -306,31 +410,22 @@ export default function CalendarConflictChecker({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>
-          Avbryt
-        </Button>
+        <Button onClick={onClose}>Avbryt</Button>
         {conflictCheck && (
-          <Button
-            onClick={checkConflicts}
-            disabled={isChecking || isCheckingConflicts}
-            startIcon={<DateRange />}
-          >
+          <Button onClick={() => void checkConflicts()} disabled={isChecking} startIcon={<DateRange />}>
             Sjekk på nytt
           </Button>
         )}
         <Button
           onClick={() => onConfirm(selectedOption)}
           variant="contained"
-          disabled={isChecking || isCheckingConflicts}
+          disabled={isChecking}
           color="primary"
           startIcon={
-            selectedOption === 'new_project' ? theming.getThemedIcon('add') :
-            selectedOption === 'link_existing' ? <Link /> : theming.getThemedIcon('play')
-        }
+            selectedOption === 'new_project' ? <Add /> : selectedOption === 'link_existing' ? <Link /> : <PlayArrow />
+          }
         >
-          {conflictCheck?.hasConflicts ? (
-            selectedOption === 'new_project' ? 'Opprett nytt prosjekt' :
-            selectedOption === 'link_existing' ? 'Knytt til eksisterende' : 'Fortsett som planlagt') :'Bekreft og fortsett'}
+          {confirmLabel}
         </Button>
       </DialogActions>
     </Dialog>

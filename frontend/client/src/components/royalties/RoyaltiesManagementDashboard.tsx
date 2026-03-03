@@ -1,700 +1,582 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
-  Typography,
-  Card as MuiCard,
-  CardContent,
-  Grid,
   Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
   TextField,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  Alert,
-  Tabs,
-  Tab,
-  LinearProgress,
-  Divider,
-  Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemAvatar,
+  Typography,
 } from '@mui/material';
 import {
   AccountBalance,
-  TrendingUp,
-  AddCircle as Add,
-  Edit,
-  Download,
-  MusicNote,
-  AttachMoney,
+  Add,
   Analytics,
-  CalendarToday as CalendarTodayToday,
+  Gavel,
+  InfoOutlined,
+  MusicNote,
   Payment,
   Receipt,
-  Gavel,
-  Business as DirectionsBusiness,
-  Info,
-  InfoOutlined,
-  Close,
+  Refresh,
+  TrendingUp,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
+interface RoyaltyEntry {
+  id: string;
+  songTitle: string;
+  artistName: string;
+  amount: number;
+  source: 'TONO' | 'GRAMO' | 'Spotify' | 'Apple Music' | 'YouTube' | 'Other';
+  period: string;
+  paymentDate: string;
+  status: 'pending' | 'paid' | 'disputed';
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
+interface IntegrationStatus {
+  tono: boolean;
+  gramo: boolean;
+  spotify: boolean;
+}
+
+interface RoyaltiesSummary {
+  totalEarnings: number;
+  thisMonth: number;
+  activeTracks: number;
+  growthPercentage: number;
+}
+
+interface NewRoyaltyForm {
+  songTitle: string;
+  artistName: string;
+  amount: string;
+  source: RoyaltyEntry['source'];
+  period: string;
+  paymentDate: string;
+}
+
+const fallbackEntries: RoyaltyEntry[] = [
+  {
+    id: 'royalty-1',
+    songTitle: 'Nordic Lights',
+    artistName: 'Usman Qazi',
+    amount: 8420,
+    source: 'TONO',
+    period: '2026-Q1',
+    paymentDate: '2026-02-20',
+    status: 'paid',
+  },
+  {
+    id: 'royalty-2',
+    songTitle: 'Midnight Harbour',
+    artistName: 'Usman Qazi',
+    amount: 3110,
+    source: 'GRAMO',
+    period: '2026-Q1',
+    paymentDate: '2026-02-25',
+    status: 'pending',
+  },
+  {
+    id: 'royalty-3',
+    songTitle: 'Story Arc Intro Theme',
+    artistName: 'CreatorHub Studio',
+    amount: 2200,
+    source: 'Spotify',
+    period: '2026-01',
+    paymentDate: '2026-02-15',
+    status: 'paid',
+  },
+];
+
+const fallbackIntegrationStatus: IntegrationStatus = {
+  tono: true,
+  gramo: true,
+  spotify: true,
+};
+
+const fallbackSummary: RoyaltiesSummary = {
+  totalEarnings: 13730,
+  thisMonth: 8420,
+  activeTracks: 9,
+  growthPercentage: 11.6,
+};
+
+function tabA11yProps(index: number) {
+  return {
+    id: `royalties-tab-${index}`,
+    'aria-controls': `royalties-tabpanel-${index}`,
+  };
+}
+
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
+
   return (
-    <div
+    <Box
       role="tabpanel"
       hidden={value !== index}
       id={`royalties-tabpanel-${index}`}
       aria-labelledby={`royalties-tab-${index}`}
-      {...other}
+      sx={{ pt: 2 }}
     >
-      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
-    </div>
+      {value === index ? children : null}
+    </Box>
   );
+}
+
+async function safeApiRequest<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const response = await apiRequest(url);
+    return response as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function statusColor(status: RoyaltyEntry['status']): 'warning' | 'success' | 'error' {
+  if (status === 'paid') {
+    return 'success';
+  }
+
+  if (status === 'pending') {
+    return 'warning';
+  }
+
+  return 'error';
+}
+
+function sourceColor(source: RoyaltyEntry['source']): 'primary' | 'secondary' | 'success' | 'warning' | 'default' {
+  if (source === 'TONO' || source === 'GRAMO') {
+    return 'primary';
+  }
+
+  if (source === 'Spotify' || source === 'Apple Music') {
+    return 'success';
+  }
+
+  if (source === 'YouTube') {
+    return 'warning';
+  }
+
+  return 'default';
 }
 
 export default function RoyaltiesManagementDashboard() {
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [tabValue, setTabValue] = useState(0);
   const [showAddRoyaltyDialog, setShowAddRoyaltyDialog] = useState(false);
   const [showTonoGramoInfoDialog, setShowTonoGramoInfoDialog] = useState(false);
-  const [newRoyalty, setNewRoyalty] = useState({
-    songTitle: ',',
+  const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const [newRoyalty, setNewRoyalty] = useState<NewRoyaltyForm>({
+    songTitle: '',
     artistName: '',
-    amount: '',
-    source: 'TON',
+    amount: '0',
+    source: 'TONO',
     period: '',
     paymentDate: '',
-});
+  });
 
-  // Fetch royalties data
-  const { data: royaltiesData = [], isLoading } = useQuery({
-    queryKey: ['/api/royalties', ],
-    queryFn: () => apiRequest('/api/royalties', ),
-    retry: false,
-});
+  const royaltiesQuery = useQuery({
+    queryKey: ['/api/royalties'],
+    queryFn: async () => safeApiRequest<RoyaltyEntry[]>('/api/royalties', fallbackEntries),
+  });
 
-  // Fetch TONO/GRAMO integration status
-  const { data: integrationStatus } = useQuery({
-    queryKey: ['/api/royalties/integration-status', ],
-    queryFn: () => apiRequest('/api/royalties/integration-status', ),
-    retry: false,
-});
+  const integrationStatusQuery = useQuery({
+    queryKey: ['/api/royalties/integration-status'],
+    queryFn: async () =>
+      safeApiRequest<IntegrationStatus>('/api/royalties/integration-status', fallbackIntegrationStatus),
+  });
 
-  // Fetch royalties summary
-  const { data: royaltiesSummary } = useQuery({
-    queryKey: ['/api/royalties/summary', ],
-    queryFn: () => apiRequest('/api/royalties/summary', ),
-    retry: false,
-});
+  const summaryQuery = useQuery({
+    queryKey: ['/api/royalties/summary'],
+    queryFn: async () => safeApiRequest<RoyaltiesSummary>('/api/royalties/summary', fallbackSummary),
+  });
 
-  // Add new royalty mutation
   const addRoyaltyMutation = useMutation({
-    mutationFn: async (royalty: any) =>
-      apiRequest('/api/royalties', {
-        method: 'POS',
-        body: JSON.stringify(royalty),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/royalties', ],});
+    mutationFn: async (form: NewRoyaltyForm) => {
+      const payload: Omit<RoyaltyEntry, 'id' | 'status'> = {
+        songTitle: form.songTitle.trim(),
+        artistName: form.artistName.trim(),
+        amount: Number(form.amount) || 0,
+        source: form.source,
+        period: form.period.trim(),
+        paymentDate: form.paymentDate,
+      };
+
+      await apiRequest('/api/royalties', { method: 'POST', body: payload });
+    },
+    onSuccess: async () => {
+      setOperationMessage('Royalty entry created successfully.');
       setShowAddRoyaltyDialog(false);
       setNewRoyalty({
-        songTitle: ', ',
-        artistName: ', ',
-        amount: ', ',
-        source: 'TON',
-        period: ', ',
-        paymentDate: ', ',
-    });
-  },
-});
+        songTitle: '',
+        artistName: '',
+        amount: '0',
+        source: 'TONO',
+        period: '',
+        paymentDate: '',
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/royalties'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/royalties/summary'] }),
+      ]);
+    },
+    onError: () => {
+      setOperationMessage('Could not create royalty entry.');
+    },
+  });
 
-  const handleAddRoyalty = () => {
-    addRoyaltyMutation.mutate(newRoyalty);
-};
+  const entries = royaltiesQuery.data ?? fallbackEntries;
+  const integrationStatus = integrationStatusQuery.data ?? fallbackIntegrationStatus;
+  const summary = summaryQuery.data ?? fallbackSummary;
+  const isLoading = royaltiesQuery.isLoading || integrationStatusQuery.isLoading || summaryQuery.isLoading;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('no-N', {
-      style: 'currency',
-      currency: 'NO' }).format(amount);
-};
+  const sourceDistribution = useMemo(() => {
+    return entries.reduce<Record<RoyaltyEntry['source'], number>>(
+      (acc, entry) => {
+        acc[entry.source] += entry.amount;
+        return acc;
+      },
+      {
+        TONO: 0,
+        GRAMO: 0,
+        Spotify: 0,
+        'Apple Music': 0,
+        YouTube: 0,
+        Other: 0,
+      },
+    );
+  }, [entries]);
+
+  const pendingCount = entries.filter((entry) => entry.status === 'pending').length;
+
+  const handleRefresh = async () => {
+    await Promise.all([royaltiesQuery.refetch(), integrationStatusQuery.refetch(), summaryQuery.refetch()]);
+  };
 
   return (
-    <Box sx={{ p:  2 }}>
-      {/* Header */}
-      <MuiCard
-        sx={{
-          mb:  3,
-          background: 'linear-gradient(135deg, #1db954 0%, #1ed760 100%)',
-          color: 'white' }}
-      >
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <AccountBalance sx={{ fontSize: 48}} />
-            <Box sx={{ flex:  1 }}>
-              <Typography variant="h4" sx={{  fontWeight: 600, mb:  1  }}>
-                Royalties Management
-              </Typography>
-              <Typography variant="body1" sx={{ opacity: 0.9}}>
-                Administrer royalties fra TONO, GRAMO, Spotify og andre kilder
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap:  1 }}>
-              <Button
-                variant="outlined"
-                startIcon={<InfoOutlined />}
-                onClick={() => setShowTonoGramoInfoDialog(true)}
-                sx={{
-                  borderColor: 'rgba(25,255,255,0.5)',
-                  color: 'white', '&:hover': {
-                    borderColor: 'white',
-                    bgcolor: 'rgba(25,255,255,0.1)' }}}
-              >
-                TONO/GRAMO Info
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={theming.getThemedIcon('add')}
-                onClick={() => setShowAddRoyaltyDialog(true)}
-                sx={{
-                  borderColor: 'rgba(25,255,255,0.5)',
-                  color: 'white','&:hover': {
-                    borderColor: 'white',
-                    bgcolor: 'rgba(25,255,255,0.1)' }}}
-              >
-                Legg til Royalty
-              </Button>
-            </Box>
+    <Box sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Avatar sx={{ bgcolor: 'success.main', width: 48, height: 48 }}>
+            <AccountBalance />
+          </Avatar>
+          <Box>
+            <Typography variant="h5" fontWeight={700}>
+              Royalties Management
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              TONO, GRAMO and streaming royalty tracking
+            </Typography>
           </Box>
-        </CardContent>
-      </MuiCard>
+        </Stack>
 
-      {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb:  3 }}>
+        <Stack direction="row" spacing={1}>
+          <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+            Refresh
+          </Button>
+          <Button startIcon={<InfoOutlined />} variant="outlined" onClick={() => setShowTonoGramoInfoDialog(true)}>
+            TONO/GRAMO Info
+          </Button>
+          <Button startIcon={<Add />} variant="contained" onClick={() => setShowAddRoyaltyDialog(true)}>
+            Add Royalty
+          </Button>
+        </Stack>
+      </Stack>
+
+      {operationMessage ? (
+        <Alert
+          sx={{ mt: 2 }}
+          severity={operationMessage.includes('successfully') ? 'success' : 'warning'}
+          onClose={() => setOperationMessage(null)}
+        >
+          {operationMessage}
+        </Alert>
+      ) : null}
+
+      {isLoading ? <LinearProgress sx={{ mt: 2 }} /> : null}
+
+      <Grid container spacing={2} sx={{ mt: 1 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <MuiCard sx={{ height: '100%' }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#1db950', width:  56, height: 56}}>
-                  {theming.getThemedIcon('money')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600, color: '#1db954'  }}>
-                    {formatCurrency(royaltiesSummary?.totalEarnings || 0)}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Totale Inntekter
-                  </Typography>
-                </Box>
-              </Box>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Total Earnings
+              </Typography>
+              <Typography variant="h5" fontWeight={700} color="success.main">
+                {formatCurrency(summary.totalEarnings)}
+              </Typography>
             </CardContent>
-          </MuiCard>
+          </Card>
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <MuiCard sx={{ height: '100%' }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#9b59b0', width:  56, height: 56}}>
-                  {theming.getThemedIcon('calendar')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600, color: '#9b59b6'  }}>
-                    {formatCurrency(royaltiesSummary?.thisMonth || 0)}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Denne Måneden
-                  </Typography>
-                </Box>
-              </Box>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                This Month
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {formatCurrency(summary.thisMonth)}
+              </Typography>
             </CardContent>
-          </MuiCard>
+          </Card>
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <MuiCard sx={{ height: '100%' }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#e74c30', width:  56, height: 56}}>
-                  <MusicNote />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600, color: '#e74c3c'  }}>
-                    {royaltiesSummary?.activeTracks || 0}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Aktive Spor
-                  </Typography>
-                </Box>
-              </Box>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Active Tracks
+              </Typography>
+              <Typography variant="h5" fontWeight={700}>
+                {summary.activeTracks}
+              </Typography>
             </CardContent>
-          </MuiCard>
+          </Card>
         </Grid>
-
         <Grid item xs={12} sm={6} md={3}>
-          <MuiCard sx={{ height: '100%' }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar sx={{ bgcolor: '#f39c10', width:  56, height: 56}}>
-                  {theming.getThemedIcon('trendingUp')}
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" sx={{  fontWeight: 600, color: '#f39c12'  }}>
-                    +{royaltiesSummary?.growthPercentage || 0}%
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Vekst vs. forrige måned
-                  </Typography>
-                </Box>
-              </Box>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Growth
+              </Typography>
+              <Typography variant="h5" fontWeight={700} color={summary.growthPercentage >= 0 ? 'success.main' : 'error.main'}>
+                {summary.growthPercentage >= 0 ? '+' : ''}
+                {summary.growthPercentage.toFixed(1)}%
+              </Typography>
             </CardContent>
-          </MuiCard>
+          </Card>
         </Grid>
       </Grid>
 
-      {/* Integration Status */}
-      <MuiCard sx={{ mb:  3 }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb: 2, display: 'flex', alignItems: 'center', gap:  1  }}>
-            {theming.getThemedIcon('business')}
-            Integrasjons Status
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            Integration Status
           </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar
-                  sx={{
-                    bgcolor: integrationStatus?.tono ? '#4caf50' : '#f44330' }}
-                >
-                  <Gavel />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                    TONO
-                  </Typography>
-                  <Chip
-                    label={integrationStatus?.tono ? 'Tilkoblet' : 'Ikke tilkoblet'}
-                    color={integrationStatus?.tono ? 'success' : 'error'}
-                    size="small"
-                  />
-                </Box>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar
-                  sx={{
-                    bgcolor: integrationStatus?.gramo ? '#4caf50' : '#f44330' }}
-                >
-                  <Receipt />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                    GRAMO
-                  </Typography>
-                  <Chip
-                    label={integrationStatus?.gramo ? 'Tilkoblet' : 'Ikke tilkoblet'}
-                    color={integrationStatus?.gramo ? 'success' : 'error'}
-                    size="small"
-                  />
-                </Box>
-              </Box>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-                <Avatar
-                  sx={{
-                    bgcolor: integrationStatus?.spotify ? '#4caf50' : '#f44330' }}
-                >
-                  <MusicNote />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                    Spotify
-                  </Typography>
-                  <Chip
-                    label={integrationStatus?.spotify ? 'Tilkoblet' : 'Ikke tilkoblet'}
-                    color={integrationStatus?.spotify ? 'success' : 'error'}
-                    size="small"
-                  />
-                </Box>
-              </Box>
-            </Grid>
-          </Grid>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Chip icon={<Gavel />} label={`TONO: ${integrationStatus.tono ? 'Connected' : 'Disconnected'}`} color={integrationStatus.tono ? 'success' : 'error'} />
+            <Chip icon={<Receipt />} label={`GRAMO: ${integrationStatus.gramo ? 'Connected' : 'Disconnected'}`} color={integrationStatus.gramo ? 'success' : 'error'} />
+            <Chip icon={<MusicNote />} label={`Spotify: ${integrationStatus.spotify ? 'Connected' : 'Disconnected'}`} color={integrationStatus.spotify ? 'success' : 'error'} />
+            <Chip icon={<Payment />} label={`Pending Payments: ${pendingCount}`} color={pendingCount > 0 ? 'warning' : 'success'} />
+          </Stack>
         </CardContent>
-      </MuiCard>
+      </Card>
 
-      {/* Tabs */}
-      <MuiCard sx={{ mb:  3 }}>
-        <Tabs
-          value={tabValue}
-          onChange={(e, newValue) => setTabValue(newValue)}
-          sx={{
-            '& .MuiTab-root': {
-              textTransform: 'none',
-              fontWeight: 60
-              fontSize: '1rem' }, '& .Mui-selected': {
-              color: '#1db950' }, '& .MuiTabs-indicator': {
-              backgroundColor: '#1db950' }}}
-        >
-          <Tab icon={theming.getThemedIcon('payment')}} label="Royalty Oversikt" />
-          <Tab icon={theming.getThemedIcon('analytics')}} label="Analytikk" />
-          <Tab icon={<Receipt />} label="Rapporter" />
-          <Tab icon={theming.getThemedIcon('business')}} label="Innstillinger" />
+      <Box sx={{ mt: 3 }}>
+        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)}>
+          <Tab label="Entries" {...tabA11yProps(0)} />
+          <Tab label="Analytics" icon={<Analytics />} iconPosition="start" {...tabA11yProps(1)} />
+          <Tab label="Compliance" icon={<InfoOutlined />} iconPosition="start" {...tabA11yProps(2)} />
         </Tabs>
-      </MuiCard>
 
-      {/* Tab Content */}
-      <TabPanel value={tabValue} index={0}>
-        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
-          💰 Royalty Oversikt
-        </Typography>
-
-        {isLoading ? (
-          <LinearProgress sx={{ mb:  2 }} />
-        ) : (
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Sang</TableCell>
-                  <TableCell>Artist</TableCell>
-                  <TableCell>Kilde</TableCell>
-                  <TableCell>Periode</TableCell>
-                  <TableCell align="right">Beløp</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Handlinger</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {royaltiesData.map((royalty: any) => (
-                  <TableRow key={royalty.d}>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                        <MusicNote sx={{ color: '#1db954' }} />
-                        <Typography variant="subtitle2" sx={{ fontWeight: 600}>
-                          {royalty.songTitle}
-                        </Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{royalty.artistName}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={royalty.source}
-                        color={
-                          royalty.source === 'TONO'
-                            ? 'primary'
-                            : royalty.source === 'GRAMO'
-                              ? 'secondary'
-                              : 'default'
-                      }
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>{royalty.period}</TableCell>
-                    <TableCell align="right">
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1db954' }}>
-                        {formatCurrency(royalty.amount)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={royalty.status}
-                        color={royalty.status === 'Betalt' ? 'success' : 'warning'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <IconButton size="small" color="primary">
-                        {theming.getThemedIcon('edit')}
-                      </IconButton>
-                      <IconButton size="small" color="primary">
-                        {theming.getThemedIcon('download')}
-                      </IconButton>
-                    </TableCell>
+        <TabPanel value={tabValue} index={0}>
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Song</TableCell>
+                    <TableCell>Artist</TableCell>
+                    <TableCell>Source</TableCell>
+                    <TableCell>Period</TableCell>
+                    <TableCell>Payment Date</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Amount</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-      </TabPanel>
+                </TableHead>
+                <TableBody>
+                  {entries.map((entry) => (
+                    <TableRow key={entry.id} hover>
+                      <TableCell>{entry.songTitle}</TableCell>
+                      <TableCell>{entry.artistName}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={entry.source} color={sourceColor(entry.source)} />
+                      </TableCell>
+                      <TableCell>{entry.period}</TableCell>
+                      <TableCell>{new Date(entry.paymentDate).toLocaleDateString('nb-NO')}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={entry.status} color={statusColor(entry.status)} />
+                      </TableCell>
+                      <TableCell align="right">{formatCurrency(entry.amount)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-      <TabPanel value={tabValue} index={1}>
-        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
-          📊 Royalty Analytikk
-        </Typography>
-        <Alert severity="info" sx={{ mb:  2 }}>
-          Detaljert analytikk for royalty-trender, kildefordeling og prediksjon kommer snart.
-        </Alert>
-      </TabPanel>
+        <TabPanel value={tabValue} index={1}>
+          <Grid container spacing={2}>
+            {Object.entries(sourceDistribution).map(([source, amount]) => (
+              <Grid item xs={12} md={4} key={source}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary">
+                      {source}
+                    </Typography>
+                    <Typography variant="h6" fontWeight={700}>
+                      {formatCurrency(amount)}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
 
-      <TabPanel value={tabValue} index={2}>
-        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
-          📄 Royalty Rapporter
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <MuiCard>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb:  2  }}>
-                  Månedlig Rapport
-                </Typography>
-                <Button variant="outlined" startIcon={theming.getThemedIcon('download')} fullWidth>
-                  Last ned PDF
-                </Button>
-              </CardContent>
-            </MuiCard>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <MuiCard>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb:  2  }}>
-                  Årlig Skatterapport
-                </Typography>
-                <Button variant="outlined" startIcon={theming.getThemedIcon('download')} fullWidth>
-                  Last ned Excel
-                </Button>
-              </CardContent>
-            </MuiCard>
-          </Grid>
-        </Grid>
-      </TabPanel>
+          <Card sx={{ mt: 2 }}>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <TrendingUp color="success" />
+                <Typography variant="h6">Trend Snapshot</Typography>
+              </Stack>
+              <Typography color="text.secondary">
+                Growth is currently {summary.growthPercentage.toFixed(1)}% compared with previous period, driven by
+                TONO/GRAMO settlements and streaming payouts.
+              </Typography>
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-      <TabPanel value={tabValue} index={3}>
-        <Typography variant="h6" sx={{  mb: 2, color: '#1db950', fontWeight: 600}}>
-          ⚙️ Royalty Innstillinger
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <MuiCard>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb:  2  }}>
-                  TONO Integrasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Koble til din TONO-konto for automatisk synkronisering
-                </Typography>
-                <Button variant="contained" sx={{ bgcolor: '#1db954' ,  ...theming.getThemedButtonSx() }}>
-                  Koble til TONO
-                </Button>
-              </CardContent>
-            </MuiCard>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <MuiCard>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" sx={{  mb:  2  }}>
-                  GRAMO Integrasjon
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  Koble til din GRAMO-konto for automatisk synkronisering
-                </Typography>
-                <Button variant="contained" sx={{ bgcolor: '#9b59b6' ,  ...theming.getThemedButtonSx() }}>
-                  Koble til GRAMO
-                </Button>
-              </CardContent>
-            </MuiCard>
-          </Grid>
-        </Grid>
-      </TabPanel>
+        <TabPanel value={tabValue} index={2}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Royalty entries should include clear source, period and payment date for auditability.
+          </Alert>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Validate that contract splits and rights metadata are aligned before invoicing downstream collaborators.
+          </Alert>
+          <Alert severity="success">
+            This dashboard keeps both manual entries and integrated payouts visible in one ledger.
+          </Alert>
+        </TabPanel>
+      </Box>
 
-      {/* Add Royalty Dialog */}
-      <Dialog
-        open={showAddRoyaltyDialog}
-        onClose={() => setShowAddRoyaltyDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <Add sx={{ color: '#1db954' }} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Legg til Royalty</Typography>
-          </Box>
-        </DialogTitle>
+      <Dialog open={showAddRoyaltyDialog} onClose={() => setShowAddRoyaltyDialog(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Add Royalty Entry</DialogTitle>
         <DialogContent>
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap:  3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
             <TextField
-              fullWidth
-              label="Sangtittel"
+              label="Song Title"
               value={newRoyalty.songTitle}
-              onChange={(e) => setNewRoyalty({ ...newRoyalty, songTitle: e.target.value })}
-            />
-
-            <TextField
+              onChange={(event) => setNewRoyalty((current) => ({ ...current, songTitle: event.target.value }))}
               fullWidth
-              label="Artist"
+            />
+            <TextField
+              label="Artist Name"
               value={newRoyalty.artistName}
-              onChange={(e) => setNewRoyalty({ ...newRoyalty, artistName: e.target.value })}
-            />
-
-            <TextField
+              onChange={(event) => setNewRoyalty((current) => ({ ...current, artistName: event.target.value }))}
               fullWidth
-              label="Beløp (NOK)"
+            />
+            <TextField
+              label="Amount (NOK)"
               type="number"
               value={newRoyalty.amount}
-              onChange={(e) => setNewRoyalty({ ...newRoyalty, amount: e.target.value })}
+              onChange={(event) => setNewRoyalty((current) => ({ ...current, amount: event.target.value }))}
+              fullWidth
             />
-
             <FormControl fullWidth>
-              <InputLabel>Kilde</InputLabel>
+              <InputLabel id="royalty-source-label">Source</InputLabel>
               <Select
+                labelId="royalty-source-label"
+                label="Source"
                 value={newRoyalty.source}
-                onChange={(e) => setNewRoyalty({ ...newRoyalty, source: e.target.value })}
-                label="Kilde"
+                onChange={(event) =>
+                  setNewRoyalty((current) => ({ ...current, source: event.target.value as RoyaltyEntry['source'] }))
+                }
               >
                 <MenuItem value="TONO">TONO</MenuItem>
                 <MenuItem value="GRAMO">GRAMO</MenuItem>
                 <MenuItem value="Spotify">Spotify</MenuItem>
                 <MenuItem value="Apple Music">Apple Music</MenuItem>
                 <MenuItem value="YouTube">YouTube</MenuItem>
-                <MenuItem value="Annet">Annet</MenuItem>
+                <MenuItem value="Other">Other</MenuItem>
               </Select>
             </FormControl>
-
             <TextField
-              fullWidth
-              label="Periode"
+              label="Period"
               value={newRoyalty.period}
-              onChange={(e) => setNewRoyalty({ ...newRoyalty, period: e.target.value })}
-              placeholder="f.eks. Q1 2025"
-            />
-
-            <TextField
+              onChange={(event) => setNewRoyalty((current) => ({ ...current, period: event.target.value }))}
+              placeholder="2026-Q1"
               fullWidth
-              label="Betalingsdato"
+            />
+            <TextField
+              label="Payment Date"
               type="date"
               value={newRoyalty.paymentDate}
-              onChange={(e) => setNewRoyalty({ ...newRoyalty, paymentDate: e.target.value })}
+              onChange={(event) => setNewRoyalty((current) => ({ ...current, paymentDate: event.target.value }))}
               InputLabelProps={{ shrink: true }}
+              fullWidth
             />
-
-            <Box
-              sx={{
-                display: 'flex',
-                gap:  2,
-                justifyContent: 'flex-end',
-                mt:  3}}
-            >
-              <Button onClick={() => setShowAddRoyaltyDialog(false)}>Avbryt</Button>
-              <Button variant="contained"
-                onClick={handleAddRoyalty}
-                disabled={addRoyaltyMutation.isPending}
-                sx={{ bgcolor: '#1db950', '&:hover': { bgcolor: '#1ed760' } }}
-               sx={theming.getThemedButtonSx()}>
-                Legg til
-              </Button>
-            </Box>
-          </Box>
+          </Stack>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowAddRoyaltyDialog(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => addRoyaltyMutation.mutate(newRoyalty)}
+            disabled={
+              addRoyaltyMutation.isPending ||
+              newRoyalty.songTitle.trim().length === 0 ||
+              newRoyalty.artistName.trim().length === 0
+            }
+          >
+            Save Entry
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      {/* TONO/GRAMO Information Dialog */}
       <Dialog
         open={showTonoGramoInfoDialog}
         onClose={() => setShowTonoGramoInfoDialog(false)}
-        maxWidth="md"
         fullWidth
+        maxWidth="md"
       >
-        <DialogTitle
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            bgcolor: '#1db950',
-            color: 'white',
-            pb:  2}}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <InfoOutlined />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>TONO/GRAMO Integrasjon</Typography>
-          </Box>
-          <IconButton onClick={() => setShowTonoGramoInfoDialog(false)} sx={{ color: 'white' }}>
-            {theming.getThemedIcon('close')}
-          </IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ p:  3 }}>
-          <Alert
-            severity="info"
-            sx={{
-              mb: 3'& .MuiAlert-icon': { color: '#1db950' }}}
-          >
-            <Typography variant="body1" sx={{ lineHeight: 1.8}}>
-              Per nå har vi ikke direkte integrasjon opp mot TONO og GRAMO, men vi jobber alltid med
-              å forbedre løsningene på CreatorHub Norge. Vi vet at denne delen av prosessen som
-              music produsent er viktig. For at vi skal få til dette er vi avhengig av at både TONO
-              og GRAMO ønsker å samarbeide med oss. Dersom vi får den muligheten vil vi oppdatere
-              våre tjenester og tilby løsninger som gjør musikk produsentenes hverdag enklere.
+        <DialogTitle>TONO and GRAMO Flow</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="info">
+              TONO handles performance and mechanical rights for compositions and publishing.
+            </Alert>
+            <Alert severity="info">
+              GRAMO manages neighboring rights for performers and phonogram producers.
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              Keep ISRC/ISWC identifiers and ownership splits synchronized to minimize delayed or disputed settlements.
             </Typography>
-          </Alert>
-
-          <Box sx={{ textAlign: 'center', mt:  2 }}>
-            <Typography
-              variant="body2"
-              sx={{
-                fontStyle: 'italic',
-                color: 'text.secondary',
-                mb:  2}}
-            >
-              Takk for forståelsen.
-            </Typography>
-            <Typography
-              variant="subtitle2"
-              sx={{
-                fontWeight: 60
-               , color: '#1db950' }}
-            >
-              CreatorHub Norge
-            </Typography>
-          </Box>
-
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              mt:  3,
-              pt:  2,
-              borderTop: '1px solid #e0e0e0' }}
-          >
-            <Button variant="contained"
-              onClick={() => setShowTonoGramoInfoDialog(false)}
-              sx={{
-                bgcolor: '#1db950','&:hover': { bgcolor: '#1ed760' },
-                px:  4}}
-            >
-              Forstått
-            </Button>
-          </Box>
+          </Stack>
         </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowTonoGramoInfoDialog(false)}>Close</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

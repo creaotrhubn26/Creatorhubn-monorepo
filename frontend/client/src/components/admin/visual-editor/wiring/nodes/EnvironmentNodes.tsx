@@ -34,6 +34,9 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 // Common env variables
 const COMMON_ENV_VARS = [
   'DATABASE_URL',
@@ -173,7 +176,7 @@ export const EnvVariableNode = memo(function EnvVariableNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.required || false}
+                checked={getBooleanValue(data.required)}
                 onChange={(e) => onChange('required', e.target.checked)}
                 size="small"
               />
@@ -608,4 +611,3 @@ export const ENVIRONMENT_NODE_DEFINITIONS = [
 ];
 
 export default ENVIRONMENT_NODE_DEFINITIONS;
-

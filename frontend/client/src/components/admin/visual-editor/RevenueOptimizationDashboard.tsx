@@ -34,6 +34,7 @@ import {
   Calculate,
 } from '@mui/icons-material';
 import { useRevenueOptimizer } from '../../../hooks/useRevenueOptimizer';
+import type { MarketRate, PricingTier, UpsellingSuggestion } from '../../../utils/revenueOptimizer';
 
 interface RevenueOptimizationDashboardProps {
   onSettingsClick: () => void;
@@ -42,6 +43,16 @@ interface RevenueOptimizationDashboardProps {
   onForecastingClick: () => void;
   onAnalysisClick: () => void;
   onMarketRatesClick: () => void; 
+}
+
+interface PricingFormState {
+  projectType: string;
+  complexity: 'low' | 'medium' | 'high';
+  duration: number;
+  imageCount: number;
+  location: string;
+  equipment: string[];
+  addOns: string[];
 }
 
 const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> = ({
@@ -70,17 +81,20 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
   const theming = useTheming('prototype_tester');
   const [activeTab, setActiveTab] = useState('overview');
   const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
-  const [pricingData, setPricingData] = useState({
+  const [pricingData, setPricingData] = useState<PricingFormState>({
     projectType: 'wedding',
     complexity: 'medium',
     duration:  8,
     imageCount: 50,
     location: 'major-city',
-    equipment:  [],
+    equipment:  [] as string[],
     addOns: []
-});
+  });
 
   const analytics = getAnalytics();
+  const pricingTierItems = pricingTiers as PricingTier[];
+  const upsellingSuggestionItems = upsellingSuggestions as UpsellingSuggestion[];
+  const marketRateItems = marketRates as MarketRate[];
 
   const handleCalculatePricing = () => {
     calculatePricing(pricingData);
@@ -208,7 +222,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
               </Button>
             </Box>
             <List>
-              {upsellingSuggestions.slice(0, 3).map((suggestion: Record<string, unknown>) => (
+              {upsellingSuggestionItems.slice(0, 3).map((suggestion) => (
                 <ListItem key={suggestion.id}>
                   <ListItemText
                     primary={suggestion.title}
@@ -247,8 +261,8 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" mb={2} sx={{ color: theming.colors.primary }}>Pricing Tiers</Typography>
               <List>
-                {pricingTiers.map((tier: Record<string, unknown>) => (
-                  <ListItem key={tier.d}>
+                {pricingTierItems.map((tier) => (
+                  <ListItem key={tier.id}>
                     <ListItemText
                       primary={tier.name}
                       secondary={`$${tier.basePrice} - $${tier.maximumPrice}`}
@@ -270,7 +284,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" mb={2} sx={{ color: theming.colors.primary }}>Market Rates</Typography>
               <List>
-                {marketRates.map((rate: Record<string, unknown>) => (
+                {marketRateItems.map((rate) => (
                   <ListItem key={rate.service}>
                     <ListItemText
                       primary={rate.service}
@@ -304,7 +318,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
       </Box>
 
       <Grid container spacing={3}>
-        {upsellingSuggestions.map((suggestion: Record<string, unknown>) => (
+        {upsellingSuggestionItems.map((suggestion) => (
           <Grid item xs={12} md={6} lg={4} key={suggestion.id}>
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
@@ -420,7 +434,7 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
                 <InputLabel>Complexity</InputLabel>
                 <Select
                   value={pricingData.complexity}
-                  onChange={(e) => setPricingData(prev => ({ ...prev, complexity: e.target.value }))}
+                  onChange={(e) => setPricingData(prev => ({ ...prev, complexity: e.target.value as PricingFormState['complexity'] }))}
                 >
                   <MenuItem value="low">Low</MenuItem>
                   <MenuItem value="medium">Medium</MenuItem>
@@ -498,7 +512,5 @@ const RevenueOptimizationDashboard: React.FC<RevenueOptimizationDashboardProps> 
 };
 
 export default RevenueOptimizationDashboard;
-
-
 
 

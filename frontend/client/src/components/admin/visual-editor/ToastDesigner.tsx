@@ -44,7 +44,9 @@ import {
   useTheme,
   alpha,
   Snackbar,
+  SelectChangeEvent,
 } from '@mui/material';
+import { TabContext, TabList, TabPanel } from '@mui/lab';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import {
   Add,
@@ -68,7 +70,7 @@ import {
   Warning,
   CheckCircle,
   Info,
-  Error,
+  Error as ErrorIcon,
   Close,
   Edit,
   Download,
@@ -119,7 +121,89 @@ import {
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
-import { academyToastTemplates } from './AcademyToastTemplates';
+import {
+  academyToastTemplates,
+  AcademyToastTemplate,
+  AcademyToastConfig,
+  AcademyToastType,
+} from './AcademyToastTemplates';
+
+interface TemplateHistoryEntry {
+  id: string;
+  config: AcademyToastConfig;
+  action: string;
+  timestamp: number;
+  user: string;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null
+);
+
+const isToastType = (value: unknown): value is AcademyToastType => (
+  value === 'success' || value === 'error' || value === 'warning' || value === 'info'
+);
+
+const isToastConfig = (value: unknown): value is AcademyToastConfig => {
+  if (!isObject(value) || !isObject(value.style) || !isObject(value.icon) || !isObject(value.actions)) {
+    return false;
+  }
+
+  const progress = value.progress;
+  if (!isObject(progress)) {
+    return false;
+  }
+
+  return (
+    typeof value.message === 'string'
+    && isToastType(value.type)
+    && typeof value.duration === 'number'
+    && typeof value.position === 'string'
+    && typeof value.animation === 'string'
+    && typeof value.style.backgroundColor === 'string'
+    && typeof value.style.textColor === 'string'
+    && typeof value.style.borderRadius === 'number'
+    && typeof value.style.padding === 'number'
+    && typeof value.style.fontSize === 'number'
+    && typeof value.style.fontWeight === 'string'
+    && typeof value.icon.enabled === 'boolean'
+    && typeof value.icon.type === 'string'
+    && typeof value.icon.customIcon === 'string'
+    && typeof value.icon.size === 'number'
+    && typeof value.icon.color === 'string'
+    && typeof value.actions.enabled === 'boolean'
+    && Array.isArray(value.actions.buttons)
+    && typeof progress.enabled === 'boolean'
+    && typeof progress.color === 'string'
+    && typeof progress.height === 'number'
+  );
+};
+
+const isToastTemplateConfig = (value: unknown): value is AcademyToastTemplate['config'] => {
+  if (!isObject(value) || !isObject(value.style) || !isObject(value.icon) || !isObject(value.actions) || !isObject(value.progress)) {
+    return false;
+  }
+
+  return (
+    typeof value.message === 'string'
+    && isToastType(value.type)
+    && typeof value.style.backgroundColor === 'string'
+    && typeof value.style.textColor === 'string'
+    && typeof value.icon.enabled === 'boolean'
+    && typeof value.icon.type === 'string'
+    && typeof value.actions.enabled === 'boolean'
+    && Array.isArray(value.actions.buttons)
+    && typeof value.progress.enabled === 'boolean'
+  );
+};
+
+const isToastTemplate = (value: unknown): value is AcademyToastTemplate => (
+  isObject(value)
+  && typeof value.id === 'string'
+  && typeof value.name === 'string'
+  && typeof value.description === 'string'
+  && isToastTemplateConfig(value.config)
+);
 
 // Simple theming helper
 const useTheming = () => ({
@@ -128,7 +212,25 @@ const useTheming = () => ({
     secondary: '#dc004e'
   },
   getThemedCardSx: () => ({}),
-  getThemedButtonSx: () => ({})
+  getThemedButtonSx: () => ({}),
+  getThemedIcon: (iconName: string) => {
+    switch (iconName) {
+      case 'save':
+        return <SaveAlt />;
+      case 'download':
+        return <Download />;
+      case 'upload':
+        return <Upload />;
+      case 'add':
+        return <Add />;
+      case 'delete':
+        return <Delete />;
+      case 'autoAwesome':
+        return <AutoAwesome />;
+      default:
+        return <SaveAlt />;
+    }
+  },
 });
 
 // Toast Designer Component
@@ -141,10 +243,10 @@ export default function ToastDesigner() {
   const theming = useTheming();
   
   // Comprehensive Feature System for Toast Designer
-  const toastDesignerAccess = features.checkFeatureAccess('toast-designer, ');
-  const toastTemplatesAccess = features.checkFeatureAccess('toast-templates,');
-  const toastCustomizationAccess = features.checkFeatureAccess('toast-customization,');
-  const toastPreviewAccess = features.checkFeatureAccess('toast-preview, ');
+  const toastDesignerAccess = features.checkFeatureAccess('toast-designer');
+  const toastTemplatesAccess = features.checkFeatureAccess('toast-templates');
+  const toastCustomizationAccess = features.checkFeatureAccess('toast-customization');
+  const toastPreviewAccess = features.checkFeatureAccess('toast-preview');
   const toastExportAccess = features.checkFeatureAccess('toast-export');
   const toastAnimationAccess = features.checkFeatureAccess('toast-animation');
   const toastPositioningAccess = features.checkFeatureAccess('toast-positioning');
@@ -152,7 +254,7 @@ export default function ToastDesigner() {
   
   // Local state for toast design
   const [selectedTemplate, setSelectedTemplate] = useState<string>('default');
-  const [toastConfig, setToastConfig] = useState({
+  const [toastConfig, setToastConfig] = useState<AcademyToastConfig>({
     message: 'Your message here',
     type: 'success' as 'success' | 'error' | 'warning' | 'info',
     duration: 3000,
@@ -197,20 +299,38 @@ export default function ToastDesigner() {
   const [previewMode, setPreviewMode] = useState(false);
   const [activeTab, setActiveTab] = useState('design');
   const [templateCategory, setTemplateCategory] = useState('all');
-  const [customTemplates, setCustomTemplates] = useState<Record<string, unknown>[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<AcademyToastTemplate[]>([]);
   
   // Draft and Publish System
   const [liveUpdateEnabled, setLiveUpdateEnabled] = useState(false);
-  const [draftTemplates, setDraftTemplates] = useState<Record<string, unknown>>({});
-  const [publishedTemplates, setPublishedTemplates] = useState<Record<string, unknown>>({});
+  const [draftTemplates, setDraftTemplates] = useState<Record<string, AcademyToastConfig>>({});
+  const [publishedTemplates, setPublishedTemplates] = useState<Record<string, AcademyToastConfig>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showComparisonDialog, setShowComparisonDialog] = useState(false);
-  const [templateHistory, setTemplateHistory] = useState<Record<string, unknown[]>>({});
+  const [templateHistory, setTemplateHistory] = useState<Record<string, TemplateHistoryEntry[]>>({});
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([]);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({ open: false, message: '', severity: 'success' });
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: 'restore' | 'bulkDelete'; count?: number }>({ open: false, type: 'restore' });
+
+  const applyTemplateConfig = useCallback((config: AcademyToastTemplate['config']) => {
+    setToastConfig((prev) => ({
+      ...prev,
+      ...config,
+      style: { ...prev.style, ...config.style },
+      icon: { ...prev.icon, ...config.icon },
+      actions: {
+        ...prev.actions,
+        ...config.actions,
+        buttons: config.actions?.buttons ?? prev.actions.buttons,
+      },
+      progress: { ...prev.progress, ...config.progress },
+      duration: config.duration ?? prev.duration,
+      position: config.position ?? prev.position,
+      animation: config.animation ?? prev.animation,
+    }));
+  }, []);
 
   // Auto-save integration
   const {
@@ -226,18 +346,20 @@ export default function ToastDesigner() {
     currentVersion
   } = useAutoSave({
     config: {
-      enabled: true,
-      debounceMs: 2000, // Auto-save 2 seconds after last change
+      enableAutoSave: true,
+      debounceDelay: 2000, // Auto-save 2 seconds after last change
       maxQueueSize: 50,
-      conflictResolution: 'merge',
+      conflictResolution: 'manual',
       backupInterval: 60000, // Backup every minute
-      maxBackups: 10 },
+      maxVersions: 10 },
     onDataSaved: (data) => {
       console.log('Toast template auto-saved: ', data);
       
       // Add to template history
-      if (data.metadata?.templateId) {
-        addToHistory(data.metadata.templateId, data.data'auto_saved');
+      const metadata = data.metadata as Record<string, unknown>;
+      const templateId = typeof metadata.templateId === 'string' ? metadata.templateId : selectedTemplate;
+      if (templateId && isToastConfig(data.data)) {
+        addToHistory(templateId, data.data, 'auto_saved');
       }
     },
     onBackupCreated: (data) => {
@@ -253,7 +375,8 @@ export default function ToastDesigner() {
     const savedTemplates = localStorage.getItem('toastTemplates');
     if (savedTemplates) {
       try {
-        const templates = JSON.parse(savedTemplates);
+        const parsed: unknown = JSON.parse(savedTemplates);
+        const templates = Array.isArray(parsed) ? parsed.filter(isToastTemplate) : [];
         setCustomTemplates(templates);
       } catch (error) {
         console.error('Failed to load custom templates:', error);
@@ -268,7 +391,15 @@ export default function ToastDesigner() {
       const published = localStorage.getItem('toastTemplatesPublished');
       if (published) {
         try {
-          setPublishedTemplates(JSON.parse(published));
+          const parsed: unknown = JSON.parse(published);
+          if (isObject(parsed)) {
+            const nextPublished = Object.fromEntries(
+              Object.entries(parsed).filter((entry): entry is [string, AcademyToastConfig] => (
+                typeof entry[0] === 'string' && isToastConfig(entry[1])
+              )),
+            );
+            setPublishedTemplates(nextPublished);
+          }
         } catch (error) {
           console.error('Failed to load published templates:', error);
         }
@@ -278,7 +409,15 @@ export default function ToastDesigner() {
       const drafts = localStorage.getItem('toastTemplatesDraft');
       if (drafts) {
         try {
-          setDraftTemplates(JSON.parse(drafts));
+          const parsed: unknown = JSON.parse(drafts);
+          if (isObject(parsed)) {
+            const nextDrafts = Object.fromEntries(
+              Object.entries(parsed).filter((entry): entry is [string, AcademyToastConfig] => (
+                typeof entry[0] === 'string' && isToastConfig(entry[1])
+              )),
+            );
+            setDraftTemplates(nextDrafts);
+          }
         } catch (error) {
           console.error('Failed to load draft templates:', error);
         }
@@ -354,7 +493,7 @@ export default function ToastDesigner() {
   }, [toastConfig, selectedTemplate, liveUpdateEnabled, currentVersion]);
 
   // Toast templates
-  const toastTemplates = [
+  const toastTemplates: AcademyToastTemplate[] = [
     {
       id: 'default',
       name: 'Default',
@@ -2209,7 +2348,7 @@ export default function ToastDesigner() {
 
   // Filter templates based on category
   const filteredTemplates = useMemo(() => {
-    const allTemplates = [...toastTemplates, ...customTemplates, ...academyToastTemplates];
+    const allTemplates: AcademyToastTemplate[] = [...toastTemplates, ...customTemplates, ...academyToastTemplates];
     
     if (templateCategory === 'all') return allTemplates;
     if (templateCategory === 'equipment') return allTemplates.filter(t => t.id.startsWith('equipment-') || t.id.startsWith('maintenance-') || t.id.startsWith('rental-') || t.id.startsWith('firmware-') || t.id.startsWith('lens-') || t.id.startsWith('price-') || t.id.startsWith('market-') || t.id.startsWith('news-') || t.id.startsWith('warranty-') || t.id.startsWith('insurance-') || t.id.startsWith('database-') || t.id.startsWith('software-') || t.id.startsWith('backup-equipment') || t.id.startsWith('export-equipment') || t.id.startsWith('category-filter'));
@@ -2227,7 +2366,7 @@ export default function ToastDesigner() {
     if (templateCategory === 'animated') return allTemplates.filter(t => t.id.startsWith('bounce-') || t.id.startsWith('slide-') || t.id.startsWith('zoom-'));
     if (templateCategory === 'custom') return customTemplates;
     
-    return allTemplates.filter(t => t.config.type === templateCategory);
+    return allTemplates.filter((t) => t.config.type === templateCategory);
   }, [templateCategory, toastTemplates, customTemplates]);
 
   // Handle template selection
@@ -2247,12 +2386,12 @@ export default function ToastDesigner() {
       });
     } else {
       // Look in all template sources
-      const allTemplates = [...toastTemplates, ...customTemplates];
+      const allTemplates: AcademyToastTemplate[] = [...toastTemplates, ...customTemplates, ...academyToastTemplates];
       const template = allTemplates.find(t => t.id === templateId);
       
       if (template) {
         setSelectedTemplate(templateId);
-        setToastConfig(template.config);
+        applyTemplateConfig(template.config);
         
         analytics.trackEvent('toast_template_selected', {
           templateId,
@@ -2267,10 +2406,10 @@ export default function ToastDesigner() {
         });
       }
     }
-  }, [toastTemplates, customTemplates, draftTemplates, analytics, debugging]);
+  }, [toastTemplates, customTemplates, draftTemplates, analytics, debugging, applyTemplateConfig]);
 
   // Handle config updates
-  const updateToastConfig = useCallback((updates: Record<string, unknown>) => {
+  const updateToastConfig = useCallback((updates: Partial<AcademyToastConfig>) => {
     setToastConfig(prev => {
       const newConfig = { ...prev, ...updates };
       
@@ -2302,7 +2441,7 @@ export default function ToastDesigner() {
     setHasUnsavedChanges(false);
     
     // Add to history
-    addToHistory(selectedTemplate, toastConfig'draft_saved');
+    addToHistory(selectedTemplate, toastConfig, 'draft_saved');
     
     analytics.trackEvent('toast_draft_saved', {
       templateId: selectedTemplate,
@@ -2310,7 +2449,7 @@ export default function ToastDesigner() {
     });
   }, [draftTemplates, selectedTemplate, toastConfig, analytics]);
 
-  const publishTemplate = useCallback((templateId: string, config: Record<string, unknown>) => {
+  const publishTemplate = useCallback((templateId: string, config: AcademyToastConfig) => {
     const newPublished = { ...publishedTemplates, [templateId]: config };
     setPublishedTemplates(newPublished);
     fetch('/api/user/kv', {
@@ -2390,8 +2529,8 @@ export default function ToastDesigner() {
   }, [hasUnsavedChanges, saveDraft, analytics]);
 
   // Template history and comparison functions
-  const addToHistory = useCallback((templateId: string, config: Record<string, unknown>, action: string) => {
-    const history = templateHistory[templateId] || [];
+  const addToHistory = useCallback((templateId: string, config: AcademyToastConfig, action: string) => {
+    const history: TemplateHistoryEntry[] = templateHistory[templateId] || [];
     const newEntry = {
       id: `history-${Date.now()}`,
       config: JSON.parse(JSON.stringify(config)), // Deep clone
@@ -2416,7 +2555,7 @@ export default function ToastDesigner() {
     
     if (!draft || !published) return null;
     
-    const differences = [];
+    const differences: Array<{ field: string; draft: unknown; published: unknown }> = [];
     
     // Compare basic properties
     if (draft.message !== published.message) {
@@ -2464,7 +2603,7 @@ export default function ToastDesigner() {
     
     if (entry) {
       setToastConfig(entry.config);
-      addToHistory(templateId, entry.config'restored');
+      addToHistory(templateId, entry.config, 'restored');
       
       analytics.trackEvent('toast_template_restored', {
         templateId,
@@ -2561,7 +2700,7 @@ export default function ToastDesigner() {
   }, [draftTemplates, publishedTemplates, analytics]);
 
   // Handle style updates
-  const updateStyle = useCallback((styleUpdates: Record<string, unknown>) => {
+  const updateStyle = useCallback((styleUpdates: Partial<AcademyToastConfig['style']>) => {
     setToastConfig(prev => ({
       ...prev,
       style: { ...prev.style, ...styleUpdates }
@@ -2569,7 +2708,7 @@ export default function ToastDesigner() {
   }, []);
 
   // Handle icon updates
-  const updateIcon = useCallback((iconUpdates: Record<string, unknown>) => {
+  const updateIcon = useCallback((iconUpdates: Partial<AcademyToastConfig['icon']>) => {
     setToastConfig(prev => ({
       ...prev,
       icon: { ...prev.icon, ...iconUpdates }
@@ -2577,7 +2716,7 @@ export default function ToastDesigner() {
   }, []);
 
   // Handle actions updates
-  const updateActions = useCallback((actionsUpdates: Record<string, unknown>) => {
+  const updateActions = useCallback((actionsUpdates: Partial<AcademyToastConfig['actions']>) => {
     setToastConfig(prev => ({
       ...prev,
       actions: { ...prev.actions, ...actionsUpdates }
@@ -2606,7 +2745,7 @@ export default function ToastDesigner() {
   }, [toastConfig.actions.buttons, updateActions]);
 
   // Update action button
-  const updateActionButton = useCallback((buttonId: string, updates: Record<string, unknown>) => {
+  const updateActionButton = useCallback((buttonId: string, updates: Partial<AcademyToastConfig['actions']['buttons'][number]>) => {
     updateActions({
       buttons: toastConfig.actions.buttons.map(b =>
         b.id === buttonId ? { ...b, ...updates } : b
@@ -2646,13 +2785,13 @@ export default function ToastDesigner() {
     const templateName = prompt('Enter template name:');
     if (templateName) {
       // Save to localStorage or send to backend
-      const templates = JSON.parse(localStorage.getItem('toastTemplates') || '[]');
-      const newTemplate = {
+      const parsed: unknown = JSON.parse(localStorage.getItem('toastTemplates') || '[]');
+      const templates: AcademyToastTemplate[] = Array.isArray(parsed) ? parsed.filter(isToastTemplate) : [];
+      const newTemplate: AcademyToastTemplate = {
         id: `custom-${Date.now()}`,
         name: templateName,
         description: 'Custom template',
         config: toastConfig,
-        category: 'custom'
       };
       templates.push(newTemplate);
       localStorage.setItem('toastTemplates', JSON.stringify(templates));
@@ -2709,7 +2848,10 @@ export default function ToastDesigner() {
         const reader = new FileReader();
         reader.onload = (e) => {
           try {
-            const config = JSON.parse(e.target?.result as string);
+            const config: unknown = JSON.parse(e.target?.result as string);
+            if (!isToastConfig(config)) {
+              throw new Error('Invalid toast config schema');
+            }
             setToastConfig(config);
             
             analytics.trackEvent('toast_config_imported', {
@@ -2751,7 +2893,7 @@ export default function ToastDesigner() {
   const getIconComponent = (type: string) => {
     switch (type) {
       case 'success': return <CheckCircle />;
-      case 'error': return <Error />;
+      case 'error': return <ErrorIcon />;
       case 'warning': return <Warning />;
       case 'info': return <Info />;
       default: return <CheckCircle />;
@@ -2780,7 +2922,7 @@ export default function ToastDesigner() {
           borderRadius: toastConfig.style.borderRadius,
           padding: toastConfig.style.padding,
           fontSize: toastConfig.style.fontSize,
-          fontWeight: oastConfig.style.fontWeight,
+          fontWeight: toastConfig.style.fontWeight,
           boxShadow: toastConfig.style.boxShadow,
           border: toastConfig.style.border,
           borderColor: toastConfig.style.borderColor,
@@ -2862,19 +3004,9 @@ export default function ToastDesigner() {
                   label="Auto-saving..." 
                   size="small" 
                   color="primary"
-                  // add once at top of the file
-import { keyframes } from '@mui/system';
-import Save from '@mui/icons-material/Save';
-
-const pulse = keyframes`
-  0% { transform: scale(1);, opacity: 1; }
-  50% { transform: scale(1.1);, opacity: 0.7; }
-  100% { transform: scale(1);, opacity: 1; }
-`;
-
-// line ~2881
-icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
-
+                  icon={<Save sx={{ fontSize: 14 }} />}
+                />
+              )}
               
               {!isSaving && lastSave > 0 && (
                 <Chip 
@@ -3021,8 +3153,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
         <Box sx={{ width: 400, borderRight: 1, borderColor: 'divider', overflow: 'auto' }}>
           <TabContext value={activeTab}>
             <TabList
-              value={activeTab}
-              onChange={(_, newValue) => setActiveTab(newValue)}
+              onChange={(_event: React.SyntheticEvent, newValue: string) => setActiveTab(newValue)}
               variant="scrollable"
               scrollButtons="auto"
             >
@@ -3144,7 +3275,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                         <InputLabel>Type</InputLabel>
                         <Select
                           value={toastConfig.type}
-                          onChange={(e) => updateToastConfig({ type: e.target.value })}
+                          onChange={(e: SelectChangeEvent) => updateToastConfig({ type: e.target.value as AcademyToastType })}
                           label="Type"
                         >
                           <MenuItem value="success">Success</MenuItem>
@@ -3172,7 +3303,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                         <InputLabel>Position</InputLabel>
                         <Select
                           value={toastConfig.position}
-                          onChange={(e) => updateToastConfig({ position: e.target.value })}
+                          onChange={(e: SelectChangeEvent) => updateToastConfig({ position: e.target.value as AcademyToastConfig['position'] })}
                           label="Position"
                         >
                           <MenuItem value="top-right">Top Right</MenuItem>
@@ -3249,7 +3380,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                         <InputLabel>Font Weight</InputLabel>
                         <Select
                           value={toastConfig.style.fontWeight}
-                          onChange={(e) => updateStyle({ fontWeight: .target.value })}
+                          onChange={(e: SelectChangeEvent) => updateStyle({ fontWeight: e.target.value as AcademyToastConfig['style']['fontWeight'] })}
                           label="Font Weight"
                         >
                           <MenuItem value="normal">Normal</MenuItem>
@@ -3405,7 +3536,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                                 <InputLabel>Style</InputLabel>
                                 <Select
                                   value={button.style}
-                                  onChange={(e) => updateActionButton(button.id, { style: e.target.value })}
+                                  onChange={(e: SelectChangeEvent) => updateActionButton(button.id, { style: e.target.value as AcademyToastConfig['actions']['buttons'][number]['style'] })}
                                   label="Style"
                                 >
                                   <MenuItem value="primary">Primary</MenuItem>
@@ -3455,7 +3586,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                       <InputLabel>Animation</InputLabel>
                       <Select
                         value={toastConfig.animation}
-                        onChange={(e) => updateToastConfig({ animation: e.target.value })}
+                        onChange={(e: SelectChangeEvent) => updateToastConfig({ animation: e.target.value as AcademyToastConfig['animation'] })}
                         label="Animation"
                       >
                         <MenuItem value="slide">Slide</MenuItem>
@@ -3596,7 +3727,7 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                           startIcon={<History />}
                           onClick={() => {
                             // Show template version history
-                            setShowSettingsDialog(true);
+                            setShowComparisonDialog(true);
                           }}
                           disabled={!templateHistory[selectedTemplate]?.length}
                           fullWidth
@@ -3729,43 +3860,46 @@ icon={<Save sx={{ fontSize: 14, animation: `${pulse} 1s infinite` }} />}
                     {/* Template List */}
                     <List dense>
                       {filteredTemplates.map((template) => (
-                        <ListItem
-                          key={template.id}
-                          button
-                          selected={selectedTemplate === template.id}
-                          onClick={() => handleTemplateSelect(template.id)}
-                          sx={{
-                            borderRadius: 1,
-                            mb: 0.5'&.Mui-selected': { bgcolor: 'primary.light', '&:hover': { bgcolor: 'primary.light' }
-                            }
-                          }}
-                        >
-                          <ListItemText
-                            primary={template.name}
-                            secondary={template.description}
-                          />
-                          <Box sx={{ display: 'flex', gap: 0.5 }}>
-                            <Chip
-                              label={template.config.type}
-                              size="small"
-                              sx={{
-                                height: 20,
-                                fontSize: '0.6rem',
-                                bgcolor: template.config.type === 'success' ? 'success.main' :
-                                         template.config.type === 'error' ? 'error.main' :
-                                         template.config.type === 'warning' ? 'warning.main' : 'info.main',
-                                color: 'white'
-                          }}
+                        <ListItem key={template.id} disablePadding>
+                          <ListItemButton
+                            selected={selectedTemplate === template.id}
+                            onClick={() => handleTemplateSelect(template.id)}
+                            sx={{
+                              borderRadius: 1,
+                              mb: 0.5,
+                              '&.Mui-selected': {
+                                bgcolor: 'primary.light',
+                                '&:hover': { bgcolor: 'primary.light' },
+                              },
+                            }}
+                          >
+                            <ListItemText
+                              primary={template.name}
+                              secondary={template.description}
                             />
-                            {template.config.actions?.enabled && (
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
                               <Chip
-                                label={`${template.config.actions.buttons?.length || 0}`}
+                                label={template.config.type}
                                 size="small"
-                                variant="outlined"
-                                sx={{ height:  20, fontSize: '0.6rem'}}
+                                sx={{
+                                  height: 20,
+                                  fontSize: '0.6rem',
+                                  bgcolor: template.config.type === 'success' ? 'success.main' :
+                                           template.config.type === 'error' ? 'error.main' :
+                                           template.config.type === 'warning' ? 'warning.main' : 'info.main',
+                                  color: 'white'
+                            }}
                               />
-                            )}
-                          </Box>
+                              {template.config.actions?.enabled && (
+                                <Chip
+                                  label={`${template.config.actions.buttons?.length || 0}`}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{ height:  20, fontSize: '0.6rem'}}
+                                />
+                              )}
+                            </Box>
+                          </ListItemButton>
                         </ListItem>
                       ))}
                     </List>

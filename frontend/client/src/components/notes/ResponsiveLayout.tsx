@@ -123,7 +123,7 @@ const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
   
   // Theming system
   const theming = useTheming('photographer');
-  const isMobile = useMediaQuery(theme.breakpoints.down(, 'md'));
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const isTablet = useMediaQuery(theme.breakpoints.between('sm', 'md'));
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
 
@@ -188,7 +188,7 @@ const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
     height: layoutConfig.header.height,
     position: layoutConfig.header.sticky ? 'sticky' : 'static',
     top:  0,
-    zIndex: , theme.zIndex.appBr,
+    zIndex: theme.zIndex.appBar,
     backgroundColor: theme.palette.background.paper,
     borderBottom: `1px solid ${theme.palette.divider}`
 }), [layoutConfig.header, theme.palette, theme.zIndex]);
@@ -200,7 +200,7 @@ const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
     left: layoutConfig.sidebar.position === 'left' ? 0 : 'auto',
     right: layoutConfig.sidebar.position === 'right' ? 0 : 'auto',
     height: `calc(100vh - ${layoutConfig.header.sticky ? layoutConfig.header.height : 0}px)`,
-    zIndex: , theme.zIndex.drawer,
+    zIndex: theme.zIndex.drawer,
     backgroundColor: theme.palette.background.paper,
     borderRight: layoutConfig.sidebar.position === 'left' ? `1px solid ${theme.palette.divider}` : 'none',
     borderLeft: layoutConfig.sidebar.position === 'right' ? `1px solid ${theme.palette.divider}` : 'none',
@@ -215,7 +215,7 @@ const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
     marginRight: !isMobile && layoutConfig.sidebar.position === 'right' ? 
       (layoutConfig.sidebar.collapsed ? 64 : layoutConfig.sidebar.width) : 0,
     maxWidth: layoutConfig.content.centered ? layoutConfig.content.maxWidth : 'none',
-    margin: layoutConfig.content.centered ? '0 auto' : ',',
+    margin: layoutConfig.content.centered ? '0 auto' : '0',
     transition: 'margin 0.3s ease-in-out'
 }), [layoutConfig.sidebar, layoutConfig.content, isMobile]);
 
@@ -535,4 +535,3 @@ const ResponsiveLayout: React.FC<ResponsiveLayoutProps> = ({
 };
 
 export default ResponsiveLayout;
-

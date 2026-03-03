@@ -704,7 +704,8 @@ export const TimelinePanel: React.FC = () => {
         anchorPosition={keyframeMenuAnchor ? { top: keyframeMenuAnchor.y, left: keyframeMenuAnchor.x } : undefined}
         PaperProps={{
           sx: {
-            minWidth: isTouch ? 200 : 160'& .MuiMenuItem-root': {
+            minWidth: isTouch ? 200 : 160,
+            '& .MuiMenuItem-root': {
               minHeight: isTouch ? 48 : 40,
             },
           }}}

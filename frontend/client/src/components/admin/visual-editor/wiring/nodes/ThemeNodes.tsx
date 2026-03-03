@@ -33,6 +33,30 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const toStringValue = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return fallback;
+};
+
+const toNumberValue = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
+const toBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 // Theme Variable Node
 export const ThemeVariableNode = memo(function ThemeVariableNode({
   config,
@@ -111,7 +135,7 @@ export const ThemeVariableNode = memo(function ThemeVariableNode({
                 <Box sx={{ p: 2 }}>
                   <input
                     type="color"
-                    value={data.value || '#ff6b00'}
+                    value={toStringValue(data.value, '#ff6b00')}
                     onChange={(e) => onChange('value', e.target.value)}
                     style={{ width: 200, height: 150, border: 'none' }}
                   />
@@ -123,11 +147,11 @@ export const ThemeVariableNode = memo(function ThemeVariableNode({
           {data.type === 'spacing' && (
             <Box sx={{ mb: 1 }}>
               <Typography variant="caption" color="rgba(255,255,255,0.5)">
-                {data.value || 8}px
+                {toNumberValue(data.value, 8)}px
               </Typography>
               <Slider
-                value={data.value || 8}
-                onChange={(_, value) => onChange('value', value)}
+                value={toNumberValue(data.value, 8)}
+                onChange={(_, value) => onChange('value', Array.isArray(value) ? value[0] : value)}
                 min={0}
                 max={64}
                 sx={{ color: '#ff5722' }}
@@ -219,7 +243,7 @@ export const DarkModeNode = memo(function DarkModeNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.defaultDark || false}
+                checked={toBooleanValue(data.defaultDark, false)}
                 onChange={(e) => onChange('defaultDark', e.target.checked)}
                 size="small"
               />
@@ -427,11 +451,13 @@ export const GradientNode = memo(function GradientNode({
           {data.type === 'linear' && (
             <Box sx={{ mb: 1 }}>
               <Typography variant="caption" color="rgba(255,255,255,0.5)">
-                Direction: {data.direction || 90}°
+                Direction: {toNumberValue(data.direction, 90)}°
               </Typography>
               <Slider
-                value={data.direction || 90}
-                onChange={(_, value) => onChange('direction', value)}
+                value={toNumberValue(data.direction, 90)}
+                onChange={(_, value) =>
+                  onChange('direction', Array.isArray(value) ? value[0] : value)
+                }
                 min={0}
                 max={360}
                 sx={{ color: '#ff5722' }}
@@ -445,13 +471,13 @@ export const GradientNode = memo(function GradientNode({
               <Box sx={{ display: 'flex', gap: 0.5 }}>
                 <input
                   type="color"
-                  value={data.startColor || '#ff6b00'}
+                  value={toStringValue(data.startColor, '#ff6b00')}
                   onChange={(e) => onChange('startColor', e.target.value)}
                   style={{ width: 30, height: 24, border: 'none', borderRadius: 4 }}
                 />
                 <TextField
                   size="small"
-                  value={data.startColor || '#ff6b00'}
+                  value={toStringValue(data.startColor, '#ff6b00')}
                   onChange={(e) => onChange('startColor', e.target.value)}
                   sx={{ flex: 1 }}
                 />
@@ -462,13 +488,13 @@ export const GradientNode = memo(function GradientNode({
               <Box sx={{ display: 'flex', gap: 0.5 }}>
                 <input
                   type="color"
-                  value={data.endColor || '#e55a00'}
+                  value={toStringValue(data.endColor, '#e55a00')}
                   onChange={(e) => onChange('endColor', e.target.value)}
                   style={{ width: 30, height: 24, border: 'none', borderRadius: 4 }}
                 />
                 <TextField
                   size="small"
-                  value={data.endColor || '#e55a00'}
+                  value={toStringValue(data.endColor, '#e55a00')}
                   onChange={(e) => onChange('endColor', e.target.value)}
                   sx={{ flex: 1 }}
                 />
@@ -480,7 +506,7 @@ export const GradientNode = memo(function GradientNode({
             sx={{
               height: 30,
               borderRadius: 1,
-              background: `linear-gradient(${data.direction || 90}deg, ${data.startColor || '#ff6b00'}, ${data.endColor || '#e55a00'})`,
+              background: `linear-gradient(${toNumberValue(data.direction, 90)}deg, ${toStringValue(data.startColor, '#ff6b00')}, ${toStringValue(data.endColor, '#e55a00')})`,
             }}
           />
         </Box>
@@ -512,11 +538,11 @@ export const OpacityNode = memo(function OpacityNode({
       renderContent={(data, onChange) => (
         <Box>
           <Typography variant="caption" color="rgba(255,255,255,0.5)">
-            Opacity: {((data.value || 1) * 100).toFixed(0)}%
+            Opacity: {(toNumberValue(data.value, 1) * 100).toFixed(0)}%
           </Typography>
           <Slider
-            value={data.value || 1}
-            onChange={(_, value) => onChange('value', value)}
+            value={toNumberValue(data.value, 1)}
+            onChange={(_, value) => onChange('value', Array.isArray(value) ? value[0] : value)}
             min={0}
             max={1}
             step={0.01}
@@ -530,8 +556,8 @@ export const OpacityNode = memo(function OpacityNode({
                 size="small"
                 label={`${val * 100}%`}
                 onClick={() => onChange('value', val)}
-                variant={data.value === val ? 'filled' : 'outlined'}
-                sx={{ bgcolor: data.value === val ? 'rgba(255,87,34,0.2)' : 'transparent', borderColor: '#ff5722', color: '#ff5722' }}
+                variant={toNumberValue(data.value, 1) === val ? 'filled' : 'outlined'}
+                sx={{ bgcolor: toNumberValue(data.value, 1) === val ? 'rgba(255,87,34,0.2)' : 'transparent', borderColor: '#ff5722', color: '#ff5722' }}
               />
             ))}
           </Stack>
@@ -694,7 +720,7 @@ export const THEME_NODE_DEFINITIONS = [
     outputs: [
       { id: 'css', name: 'css', type: 'output' as const, dataType: 'string' as const },
     ],
-    defaultData: { name: '', value: '', scope: ':root' },
+    defaultData: { name: '', value: ', ', scope: ':root' },
     component: CSSVariableNode,
   },
   {
@@ -745,4 +771,3 @@ export const THEME_NODE_DEFINITIONS = [
 ];
 
 export default THEME_NODE_DEFINITIONS;
-

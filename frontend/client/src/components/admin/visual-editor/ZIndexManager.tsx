@@ -44,10 +44,7 @@ import { useVisualEditor, EditorElement } from './VisualEditorContext';
 export const ZIndexManager: React.FC = () => {
   const {
     state,
-    updateComponentPosition,
     updateElement,
-    bringToFront,
-    sendToBack,
     selectElement,
     deleteElement,
   } = useVisualEditor();
@@ -56,36 +53,75 @@ export const ZIndexManager: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const getElementZIndex = (element: EditorElement): number => {
+    const zIndex = element.props?.zIndex;
+    return typeof zIndex === 'number' ? zIndex : 0;
+  };
+
+  const isElementLocked = (element: EditorElement): boolean => {
+    const locked = element.props?.locked;
+    return typeof locked === 'boolean' ? locked : false;
+  };
+
+  const getElementName = (element: EditorElement): string | undefined => {
+    const name = element.props?.name;
+    return typeof name === 'string' ? name : undefined;
+  };
+
+  const updateLayerProps = (elementId: string, updates: Record<string, unknown>) => {
+    const currentElement = state.elements.find((element) => element.id === elementId);
+    if (!currentElement) {
+      return;
+    }
+
+    updateElement(elementId, {
+      props: {
+        ...currentElement.props,
+        ...updates,
+      },
+    });
+  };
+
+  const handleBringToFront = (elementId: string) => {
+    const maxZ = state.elements.reduce((max, element) => Math.max(max, getElementZIndex(element)), 0);
+    updateLayerProps(elementId, { zIndex: maxZ + 1 });
+  };
+
+  const handleSendToBack = (elementId: string) => {
+    const minZ = state.elements.reduce((min, element) => Math.min(min, getElementZIndex(element)), 0);
+    updateLayerProps(elementId, { zIndex: minZ - 1 });
+  };
+
   // Sort elements by z-index (highest to lowest)
   const sortedElements = [...state.elements].sort((a, b) => {
-    const aZ = a.position?.zIndex ?? 0;
-    const bZ = b.position?.zIndex ?? 0;
+    const aZ = getElementZIndex(a);
+    const bZ = getElementZIndex(b);
     return bZ - aZ;
   });
 
   const handleMoveUp = (element: EditorElement) => {
-    const currentZ = element.position?.zIndex ?? 0;
-    updateComponentPosition(element.id, { zIndex: currentZ + 1 });
+    const currentZ = getElementZIndex(element);
+    updateLayerProps(element.id, { zIndex: currentZ + 1 });
   };
 
   const handleMoveDown = (element: EditorElement) => {
-    const currentZ = element.position?.zIndex ?? 0;
-    updateComponentPosition(element.id, { zIndex: currentZ - 1 });
+    const currentZ = getElementZIndex(element);
+    updateLayerProps(element.id, { zIndex: currentZ - 1 });
   };
 
   const handleToggleLock = (element: EditorElement) => {
-    const locked = element.position?.locked ?? false;
-    updateComponentPosition(element.id, { locked: !locked });
+    const locked = isElementLocked(element);
+    updateLayerProps(element.id, { locked: !locked });
   };
 
   const handleStartRename = (element: EditorElement) => {
     setEditingName(element.id);
-    setNewName(element.name || element.id);
+    setNewName(getElementName(element) || element.id);
   };
 
   const handleSaveRename = (elementId: string) => {
     if (newName.trim()) {
-      updateElement(elementId, { name: newName.trim() });
+      updateLayerProps(elementId, { name: newName.trim() });
     }
     setEditingName(null);
     setNewName('');
@@ -130,7 +166,7 @@ export const ZIndexManager: React.FC = () => {
             />
             <Chip
               icon={<Lock />}
-              label={`${state.elements.filter((el) => el.position?.locked).length} locked`}
+              label={`${state.elements.filter((element) => isElementLocked(element)).length} locked`}
               color="secondary"
               variant="outlined"
             />
@@ -157,8 +193,8 @@ export const ZIndexManager: React.FC = () => {
           ) : (
             <List>
               {sortedElements.map((element, index) => {
-                const zIndex = element.position?.zIndex ?? 0;
-                const locked = element.position?.locked ?? false;
+                const zIndex = getElementZIndex(element);
+                const locked = isElementLocked(element);
                 const isSelected = state.selectedElement === element.id;
 
                 return (
@@ -208,7 +244,7 @@ export const ZIndexManager: React.FC = () => {
                           ) : (
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <Typography variant="subtitle2">
-                                {element.name || element.id}
+                                {getElementName(element) || element.id}
                               </Typography>
                               {locked && (
                                 <Chip icon={<Lock />} label="Locked" size="small" color="warning" />
@@ -237,7 +273,7 @@ export const ZIndexManager: React.FC = () => {
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                bringToFront(element.id);
+                                handleBringToFront(element.id);
                               }}
                               disabled={locked}
                             >
@@ -279,7 +315,7 @@ export const ZIndexManager: React.FC = () => {
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                sendToBack(element.id);
+                                handleSendToBack(element.id);
                               }}
                               disabled={locked}
                             >
@@ -353,7 +389,7 @@ export const ZIndexManager: React.FC = () => {
                 variant="outlined"
                 size="small"
                 startIcon={<VerticalAlignTop />}
-                onClick={() => state.selectedElement && bringToFront(state.selectedElement)}
+                onClick={() => state.selectedElement && handleBringToFront(state.selectedElement)}
               >
                 Bring to Front
               </Button>
@@ -361,7 +397,7 @@ export const ZIndexManager: React.FC = () => {
                 variant="outlined"
                 size="small"
                 startIcon={<VerticalAlignBottom />}
-                onClick={() => state.selectedElement && sendToBack(state.selectedElement)}
+                onClick={() => state.selectedElement && handleSendToBack(state.selectedElement)}
               >
                 Send to Back
               </Button>

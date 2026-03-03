@@ -64,7 +64,7 @@ export default function ShowcaseAmazonDesign({
         headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {

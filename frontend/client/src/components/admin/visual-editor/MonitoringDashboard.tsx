@@ -108,6 +108,18 @@ interface MonitoringDashboardProps {
   style?: React.CSSProperties;
 }
 
+type MonitoringSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+interface MonitoringMetric {
+  id: string;
+  name: string;
+  duration: number;
+  category: string;
+  severity: MonitoringSeverity;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
 const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
   showDetails = true,
   showSettings = true,
@@ -136,7 +148,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
     metrics: [
       { id: '1', name: 'Render Time', duration: 16.5, category: 'performance', severity: 'low', timestamp: new Date().toISOString() },
       { id: '2', name: 'Memory Usage', duration: 45.2, category: 'memory', severity: 'medium', timestamp: new Date().toISOString() }
-    ],
+    ] as MonitoringMetric[],
     clear: () => { setAlerts([]); setSystemHealth('healthy'); },
     startProfiling: () => { setProfilingActive(true); setIsMonitoring(true); },
     stopProfiling: () => { setProfilingActive(false); },
@@ -173,7 +185,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
   const [isMonitoring, setIsMonitoring] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(1000);
   const [showAlertsPanel, setShowAlertsPanel] = useState(false);
-  const [selectedMetric, setSelectedMetric] = useState<Record<string, unknown> | null>(null);
+  const [selectedMetric, setSelectedMetric] = useState<MonitoringMetric | null>(null);
   const [metricDetailsOpen, setMetricDetailsOpen] = useState(false);
   const [alerts, setAlerts] = useState<Record<string, unknown>[]>([]);
   const [systemHealth, setSystemHealth] = useState<'healthy' | 'warning' | 'critical'>('healthy');
@@ -226,7 +238,7 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
 };
 
   // Handle metric click
-  const handleMetricClick = useCallback((metric: Record<string, unknown>) => {
+  const handleMetricClick = useCallback((metric: MonitoringMetric) => {
     setSelectedMetric(metric);
     setMetricDetailsOpen(true);
 }, []);
@@ -678,4 +690,3 @@ const MonitoringDashboard: React.FC<MonitoringDashboardProps> = memo(({
 MonitoringDashboard.displayName ='MonitoringDashboard';
 
 export default MonitoringDashboard;
-

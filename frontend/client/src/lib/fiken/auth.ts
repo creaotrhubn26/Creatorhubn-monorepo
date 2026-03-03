@@ -193,7 +193,8 @@ export async function getFikenCompanies(accessToken: string): Promise<any[]> {
     const response = await fetch(`${FIKEN_API_BASE_URL}/companies`, {
       method: 'GET',
       headers: {
-        Authorization: `Bearer ${accessToken}`'Content-Type' : 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
       },
     });
 
@@ -213,6 +214,7 @@ export async function getFikenCompanies(accessToken: string): Promise<any[]> {
  */
 export function buildFikenAuthHeader(accessToken: string): Record<string, string> {
   return {
-    Authorization: `Bearer ${accessToken}`'Content-Type' : 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
   };
 }

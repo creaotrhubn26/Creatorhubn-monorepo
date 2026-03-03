@@ -121,7 +121,7 @@ const queryClient = useQueryClient();
    headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: formData
     ,});
 
@@ -157,7 +157,7 @@ const queryClient = useQueryClient();
    headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(config)
     ,});
   },
@@ -175,7 +175,7 @@ const queryClient = useQueryClient();
    headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ videoPath, timestamp, userId: 'current user' })
     });
   },

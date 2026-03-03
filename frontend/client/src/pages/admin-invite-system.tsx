@@ -140,7 +140,7 @@ export default function AdminInviteSystem() {
 
   // Process invite request mutation
   const processMutation = useMutation({
-    mutationFn: async ({ id, status, notes }: { id: number; status: string; notes?: string }) => {
+    mutationFn: async ({ id, status, notes }: { id: string | number; status: string; notes?: string }) => {
       return apiRequest(`/api/invite-requests/${id}/process`, {
         method: 'POST',
         body: JSON.stringify({ status, notes }),
@@ -1155,7 +1155,7 @@ export default function AdminInviteSystem() {
                   setBusinessProfileOpen(false);
                   // Open Proff analysis
                   const mockRequest: InviteRequest = {
-                    id: 0,
+                    id: '0',
                     profession: selectedBusinessProfile.userType || 'photographer',
                     firstName: selectedBusinessProfile.firstName || '',
                     lastName: selectedBusinessProfile.lastName || ', ',
@@ -1176,4 +1176,3 @@ export default function AdminInviteSystem() {
     </Container>
   );
 }
-

@@ -67,7 +67,7 @@ export interface UseAIIntegrationReturn {
  */
 export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIntegrationReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onPromptCreated,
     onPromptExecuted,
     onPromptExecutionFailed,
@@ -117,8 +117,8 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
   // Initialize AI integration manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      aiIntegrationManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      aiIntegrationManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -200,7 +200,7 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onPromptCreated, onPromptExecuted, onPromptExecutionFailed, onContextCreated, onLearningCreated, onOptimizationCreated, onError, onInitialized]);
+}, [optionConfig, onPromptCreated, onPromptExecuted, onPromptExecutionFailed, onContextCreated, onLearningCreated, onOptimizationCreated, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -247,7 +247,7 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return aiIntegrationManager.getConfig();
 }, []);
 
@@ -259,7 +259,7 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
     createLearning,
     createOptimization,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -292,7 +292,7 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
     createLearning,
     createOptimization,
     state,
-    config,
+    currentConfig,
     updateConfig
   ]);
 
@@ -300,7 +300,6 @@ export const useAIIntegration = (options: UseAIIntegrationOptions = {}): UseAIIn
 };
 
 export default useAIIntegration;
-
 
 
 

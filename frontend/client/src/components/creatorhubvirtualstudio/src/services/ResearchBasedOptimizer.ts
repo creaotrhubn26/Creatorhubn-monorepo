@@ -327,11 +327,15 @@ class ResearchBasedOptimizer {
     // Feature-specific multipliers
     const featureMultipliers: Record<string, number> = {
       'pbr': 1.2, // High impact - affects all materials
-      'skin-shader': 1.0'soft-shadows': 0.9'global-illumination': 1.3, // Very high impact - affects entire scene
-      'area-lights': 1.1'3d-asset-quality': 1.4, // Very high impact - affects all 3D assets
+      'skin-shader': 1.0,
+      'soft-shadows': 0.9,
+      'global-illumination': 1.3, // Very high impact - affects entire scene
+      'area-lights': 1.1,
+      '3d-asset-quality': 1.4, // Very high impact - affects all 3D assets
       'procedural-modeling': 1.2, // High impact - enables dynamic asset creation
       'mesh-optimization': 1.1, // High impact - improves performance
-      'texture-synthesis': 1.0'photogrammetry': 1.3, // Very high impact - enables realistic asset capture
+      'texture-synthesis': 1.0,
+      'photogrammetry': 1.3, // Very high impact - enables realistic asset capture
       'neural-rendering': 1.5, // Highest impact - cutting-edge quality
     };
 
@@ -453,4 +457,3 @@ class ResearchBasedOptimizer {
 
 export const researchBasedOptimizer = new ResearchBasedOptimizer();
 export default researchBasedOptimizer;
-

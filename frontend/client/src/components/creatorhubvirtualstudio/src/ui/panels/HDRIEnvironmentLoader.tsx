@@ -1457,7 +1457,9 @@ export const HDRIEnvironmentLoader: React.FC = () => {
                         backgroundColor: '#ff6b35',
                         color: '#fff',
                         fontSize: '0.6rem',
-                        height: 18'& .MuiChip-label': { px: 0.5 }}}
+                        height: 18,
+                        '& .MuiChip-label': { px: 0.5 },
+                      }}
                     />
                   )}
                   <CardMedia 

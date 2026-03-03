@@ -1,594 +1,554 @@
 /**
  * CreatorHub Norge - Pricing Adjustment Modal
- * Integrated with Price Administration for centralized pricing control
+ * Connected to price administration endpoints with local-safe fallback behavior.
  */
 
-import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '../hooks/useAuth';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import { useClientServicePricing } from '../../services/ClientServicePricingService';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Box,
-  Typography,
-  TextField,
-  Grid,
-  Card,
-  CardContent,
   Alert,
+  Box,
+  Button,
   Chip,
-  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
-  Tooltip,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Stack,
+  TextField,
+  Typography,
   LinearProgress,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
-  Close as CloseIcon,
-  Warning as WarningIcon,
-  LocalOffer as PriceIcon,
-  Calculate as CalculateIcon,
-  Save as SaveIcon,
-  Refresh as RefreshIcon,
-  Info as InfoIcon,
-  TrendingUp as TrendingUpIcon,
   Category as CategoryIcon,
-  Group as GroupIcon,
-  Schedule as ScheduleIcon,
-  LocationOn as LocationIcon,
-  ExpandMore as ExpandMoreIcon,
   CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
+  Close as CloseIcon,
+  ExpandMore as ExpandMoreIcon,
+  LocalOffer as PriceIcon,
+  Save as SaveIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
+import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Card,
+  CardContent,
+  FormControlLabel,
+  Switch,
+} from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
+import { useClientServicePricing } from '../../services/ClientServicePricingService';
 
 interface PricingAdjustmentModalProps {
   open: boolean;
   onClose: () => void;
   profession: string;
-  onPricingUpdated?: (pricing: any) => void; 
+  onPricingUpdated?: (pricing: PricingStructurePayload) => void;
 }
 
-interface PricingStructure {
-  id: number;
-  name: string;
-  type: 'hourly' | 'daily' | 'package' | 'fixed';
-  category: string;
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+interface PricingStructurePayload {
   profession: string;
+  userId: string | null;
+  basePrice: number;
   hourlyRate: number;
   fullDayRate: number;
-  basePrice: number;
   minimumPrice: number;
   maximumPrice: number;
   seasonFactor: number;
   description: string;
   includedServices: string[];
-  extraCosts: any[];
-  status: 'active' | 'inactive';
-  isDefault: boolean; 
+  extraCosts: Array<{ name: string; amount: number }>;
+  isDefault: boolean;
 }
 
-interface Package {
-  id: number;
+interface PricingPackagePayload {
+  id?: number | string;
   name: string;
   description: string;
-  category: string;
   profession: string;
   basePrice: number;
-  hourlyRate: number;
-  imageCount: number;
   ratePerImage: number;
+  imageCount: number;
+  hourlyRate: number;
   includedServices: string[];
-  status: 'active' | 'inactive';
-  isDefault: boolean; 
+  isDefault: boolean;
+}
+
+interface PricingStructureApiRecord extends Partial<PricingStructurePayload> {
+  id?: number | string;
+}
+
+interface PricingPackageApiRecord extends Partial<PricingPackagePayload> {
+  id?: number | string;
+}
+
+function safeNumber(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
+function safeString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+function normalizePricingStructure(
+  record: PricingStructureApiRecord | null,
+  profession: string,
+  userId: string | null,
+): PricingStructurePayload {
+  return {
+    profession,
+    userId,
+    basePrice: safeNumber(record?.basePrice, 1200),
+    hourlyRate: safeNumber(record?.hourlyRate, 1800),
+    fullDayRate: safeNumber(record?.fullDayRate, 12000),
+    minimumPrice: safeNumber(record?.minimumPrice, 1000),
+    maximumPrice: safeNumber(record?.maximumPrice, 60000),
+    seasonFactor: safeNumber(record?.seasonFactor, 1),
+    description: safeString(record?.description, ''),
+    includedServices: safeStringArray(record?.includedServices),
+    extraCosts: Array.isArray(record?.extraCosts)
+      ? record.extraCosts
+          .map((item) => {
+            if (typeof item !== 'object' || item === null) {
+              return null;
+            }
+            const candidate = item as { name?: unknown; amount?: unknown };
+            return {
+              name: safeString(candidate.name, 'Custom cost'),
+              amount: safeNumber(candidate.amount, 0),
+            };
+          })
+          .filter((item): item is { name: string; amount: number } => item !== null)
+      : [],
+    isDefault: Boolean(record?.isDefault),
+  };
+}
+
+function normalizePricingPackage(
+  record: PricingPackageApiRecord | null,
+  profession: string,
+): PricingPackagePayload {
+  return {
+    id: record?.id,
+    name: safeString(record?.name, 'Standard Package'),
+    description: safeString(record?.description, ''),
+    profession,
+    basePrice: safeNumber(record?.basePrice, 9500),
+    ratePerImage: safeNumber(record?.ratePerImage, 250),
+    imageCount: safeNumber(record?.imageCount, 40),
+    hourlyRate: safeNumber(record?.hourlyRate, 1800),
+    includedServices: safeStringArray(record?.includedServices),
+    isDefault: Boolean(record?.isDefault),
+  };
 }
 
 const PricingAdjustmentModal: React.FC<PricingAdjustmentModalProps> = ({
   open,
   onClose,
   profession,
-  onPricingUpdated
+  onPricingUpdated,
 }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { integration, communication } = useEnhancedMasterIntegration();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
   const theming = useTheming(profession);
-  
-  // Dynamic profession system
-  const { getProfessionDisplayName: getDynamicProfessionName } = useDynamicProfessions();
+  const { formatCurrency, calculateMVA, getTotalWithMVA } = useClientServicePricing();
 
-  // Client service pricing service integration
-  const { 
-    formatCurrency,
-    getDefaultPrice,
-    getMVA,
-    getTotalWithMVA,
-    isLoading: pricingLoading 
-} = useClientServicePricing();
+  const userId = user?.id ?? null;
 
-  // State for form data
-  const [formData, setFormData] = useState({
-    basePrice:  0,
-    hourlyRate:  0,
-    fullDayRate:  0,
-    minimumPrice:  0,
-    maximumPrice:  0,
-    seasonFactor: 1.0,
-    description: '',
-    includedServices: [] as string[],
-    extraCosts: [] as any[],
-    isDefault: false
-,});
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [formData, setFormData] = useState<PricingStructurePayload>(
+    normalizePricingStructure(null, profession, userId),
+  );
+  const [selectedPackage, setSelectedPackage] = useState<PricingPackagePayload>(
+    normalizePricingPackage(null, profession),
+  );
 
-  const [selectedPackage, setSelectedPackage] = useState<Package | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-
-  // Fetch pricing structures
-  const { data: pricingStructures, isLoading: structuresLoading } = useQuery({
-    queryKey: [ '/api/price-administration/pricing-structures,', profession],
+  const pricingStructuresQuery = useQuery({
+    queryKey: ['price-administration-structures', profession],
     enabled: open,
-    onSuccess: (data) => {
-      const defaultStructure = data.find((s: PricingStructure) => s.isDefault);
-      if (defaultStructure) {
-        setFormData({
-          basePrice: defaultStructure.basePrice || 0,
-          hourlyRate: defaultStructure.hourlyRate || 0,
-          fullDayRate: defaultStructure.fullDayRate || 0,
-          minimumPrice: defaultStructure.minimumPrice || 0,
-          maximumPrice: defaultStructure.maximumPrice || 0,
-          seasonFactor: defaultStructure.seasonFactor || 1.0,
-          description: defaultStructure.description as any ||'',
-          includedServices: defaultStructure.includedServices || [],
-          extraCosts: defaultStructure.extraCosts || [],
-          isDefault: defaultStructure.isDefault || false
-      ,});
-    }
-  }
-});
+    queryFn: async (): Promise<PricingStructureApiRecord[]> => {
+      try {
+        const data = await apiRequest(
+          `/api/price-administration/pricing-structures?profession=${encodeURIComponent(profession)}`,
+        );
+        return Array.isArray(data) ? (data as PricingStructureApiRecord[]) : [];
+      } catch {
+        return [];
+      }
+    },
+  });
 
-  // Fetch packages
-  const { data: packages, isLoading: packagesLoading } = useQuery({
-    queryKey: ['/api/pricing/packages', user?.id],
-    queryFn: () => fetch(`/api/pricing/packages/${user?.id}`).then(res => res.json()),
-    enabled: open && !!user?.id,
-    onSuccess: (data) => {
-      const defaultPackage = data.find((p: Package) => p.isDefault);
-      if (defaultPackage) {
-        setSelectedPackage(defaultPackage);
-    }
-  }
-});
+  const packageQuery = useQuery({
+    queryKey: ['price-packages', userId, profession],
+    enabled: open,
+    queryFn: async (): Promise<PricingPackageApiRecord[]> => {
+      try {
+        const path = userId
+          ? `/api/pricing/packages/${encodeURIComponent(userId)}`
+          : `/api/pricing/packages?profession=${encodeURIComponent(profession)}`;
+        const data = await apiRequest(path);
+        return Array.isArray(data) ? (data as PricingPackageApiRecord[]) : [];
+      } catch {
+        return [];
+      }
+    },
+  });
 
-  // Fetch current projects count for impact warning
-  const { data: projectsCount } = useQuery({
-    queryKey: ['/api/projects/count', profession],
-    enabled: open
-,});
-
-  // Save pricing mutation
-  const savePricingMutation = useMutation({
-    mutationFn: async (pricingData: any) => {
-      const response = await fetch('/api/price-administration/pricing-structures', {
-        method: 'POS',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.token}`
-      },
-        body: JSON.stringify({
-          ...pricingData,
-          profession,
-          userId: user?.id
-      ,})
-    });
-
-      if (!response.ok) {
-        throw new Error('Failed to save pricing');
+  useEffect(() => {
+    if (!open) {
+      return;
     }
 
-      return response.json();
-  },
-    onSuccess: () => {
-      setSaveStatus('saved');
-      queryClient.invalidateQueries({ queryKey: ['/api/price-administration/pricing-structures', profession] });
-      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages', profession] });
-      
-      // Notify parent component
-      if (onPricingUpdated) {
-        onPricingUpdated(formData);
-    }
+    const defaultStructure =
+      pricingStructuresQuery.data?.find((structure) => structure.isDefault) ??
+      pricingStructuresQuery.data?.[0] ??
+      null;
 
-      // Show success message
-      setTimeout(() => {
-        setSaveStatus('idle');
-    }, 2000);
-  },
-    onError: () => {
-      setSaveStatus('error');
-      setTimeout(() => {
-        setSaveStatus('idle');
-    ,}, 3000);
-  }
-});
+    setFormData(normalizePricingStructure(defaultStructure, profession, userId));
 
-  // Save package mutation
+    const defaultPackage =
+      packageQuery.data?.find((pkg) => pkg.isDefault) ??
+      packageQuery.data?.[0] ??
+      null;
+
+    setSelectedPackage(normalizePricingPackage(defaultPackage, profession));
+  }, [open, pricingStructuresQuery.data, packageQuery.data, profession, userId]);
+
+  const saveStructureMutation = useMutation({
+    mutationFn: async (payload: PricingStructurePayload): Promise<void> => {
+      await apiRequest('/api/price-administration/pricing-structures', {
+        method: 'POST',
+        body: payload,
+      });
+    },
+  });
+
   const savePackageMutation = useMutation({
-    mutationFn: async (packageData: any) => {
-      const response = await fetch('/api/pricing/packages', {
-        method: 'POS',
-        headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user?.token}`
-      },
-        body: JSON.stringify({
-          ...packageData,
-          profession,
-          userId: user?.id
-      ,})
-    });
+    mutationFn: async (payload: PricingPackagePayload): Promise<void> => {
+      await apiRequest('/api/pricing/packages', {
+        method: 'POST',
+        body: {
+          ...payload,
+          userId,
+        },
+      });
+    },
+  });
 
-      if (!response.ok) {
-        throw new Error('Failed to save package');
-    }
+  const loading = pricingStructuresQuery.isLoading || packageQuery.isLoading;
 
-      return response.json();
-  },
-    onSuccess: () => {
-      setSaveStatus('saved');
-      queryClient.invalidateQueries({ queryKey: ['/api/pricing/packages', profession] });
-      
-      setTimeout(() => {
-        setSaveStatus('idle');
-    }, 2000);
-  },
-    onError: () => {
-      setSaveStatus('error');
-      setTimeout(() => {
-        setSaveStatus('idle');
-    ,}, 3000);
-  }
-});
+  const previewSubtotal = useMemo(() => {
+    const base = formData.basePrice;
+    const count = selectedPackage.imageCount;
+    return Math.max(0, base * count * formData.seasonFactor);
+  }, [formData.basePrice, formData.seasonFactor, selectedPackage.imageCount]);
 
-  // Register component with integration system
-  useEffect(() => {
-    if (open) {
-      communication.registerComponent('pricing-adjustment-modal', 'pricing', [
-        'data: read', 'data: write', 'event: emit', 'event: listen', 'ui: update', 'pricing: update', 'package: update'
-      ]);
-  }
-}, [open, communication]);
+  const previewMva = useMemo(() => calculateMVA(previewSubtotal), [calculateMVA, previewSubtotal]);
+  const previewTotal = useMemo(
+    () => getTotalWithMVA(previewSubtotal),
+    [getTotalWithMVA, previewSubtotal],
+  );
 
-  // Show toast when modal opens and data is loading
-  useEffect(() => {
-    if (open && (structuresLoading || packagesLoading)) {
-      // This will be handled by the parent component's toast system
-      console.log('Loading pricing data from Price Administration...');
-  }
-}, [open, structuresLoading, packagesLoading]);
-
-  const handleSave = async () => {
-    setIsLoading(true);
+  const handleSave = async (): Promise<void> => {
     setSaveStatus('saving');
+    setErrorMessage('');
 
     try {
-      // Save pricing structure
-      await savePricingMutation.mutateAsync(formData);
+      await saveStructureMutation.mutateAsync(formData);
+      await savePackageMutation.mutateAsync(selectedPackage);
 
-      // Save package if modified
-      if (selectedPackage) {
-        await savePackageMutation.mutateAsync(selectedPackage);
+      queryClient.invalidateQueries({ queryKey: ['price-administration-structures', profession] });
+      queryClient.invalidateQueries({ queryKey: ['price-packages', userId, profession] });
+      onPricingUpdated?.(formData);
+      setSaveStatus('saved');
+    } catch (error) {
+      setSaveStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to save pricing');
     }
-
-      // Track analytics
-      integration.analytics.trackEvent('pricing_updated', {
-        profession,
-        basePrice: formData.basePrice,
-        hourlyRate: formData.hourlyRate,
-        packageCount: packages?.length || 0
-    ,});
-
-  } catch (error) {
-      console.error('Failed to save pricing: ', error);
-  } finally {
-      setIsLoading(false);
-  }
-};
-
-  const handleFormChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-};
-
-  const handlePackageChange = (field: string, value: any) => {
-    if (selectedPackage) {
-      setSelectedPackage(prev => prev ? { ...prev, [field]: value } : null);
-  }
-};
-
-  const calculateTotalImpact = () => {
-    const basePrice = formData.basePrice || 0;
-    const imageCount = selectedPackage?.imageCount || 50;
-    return basePrice * imageCount;
-};
-
-  const getProfessionDisplayName = (prof: string) => {
-    return getDynamicProfessionName(prof);
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: { minHeight: '600px',}
-    }}
-    >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        bgcolor: 'primary.main',
-        color: 'primary.contrastText'
-    }}>
-        <Box sx={{ display: 'flex', alignItems: 'center'}}>
-          <PriceIcon sx={{ mr:  1 }} />
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            Prisjustering - {getProfessionDisplayName(profession)}
-          </Typography>
-        </Box>
-        <IconButton onClick={onClose} sx={{ color: 'inherit'}}>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle
+        sx={{
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <PriceIcon fontSize="small" />
+          <Typography variant="h6">Prisjustering - {profession}</Typography>
+        </Stack>
+        <IconButton color="inherit" onClick={onClose}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ p:  3 }}>
-        {/* Impact Warning */}
-        <Alert 
-          severity="warning" 
-          icon={<WarningIcon />}
-          sx={{ mb:  3 }}
-        >
-          <Typography variant="body2" sx={{ fontWeight: 600}>
-            ⚠️ Endringer i priser påvirker alle prosjekter
-          </Typography>
-          <Typography variant="body2">
-            {projectsCount ? `${projectsCount} eksisterende prosjekter` : 'Alle prosjekter'} vil bli påvirket av disse endringene.
-            Sørg for at nye priser er korrekte før du lagrer.
-          </Typography>
+      <DialogContent sx={{ p: 3 }}>
+        <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 2 }}>
+          Endringer i priser påvirker nye tilbud, nye prosjekter og fremtidige estimater.
         </Alert>
 
-        {/* Loading State */}
-        {(structuresLoading || packagesLoading) && (
-          <Box sx={{ mb:  3 }}>
-            <LinearProgress />
-            <Typography variant="body2" sx={{ mt: 1, textAlign: 'center'}}>
-              Laster prisdata...
-            </Typography>
-          </Box>
-        )}
+        {loading ? <LinearProgress sx={{ mb: 2 }} /> : null}
 
-        {/* Pricing Structure */}
         <Accordion defaultExpanded>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center'}}>
-              <CalculateIcon sx={{ mr: 1, color: 'primary.main'}} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Grunnleggende Prisstruktur</Typography>
-            </Box>
+            <Typography variant="subtitle1" sx={{ color: theming.colors.primary }}>
+              Grunnleggende prisstruktur
+            </Typography>
           </AccordionSummary>
           <AccordionDetails>
-            <Grid container spacing={3}>
-              <Grid size={{ xs:  12, md:  6 }}>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
-                  label="Grunnpris per bilde (NOK)"
+                  label="Grunnpris per bilde"
                   type="number"
                   value={formData.basePrice}
-                  onChange={(e) => handleFormChange('basePrice', parseFloat(e.target.value) || 0)}
-                  helperText="Standardpris for hvert bilde"
+                  onChange={(event) => {
+                    const basePrice = safeNumber(event.target.value, 0);
+                    setFormData((previous) => ({ ...previous, basePrice }));
+                  }}
                 />
               </Grid>
-              <Grid size={{ xs:  12, md:  6 }}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
-                  label="Timepris (NOK)"
+                  label="Timepris"
                   type="number"
                   value={formData.hourlyRate}
-                  onChange={(e) => handleFormChange('hourlyRate', parseFloat(e.target.value) || 0)}
-                  helperText="Pris per time for tilleggsarbeid"
+                  onChange={(event) => {
+                    const hourlyRate = safeNumber(event.target.value, 0);
+                    setFormData((previous) => ({ ...previous, hourlyRate }));
+                  }}
                 />
               </Grid>
-              <Grid size={{ xs:  12, md:  6 }}>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
-                  label="Dagspris (NOK)"
+                  label="Dagspris"
                   type="number"
                   value={formData.fullDayRate}
-                  onChange={(e) => handleFormChange('fullDayRate', parseFloat(e.target.value) || 0)}
-                  helperText="Pris for hele dagen"
+                  onChange={(event) => {
+                    const fullDayRate = safeNumber(event.target.value, 0);
+                    setFormData((previous) => ({ ...previous, fullDayRate }));
+                  }}
                 />
               </Grid>
-              <Grid size={{ xs:  12, md:  6 }}>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Minpris"
+                  type="number"
+                  value={formData.minimumPrice}
+                  onChange={(event) => {
+                    const minimumPrice = safeNumber(event.target.value, 0);
+                    setFormData((previous) => ({ ...previous, minimumPrice }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
+                <TextField
+                  fullWidth
+                  label="Makspris"
+                  type="number"
+                  value={formData.maximumPrice}
+                  onChange={(event) => {
+                    const maximumPrice = safeNumber(event.target.value, 0);
+                    setFormData((previous) => ({ ...previous, maximumPrice }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 4 }}>
                 <TextField
                   fullWidth
                   label="Sesongfaktor"
                   type="number"
-                  step="0.1"
+                  inputProps={{ step: 0.1, min: 0.5, max: 2 }}
                   value={formData.seasonFactor}
-                  onChange={(e) => handleFormChange('seasonFactor', parseFloat(e.target.value) || 1.0)}
-                  helperText="Multiplikator for sesongpriser (1.0 = normal)"
+                  onChange={(event) => {
+                    const seasonFactor = safeNumber(event.target.value, 1);
+                    setFormData((previous) => ({ ...previous, seasonFactor }));
+                  }}
                 />
               </Grid>
               <Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
-                  label="Beskrivelse"
                   multiline
-                  rows={3}
-                  value={formData.description as any}
-                  onChange={(e) => handleFormChange('description', e.target.value)}
-                  helperText="Beskrivelse av prisstrukturen"
+                  rows={2}
+                  label="Beskrivelse"
+                  value={formData.description}
+                  onChange={(event) => {
+                    const description = event.target.value;
+                    setFormData((previous) => ({ ...previous, description }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.isDefault}
+                      onChange={(event) => {
+                        const isDefault = event.target.checked;
+                        setFormData((previous) => ({ ...previous, isDefault }));
+                      }}
+                    />
+                  }
+                  label="Sett som standard prisprofil"
                 />
               </Grid>
             </Grid>
           </AccordionDetails>
         </Accordion>
 
-        {/* Package Configuration */}
-        <Accordion>
+        <Accordion sx={{ mt: 2 }}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box sx={{ display: 'flex', alignItems: 'center'}}>
-              <CategoryIcon sx={{ mr: 1, color: 'secondary.main'}} />
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Pakkeoppsett</Typography>
-            </Box>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <CategoryIcon fontSize="small" />
+              <Typography variant="subtitle1" sx={{ color: theming.colors.primary }}>
+                Pakkeoppsett
+              </Typography>
+            </Stack>
           </AccordionSummary>
           <AccordionDetails>
-            {selectedPackage && (
-              <Grid container spacing={3}>
-                <Grid size={{ xs:  12, md:  6 }}>
-                  <TextField
-                    fullWidth
-                    label="Pakkens navn"
-                    value={selectedPackage.name}
-                    onChange={(e) => handlePackageChange('name', e.target.value)}
-                  />
-                </Grid>
-                <Grid size={{ xs:  12, md:  6 }}>
-                  <TextField
-                    fullWidth
-                    label="Antall bilder i pakke"
-                    type="number"
-                    value={selectedPackage.imageCount}
-                    onChange={(e) => handlePackageChange('imageCount', parseInt(e.target.value) || 0)}
-                  />
-                </Grid>
-                <Grid size={{ xs:  12, md:  6 }}>
-                  <TextField
-                    fullWidth
-                    label="Pris per bilde (NOK)"
-                    type="number"
-                    value={selectedPackage.ratePerImage}
-                    onChange={(e) => handlePackageChange('ratePerImage', parseFloat(e.target.value) || 0)}
-                  />
-                </Grid>
-                <Grid size={{ xs:  12, md:  6 }}>
-                  <TextField
-                    fullWidth
-                    label="Total pakkepris (NOK)"
-                    type="number"
-                    value={selectedPackage.basePrice}
-                    onChange={(e) => handlePackageChange('basePrice', parseFloat(e.target.value) || 0)}
-                    helperText={`Automatisk: ${selectedPackage.ratePerImage * selectedPackage.imageCount} NOK`}
-                  />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
-                  <TextField
-                    fullWidth
-                    label="Pakke beskrivelse"
-                    multiline
-                    rows={2}
-                    value={selectedPackage.description as any}
-                    onChange={(e) => handlePackageChange('description', e.target.value)}
-                  />
-                </Grid>
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Pakkenavn"
+                  value={selectedPackage.name}
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    setSelectedPackage((previous) => ({ ...previous, name }));
+                  }}
+                />
               </Grid>
-            )}
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Antall bilder"
+                  type="number"
+                  value={selectedPackage.imageCount}
+                  onChange={(event) => {
+                    const imageCount = safeNumber(event.target.value, 0);
+                    setSelectedPackage((previous) => ({ ...previous, imageCount }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Pakkepris"
+                  type="number"
+                  value={selectedPackage.basePrice}
+                  onChange={(event) => {
+                    const basePrice = safeNumber(event.target.value, 0);
+                    setSelectedPackage((previous) => ({ ...previous, basePrice }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Pris per bilde"
+                  type="number"
+                  value={selectedPackage.ratePerImage}
+                  onChange={(event) => {
+                    const ratePerImage = safeNumber(event.target.value, 0);
+                    setSelectedPackage((previous) => ({ ...previous, ratePerImage }));
+                  }}
+                />
+              </Grid>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  label="Pakke beskrivelse"
+                  value={selectedPackage.description}
+                  onChange={(event) => {
+                    const description = event.target.value;
+                    setSelectedPackage((previous) => ({ ...previous, description }));
+                  }}
+                />
+              </Grid>
+            </Grid>
           </AccordionDetails>
         </Accordion>
 
-        {/* Pricing Summary */}
-        <Card sx={{ mt:  3, bgcolor: 'success.5', border: '1px solid', borderColor: 'success.200',  ...theming.getThemedCardSx() }}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-              <TrendingUpIcon sx={{ mr: 1, color: 'success.main'}} />
-              <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
-                Prisoversikt
+        <Card sx={{ mt: 2, border: '1px solid', borderColor: 'success.light' }}>
+          <CardContent>
+            <Stack spacing={1}>
+              <Typography variant="subtitle1" sx={{ color: theming.colors.primary }}>
+                Prisforhandsvisning
               </Typography>
-            </Box>
-            <Grid container spacing={2}>
-              <Grid size={{ xs:  12, sm:  4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Grunnpris per bilde
-                </Typography>
-                <Typography variant="h6" color="primary.main" sx={{ color: theming.colors.primary }}>
-                  {formData.basePrice.toLocaleString('no-NO')} NOK
-                </Typography>
-              </Grid>
-              <Grid size={{ xs:  12, sm:  4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Standardpakke ({selectedPackage?.imageCount || 50} bilder)
-                </Typography>
-                <Typography variant="h6" color="secondary.main" sx={{ color: theming.colors.primary }}>
-                  {calculateTotalImpact().toLocaleString('no-NO')} NOK
-                </Typography>
-              </Grid>
-              <Grid size={{ xs:  12, sm:  4 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Timepris
-                </Typography>
-                <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
-                  {formData.hourlyRate.toLocaleString('no-NO')} NOK/time
-                </Typography>
-              </Grid>
-            </Grid>
+              <Typography variant="body2">
+                Subtotal: <strong>{formatCurrency(previewSubtotal, 'NOK')}</strong>
+              </Typography>
+              <Typography variant="body2">
+                MVA (25%): <strong>{formatCurrency(previewMva, 'NOK')}</strong>
+              </Typography>
+              <Typography variant="body1">
+                Total: <strong>{formatCurrency(previewTotal, 'NOK')}</strong>
+              </Typography>
+              <Stack direction="row" spacing={1}>
+                <Chip label={`Bilder: ${selectedPackage.imageCount}`} size="small" />
+                <Chip label={`Sesongfaktor: ${formData.seasonFactor.toFixed(2)}`} size="small" />
+              </Stack>
+            </Stack>
           </CardContent>
         </Card>
 
-        {/* Save Status */}
-        {saveStatus === 'saving' && (
-          <Alert severity="info" sx={{ mt:  2 }}>
-            <LinearProgress sx={{ mb:  1 }} />
-            Lagrer prisendringer...
+        {saveStatus === 'saved' ? (
+          <Alert icon={<CheckCircleIcon />} severity="success" sx={{ mt: 2 }}>
+            Prisinnstillinger lagret.
           </Alert>
-        )}
-        
-        {saveStatus === 'saved' && (
-          <Alert severity="success" sx={{ mt:  2 }} icon={<CheckCircleIcon />}>
-            Prisendringer lagret! Alle prosjekter er oppdatert.
+        ) : null}
+
+        {saveStatus === 'error' ? (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {errorMessage || 'Klarte ikke lagre prisinnstillinger.'}
           </Alert>
-        )}
-        
-        {saveStatus === 'error' && (
-          <Alert severity="error" sx={{ mt:  2 }} icon={<ErrorIcon />}>
-            Kunne ikke lagre prisendringer. Prøv igjen.
-          </Alert>
-        )}
+        ) : null}
       </DialogContent>
 
-      <DialogActions sx={{ p:  3, bgcolor: 'grey.50'}}>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose}>Lukk</Button>
         <Button
-          onClick={onClose}
-          variant="outlined"
-          disabled={isLoading}
-        >
-          Avbryt
-        </Button>
-        <Button onClick={handleSave}
           variant="contained"
-          disabled={isLoading}
-          startIcon={saveStatus === 'saving' ? <RefreshIcon sx={theming.getThemedButtonSx()}> : <SaveIcon />}
-          sx={{ minWidth: 120}}
+          startIcon={<SaveIcon />}
+          disabled={saveStatus === 'saving' || loading}
+          onClick={handleSave}
+          sx={theming.getThemedButtonSx()}
         >
-          {saveStatus === 'saving' ? 'Lagrer...' : 'Lagre Priser'}
+          {saveStatus === 'saving' ? 'Lagrer...' : 'Lagre prisinnstillinger'}
         </Button>
       </DialogActions>
     </Dialog>

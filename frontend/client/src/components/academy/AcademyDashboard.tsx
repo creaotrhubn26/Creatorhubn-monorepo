@@ -289,10 +289,10 @@ function AcademyDashboard() {
   const theme = useTheme();
   const {
     state,
-    filteredCourses,
-    enrolledCourses,
-    completedCourses,
-    inProgressCourses,
+    filteredCourses: filteredCoursesFromContext,
+    enrolledCourses: enrolledCoursesFromContext,
+    completedCourses: completedCoursesFromContext,
+    inProgressCourses: inProgressCoursesFromContext,
     setSearchQuery,
     setSelectedCategory,
     setSortBy,
@@ -302,53 +302,76 @@ function AcademyDashboard() {
     setCurrentCourse,
     setCurrentLesson,
   } = useAcademyContext();
+  const filteredCourses = Array.isArray(filteredCoursesFromContext) ? filteredCoursesFromContext : [];
+  const enrolledCourses = Array.isArray(enrolledCoursesFromContext) ? enrolledCoursesFromContext : [];
+  const completedCourses = Array.isArray(completedCoursesFromContext) ? completedCoursesFromContext : [];
+  const inProgressCourses = Array.isArray(inProgressCoursesFromContext) ? inProgressCoursesFromContext : [];
   const { analytics, performance, debugging, features, lifecycle, health, auth, communication, dataFlow, componentRegistry } =
     useEnhancedMasterIntegration();
+  const userProfessionFromAuth = (auth.state.user as { profession?: string } | null | undefined)
+    ?.profession;
 
   // Register component with integration system
   useEffect(() => {
-    componentRegistry.register('academy-dashboard', {
+    componentRegistry.registerComponent({
+      id: 'academy-dashboard',
+      name: 'Academy Dashboard',
+      type: 'dashboard',
+      category: 'learning',
       capabilities: ['course-management', 'enrollment', 'learning-progress'],
-      dataNodes: ['enrolled-courses', 'current-lesson', 'progress'],
-      componentCategory: 'learning'
+      dependencies: ['academy-context'],
+      props: [],
+      events: ['academy:navigate'],
+      dataKeys: ['enrolled-courses', 'learning-progress'],
+      path: '/academy',
+      profession: userProfessionFromAuth || 'photographer',
     });
 
-    communication.registerComponent('academy-dashboard', {
-      capabilities: ['course-management', 'enrollment'],
-      features: { 
-        hasLearning: true,
-        userProfession: (auth.state.user as any)?.profession || 'photographer'
-      }
-    });
+    communication.registerComponent('academy-dashboard', 'dashboard', [
+      'course-management',
+      'enrollment',
+      'learning-progress',
+    ]);
 
     // DataFlow nodes
-    dataFlow.registerNode({
-      nodeId: 'academy-dashboard:enrolled',
+    const enrolledNodeId = dataFlow.registerNode({
       type: 'source',
-      data: enrolledCourses
+      componentId: 'academy-dashboard',
+      dataKey: 'enrolled-courses',
     });
 
-    dataFlow.registerNode({
-      nodeId: 'academy-dashboard:progress',
+    const progressNodeId = dataFlow.registerNode({
       type: 'source',
-      data: userProgress
+      componentId: 'academy-dashboard',
+      dataKey: 'learning-progress',
     });
+    void dataFlow.syncData('enrolled-courses', enrolledCourses);
+    void dataFlow.syncData('learning-progress', inProgressCourses);
 
     // Listen for navigation requests
-    const unsubscribe = communication.onMessage('academy:navigate', (message: any) => {
+    const unsubscribe = communication.onMessageType('academy:navigate', (message: any) => {
       if (message.data?.courseId) {
-        const course = courses.find((c: any) => c.id === message.data.courseId);
+        const course = state.courses.find((c: any) => c.id === message.data.courseId);
         if (course) setCurrentCourse(course);
       }
     });
 
     return () => {
-      componentRegistry.unregister('academy-dashboard');
-      dataFlow.unregisterNode('academy-dashboard:enrolled');
-      dataFlow.unregisterNode('academy-dashboard:progress');
+      componentRegistry.unregisterComponent('academy-dashboard');
+      dataFlow.unregisterNode(enrolledNodeId);
+      dataFlow.unregisterNode(progressNodeId);
       unsubscribe?.();
     };
-  }, [enrolledCourses, userProgress, courses, componentRegistry, communication, dataFlow, auth, setCurrentCourse]);
+  }, [
+    componentRegistry,
+    communication,
+    dataFlow,
+    enrolledCourses,
+    inProgressCourses,
+    setCurrentCourse,
+    state.courses,
+    userProfessionFromAuth,
+  ]);
 
   // Profession system (API configs + adapter)
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
@@ -356,7 +379,30 @@ function AcademyDashboard() {
   const { adaptDashboardTitle, adaptTabLabels } = professionAdapter;
 
   // Get profession from user context or adapter fallback
-  const userProfession = (auth.state.user as any)?.profession || professionAdapter.profession || 'photographer';
+  const userProfession = userProfessionFromAuth || professionAdapter.profession || 'photographer';
+  type UniversalDashboardProfession = NonNullable<
+    React.ComponentProps<typeof UniversalDashboard>['profession']
+  >;
+  const universalDashboardProfessions: readonly UniversalDashboardProfession[] = [
+    'photographer',
+    'videographer',
+    'music_producer',
+    'vendor',
+    'admin',
+    'enterprise',
+  ];
+  const universalDashboardProfessionSet: ReadonlySet<string> = new Set(
+    universalDashboardProfessions,
+  );
+  const isUniversalDashboardProfession = (
+    value: string,
+  ): value is UniversalDashboardProfession =>
+    universalDashboardProfessionSet.has(value);
+  const dashboardProfession: UniversalDashboardProfession = isUniversalDashboardProfession(
+    userProfession,
+  )
+    ? userProfession
+    : 'photographer';
   const enhancedProfessionConfig = apiProfessionConfigs?.[userProfession];
   const professionDisplayName =
     enhancedProfessionConfig?.displayName || enhancedProfessionConfig?.name || userProfession;
@@ -3516,13 +3562,13 @@ function AcademyDashboard() {
                       onClick={() => {
                         // Navigate to the course or lesson
                         if (result.type === 'course' && result.id) {
-                          const course = courses.find((c: any) => c.id === result.id);
+                          const course = state.courses.find((c: any) => c.id === result.id);
                           if (course) {
                             setCurrentCourse(course);
                             setGlobalSearchOpen(false);
                           }
                         } else if (result.type === 'lesson' && result.courseId) {
-                          const course = courses.find((c: any) => c.id === result.courseId);
+                          const course = state.courses.find((c: any) => c.id === result.courseId);
                           if (course) {
                             setCurrentCourse(course);
                             if (result.id) setCurrentLesson(result);
@@ -3692,7 +3738,7 @@ function AcademyDashboard() {
               TILBAKE TIL ACADEMY
             </Button>
           </Box>
-          <UniversalDashboard profession={userProfession} />
+          <UniversalDashboard profession={dashboardProfession} />
         </Box>
       )}
 

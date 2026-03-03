@@ -51,6 +51,40 @@ interface AccessibilityCheckerProps {
   iframeRef: React.RefObject<HTMLIFrameElement>;
 }
 
+const collectSelectorStrings = (value: unknown, collected: string[]): void => {
+  if (typeof value === 'string') {
+    collected.push(value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectSelectorStrings(entry, collected));
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach((entry) => collectSelectorStrings(entry, collected));
+  }
+};
+
+const normalizeTargetSelectors = (target: axe.UnlabelledFrameSelector): string[] => {
+  const selectors: string[] = [];
+  collectSelectorStrings(target, selectors);
+  return selectors.length > 0 ? selectors : ['unknown-selector'];
+};
+
+const normalizeImpact = (impact: axe.ImpactValue | null | undefined): AccessibilityIssue['impact'] => {
+  switch (impact) {
+    case 'critical':
+    case 'serious':
+    case 'moderate':
+    case 'minor':
+      return impact;
+    default:
+      return 'minor';
+  }
+};
+
 export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
   open,
   onClose,
@@ -104,13 +138,13 @@ export const AccessibilityChecker: React.FC<AccessibilityCheckerProps> = ({
 
       const formattedIssues: AccessibilityIssue[] = results.violations.map((violation) => ({
         id: violation.id,
-        impact: violation.impact as 'minor' | 'moderate' | 'serious' | 'critical',
+        impact: normalizeImpact(violation.impact),
         description: violation.description,
         help: violation.help,
         helpUrl: violation.helpUrl,
         nodes: violation.nodes.map((node) => ({
           html: node.html,
-          target: node.target,
+          target: normalizeTargetSelectors(node.target),
           failureSummary: node.failureSummary || '',
         })),
       }));

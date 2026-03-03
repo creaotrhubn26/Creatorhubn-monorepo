@@ -276,7 +276,7 @@ const AutomatedLeadGenerationSystem: React.FC = () => {
     setLoading(true);
     try {
       const response = await fetch('/api/lead-generation/leads', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(leadData),
     });
@@ -486,7 +486,7 @@ const AutomatedLeadGenerationSystem: React.FC = () => {
 
           <Grid item xs={12} md={4}>
             <Typography variant="body2" gutterBottom>
-              Lead Score: {scoreRange[]} - {scoreRange[1]}
+              Lead Score: {scoreRange[0]} - {scoreRange[1]}
             </Typography>
             <Slider
               value={scoreRange}
@@ -991,9 +991,9 @@ const AutomatedLeadGenerationSystem: React.FC = () => {
       </Typography>
 
       <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)} sx={{ mb:  3 }}>
-        <Tab icon={theming.getThemedIcon('people')}} label="Leads" />
-        <Tab icon={theming.getThemedIcon('getApp')}} label="Lead Magneter" />
-        <Tab icon={theming.getThemedIcon('trendingUp')}} label="Konverteringskanal" />
+        <Tab icon={theming.getThemedIcon('people')} label="Leads" />
+        <Tab icon={theming.getThemedIcon('getApp')} label="Lead Magneter" />
+        <Tab icon={theming.getThemedIcon('trendingUp')} label="Konverteringskanal" />
         <Tab icon={<CampaignOutlined />} label="Kampanjer" />
       </Tabs>
 

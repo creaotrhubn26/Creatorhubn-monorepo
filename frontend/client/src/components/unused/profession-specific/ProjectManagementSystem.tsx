@@ -67,7 +67,7 @@ export default function ProjectManagementSystem({ profession = 'photographer' }:
   const updateProjectManagementSystem = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/project/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

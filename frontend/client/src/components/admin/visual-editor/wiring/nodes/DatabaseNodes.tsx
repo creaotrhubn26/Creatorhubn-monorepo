@@ -39,6 +39,16 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
+const getStringArrayValue = (value: unknown, fallback: string[] = []): string[] => {
+  if (!Array.isArray(value)) {
+    return fallback;
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
+};
+
 // Common database tables (would be dynamic in production)
 const COMMON_TABLES = [
   'users',
@@ -166,7 +176,7 @@ export const SelectNode = memo(function SelectNode({
   onDataChange?: (key: string, value: unknown) => void;
   [key: string]: unknown;
 }) {
-  const columns = config.data.columns || ['*'];
+  const columns = getStringArrayValue(config.data.columns, ['*']);
 
   return (
     <BaseNode
@@ -304,7 +314,7 @@ export const InsertNode = memo(function InsertNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.onConflict || false}
+                checked={getBooleanValue(data.onConflict)}
                 onChange={(e) => onChange('onConflict', e.target.checked)}
                 size="small"
               />
@@ -312,7 +322,7 @@ export const InsertNode = memo(function InsertNode({
             label={<Typography variant="caption">ON CONFLICT DO UPDATE</Typography>}
           />
 
-          {data.onConflict && (
+          {getBooleanValue(data.onConflict) && (
             <TextField
               fullWidth
               size="small"
@@ -440,7 +450,7 @@ export const DeleteNode = memo(function DeleteNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.softDelete || false}
+                checked={getBooleanValue(data.softDelete)}
                 onChange={(e) => onChange('softDelete', e.target.checked)}
                 size="small"
               />
@@ -624,7 +634,7 @@ export const DATABASE_NODE_DEFINITIONS = [
       { id: 'error', name: 'error', type: 'output' as const, dataType: 'object' as const },
       { id: 'count', name: 'count', type: 'output' as const, dataType: 'number' as const },
     ],
-    defaultData: { table: '', columns: ['*'], where: '', orderBy: '', limit: '' },
+    defaultData: { table: '', columns: ['*'], where: ', ', orderBy: '', limit: '' },
     component: SelectNode,
   },
   {
@@ -719,4 +729,3 @@ export const DATABASE_NODE_DEFINITIONS = [
 ];
 
 export default DATABASE_NODE_DEFINITIONS;
-

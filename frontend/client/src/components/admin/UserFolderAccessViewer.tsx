@@ -42,6 +42,13 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
   plan,
   enabledFeatures = [],
 }) => {
+  const humanizeFolderName = (folderId: string): string =>
+    folderId
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
   const folderAccess = useMemo(() => {
     return getAccessibleFoldersForUser(profession, plan);
   }, [profession, plan]);
@@ -82,7 +89,7 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
             <Stack direction="row" alignItems="center" spacing={1}>
               <Folder />
               <Box>
-                <Typography variant="h4">{folderAccess.defaultFolders.length}</Typography>
+                <Typography variant="h4">{folderAccess.baseFolders.length}</Typography>
                 <Typography variant="caption">Standard mapper</Typography>
               </Box>
             </Stack>
@@ -104,25 +111,27 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
       {/* Default Folders */}
       <Accordion defaultExpanded>
         <AccordionSummary expandIcon={<ExpandMore />}>
-          <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
-            <Folder color="primary" />
-            <Typography variant="h6">Standard mapper (Kjerne 8-mapper struktur)</Typography>
-            <Chip label={folderAccess.defaultFolders.length} size="small" color="primary" />
-          </Stack>
-        </AccordionSummary>
+            <Stack direction="row" alignItems="center" spacing={2} sx={{ width: '100%' }}>
+              <Folder color="primary" />
+              <Typography variant="h6">Standard mapper (Kjerne 8-mapper struktur)</Typography>
+              <Chip label={folderAccess.baseFolders.length} size="small" color="primary" />
+            </Stack>
+          </AccordionSummary>
         <AccordionDetails>
           <Alert severity="info" icon={<Info />} sx={{ mb: 2 }}>
             Disse mappene er tilgjengelige for alle brukere uavhengig av plan eller funksjoner.
           </Alert>
           <Grid container spacing={1}>
-            {folderOverview.defaultFolders.map((folder) => (
-              <Grid item xs={12} sm={6} md={4} key={folder.id}>
+            {folderAccess.baseFolders.map((folderId) => (
+              <Grid item xs={12} sm={6} md={4} key={folderId}>
                 <Paper sx={{ p: 1.5, bgcolor: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.3)' }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <CheckCircle color="success" fontSize="small" />
                     <Box>
-                      <Typography variant="body2" fontWeight="600">{folder.name}</Typography>
-                      <Typography variant="caption" color="text.secondary">{folder.description}</Typography>
+                      <Typography variant="body2" fontWeight="600">{humanizeFolderName(folderId)}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Basis mappe for {profession}
+                      </Typography>
                     </Box>
                   </Stack>
                 </Paper>
@@ -152,12 +161,12 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
                       {featureFolder.featureName}
                     </Typography>
                     <Grid container spacing={1}>
-                      {featureFolder.folders.map((folder) => (
-                        <Grid item xs={12} sm={6} md={4} key={folder.id}>
+                      {featureFolder.folders.map((folderName) => (
+                        <Grid item xs={12} sm={6} md={4} key={folderName}>
                           <Paper sx={{ p: 1.5, bgcolor: 'rgba(156, 39, 176, 0.1)', border: '1px solid rgba(156, 39, 176, 0.3)' }}>
                             <Stack direction="row" alignItems="center" spacing={1}>
                               <CheckCircle color="secondary" fontSize="small" />
-                              <Typography variant="body2" fontWeight="600">{folder.name}</Typography>
+                              <Typography variant="body2" fontWeight="600">{humanizeFolderName(folderName)}</Typography>
                             </Stack>
                           </Paper>
                         </Grid>
@@ -195,12 +204,12 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
                     <Chip label="Låst" size="small" color="warning" />
                   </Stack>
                   <Grid container spacing={1}>
-                    {featureFolder.folders.map((folder) => (
-                      <Grid item xs={12} sm={6} md={4} key={folder.id}>
+                    {featureFolder.folders.map((folderName) => (
+                      <Grid item xs={12} sm={6} md={4} key={folderName}>
                         <Paper sx={{ p: 1.5, bgcolor: 'rgba(255, 152, 0, 0.05)', border: '1px solid rgba(255, 152, 0, 0.2)' }}>
                           <Stack direction="row" alignItems="center" spacing={1}>
                             <Lock color="warning" fontSize="small" />
-                            <Typography variant="body2" color="text.secondary">{folder.name}</Typography>
+                            <Typography variant="body2" color="text.secondary">{humanizeFolderName(folderName)}</Typography>
                           </Stack>
                         </Paper>
                       </Grid>
@@ -216,4 +225,3 @@ export const UserFolderAccessViewer: React.FC<UserFolderAccessViewerProps> = ({
     </Box>
   );
 };
-

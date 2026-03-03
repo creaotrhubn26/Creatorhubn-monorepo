@@ -1,206 +1,194 @@
-/**
- * Fiken Analytics Component
- * Shows sales performance of packages created in PriceAdministration
- * Complete workflow: Create Package → Send Invoice → Analyze Performance
- */
-
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
 import {
+  Alert,
   Box,
   Card,
   CardContent,
-  Typography,
-  Grid,
+  Chip,
   CircularProgress,
-  Alert,
-  Select,
-  MenuItem,
   FormControl,
+  Grid,
   InputLabel,
   List,
   ListItem,
   ListItemText,
+  MenuItem,
+  Select,
+  Typography,
   useTheme,
-  alpha,
-  Chip,
 } from '@mui/material';
 import {
-  AreaChart,
+  Assessment as AssessmentIcon,
+  Category as CategoryIcon,
+  Person as PersonIcon,
+  TrendingUp as TrendingUpIcon,
+} from '@mui/icons-material';
+import {
   Area,
-  PieChart,
-  Pie,
+  AreaChart,
+  CartesianGrid,
   Cell,
+  Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Legend,
 } from 'recharts';
-import {
-  TrendingUp,
-  Person,
-  Category,
-  Assessment,
-} from '@mui/icons-material';
-
-const CHART_COLORS = [
-  '#3b82f6','#8b5cf6''#ec4899','#f59e0b''#10b981','#6366f1''#ef4444','#14b8a6''#f97316','#a855f7',
-];
+import { alpha } from '@mui/material/styles';
+import { apiRequest } from '@/lib/queryClient';
 
 interface FikenAnalyticsProps {
   profession?: string;
 }
 
+interface TopEntry {
+  name: string;
+  total: number;
+  count: number;
+}
+
+interface TimelineResponse {
+  monthlyData: Record<string, Record<string, number>>;
+}
+
+interface SummaryStats {
+  grandTotal: number;
+  topThreePercentage: number;
+}
+
+const CHART_COLORS = [
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#f59e0b',
+  '#10b981',
+  '#6366f1',
+  '#ef4444',
+  '#14b8a6',
+  '#f97316',
+  '#a855f7',
+];
+
 export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) => {
   const theme = useTheme();
-  const currentYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const yearNow = new Date().getFullYear();
+  const [year, setYear] = useState(yearNow);
 
-  const { data: customersData, isLoading: customersLoading } = useQuery({
-    queryKey: [ 'fiken-top-customers,', selectedYear],
-    queryFn: () => apiRequest(`/api/fiken/analytics/top-customers?year=${selectedYear}&limit=10`),
+  const { data: customersRaw, isLoading: customersLoading } = useQuery({
+    queryKey: ['fiken-top-customers', year],
+    queryFn: () => apiRequest(`/api/fiken/analytics/top-customers?year=${year}&limit=10`),
   });
 
-  const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['fiken-top-products', selectedYear],
-    queryFn: () => apiRequest(`/api/fiken/analytics/top-products?year=${selectedYear}&limit=10`),
+  const { data: productsRaw, isLoading: productsLoading } = useQuery({
+    queryKey: ['fiken-top-products', year],
+    queryFn: () => apiRequest(`/api/fiken/analytics/top-products?year=${year}&limit=10`),
   });
 
-  const { data: timelineData, isLoading: timelineLoading } = useQuery({
-    queryKey: ['fiken-product-timeline', selectedYear],
-    queryFn: () => apiRequest(`/api/fiken/analytics/product-timeline?year=${selectedYear}`),
+  const { data: timelineRaw, isLoading: timelineLoading } = useQuery({
+    queryKey: ['fiken-product-timeline', year],
+    queryFn: () => apiRequest(`/api/fiken/analytics/product-timeline?year=${year}`),
   });
 
-  const isLoading = customersLoading || productsLoading || timelineLoading;
+  const customers = useMemo(() => normalizeEntries(customersRaw), [customersRaw]);
+  const products = useMemo(() => normalizeEntries(productsRaw), [productsRaw]);
+  const timeline = useMemo(() => normalizeTimeline(timelineRaw), [timelineRaw]);
+  const customerSummary = useMemo(() => normalizeSummary(customersRaw, customers), [customersRaw, customers]);
+  const productSummary = useMemo(() => normalizeSummary(productsRaw, products), [productsRaw, products]);
 
-  const chartData = React.useMemo(() => {
-    if (!timelineData?.monthlyData) return [];
-
-    const months = [
-      'Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt', 'Nov','Des',
-    ];
-    const productSet = new Set<string>();
-
-    Object.values(timelineData.monthlyData as Record<string, Record<string, number>>).forEach()
-      (monthData: unknown) => {
-        Object.keys(monthData).forEach((product) => productSet.add(product);
-      },
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
+  const timelineRows = useMemo(() => {
+    const productNames = Array.from(
+      new Set(
+        Object.values(timeline.monthlyData).flatMap((monthData) => Object.keys(monthData)),
+      ),
     );
-
-    return months.map((month, idx) => {
-      const monthKey = `${selectedYear}-${String(idx + 1).padStart(2, '0')}`;
-      const monthData =
-        (timelineData.monthlyData as Record<string, Record<string, number>>)[monthKey] || {};
-
-      const dataPoint: unknown = { month };
-      productSet.forEach((product) => {
-        dataPoint[product] = Math.round(monthData[product] || 0);
+    return monthLabels.map((monthLabel, monthIndex) => {
+      const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+      const monthData = timeline.monthlyData[monthKey] ?? {};
+      const row: Record<string, number | string> = { month: monthLabel };
+      productNames.forEach((productName) => {
+        row[productName] = Math.round(monthData[productName] ?? 0);
       });
-
-      return dataPoint;
+      return row;
     });
-  }, [timelineData, selectedYear]);
+  }, [monthLabels, timeline.monthlyData, year]);
 
-  const topProductKeys = React.useMemo(() => {
-    if (!productsData?.topProducts) return [];
-    return productsData.topProducts.slice(0, 5).map((p: unknown) => p.name);
-  }, [productsData]);
+  const topProductKeys = useMemo(() => products.slice(0, 5).map((entry) => entry.name), [products]);
+  const customerPieData = useMemo(
+    () => customers.slice(0, 5).map((entry) => ({ name: entry.name, value: entry.total })),
+    [customers],
+  );
+  const productPieData = useMemo(
+    () => products.slice(0, 5).map((entry) => ({ name: entry.name, value: entry.total })),
+    [products],
+  );
 
-  const customerPieData = React.useMemo(() => {
-    if (!customersData?.topCustomers) return [];
-    return customersData.topCustomers.slice(0, 5).map((customer: unknown) => ({
-      name: customer.name,
-      value: customer.total,
-    }));
-  }, [customersData]);
-
-  const productPieData = React.useMemo(() => {
-    if (!productsData?.topProducts) return [];
-    return productsData.topProducts.slice(0, 5).map((product: unknown) => ({
-      name: product.name,
-      value: product.total,
-    }));
-  }, [productsData]);
-
-  if (isLoading) {
-    return ()
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+  const loading = customersLoading || productsLoading || timelineLoading;
+  if (loading) {
+    return (
+      <Box sx={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <CircularProgress />
       </Box>
     );
   }
 
-  return ()
+  return (
     <Box>
-      {/* Info Banner */}
-      <Alert severity="info" icon={<Assessment />} sx={{ mb: 3 }}>
-        <Typography variant="body2" sx={{ fontWeight: 600}}>
-          Analyserer pakker du har opprettet i "Standardpakker"-fanen
+      <Alert severity="info" icon={<AssessmentIcon />} sx={{ mb: 3 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          Salgsanalyse basert på Fiken-fakturaer
         </Typography>
         <Typography variant="caption">
-          Data hentet fra fakturaer sendt via Fiken. Opprett pakker → Send fakturaer → Se hvilke
-          pakker selger best!
+          Opprett pakker i prisadministrasjon, fakturer via Fiken, og følg ytelse per kunde og produkt.
         </Typography>
       </Alert>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography
-          variant="h5"
-          sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TrendingUp /> Salgsanalyse fra Fiken
-        </Typography>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>År</InputLabel>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <StackedHeading profession={profession} />
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel id="fiken-analytics-year">År</InputLabel>
           <Select
-            value={selectedYear}
+            labelId="fiken-analytics-year"
+            value={year}
             label="År"
-            onChange={(e) => setSelectedYear(Number(e.target.value)}
+            onChange={(event) => setYear(Number(event.target.value))}
           >
-            {[currentYear - 2, currentYear - 1, currentYear].map((year) => ()
-              <MenuItem key={year} value={year}>
-                {year}
+            {[yearNow - 2, yearNow - 1, yearNow].map((value) => (
+              <MenuItem key={value} value={value}>
+                {value}
               </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Box>
 
-      {/* Product Sales Timeline */}
-      <Card sx={{ mb: 3, boxShadow: 3 }}>
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" sx={{ mb: 1, fontWeight: 600}}>
-            Solgte pakker siden du startet i Fiken
+          <Typography variant="h6" sx={{ mb: 0.5 }}>
+            Produktomsetning per måned
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            {new Date().toLocaleDateString('no-NO', { month: 'long', year: 'numeric' })}: Totalt kr{', '}
-            {productsData?.summary?.grandTotal?.toLocaleString('no-NO') || '0'}
+            Totalt {productSummary.grandTotal.toLocaleString('no-NO')} kr i {year}
           </Typography>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.divider, 0.3)} />
-              <XAxis dataKey="month" style={{ fontSize: '12px' }} />
-              <YAxis style={{ fontSize: '12px' }} />
-              <Tooltip
-                formatter={(value: number) => `${value.toLocaleString('no-NO')} kr`}
-                contentStyle={{
-                  backgroundColor: theme.palette.background.paper,
-                  border: `1px solid ${theme.palette.divider}`,
-                  borderRadius: 8,
-                }
-              />
+          <ResponsiveContainer width="100%" height={320}>
+            <AreaChart data={timelineRows}>
+              <CartesianGrid strokeDasharray="3 3" stroke={alpha(theme.palette.divider, 0.4)} />
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip formatter={(value: number) => `${value.toLocaleString('no-NO')} kr`} />
               <Legend />
-              {topProductKeys.map((product, idx) => ()
+              {topProductKeys.map((productName, index) => (
                 <Area
-                  key={product}
+                  key={productName}
                   type="monotone"
-                  dataKey={product}
+                  dataKey={productName}
                   stackId="1"
-                  stroke={CHART_COLORS[idx % CHART_COLORS.length]}
-                  fill={CHART_COLORS[idx % CHART_COLORS.length]}
-                  fillOpacity={0.6}
+                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                  fill={CHART_COLORS[index % CHART_COLORS.length]}
+                  fillOpacity={0.55}
                 />
               ))}
             </AreaChart>
@@ -208,261 +196,47 @@ export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) =>
         </CardContent>
       </Card>
 
-      {/* Top 10 Grid */}
       <Grid container spacing={3}>
-        {/* Top Customers */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', boxShadow: 3 }}>
+        <Grid item xs={12} md={6} lg={4}>
+          <MetricCard
+            icon={<PersonIcon color="primary" />}
+            title="Topp kunder"
+            pieData={customerPieData}
+            summary={customerSummary}
+            entries={customers}
+          />
+        </Grid>
+        <Grid item xs={12} md={6} lg={4}>
+          <MetricCard
+            icon={<CategoryIcon color="primary" />}
+            title="Topp produkter"
+            pieData={productPieData}
+            summary={productSummary}
+            entries={products}
+          />
+        </Grid>
+        <Grid item xs={12} lg={4}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Person color="primary" />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 600}}>
-                    Kunder: Topp 10
-                  </Typography>
-                  <Select
-                    size="small"
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value)}
-                  >
-                    {[currentYear - 2, currentYear - 1, currentYear].map((year) => ()
-                      <MenuItem key={year} value={year}>
-                        {year}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </Box>
-              </Box>
-
-              {/* Pie Chart */}
-              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                <ResponsiveContainer width="60%" height={150}>
-                  <PieChart>
-                    <Pie
-                      data={customerPieData}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={60}
-                      dataKey="value"
-                      label={false}
-                    >
-                      {customerPieData.map((entry, index) => ()
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={CHART_COLORS[index % CHART_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Topp 3 utgjør {customersData?.summary?.topThreePercentage || 0}%
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 700}}>
-                    {(customersData?.summary?.topThreeTotal || 0).toLocaleString('no-NO')} kr
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Top 10 List */}
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Innsikt
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Topp 3 kunder står for {customerSummary.topThreePercentage.toFixed(1)}% av omsetning.
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Topp 3 produkter står for {productSummary.topThreePercentage.toFixed(1)}% av omsetning.
+              </Typography>
               <List dense>
-                {customersData?.topCustomers?.map((customer: any, idx: number) => ()
-                  <ListItem
-                    key={idx}
-                    sx={{
-                      borderRadius: 1,
-                      mb: 0.5
-                     , bgcolor: alpha(CHART_COLORS[idx % CHART_COLORS.length], 0.1),
-                      px: 1}}>
-                    <Box
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        bgcolor: CHART_COLORS[idx % CHART_COLORS.length],
-                        mr: 1.5
-                        flexShrink: 0}} />
+                {products.slice(0, 5).map((entry, index) => (
+                  <ListItem key={`${entry.name}-${index}`}>
                     <ListItemText
-                      primary={customer.name}
-                      secondary={`${customer.total.toLocaleString('no-NO')} kr (${customer.percentage}%)`}
-                      primaryTypographyProps={{ fontWeight: 500, fontSize: '0.875rem' }
-                      secondaryTypographyProps={{ fontSize: '0.75rem' }} />
+                      primary={entry.name}
+                      secondary={`${entry.total.toLocaleString('no-NO')} kr • ${entry.count} salg`}
+                    />
                   </ListItem>
                 ))}
               </List>
-
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  textAlign: 'center',
-                  mt: 1,
-                  cursor: 'pointer',
-                  color: 'primary.main' }}>
-                Se alle 10 ↓
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Top Products/Packages */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', boxShadow: 3 }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Category color="primary" />
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 600}}>
-                    Pakker: Topp 10
-                  </Typography>
-                  <Select
-                    size="small"
-                    value={selectedYear}
-                    onChange={(e) => setSelectedYear(Number(e.target.value)}
-                  >
-                    {[currentYear - 2, currentYear - 1, currentYear].map((year) => ()
-                      <MenuItem key={year} value={year}>
-                        {year}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </Box>
-              </Box>
-
-              {/* Pie Chart */}
-              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                <ResponsiveContainer width="60%" height={150}>
-                  <PieChart>
-                    <Pie
-                      data={productPieData}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={60}
-                      dataKey="value"
-                      label={false}
-                    >
-                      {productPieData.map((entry, index) => ()
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={CHART_COLORS[index % CHART_COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Topp 3 utgjør {productsData?.summary?.topThreePercentage || 0}%
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 700}}>
-                    {(productsData?.summary?.topThreeTotal || 0).toLocaleString('no-NO')} kr
-                  </Typography>
-                </Box>
-              </Box>
-
-              {/* Top 10 List */}
-              <List dense>
-                {productsData?.topProducts?.map((product: any, idx: number) => ()
-                  <ListItem
-                    key={idx}
-                    sx={{
-                      borderRadius: 1,
-                      mb: 0.5
-                     , bgcolor: alpha(CHART_COLORS[idx % CHART_COLORS.length], 0.1),
-                      px: 1}}>
-                    <Box
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        borderRadius: '50%',
-                        bgcolor: CHART_COLORS[idx % CHART_COLORS.length],
-                        mr: 1.5
-                        flexShrink: 0}} />
-                    <ListItemText
-                      primary={product.name}
-                      secondary={`${product.total.toLocaleString('no-NO')} kr (${product.percentage}%) • ${product.count} solgt`}
-                      primaryTypographyProps={{ fontWeight: 500, fontSize: '0.875rem' }
-                      secondaryTypographyProps={{ fontSize: '0.75rem' }} />
-                  </ListItem>
-                ))}
-              </List>
-
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  textAlign: 'center',
-                  mt: 1,
-                  cursor: 'pointer',
-                  color: 'primary.main' }}>
-                Se alle 10 ↓
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Summary Card */}
-        <Grid item xs={12} md={4}>
-          <Card
-            sx={{
-              height: '100%',
-              boxShadow: 3,
-              background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
-            }
-          >
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                Sammendrag {selectedYear}
-              </Typography>
-
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Total omsetning (netto)
-                </Typography>
-                <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                  {(productsData?.summary?.grandTotal || 0).toLocaleString('no-NO')} kr
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Antall kunder
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 600}}>
-                  {customersData?.topCustomers?.length || 0}
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Pakker solgt
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 600}}>
-                  {productsData?.topProducts?.reduce((sum: number, p: unknown) => sum + p.count, 0) ||
-                    0}
-                </Typography>
-              </Box>
-
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="caption" color="text.secondary">
-                  Mest solgte pakke
-                </Typography>
-                <Chip
-                  label={productsData?.topProducts?.[0]?.name || 'N/A'}
-                  size="small"
-                  color="success"
-                  sx={{ mt: 0.5 fontWeight: 600}} />
-              </Box>
-
-              <Alert severity="success" sx={{ mt: 3 }}>
-                <Typography variant="caption">
-                  Data fra{''}
-                  {productsData?.topProducts?.reduce((sum: number, p: unknown) => sum + p.count, 0) ||
-                    0}{''}
-                  fakturaer sendt via Fiken
-                </Typography>
-              </Alert>
             </CardContent>
           </Card>
         </Grid>
@@ -470,5 +244,167 @@ export const FikenAnalytics: React.FC<FikenAnalyticsProps> = ({ profession }) =>
     </Box>
   );
 };
+
+function StackedHeading({ profession }: { profession?: string }) {
+  return (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <TrendingUpIcon />
+        Fiken salgsanalyse
+      </Typography>
+      {profession && <Chip size="small" label={`Profesjon: ${profession}`} sx={{ mt: 0.5 }} />}
+    </Box>
+  );
+}
+
+function MetricCard({
+  icon,
+  title,
+  pieData,
+  summary,
+  entries,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  pieData: Array<{ name: string; value: number }>;
+  summary: SummaryStats;
+  entries: TopEntry[];
+}) {
+  return (
+    <Card sx={{ height: '100%' }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          {icon}
+          <Typography variant="h6">{title}</Typography>
+        </Box>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+          Topp 3: {summary.topThreePercentage.toFixed(1)}%
+        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <ResponsiveContainer width="70%" height={150}>
+            <PieChart>
+              <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={56}>
+                {pieData.map((entry, index) => (
+                  <Cell key={`${entry.name}-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => `${value.toLocaleString('no-NO')} kr`} />
+            </PieChart>
+          </ResponsiveContainer>
+        </Box>
+        <List dense>
+          {entries.slice(0, 10).map((entry, index) => (
+            <ListItem key={`${entry.name}-${index}`}>
+              <ListItemText
+                primary={
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ maxWidth: 160 }} noWrap>
+                      {entry.name}
+                    </Typography>
+                    <Typography variant="caption">{entry.total.toLocaleString('no-NO')} kr</Typography>
+                  </Box>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </CardContent>
+    </Card>
+  );
+}
+
+function normalizeEntries(raw: unknown): TopEntry[] {
+  const items = toArray(raw);
+  return items
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const name = typeof record.name === 'string' ? record.name : '';
+      if (name.length === 0) {
+        return null;
+      }
+      return {
+        name,
+        total: toNumber(record.total),
+        count: toNumber(record.count),
+      } satisfies TopEntry;
+    })
+    .filter((entry): entry is TopEntry => entry !== null);
+}
+
+function normalizeTimeline(raw: unknown): TimelineResponse {
+  const record = asRecord(raw);
+  if (!record) {
+    return { monthlyData: {} };
+  }
+  const monthlyDataRecord = asRecord(record.monthlyData);
+  if (!monthlyDataRecord) {
+    return { monthlyData: {} };
+  }
+  const normalized: Record<string, Record<string, number>> = {};
+  Object.entries(monthlyDataRecord).forEach(([monthKey, value]) => {
+    const monthRecord = asRecord(value);
+    if (!monthRecord) {
+      return;
+    }
+    const monthValues: Record<string, number> = {};
+    Object.entries(monthRecord).forEach(([entryKey, entryValue]) => {
+      monthValues[entryKey] = toNumber(entryValue);
+    });
+    normalized[monthKey] = monthValues;
+  });
+  return { monthlyData: normalized };
+}
+
+function normalizeSummary(raw: unknown, entries: TopEntry[]): SummaryStats {
+  const record = asRecord(raw);
+  const summaryRecord = record ? asRecord(record.summary) : null;
+  const grandTotal = summaryRecord ? toNumber(summaryRecord.grandTotal) : entries.reduce((sum, entry) => sum + entry.total, 0);
+  const topThree = entries.slice(0, 3).reduce((sum, entry) => sum + entry.total, 0);
+  const topThreePercentage = grandTotal > 0 ? (topThree / grandTotal) * 100 : 0;
+  return { grandTotal, topThreePercentage };
+}
+
+function toArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+  const record = asRecord(raw);
+  if (!record) {
+    return [];
+  }
+  if (Array.isArray(record.topCustomers)) {
+    return record.topCustomers;
+  }
+  if (Array.isArray(record.topProducts)) {
+    return record.topProducts;
+  }
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+  return [];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return 0;
+}
 
 export default FikenAnalytics;

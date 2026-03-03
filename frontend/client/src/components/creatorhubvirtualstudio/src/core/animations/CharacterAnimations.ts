@@ -36,7 +36,8 @@ export const PREVIEW_ANIMATIONS: Record<string, PreviewAnimation> = {
     `,
     duration: '4s',
     timing: 'ease-in-out',
-  } 'horror': {
+  },
+  'horror': {
     name: 'horrorIdle',
     keyframes: `
       @keyframes horrorIdle {
@@ -534,7 +535,17 @@ export function playEntranceAnimation(
  * Mood-based idle animation parameters
  */
 export const MOOD_ANIMATIONS: Record<string, { intensity: number; speed: number; variance: number }> = {
-  'mysterious': { intensity: 0.5, speed: 0.8, variance: 0.3 }, 'dangerous': { intensity: 0.7, speed: 1.2, variance: 0.4 }'heroic': { intensity: 0.6, speed: 1.0, variance: 0.2 }'seductive': { intensity: 0.4, speed: 0.6, variance: 0.5 }'menacing': { intensity: 0.8, speed: 0.9, variance: 0.3 }'wise': { intensity: 0.3, speed: 0.5, variance: 0.2 }'noble': { intensity: 0.4, speed: 0.7, variance: 0.2 }'insane': { intensity: 1.0, speed: 1.5, variance: 0.8 }'transforming': { intensity: 0.9, speed: 1.3, variance: 0.6 }'otherworldly': { intensity: 0.6, speed: 0.4, variance: 0.7 }'default': { intensity: 0.5, speed: 1.0, variance: 0.3 },
+  mysterious: { intensity: 0.5, speed: 0.8, variance: 0.3 },
+  dangerous: { intensity: 0.7, speed: 1.2, variance: 0.4 },
+  heroic: { intensity: 0.6, speed: 1.0, variance: 0.2 },
+  seductive: { intensity: 0.4, speed: 0.6, variance: 0.5 },
+  menacing: { intensity: 0.8, speed: 0.9, variance: 0.3 },
+  wise: { intensity: 0.3, speed: 0.5, variance: 0.2 },
+  noble: { intensity: 0.4, speed: 0.7, variance: 0.2 },
+  insane: { intensity: 1.0, speed: 1.5, variance: 0.8 },
+  transforming: { intensity: 0.9, speed: 1.3, variance: 0.6 },
+  otherworldly: { intensity: 0.6, speed: 0.4, variance: 0.7 },
+  default: { intensity: 0.5, speed: 1.0, variance: 0.3 },
 };
 
 /**
@@ -543,4 +554,3 @@ export const MOOD_ANIMATIONS: Record<string, { intensity: number; speed: number;
 export function getMoodAnimation(mood?: string) {
   return MOOD_ANIMATIONS[mood ||'default'] || MOOD_ANIMATIONS.default;
 }
-

@@ -104,7 +104,7 @@ export default function SEOClientManagement({ specialistId }: SEOClientManagemen
 
   const handleEditClient = async (client: SEOClient) => {
     try {
-      await seoSpecialistService.updateClient(client., idclient);
+      await seoSpecialistService.updateClient(client.id, client);
       loadClients();
   } catch (error) {
       console.error('Error updating client:', error);

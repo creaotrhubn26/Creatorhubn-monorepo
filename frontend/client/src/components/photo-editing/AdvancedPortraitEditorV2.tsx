@@ -162,7 +162,7 @@ export const AdvancedPortraitEditorV2: React.FC<AdvancedPortraitEditorV2Props> =
     mutationFn: async (enhancementOptions: PortraitEnhancementOptions) => {
       if (imageUrl) {
         return apiRequest<PortraitResult>('/api/advanced-portrait/enhance-url', {
-          method: 'POS',
+          method: 'POST',
           body: JSON.stringify({
             imageUl,
             options: enhancementOptions

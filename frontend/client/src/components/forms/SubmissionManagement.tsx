@@ -31,7 +31,7 @@ export default function SubmissionManagement() {
   const updateSubmissionManagement = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/submissions/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ ...data, profession: userProfession })
     }),
     onSuccess: () => {

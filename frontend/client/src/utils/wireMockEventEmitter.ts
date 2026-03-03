@@ -6,7 +6,7 @@
  */
 
 export type WireMockEventType = 
-  | 'mapping_created, '
+  | 'mapping_created'
   | 'mapping_updated'
   | 'mapping_deleted'
   | 'test_executed'
@@ -140,7 +140,7 @@ export function useWireMockEvent(
   
   // Cleanup function
   if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload, ', unsubscribe);
+    window.addEventListener('beforeunload', unsubscribe);
   }
 }
 
@@ -168,4 +168,3 @@ export const emitWireMockEvent = {
     wireMockEvents.emit('reload_detected', reloadData, 'reload-monitor');
   }
 };
-

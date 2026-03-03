@@ -184,7 +184,7 @@ export default function SubscriberStatsPanel({
 
   if (compact) {
     return (
-      <Card className={className}, sx={{ p: 2,...theming.getThemedCardSx() }}>
+      <Card className={className} sx={{ p: 2,...theming.getThemedCardSx() }}>
         <Stack direction="row" alignItems="center" spacing={2}>
           <PeopleIcon sx={{ color: '#4caf50' }} />
           <Box>
@@ -210,7 +210,7 @@ export default function SubscriberStatsPanel({
 
   if (isLoading) {
     return (
-      <Card className={className}, sx={{ p: 3,...theming.getThemedCardSx() }}>
+      <Card className={className} sx={{ p: 3,...theming.getThemedCardSx() }}>
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <LinearProgress sx={{ mb: 2 }} />
           <Typography variant="body2" color="text.secondary">
@@ -223,7 +223,7 @@ export default function SubscriberStatsPanel({
 
   if (error) {
     return (
-      <Card className={className}, sx={{ p: 3,...theming.getThemedCardSx() }}>
+      <Card className={className} sx={{ p: 3,...theming.getThemedCardSx() }}>
         <Alert severity="error">
           <Typography variant="body2">
             <strong>Feil ved lasting av abonnentstatistikk: </strong> {error.message}
@@ -236,7 +236,7 @@ export default function SubscriberStatsPanel({
   const stats: SubscriberStats = (subscriberStats as SubscriberStats) || mockSubscriberStats;
 
   return (
-    <Card className={className}, sx={{ p: 3, borderRadius: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', ...theming.getThemedCardSx() }}>
+    <Card className={className} sx={{ p: 3, borderRadius: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', ...theming.getThemedCardSx() }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Stack direction="row" alignItems="center" spacing={2}>
           <PeopleIcon sx={{ fontSize: 32, color: '#4caf50' }} />
@@ -257,7 +257,7 @@ export default function SubscriberStatsPanel({
       </Stack>
 
       {/* Overview Cards */}
-      <Grid container spacing={2}, sx={{ mb: 3 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={{ textAlign: 'center', p: 2, bgcolor: '#e8f5e8', ...theming.getThemedCardSx() }}>
             <CardContent sx={{ p: 2,...theming.getThemedCardSx() }}>
@@ -324,7 +324,7 @@ export default function SubscriberStatsPanel({
             Pakkefordeling
           </Typography>
           
-          <TableContainer component={Paper}, sx={{ mb: 3 }}>
+          <TableContainer component={Paper} sx={{ mb: 3 }}>
             <Table>
               <TableHead>
                 <TableRow>

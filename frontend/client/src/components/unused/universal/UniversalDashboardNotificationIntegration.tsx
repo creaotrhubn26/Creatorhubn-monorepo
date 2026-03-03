@@ -114,7 +114,7 @@ export default function UniversalDashboardNotificationIntegration({
         headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {

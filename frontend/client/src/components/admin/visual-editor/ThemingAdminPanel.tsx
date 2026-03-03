@@ -376,7 +376,7 @@ export const ThemingAdminPanel: React.FC = () => {
                 {/* Actions */}
                 <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                   {isEditing && professionEdits.color && !professionEdits.color.match(/^#[0-9A-Fa-f]{6}$/) && (
-                    <Warning sx={{ color: 'error.main', fontSize: 20 }} title="Invalid color format" />
+                    <Warning sx={{ color: 'error.main', fontSize: 20 }} titleAccess="Invalid color format" />
                   )}
                   <IconButton 
                     onClick={() => isEditing ? setEditingProfession(null) : handleEdit(profession)}
@@ -566,4 +566,3 @@ export const ThemingAdminPanel: React.FC = () => {
 };
 
 export default ThemingAdminPanel;
-

@@ -103,7 +103,7 @@ export class QuillMentionModule {
     const selection = this.quill.getSelection();
     if (!selection) return;
 
-    const text = this.quill.getText, (selection.index);
+    const text = this.quill.getText(0, selection.index);
     const mentionMatch = text.match(/@(\w*)$/);
 
     if (mentionMatch) {
@@ -245,7 +245,7 @@ export class QuillMentionModule {
       const tags = document.createElement('div');
       tags.style.cssText = 'margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap;';
       
-      suggestion.resource.tags.slice, (3).forEach(tag => {
+      suggestion.resource.tags.slice(0, 3).forEach((tag) => {
         const tagElement = document.createElement('span');
         tagElement.style.cssText = `
           background-color: #f0f0f0;
@@ -267,7 +267,7 @@ export class QuillMentionModule {
           border-radius: 10px;
           font-size: 10px;
         `;
-        moreTag.textContent = `+${suggestion.resource.tags.length -, 3}`;
+        moreTag.textContent = `+${suggestion.resource.tags.length - 3}`;
         tags.appendChild(moreTag);
     }
 
@@ -337,7 +337,7 @@ export class QuillMentionModule {
     if (!selection) return;
 
     // Find the @ mention in the text
-    const text = this.quill.getText, (selection.index);
+    const text = this.quill.getText(0, selection.index);
     const mentionMatch = text.match(/@(\w*)$/);
     
     if (mentionMatch) {
@@ -349,7 +349,7 @@ export class QuillMentionModule {
       this.quill.insertText(startIndex, mentionText);
       
       // Add a custom attribute to mark this as a mention
-      this.quill.formatText(startIndex, mentionText.length'mention', suggestion.resource.id);
+      this.quill.formatText(startIndex, mentionText.length, 'mention', suggestion.resource.id);
       
       // Move cursor after the mention
       this.quill.setSelection(startIndex + mentionText.length);

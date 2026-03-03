@@ -28,7 +28,6 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -159,6 +158,7 @@ import {
   ExtensionSharp,
   ExtensionTwoTone,
 } from '@mui/icons-material';
+import Grid from '@mui/material/Grid2';
 import { useAIIntegration, UseAIIntegrationOptions } from '../../../hooks/useAIIntegration';
 import { AIConfig, AIPrompt, AIResponse, AIContext, AILearning, AIOptimization } from '../../../utils/aiIntegrationManager';
 
@@ -457,12 +457,18 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
 }, [hasError, isInitialized, isEnabled]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
-    if (hasError) return theming.getThemedIcon('error');
-    if (!isInitialized) return <CircularProgress size={16} />;
-    if (isEnabled) return <Psychology />;
-    return theming.getThemedIcon('warning');
-}, [hasError, isInitialized, isEnabled]);
+  const getStatusIcon = useCallback((): React.ReactElement => {
+    if (hasError) {
+      return <Error color="error" fontSize="small" />;
+    }
+    if (!isInitialized) {
+      return <CircularProgress size={16} />;
+    }
+    if (isEnabled) {
+      return <Psychology color="success" fontSize="small" />;
+    }
+    return <Warning color="warning" fontSize="small" />;
+  }, [hasError, isInitialized, isEnabled]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -511,7 +517,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
 
   // Render detailed variant
   const renderDetailed = () => (
-    <Paper elevation={2}, sx={{ p: 1, minWidth: 200,  ...theming.getThemedCardSx() }}>
+    <Paper elevation={2} sx={{ p: 1, minWidth: 200,  ...theming.getThemedCardSx() }}>
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
@@ -555,7 +561,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
 
   // Render full variant
   const renderFull = () => (
-    <Paper elevation={3}, sx={{ p: 2, minWidth: 300,  ...theming.getThemedCardSx() }}>
+    <Paper elevation={3} sx={{ p: 2, minWidth: 300,  ...theming.getThemedCardSx() }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
         <Box display="flex" alignItems="center" gap={1}>
           <Psychology color="primary" />
@@ -695,7 +701,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
           </Tabs>
           
           {activeTab === 0 && (
-            <Grid container spacing={2}, sx={{ mt:  2 }}>
+            <Grid container spacing={2} sx={{ mt:  2 }}>
               <Grid size={{ xs:  12, sm:  6, md:  3 }}>
                 <Card sx={theming.getThemedCardSx()}>
                   <CardContent sx={theming.getThemedCardSx()}>
@@ -773,7 +779,7 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
                     <ListItemSecondaryAction>
                       <ButtonGroup size="small">
                         <Button
-                          onClick={() => handleExecutePrompt(prompt.id'sample input')}
+                          onClick={() => handleExecutePrompt(prompt.id, 'sample input')}
                           startIcon={theming.getThemedIcon('play')}
                         >
                           Execute
@@ -1052,8 +1058,6 @@ const AIIntegrationDashboard: React.FC<AIIntegrationDashboardProps> = memo(({
 AIIntegrationDashboard.displayName ='AIIntegrationDashboard';
 
 export default AIIntegrationDashboard;
-
-
 
 
 

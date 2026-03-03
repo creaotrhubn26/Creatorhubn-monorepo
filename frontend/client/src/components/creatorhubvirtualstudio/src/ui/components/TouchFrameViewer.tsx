@@ -71,7 +71,7 @@ export interface TouchFrameViewerProps {
   onDelete?: (index: number) => void;
   onDuplicate?: (index: number) => void;
   onPlay?: (index: number) => void;
-  onAddAnnotation?: (frameId: string, annotation: Omit<FrameAnnotation, 'id' | , 'createdAt, '>) => void;
+  onAddAnnotation?: (frameId: string, annotation: Omit<FrameAnnotation, 'id' | 'createdAt'>) => void;
   onUpdateAnnotation?: (frameId: string, annotationId: string, updates: Partial<FrameAnnotation>) => void;
   onDeleteAnnotation?: (frameId: string, annotationId: string) => void;
   onShare?: (index: number) => void;
@@ -615,7 +615,8 @@ export const TouchFrameViewer: React.FC<TouchFrameViewerProps> = ({
       {/* Frame Image with Transform */}
       <FrameWrapper
         sx={{
-          transform: `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`'--scale': scale,
+          transform: `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`,
+          '--scale': scale,
         } as React.CSSProperties}
       >
         <FrameImage src={currentFrame.imageUrl} alt={currentFrame.title} />
@@ -867,4 +868,3 @@ export const TouchFrameViewer: React.FC<TouchFrameViewerProps> = ({
 };
 
 export default TouchFrameViewer;
-

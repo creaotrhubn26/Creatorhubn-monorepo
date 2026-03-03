@@ -98,7 +98,7 @@ export class CodeToCanvasParser {
 
     try {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(html , 'text/html,');
+      const doc = parser.parseFromString(html, 'text/html');
 
       // Check for parser errors
       const parserError = doc.querySelector('parsererror');
@@ -158,7 +158,6 @@ export class CodeToCanvasParser {
 
     const element: EditorElement = {
       id,
-      name: tagName,
       type,
       x: position.x,
       y: position.y,
@@ -167,6 +166,7 @@ export class CodeToCanvasParser {
       styles,
       props: {
         ...props,
+        tagName,
         text: text || props.children,
       },
     };
@@ -202,7 +202,6 @@ export class CodeToCanvasParser {
 
     const editorElement: EditorElement = {
       id,
-      name: tagName,
       type: this.mapTagToElementType(tagName),
       x: position.x,
       y: position.y,
@@ -211,6 +210,7 @@ export class CodeToCanvasParser {
       styles,
       props: {
         ...props,
+        tagName,
         text,
       },
       parent: parentId || undefined,
@@ -435,7 +435,7 @@ export class CodeToCanvasParser {
         if (this.elementsOverlap(elements[i], elements[j])) {
           warnings.push({
             line: 0,
-            message: `Elements "${elements[i].name}" and "${elements[j].name}" overlap`,
+            message: `Elements "${this.getElementLabel(elements[i])}" and "${this.getElementLabel(elements[j])}" overlap`,
             suggestion: 'Adjust positioning or use auto-layout',
           });
         }
@@ -447,18 +447,26 @@ export class CodeToCanvasParser {
       if (element.type === 'image' && !element.props.src) {
         warnings.push({
           line: 0,
-          message: `Image element "${element.name}" is missing src attribute`,
+          message: `Image element "${this.getElementLabel(element)}" is missing src attribute`,
           suggestion: 'Add src attribute with image URL',
         });
       }
       if (element.type === 'button' && !element.props.text && !element.props.children) {
         warnings.push({
           line: 0,
-          message: `Button element "${element.name}" has no text content`,
+          message: `Button element "${this.getElementLabel(element)}" has no text content`,
           suggestion: 'Add button text or children',
         });
       }
     });
+  }
+
+  private getElementLabel(element: EditorElement): string {
+    const tagName = element.props.tagName;
+    if (typeof tagName === 'string' && tagName.length > 0) {
+      return tagName;
+    }
+    return element.type;
   }
 
   /**

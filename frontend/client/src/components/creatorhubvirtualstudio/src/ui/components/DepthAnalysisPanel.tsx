@@ -79,7 +79,10 @@ export function DepthAnalysisPanel({
         // Detect objects in the scene using SAM 2
         const segmentation = await sam2Service.segmentImageFromUrl(
           imageUrl,
-          undefined'auto', 'small');
+          undefined,
+          'auto',
+          'small',
+        );
 
         // Analyze depth zones (simplified - would use actual depth map if available)
         const zones = analyzeDepthZones(segmentation, depthMap);
@@ -400,7 +403,6 @@ export function DepthAnalysisPanel({
     </Paper>
   );
 }
-
 
 
 

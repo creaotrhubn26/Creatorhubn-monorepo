@@ -22,7 +22,7 @@ export interface ComponentSuggestions {
   suggestedFeatures: Array<{
     featureId: string;
     featureName: string;
-    plan: 'basic' | 'pro' | 'enterprise';
+    plan: 'basic' | 'pro' | 'enterprise' | 'marketplace';
     libraries: string[];
     enabled: boolean;
   }>;

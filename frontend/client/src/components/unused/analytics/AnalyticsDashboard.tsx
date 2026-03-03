@@ -33,7 +33,7 @@ export default function AnalyticsDashboard() {
   const updateAnalyticsDashboard = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/dashboard/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

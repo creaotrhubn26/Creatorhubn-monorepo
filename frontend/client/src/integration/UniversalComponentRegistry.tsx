@@ -75,9 +75,26 @@ export interface ComponentMetadata {
   [k: string]: unknown;
 }
 
+type RegisterableComponentMetadata = {
+  id: string;
+  name: string;
+  type?: ComponentMetadata['type'];
+  category?: ComponentMetadata['category'];
+  profession?: ComponentMetadata['profession'];
+  path?: ComponentMetadata['path'];
+  capabilities?: string[];
+  dependencies?: string[];
+  props?: string[];
+  events?: string[];
+  dataKeys?: string[];
+  features?: string[];
+  version?: string;
+  description?: string;
+} & Record<string, unknown>;
+
 // Context shape exposed by the registry
 interface ComponentRegistryContextType {
-  registerComponent: (metadata: Omit<ComponentMetadata, 'lastSeen' | 'status'>) => void;
+  registerComponent: (metadata: RegisterableComponentMetadata) => void;
   unregisterComponent: (componentId: string) => void;
   updateComponent: (componentId: string, updates: Partial<ComponentMetadata>) => void;
   getComponent: (componentId: string) => ComponentMetadata | undefined;
@@ -130,7 +147,12 @@ export const ComponentRegistryProvider: React.FC<{ children: React.ReactNode }> 
     // This would be implemented to automatically discover all components
     // For now, we'll register the major component categories
 
-    const majorComponents = [
+    const majorComponents: Array<
+      Pick<
+        RegisterableComponentMetadata,
+        'id' | 'name' | 'type' | 'category' | 'profession' | 'capabilities'
+      >
+    > = [
       // Admin Components
       {
         id: 'admin-dashboard',
@@ -398,7 +420,7 @@ export const ComponentRegistryProvider: React.FC<{ children: React.ReactNode }> 
         dataKeys: [],
         version: '1.0.0',
         description: `${component.name} component`,
-      } as Omit<ComponentMetadata, 'lastSeen' | 'status'>);
+      });
     });
 
     // Set up data flow connections between related components
@@ -471,9 +493,16 @@ export const ComponentRegistryProvider: React.FC<{ children: React.ReactNode }> 
 
   // Register component
   const registerComponent = useCallback(
-    (metadata: Omit<ComponentMetadata, 'lastSeen' | 'status'>) => {
+    (metadata: RegisterableComponentMetadata) => {
       const fullMetadata: ComponentMetadata = {
         ...metadata,
+        type: metadata.type ?? 'widget',
+        category: metadata.category ?? 'general',
+        capabilities: metadata.capabilities ?? [],
+        dependencies: metadata.dependencies ?? [],
+        props: metadata.props ?? [],
+        events: metadata.events ?? [],
+        dataKeys: metadata.dataKeys ?? [],
         lastSeen: Date.now(),
         status: 'active',
       };

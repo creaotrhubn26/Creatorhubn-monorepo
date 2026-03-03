@@ -26,6 +26,18 @@ import { createCommunicationRouter } from './communication-routes.js';
 import { createWebSocketServer } from './websocket-chat.js';
 import { createReferenceProxyRouter } from './reference-proxy-routes.js';
 import { createServer } from 'http';
+import {
+  MEMORY_CARD_TYPES as MEMORY_CARD_TYPES_DB,
+  getMemoryCardTypesByCamera as getMemoryCardTypesByCameraFromDatabase,
+} from '../../frontend/client/src/data/memory-card-database.ts';
+import { PHOTO_CAMERA_DATABASE } from '../../frontend/client/src/data/photo-camera-database.ts';
+import { VIDEO_CAMERA_DATABASE } from '../../frontend/client/src/data/video-camera-database.ts';
+import {
+  AUDIO_STORAGE_DEVICE_DATABASE,
+  searchAudioStorageDevices,
+} from '../../frontend/client/src/data/audio-storage-device-database.ts';
+import { WORLD_CAMERA_DATABASE } from '../../frontend/shared/camera-database.ts';
+import { CAMERA_RELEASE_REGISTRY_2020_2026 } from '../../frontend/shared/camera-release-registry.ts';
 
 // Database connection
 const pool = new Pool({
@@ -80,6 +92,7 @@ const audioUpload = multer({
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const tableColumnsCache = new Map<string, Set<string>>();
 const tableExistsCache = new Map<string, boolean>();
@@ -179,6 +192,2536 @@ app.use((req, res, next) => {
   next();
 });
 
+type CompatCatalogItem = {
+  id: string;
+  brand: string;
+  model: string;
+  category: 'cameras' | 'lenses' | 'audio' | 'video' | 'flash' | 'accessories';
+  description: string;
+  priceNOK: number;
+  releaseYear: number;
+  mount?: string;
+  type?: string;
+  norwegianSupplier?: string;
+  availability: 'available' | 'limited' | 'preorder';
+  imageUrl: string;
+  specifications: Record<string, string | number | boolean>;
+};
+
+const COMPAT_EQUIPMENT_CATALOG: CompatCatalogItem[] = [
+  {
+    id: 'canon-eos-r5-mk2',
+    brand: 'Canon',
+    model: 'EOS R5 Mark II',
+    category: 'cameras',
+    description: 'Hybrid fullformat kamera med 8K opptak og rask AF.',
+    priceNOK: 58990,
+    releaseYear: 2024,
+    norwegianSupplier: 'Foto.no',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/1f2937/ffffff?text=Canon+EOS+R5+II',
+    specifications: {
+      resolution: 45,
+      maxISO: 51200,
+      continuousFPS: 20,
+      videoResolution: '8K',
+      sensorSize: 'Full Frame',
+      weight: 738,
+      inBodyStabilization: true,
+      weatherSealed: true,
+    },
+  },
+  {
+    id: 'sony-a7s-iii',
+    brand: 'Sony',
+    model: 'A7S III',
+    category: 'cameras',
+    description: 'Lavlysfavoritt for filmproduksjon og dokumentar.',
+    priceNOK: 45990,
+    releaseYear: 2023,
+    norwegianSupplier: 'Scandinavian Photo',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/0f172a/e2e8f0?text=Sony+A7S+III',
+    specifications: {
+      resolution: 12,
+      maxISO: 102400,
+      continuousFPS: 10,
+      videoResolution: '4K',
+      sensorSize: 'Full Frame',
+      weight: 699,
+      inBodyStabilization: true,
+      weatherSealed: true,
+    },
+  },
+  {
+    id: 'nikon-z8',
+    brand: 'Nikon',
+    model: 'Z8',
+    category: 'cameras',
+    description: 'Høyoppløst hybridkamera med svært rask prosessering.',
+    priceNOK: 53990,
+    releaseYear: 2024,
+    norwegianSupplier: 'Japan Photo',
+    availability: 'limited',
+    imageUrl: 'https://placehold.co/1200x800/111827/f8fafc?text=Nikon+Z8',
+    specifications: {
+      resolution: 45.7,
+      maxISO: 64000,
+      continuousFPS: 20,
+      videoResolution: '8K',
+      sensorSize: 'Full Frame',
+      weight: 910,
+      inBodyStabilization: true,
+      weatherSealed: true,
+    },
+  },
+  {
+    id: 'canon-rf-24-70-f28',
+    brand: 'Canon',
+    model: 'RF 24-70mm f/2.8L IS USM',
+    category: 'lenses',
+    description: 'Allround zoomobjektiv for dokumentar, event og reklame.',
+    priceNOK: 30990,
+    releaseYear: 2023,
+    mount: 'RF',
+    type: 'Standard Zoom',
+    norwegianSupplier: 'Foto.no',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/312e81/e0e7ff?text=RF+24-70+2.8',
+    specifications: {
+      focalLength: '24-70mm',
+      maxAperture: 'f/2.8',
+      mount: 'RF',
+      lensType: 'Standard Zoom',
+      imageStabilization: true,
+      weatherSealed: true,
+      weight: '900g',
+    },
+  },
+  {
+    id: 'sony-gm-70-200-f28',
+    brand: 'Sony',
+    model: 'FE 70-200mm f/2.8 GM OSS II',
+    category: 'lenses',
+    description: 'Telezoom med høy skarphet for sport og action.',
+    priceNOK: 35990,
+    releaseYear: 2024,
+    mount: 'E-mount',
+    type: 'Tele Zoom',
+    norwegianSupplier: 'Scandinavian Photo',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/1e1b4b/e2e8f0?text=Sony+70-200+2.8',
+    specifications: {
+      focalLength: '70-200mm',
+      maxAperture: 'f/2.8',
+      mount: 'E-mount',
+      lensType: 'Tele Zoom',
+      imageStabilization: true,
+      weatherSealed: true,
+      weight: '1045g',
+    },
+  },
+  {
+    id: 'sennheiser-mke-600',
+    brand: 'Sennheiser',
+    model: 'MKE 600',
+    category: 'audio',
+    description: 'Retningsmikrofon for boom og kameraoppsett.',
+    priceNOK: 4490,
+    releaseYear: 2022,
+    norwegianSupplier: 'Dustin',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/0f172a/ffffff?text=Sennheiser+MKE+600',
+    specifications: {
+      type: 'Shotgun',
+      phantomPower: true,
+      lowCut: true,
+      weight: 128,
+    },
+  },
+  {
+    id: 'rode-wireless-pro',
+    brand: 'Rode',
+    model: 'Wireless PRO',
+    category: 'audio',
+    description: 'Trådløst tokanals system med intern opptak.',
+    priceNOK: 5890,
+    releaseYear: 2024,
+    norwegianSupplier: 'Foto.no',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/082f49/e0f2fe?text=Rode+Wireless+PRO',
+    specifications: {
+      channels: 2,
+      internalRecording: true,
+      batteryHours: 7,
+      rangeMeters: 260,
+    },
+  },
+  {
+    id: 'dji-rs-4-pro',
+    brand: 'DJI',
+    model: 'RS 4 Pro',
+    category: 'video',
+    description: 'Profesjonell gimbal med høy bærekapasitet.',
+    priceNOK: 12290,
+    releaseYear: 2024,
+    norwegianSupplier: 'Scandinavian Photo',
+    availability: 'available',
+    imageUrl: 'https://placehold.co/1200x800/172554/dbeafe?text=DJI+RS4+Pro',
+    specifications: {
+      payloadKg: 4.5,
+      batteryHours: 13,
+      type: 'Gimbal',
+      autoLock: true,
+    },
+  },
+  {
+    id: 'blackmagic-pocket-6k-pro',
+    brand: 'Blackmagic',
+    model: 'Pocket Cinema Camera 6K Pro',
+    category: 'video',
+    description: 'Cinema-kamera med intern ND og 6K-opptak.',
+    priceNOK: 28990,
+    releaseYear: 2023,
+    availability: 'limited',
+    norwegianSupplier: 'Foto.no',
+    imageUrl: 'https://placehold.co/1200x800/1f2937/f8fafc?text=BMPCC+6K+Pro',
+    specifications: {
+      videoResolution: '6K',
+      sensorSize: 'Super35',
+      ndFilters: true,
+      weight: 1238,
+    },
+  },
+  {
+    id: 'aputure-600d-pro',
+    brand: 'Aputure',
+    model: 'LS 600d Pro',
+    category: 'flash',
+    description: 'Høy-output LED for utendors og store lokasjoner.',
+    priceNOK: 23990,
+    releaseYear: 2023,
+    availability: 'available',
+    norwegianSupplier: 'Lightup',
+    imageUrl: 'https://placehold.co/1200x800/3f1d5c/f3e8ff?text=Aputure+600d+Pro',
+    specifications: {
+      outputLux: 9810,
+      weatherSealed: true,
+      type: 'COB LED',
+      colorTemp: '5600K',
+    },
+  },
+  {
+    id: 'profoto-b10x-plus',
+    brand: 'Profoto',
+    model: 'B10X Plus',
+    category: 'flash',
+    description: 'Batteridrevet blits for mobil produksjon.',
+    priceNOK: 26990,
+    releaseYear: 2024,
+    availability: 'available',
+    norwegianSupplier: 'Foto.no',
+    imageUrl: 'https://placehold.co/1200x800/4c1d95/f5f3ff?text=Profoto+B10X+Plus',
+    specifications: {
+      wattSeconds: 500,
+      ttl: true,
+      batteryPops: 200,
+      weight: 1900,
+    },
+  },
+  {
+    id: 'sachtler-flowtech75',
+    brand: 'Sachtler',
+    model: 'Flowtech 75 MS',
+    category: 'accessories',
+    description: 'Raskt stativsystem for dokumentar og drama.',
+    priceNOK: 19490,
+    releaseYear: 2022,
+    availability: 'available',
+    norwegianSupplier: 'Scandinavian Photo',
+    imageUrl: 'https://placehold.co/1200x800/0c4a6e/e0f2fe?text=Sachtler+Flowtech+75',
+    specifications: {
+      maxHeightCm: 153,
+      minHeightCm: 26,
+      payloadKg: 20,
+      weight: 3.5,
+    },
+  },
+  {
+    id: 'tentacle-sync-e-mk2',
+    brand: 'Tentacle',
+    model: 'Sync E MKII',
+    category: 'accessories',
+    description: 'Tidskode-synk for multi-kamera og lyd.',
+    priceNOK: 3790,
+    releaseYear: 2024,
+    availability: 'available',
+    norwegianSupplier: 'Foto.no',
+    imageUrl: 'https://placehold.co/1200x800/111827/e5e7eb?text=Tentacle+Sync+E+MKII',
+    specifications: {
+      bluetooth: true,
+      batteryHours: 35,
+      type: 'Timecode',
+    },
+  },
+];
+
+const COMPAT_GEAR_NEWS = [
+  {
+    id: 'news-1',
+    title: 'Canon lanserer ny autofokus-pipeline for hybridproduksjon',
+    summary: 'Bedre ansikts- og objektsporing i krevende lysforhold.',
+    category: 'Firmware',
+    brand: 'Canon',
+    url: 'https://example.com/canon-firmware-update',
+    rating: 4.5,
+    isNew: true,
+    isTrending: true,
+    tags: ['firmware', 'review'],
+    professions: ['photographer', 'videographer'],
+    isNorwegian: false,
+  },
+  {
+    id: 'news-2',
+    title: 'Norsk utleiemarked presser priser pa telezoom i vinter',
+    summary: 'Flere utleiehus rapporterer hoy ettersporsel etter 70-200-klassen.',
+    category: 'Marked',
+    brand: 'Sony',
+    url: 'https://example.com/no-rental-telezoom',
+    rating: 4.1,
+    isNew: true,
+    isTrending: false,
+    tags: ['deal'],
+    professions: ['photographer', 'videographer', 'vendor'],
+    isNorwegian: true,
+  },
+  {
+    id: 'news-3',
+    title: 'Rode forbedrer internopptak i Wireless PRO',
+    summary: 'Ny firmware reduserer clipping pa hoye signalnivaer.',
+    category: 'Audio',
+    brand: 'Rode',
+    url: 'https://example.com/rode-wireless-pro',
+    rating: 4.4,
+    isNew: false,
+    isTrending: true,
+    tags: ['firmware'],
+    professions: ['videographer', 'music_producer'],
+    isNorwegian: false,
+  },
+  {
+    id: 'news-4',
+    title: 'Aputure oppdaterer kontrollapp med raskere scene-presets',
+    summary: 'Lysrigg kan sync-es raskere mellom flere armaturer.',
+    category: 'Lys',
+    brand: 'Aputure',
+    url: 'https://example.com/aputure-lighting-update',
+    rating: 4.0,
+    isNew: false,
+    isTrending: false,
+    tags: ['software'],
+    professions: ['videographer', 'photographer'],
+    isNorwegian: false,
+  },
+  {
+    id: 'news-5',
+    title: 'DJI RS-serien far ny stabilitetsprofil for lange telelinser',
+    summary: 'Bedre yaw-kontroll ved handholdt run-and-gun.',
+    category: 'Video',
+    brand: 'DJI',
+    url: 'https://example.com/dji-rs-update',
+    rating: 4.3,
+    isNew: true,
+    isTrending: true,
+    tags: ['firmware', 'review'],
+    professions: ['videographer'],
+    isNorwegian: false,
+  },
+];
+
+const COMPAT_VENDOR_LINKS = [
+  {
+    id: 'vendor-foto-no-cameras',
+    category: 'Kamera',
+    subcategory: 'Speillost',
+    vendor_name: 'Foto.no',
+    product_name: 'Canon EOS R5 Mark II',
+    product_url: 'https://example.com/foto-no-r5ii',
+    affiliate_url: '',
+    price: 58990,
+    image_url: 'https://placehold.co/800x500/1f2937/ffffff?text=Foto.no+Canon+R5+II',
+    description: 'Kampanjepris hos norsk forhandler.',
+    is_recommended: true,
+    sort_order: 1,
+  },
+  {
+    id: 'vendor-scphoto-audio',
+    category: 'Lyd',
+    subcategory: 'Tradlost',
+    vendor_name: 'Scandinavian Photo',
+    product_name: 'Rode Wireless PRO',
+    product_url: 'https://example.com/scphoto-wireless-pro',
+    affiliate_url: '',
+    price: 5890,
+    image_url: 'https://placehold.co/800x500/082f49/e0f2fe?text=Wireless+PRO',
+    description: 'God pakkepris inkludert ladekase.',
+    is_recommended: true,
+    sort_order: 2,
+  },
+  {
+    id: 'vendor-japanphoto-light',
+    category: 'Lys',
+    subcategory: 'LED',
+    vendor_name: 'Japan Photo',
+    product_name: 'Aputure 600d Pro',
+    product_url: 'https://example.com/japanphoto-600d',
+    affiliate_url: '',
+    price: 23990,
+    image_url: 'https://placehold.co/800x500/3f1d5c/f3e8ff?text=Aputure+600d',
+    description: 'Leveres med softbox-kit.',
+    is_recommended: false,
+    sort_order: 3,
+  },
+];
+
+const normalizeCatalogCategory = (raw: string): string => {
+  const value = raw.trim().toLowerCase();
+  if (!value || value === 'all') return '';
+  if (value === 'camera' || value === 'cameras') return 'cameras';
+  if (value === 'lens' || value === 'lenses') return 'lenses';
+  if (value === 'flash' || value === 'lighting' || value === 'light' || value === 'lys') return 'flash';
+  if (value === 'audio' || value === 'sound' || value === 'lyd') return 'audio';
+  if (value === 'video' || value === 'cinema') return 'video';
+  if (value === 'accessories' || value === 'accessory' || value === 'tilbehor') return 'accessories';
+  return value;
+};
+
+const parseLimitParam = (raw: unknown, fallbackValue: number): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallbackValue;
+  return Math.max(1, Math.min(200, Math.floor(parsed)));
+};
+
+type DiscoveryCameraType = 'photo' | 'video';
+type DiscoverySource = 'seed' | 'manual' | 'api' | 'discovery';
+
+type DiscoverySourceMeta = {
+  source: DiscoverySource;
+  lastSeenAt: string;
+  isDeprecated: boolean;
+  version: number;
+  addedDate: string;
+  lastUpdated: string;
+};
+
+type CameraRecord = {
+  id: string;
+  externalId: string;
+  type: DiscoveryCameraType;
+  brand: string;
+  model: string;
+  category: string;
+  isNetflixCertified?: boolean;
+  priceRange: 'budget' | 'mid-range' | 'professional' | 'cinema';
+  description: string;
+  features: string[];
+  isVideoOptimized: boolean;
+  isPhotoOptimized: boolean;
+  logFormats?: string[];
+  resolution?: string[];
+  frameRates?: string[];
+  colorSpace?: string[];
+  videoResolution?: string[];
+  videoFrameRates?: string[];
+  videoCodecs?: string[];
+  megapixels?: number;
+  sensorSize?: string;
+  isoRange?: string;
+  shutterSpeed?: string;
+  burstMode?: string;
+  autofocusPoints?: number;
+  imageStabilization?: boolean;
+  weatherSealing?: boolean;
+  batteryLife?: string;
+  mount?: string;
+  weight?: string;
+  dimensions?: string;
+  releaseDate?: string;
+  source: DiscoverySource;
+  lastSeenAt: string;
+  isDeprecated: boolean;
+  addedDate: string;
+  lastUpdated: string;
+  version: number;
+  specs: Record<string, unknown>;
+  sourceMeta: DiscoverySourceMeta;
+};
+
+type MemoryCardTypeRecord = {
+  id: string;
+  name: string;
+  fullName: string;
+  category: 'SD' | 'CF' | 'XQD' | 'CFexpress' | 'microSD';
+  readSpeed: number;
+  writeSpeed: number;
+  maxCapacity: string;
+  commonCapacities: string[];
+  videoClass?: string;
+  uhsClass?: string;
+  priceRange: 'budget' | 'mid' | 'premium' | 'professional';
+  reliability: 'good' | 'excellent' | 'professional';
+  description: string;
+  icon: string;
+  color: string;
+  pricePerGB: {
+    budget: number;
+    mid: number;
+    premium: number;
+    professional: number;
+  };
+};
+
+type DiscoverySyncStatus = {
+  type: DiscoveryCameraType;
+  totalSources: number;
+  enabledSources: number;
+  lastUpdate: string;
+  inserted: number;
+  updated: number;
+  rejected: number;
+  conflicts: number;
+  syncId: string;
+  source: string;
+};
+
+const discoverySourcesByType: Record<DiscoveryCameraType, string[]> = {
+  photo: ['manufacturer-feed', 'catalog-import'],
+  video: ['cinema-feed', 'manufacturer-feed', 'catalog-import'],
+};
+
+const normalizeDiscoveryId = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const normalizeStringList = (values: string[] | undefined): string[] | undefined => {
+  if (!values) return undefined;
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+};
+
+const buildCameraRecord = (input: Omit<CameraRecord, 'sourceMeta'>): CameraRecord => {
+  const id = normalizeDiscoveryId(input.id || `${input.brand}-${input.model}`);
+  const externalId = normalizeDiscoveryId(input.externalId || `${input.brand}:${input.model}`);
+  const lastSeenAt = input.lastSeenAt || new Date().toISOString();
+  const addedDate = input.addedDate || lastSeenAt;
+  const lastUpdated = input.lastUpdated || lastSeenAt;
+
+  return {
+    ...input,
+    id,
+    externalId,
+    logFormats: normalizeStringList(input.logFormats),
+    resolution: normalizeStringList(input.resolution),
+    frameRates: normalizeStringList(input.frameRates),
+    colorSpace: normalizeStringList(input.colorSpace),
+    videoResolution: normalizeStringList(input.videoResolution),
+    videoFrameRates: normalizeStringList(input.videoFrameRates),
+    videoCodecs: normalizeStringList(input.videoCodecs),
+    lastSeenAt,
+    addedDate,
+    lastUpdated,
+    sourceMeta: {
+      source: input.source,
+      lastSeenAt,
+      isDeprecated: input.isDeprecated,
+      version: input.version,
+      addedDate,
+      lastUpdated,
+    },
+  };
+};
+
+const EQUIPMENT_CAMERA_STORE: Record<DiscoveryCameraType, CameraRecord[]> = {
+  photo: [
+    buildCameraRecord({
+      id: 'sony-a7r-v-photo',
+      externalId: 'sony:a7r-v',
+      type: 'photo',
+      brand: 'Sony',
+      model: 'A7R V',
+      category: 'mirrorless',
+      priceRange: 'professional',
+      description: 'High-resolution full-frame hybrid camera.',
+      features: ['61MP sensor', '8K video', 'Real-time AF'],
+      isVideoOptimized: true,
+      isPhotoOptimized: true,
+      logFormats: ['S-Log3'],
+      videoResolution: ['8K', '4K', '1080p'],
+      videoFrameRates: ['24fps', '30fps', '60fps'],
+      videoCodecs: ['XAVC S-I', 'XAVC HS'],
+      megapixels: 61,
+      sensorSize: 'Full Frame',
+      isoRange: '100-32000',
+      shutterSpeed: '1/8000-30s',
+      burstMode: '10 fps',
+      autofocusPoints: 693,
+      imageStabilization: true,
+      weatherSealing: true,
+      batteryLife: '530 shots',
+      mount: 'Sony E',
+      weight: '723 g',
+      dimensions: '131.3 x 96.9 x 82.4 mm',
+      releaseDate: '2022-10-26',
+      colorSpace: ['sRGB', 'Adobe RGB', 'Rec.709'],
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { megapixels: 61, sensorSize: 'Full Frame', mount: 'Sony E' },
+    }),
+    buildCameraRecord({
+      id: 'canon-eos-r5-ii-photo',
+      externalId: 'canon:eos-r5-mark-ii',
+      type: 'photo',
+      brand: 'Canon',
+      model: 'EOS R5 Mark II',
+      category: 'mirrorless',
+      priceRange: 'professional',
+      description: 'Canon flagship hybrid body for premium stills and video.',
+      features: ['45MP sensor', '8K video', 'Dual Pixel AF II'],
+      isVideoOptimized: true,
+      isPhotoOptimized: true,
+      logFormats: ['C-Log3'],
+      videoResolution: ['8K', '4K', '1080p'],
+      videoFrameRates: ['24fps', '30fps', '60fps', '120fps'],
+      videoCodecs: ['H.265', 'RAW'],
+      megapixels: 45,
+      sensorSize: 'Full Frame',
+      isoRange: '100-51200',
+      shutterSpeed: '1/8000-30s',
+      burstMode: '20 fps',
+      autofocusPoints: 1053,
+      imageStabilization: true,
+      weatherSealing: true,
+      batteryLife: '490 shots',
+      mount: 'Canon RF',
+      weight: '746 g',
+      dimensions: '138.5 x 101.2 x 93.5 mm',
+      releaseDate: '2024-07-17',
+      colorSpace: ['sRGB', 'Adobe RGB', 'Rec.709'],
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { megapixels: 45, sensorSize: 'Full Frame', mount: 'Canon RF' },
+    }),
+    buildCameraRecord({
+      id: 'nikon-z8-photo',
+      externalId: 'nikon:z8',
+      type: 'photo',
+      brand: 'Nikon',
+      model: 'Z8',
+      category: 'mirrorless',
+      priceRange: 'professional',
+      description: 'Nikon flagship mirrorless body in compact format.',
+      features: ['45.7MP sensor', '8K recording', 'Pro AF'],
+      isVideoOptimized: true,
+      isPhotoOptimized: true,
+      logFormats: ['N-Log'],
+      videoResolution: ['8K', '4K', '1080p'],
+      videoFrameRates: ['24fps', '30fps', '60fps', '120fps'],
+      videoCodecs: ['N-RAW', 'ProRes'],
+      megapixels: 45.7,
+      sensorSize: 'Full Frame',
+      isoRange: '64-25600',
+      shutterSpeed: '1/8000-30s',
+      burstMode: '20 fps RAW',
+      autofocusPoints: 493,
+      imageStabilization: true,
+      weatherSealing: true,
+      batteryLife: '340 shots',
+      mount: 'Nikon Z',
+      weight: '910 g',
+      dimensions: '144 x 118.5 x 83 mm',
+      releaseDate: '2023-05-10',
+      colorSpace: ['sRGB', 'Adobe RGB', 'Rec.709'],
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { megapixels: 45.7, sensorSize: 'Full Frame', mount: 'Nikon Z' },
+    }),
+  ],
+  video: [
+    buildCameraRecord({
+      id: 'sony-fx3-video',
+      externalId: 'sony:fx3',
+      type: 'video',
+      brand: 'Sony',
+      model: 'FX3',
+      category: 'cinema',
+      priceRange: 'professional',
+      description: 'Compact cinema body for handheld and gimbal work.',
+      features: ['4K120', 'Dual base ISO', 'S-Cinetone'],
+      isVideoOptimized: true,
+      isPhotoOptimized: false,
+      logFormats: ['S-Log3', 'S-Cinetone'],
+      resolution: ['4K', '1080p'],
+      frameRates: ['24fps', '30fps', '60fps', '120fps'],
+      colorSpace: ['S-Gamut3.Cine', 'Rec.709'],
+      videoCodecs: ['XAVC S-I', 'XAVC S'],
+      sensorSize: 'Full Frame',
+      isoRange: '80-102400',
+      mount: 'Sony E',
+      releaseDate: '2021-02-23',
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { sensorSize: 'Full Frame', codec: 'XAVC S-I', mount: 'Sony E' },
+    }),
+    buildCameraRecord({
+      id: 'canon-c70-video',
+      externalId: 'canon:c70',
+      type: 'video',
+      brand: 'Canon',
+      model: 'C70',
+      category: 'cinema',
+      priceRange: 'professional',
+      description: 'Super 35 cinema camera with internal ND.',
+      features: ['4K120', 'DGO sensor', 'RF mount'],
+      isVideoOptimized: true,
+      isPhotoOptimized: false,
+      logFormats: ['C-Log2', 'C-Log3'],
+      resolution: ['4K', '2K', '1080p'],
+      frameRates: ['24fps', '30fps', '60fps', '120fps'],
+      colorSpace: ['Cinema Gamut', 'Rec.709'],
+      videoCodecs: ['XF-AVC', 'H.265'],
+      sensorSize: 'Super 35',
+      isoRange: '100-102400',
+      mount: 'Canon RF',
+      releaseDate: '2020-09-24',
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { sensorSize: 'Super 35', codec: 'XF-AVC', mount: 'Canon RF' },
+    }),
+    buildCameraRecord({
+      id: 'blackmagic-pocket-6k-pro-video',
+      externalId: 'blackmagic:pocket-6k-pro',
+      type: 'video',
+      brand: 'Blackmagic',
+      model: 'Pocket Cinema Camera 6K Pro',
+      category: 'cinema',
+      priceRange: 'professional',
+      description: 'Accessible cinema camera with robust RAW workflow.',
+      features: ['BRAW', 'Internal ND', 'Dual mini XLR'],
+      isVideoOptimized: true,
+      isPhotoOptimized: false,
+      logFormats: ['Blackmagic Film'],
+      resolution: ['6K', '4K', '1080p'],
+      frameRates: ['24fps', '30fps', '50fps', '60fps'],
+      colorSpace: ['Blackmagic Wide Gamut', 'Rec.709'],
+      videoCodecs: ['BRAW', 'ProRes'],
+      sensorSize: 'Super 35',
+      isoRange: '400/3200 dual native',
+      mount: 'Canon EF',
+      releaseDate: '2021-02-17',
+      source: 'seed',
+      lastSeenAt: '2026-03-02T00:00:00.000Z',
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: '2026-03-02T00:00:00.000Z',
+      version: 1,
+      specs: { sensorSize: 'Super 35', codec: 'BRAW', mount: 'Canon EF' },
+    }),
+  ],
+};
+
+const EQUIPMENT_MEMORY_CARD_TYPES: MemoryCardTypeRecord[] = [
+  {
+    id: 'sdxc-uhs-i-v30',
+    name: 'SDXC UHS-I',
+    fullName: 'SDXC UHS-I V30',
+    category: 'SD',
+    readSpeed: 200,
+    writeSpeed: 90,
+    maxCapacity: '1TB',
+    commonCapacities: ['64GB', '128GB', '256GB', '512GB', '1TB'],
+    videoClass: 'V30',
+    uhsClass: 'UHS-I',
+    priceRange: 'mid',
+    reliability: 'excellent',
+    description: 'Reliable all-round SD media for stills and 4K.',
+    icon: '💾',
+    color: '#4caf50',
+    pricePerGB: { budget: 2, mid: 3.2, premium: 4.1, professional: 5 },
+  },
+  {
+    id: 'sdxc-uhs-ii-v90',
+    name: 'SDXC UHS-II',
+    fullName: 'SDXC UHS-II V90',
+    category: 'SD',
+    readSpeed: 300,
+    writeSpeed: 260,
+    maxCapacity: '512GB',
+    commonCapacities: ['64GB', '128GB', '256GB', '512GB'],
+    videoClass: 'V90',
+    uhsClass: 'UHS-II',
+    priceRange: 'professional',
+    reliability: 'professional',
+    description: 'High-performance SD media for high bitrate workflows.',
+    icon: '💾',
+    color: '#1b5e20',
+    pricePerGB: { budget: 3, mid: 4.6, premium: 6.8, professional: 8.8 },
+  },
+  {
+    id: 'cfexpress-type-a',
+    name: 'CFexpress Type A',
+    fullName: 'CFexpress Type A',
+    category: 'CFexpress',
+    readSpeed: 800,
+    writeSpeed: 700,
+    maxCapacity: '960GB',
+    commonCapacities: ['80GB', '160GB', '320GB', '640GB', '960GB'],
+    priceRange: 'professional',
+    reliability: 'professional',
+    description: 'High-speed Sony-oriented media.',
+    icon: '⚡',
+    color: '#e91e63',
+    pricePerGB: { budget: 4.8, mid: 6.2, premium: 8.5, professional: 10.5 },
+  },
+  {
+    id: 'cfexpress-type-b',
+    name: 'CFexpress Type B',
+    fullName: 'CFexpress Type B',
+    category: 'CFexpress',
+    readSpeed: 1800,
+    writeSpeed: 1500,
+    maxCapacity: '2TB',
+    commonCapacities: ['128GB', '256GB', '512GB', '1TB', '2TB'],
+    priceRange: 'professional',
+    reliability: 'professional',
+    description: 'Cinema-grade media for RAW and high frame rates.',
+    icon: '⚡',
+    color: '#9c27b0',
+    pricePerGB: { budget: 4.5, mid: 5.9, premium: 7.9, professional: 9.9 },
+  },
+  {
+    id: 'microsd-uhs-i-v30',
+    name: 'microSD UHS-I',
+    fullName: 'microSD UHS-I V30',
+    category: 'microSD',
+    readSpeed: 190,
+    writeSpeed: 130,
+    maxCapacity: '1TB',
+    commonCapacities: ['64GB', '128GB', '256GB', '512GB', '1TB'],
+    videoClass: 'V30',
+    uhsClass: 'UHS-I',
+    priceRange: 'mid',
+    reliability: 'good',
+    description: 'Drone/action media format.',
+    icon: '📱',
+    color: '#ff9800',
+    pricePerGB: { budget: 1.8, mid: 2.6, premium: 3.5, professional: 4.2 },
+  },
+];
+
+const CAMERA_MEMORY_COMPATIBILITY: Record<string, string[]> = {
+  'sony-a7r-v-photo': ['sdxc-uhs-i-v30', 'sdxc-uhs-ii-v90', 'cfexpress-type-a'],
+  'sony-fx3-video': ['sdxc-uhs-ii-v90', 'cfexpress-type-a'],
+  'canon-eos-r5-ii-photo': ['sdxc-uhs-ii-v90', 'cfexpress-type-b'],
+  'canon-c70-video': ['sdxc-uhs-i-v30', 'sdxc-uhs-ii-v90'],
+  'blackmagic-pocket-6k-pro-video': ['cfexpress-type-b', 'sdxc-uhs-ii-v90'],
+};
+
+const CAMERA_MEMORY_FALLBACK: Array<{ pattern: RegExp; cardTypeIds: string[] }> = [
+  { pattern: /sony|fx|a7/i, cardTypeIds: ['sdxc-uhs-ii-v90', 'cfexpress-type-a'] },
+  { pattern: /canon|eos|c70|c400/i, cardTypeIds: ['sdxc-uhs-ii-v90', 'cfexpress-type-b'] },
+  { pattern: /nikon|z8|z9|arri|red|blackmagic|cinema/i, cardTypeIds: ['cfexpress-type-b'] },
+  { pattern: /dji|gopro|action|drone|phone|iphone/i, cardTypeIds: ['microsd-uhs-i-v30'] },
+];
+
+const EQUIPMENT_DISCOVERY_STATUS: Record<DiscoveryCameraType, DiscoverySyncStatus> = {
+  photo: {
+    type: 'photo',
+    totalSources: discoverySourcesByType.photo.length,
+    enabledSources: discoverySourcesByType.photo.length,
+    lastUpdate: '',
+    inserted: 0,
+    updated: 0,
+    rejected: 0,
+    conflicts: 0,
+    syncId: '',
+    source: 'backend-photo-sync',
+  },
+  video: {
+    type: 'video',
+    totalSources: discoverySourcesByType.video.length,
+    enabledSources: discoverySourcesByType.video.length,
+    lastUpdate: '',
+    inserted: 0,
+    updated: 0,
+    rejected: 0,
+    conflicts: 0,
+    syncId: '',
+    source: 'backend-video-sync',
+  },
+};
+
+const buildDiscoveryCandidates = (type: DiscoveryCameraType): CameraRecord[] => {
+  const nowIso = new Date().toISOString();
+  if (type === 'photo') {
+    return [
+      buildCameraRecord({
+        id: 'sony-a7r-v-photo',
+        externalId: 'sony:a7r-v',
+        type: 'photo',
+        brand: 'Sony',
+        model: 'A7R V',
+        category: 'mirrorless',
+        priceRange: 'professional',
+        description: 'High-resolution full-frame hybrid camera (source refresh).',
+        features: ['61MP sensor', '8K video', 'Real-time AF'],
+        isVideoOptimized: true,
+        isPhotoOptimized: true,
+        logFormats: ['S-Log3'],
+        videoResolution: ['8K', '4K', '1080p'],
+        videoFrameRates: ['24fps', '30fps', '60fps'],
+        videoCodecs: ['XAVC S-I', 'XAVC HS'],
+        megapixels: 61,
+        sensorSize: 'Full Frame',
+        isoRange: '100-32000',
+        shutterSpeed: '1/8000-30s',
+        burstMode: '10 fps',
+        autofocusPoints: 693,
+        imageStabilization: true,
+        weatherSealing: true,
+        batteryLife: '530 shots',
+        mount: 'Sony E',
+        weight: '723 g',
+        dimensions: '131.3 x 96.9 x 82.4 mm',
+        releaseDate: '2022-10-26',
+        colorSpace: ['sRGB', 'Adobe RGB', 'Rec.709'],
+        source: 'discovery',
+        lastSeenAt: nowIso,
+        isDeprecated: false,
+        addedDate: '2026-03-02T00:00:00.000Z',
+        lastUpdated: nowIso,
+        version: 2,
+        specs: { megapixels: 61, sensorSize: 'Full Frame', mount: 'Sony E' },
+      }),
+      buildCameraRecord({
+        id: 'panasonic-s5-ii-photo',
+        externalId: 'panasonic:s5-ii',
+        type: 'photo',
+        brand: 'Panasonic',
+        model: 'S5 II',
+        category: 'mirrorless',
+        priceRange: 'mid-range',
+        description: 'Full-frame Panasonic hybrid discovered from manufacturer feed.',
+        features: ['24MP sensor', '6K video', 'Phase AF'],
+        isVideoOptimized: true,
+        isPhotoOptimized: true,
+        logFormats: ['V-Log'],
+        videoResolution: ['6K', '4K', '1080p'],
+        videoFrameRates: ['24fps', '30fps', '60fps'],
+        videoCodecs: ['H.264', 'H.265'],
+        megapixels: 24,
+        sensorSize: 'Full Frame',
+        isoRange: '100-51200',
+        shutterSpeed: '1/8000-60s',
+        burstMode: '9 fps',
+        autofocusPoints: 779,
+        imageStabilization: true,
+        weatherSealing: true,
+        batteryLife: '370 shots',
+        mount: 'L-Mount',
+        weight: '740 g',
+        dimensions: '134.3 x 102.3 x 90.1 mm',
+        releaseDate: '2023-01-04',
+        colorSpace: ['sRGB', 'Adobe RGB', 'Rec.709'],
+        source: 'discovery',
+        lastSeenAt: nowIso,
+        isDeprecated: false,
+        addedDate: nowIso,
+        lastUpdated: nowIso,
+        version: 1,
+        specs: { megapixels: 24, sensorSize: 'Full Frame', mount: 'L-Mount' },
+      }),
+    ];
+  }
+
+  return [
+    buildCameraRecord({
+      id: 'sony-fx3-video',
+      externalId: 'sony:fx3',
+      type: 'video',
+      brand: 'Sony',
+      model: 'FX3',
+      category: 'cinema',
+      priceRange: 'professional',
+      description: 'Compact cinema body for handheld and gimbal work (source refresh).',
+      features: ['4K120', 'Dual base ISO', 'S-Cinetone'],
+      isVideoOptimized: true,
+      isPhotoOptimized: false,
+      logFormats: ['S-Log3', 'S-Cinetone'],
+      resolution: ['4K', '1080p'],
+      frameRates: ['24fps', '30fps', '60fps', '120fps'],
+      colorSpace: ['S-Gamut3.Cine', 'Rec.709'],
+      videoCodecs: ['XAVC S-I', 'XAVC S'],
+      sensorSize: 'Full Frame',
+      isoRange: '80-102400',
+      mount: 'Sony E',
+      releaseDate: '2021-02-23',
+      source: 'discovery',
+      lastSeenAt: nowIso,
+      isDeprecated: false,
+      addedDate: '2026-03-02T00:00:00.000Z',
+      lastUpdated: nowIso,
+      version: 2,
+      specs: { sensorSize: 'Full Frame', codec: 'XAVC S-I', mount: 'Sony E' },
+    }),
+    buildCameraRecord({
+      id: 'nikon-z8-video',
+      externalId: 'nikon:z8-video',
+      type: 'video',
+      brand: 'Nikon',
+      model: 'Z8',
+      category: 'mirrorless',
+      priceRange: 'professional',
+      description: 'Nikon flagship hybrid discovered from cinema feed.',
+      features: ['8K N-RAW', '4K120', 'ProRes support'],
+      isVideoOptimized: true,
+      isPhotoOptimized: true,
+      logFormats: ['N-Log'],
+      resolution: ['8K', '4K', '1080p'],
+      frameRates: ['24fps', '30fps', '60fps', '120fps'],
+      colorSpace: ['Rec.709', 'Rec.2020'],
+      videoCodecs: ['N-RAW', 'ProRes 422 HQ'],
+      sensorSize: 'Full Frame',
+      isoRange: '64-25600',
+      mount: 'Nikon Z',
+      releaseDate: '2023-05-10',
+      source: 'discovery',
+      lastSeenAt: nowIso,
+      isDeprecated: false,
+      addedDate: nowIso,
+      lastUpdated: nowIso,
+      version: 1,
+      specs: { sensorSize: 'Full Frame', codec: 'N-RAW', mount: 'Nikon Z' },
+    }),
+  ];
+};
+
+const toStringArray = (value: unknown): string[] | undefined =>
+  Array.isArray(value)
+    ? value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    : undefined;
+
+const toFlexibleStringArray = (value: unknown): string[] | undefined => {
+  const direct = toStringArray(value);
+  if (direct) return direct;
+
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return toStringArray(parsed);
+    } catch {
+      return undefined;
+    }
+  }
+
+  const split = trimmed
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return split.length ? split : [trimmed];
+};
+
+const toOptionalNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const toOptionalBoolean = (value: unknown): boolean | undefined =>
+  typeof value === 'boolean' ? value : undefined;
+
+const toOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const normalizeCameraCategory = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .replace(/\s+/g, '-');
+
+const inferDiscoveryTypeFromCategory = (category: string): DiscoveryCameraType =>
+  category.includes('cinema') || category.includes('video') ? 'video' : 'photo';
+
+const normalizeCameraToken = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+
+const NETFLIX_CERTIFIED_CINE_MODEL_TOKENS: Record<string, string[]> = {
+  arri: ['alexa35', 'alexa265', 'alexalf', 'alexaminilf', 'alexa65'],
+  blackmagic: ['ursaminipro46k', 'ursaminipro12kolpf', 'ursacine12klf', 'ursacine17k65'],
+  canon: [
+    'eosc300markii',
+    'eosc300mkii',
+    'eosc300markiii',
+    'eosc300mkiii',
+    'eosc500markii',
+    'eosc500mkii',
+    'eosc700',
+    'eosc700ff',
+    'eosc70',
+    'eosr5c',
+    'eosc400',
+    'eosc80',
+    'eosc50',
+  ],
+  panasonic: ['varicam35', 'varicamlt', 'varicampure', 'aueva1', 's1h', 'bgh1', 'bs1h', 'akuc4000'],
+  red: [
+    'komodo',
+    'komodox',
+    'vraptor8kvv',
+    'vraptorx8kvv',
+    'vraptorxl8kvv',
+    'weapon',
+    'epicw',
+    'epicdragon',
+  ],
+  sony: ['burano', 'venice', 'venice2', 'fx3', 'fx6', 'fx9', 'f55', 'f65', 'fs7', 'fs7ii', 'fs5'],
+};
+
+const NETFLIX_CERTIFIED_BRAND_ALIASES: Record<string, string> = {
+  blackmagicdesign: 'blackmagic',
+  canoninc: 'canon',
+  panasonicholdingscorporation: 'panasonic',
+  reddigitalcinema: 'red',
+  reddigitalcinemacameracompany: 'red',
+  sonygroup: 'sony',
+};
+
+const isNetflixCertifiedCineCamera = (camera: Pick<CameraRecord, 'brand' | 'model' | 'category'>): boolean => {
+  const normalizedCategory = normalizeCameraCategory(camera.category || '');
+  const isCine = normalizedCategory.includes('cine') || normalizedCategory.includes('cinema');
+  if (!isCine) return false;
+
+  const rawBrandToken = normalizeCameraToken(camera.brand || '');
+  const brandToken = NETFLIX_CERTIFIED_BRAND_ALIASES[rawBrandToken] ?? rawBrandToken;
+  const modelToken = normalizeCameraToken(camera.model || '');
+  const approvedModels = NETFLIX_CERTIFIED_CINE_MODEL_TOKENS[brandToken];
+  if (!approvedModels || approvedModels.length === 0) return false;
+
+  return approvedModels.some((approvedToken) => modelToken === approvedToken || modelToken.includes(approvedToken));
+};
+
+const parseMegapixels = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return undefined;
+  const match = value.match(/(\d+(?:\.\d+)?)\s*mp/i);
+  if (!match) return undefined;
+  const parsed = Number.parseFloat(match[1]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const toReleaseDateFromYear = (value: unknown): string | undefined => {
+  const parsedYear =
+    typeof value === 'number' && Number.isInteger(value)
+      ? value
+      : typeof value === 'string'
+      ? Number.parseInt(value, 10)
+      : NaN;
+  if (!Number.isFinite(parsedYear) || parsedYear < 1900 || parsedYear > 2100) return undefined;
+  return `${parsedYear}-01-01`;
+};
+
+const toIsoStringOrFallback = (value: unknown, fallback: string): string => {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+  return fallback;
+};
+
+const isPlaceholderCameraValue = (value: string): boolean => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  if (/^(default|unknown|test|null|none|n\/a)([-_\s]|$)/.test(normalized)) return true;
+  if (/^default-[a-z0-9]{3,}$/.test(normalized)) return true;
+  return false;
+};
+
+const normalizeCatalogCamera = (
+  raw: Record<string, unknown>,
+  type: DiscoveryCameraType
+): CameraRecord => {
+  const nowIso = new Date().toISOString();
+  const source = raw.source;
+  const safeSource: DiscoverySource =
+    source === 'seed' || source === 'manual' || source === 'api' || source === 'discovery'
+      ? source
+      : 'seed';
+
+  return buildCameraRecord({
+    id: String(raw.id ?? `${String(raw.brand ?? 'camera')}-${String(raw.model ?? 'unknown')}`),
+    externalId: String(raw.externalId ?? `${String(raw.brand ?? 'camera')}:${String(raw.model ?? 'unknown')}`),
+    type,
+    brand: String(raw.brand ?? ''),
+    model: String(raw.model ?? ''),
+    category: String(raw.category ?? 'mirrorless'),
+    priceRange:
+      raw.priceRange === 'budget' ||
+      raw.priceRange === 'mid-range' ||
+      raw.priceRange === 'professional' ||
+      raw.priceRange === 'cinema'
+        ? raw.priceRange
+        : 'professional',
+    description: String(raw.description ?? ''),
+    features: toStringArray(raw.features) ?? [],
+    isVideoOptimized: Boolean(raw.isVideoOptimized),
+    isPhotoOptimized: raw.isPhotoOptimized === undefined ? type === 'photo' : Boolean(raw.isPhotoOptimized),
+    logFormats: toStringArray(raw.logFormats),
+    resolution: toStringArray(raw.resolution) ?? toStringArray(raw.videoResolution),
+    frameRates: toStringArray(raw.frameRates) ?? toStringArray(raw.videoFrameRates),
+    colorSpace: toStringArray(raw.colorSpace),
+    videoResolution: toStringArray(raw.videoResolution) ?? toStringArray(raw.resolution),
+    videoFrameRates: toStringArray(raw.videoFrameRates) ?? toStringArray(raw.frameRates),
+    videoCodecs: toStringArray(raw.videoCodecs),
+    megapixels: toOptionalNumber(raw.megapixels),
+    sensorSize: toOptionalString(raw.sensorSize),
+    isoRange: toOptionalString(raw.isoRange),
+    shutterSpeed: toOptionalString(raw.shutterSpeed),
+    burstMode: toOptionalString(raw.burstMode),
+    autofocusPoints: toOptionalNumber(raw.autofocusPoints),
+    imageStabilization: toOptionalBoolean(raw.imageStabilization),
+    weatherSealing: toOptionalBoolean(raw.weatherSealing),
+    batteryLife: toOptionalString(raw.batteryLife),
+    mount: toOptionalString(raw.mount),
+    weight: toOptionalString(raw.weight),
+    dimensions: toOptionalString(raw.dimensions),
+    releaseDate: toOptionalString(raw.releaseDate),
+    source: safeSource,
+    lastSeenAt: toOptionalString(raw.lastSeenAt) ?? nowIso,
+    isDeprecated: Boolean(raw.isDeprecated),
+    addedDate: toOptionalString(raw.addedDate) ?? nowIso,
+    lastUpdated: toOptionalString(raw.lastUpdated) ?? nowIso,
+    version: typeof raw.version === 'number' && raw.version > 0 ? raw.version : 1,
+    specs: {
+      sensorSize: toOptionalString(raw.sensorSize),
+      mount: toOptionalString(raw.mount),
+      category: String(raw.category ?? ''),
+    },
+  });
+};
+
+const CATALOG_CAMERA_STORE: Record<DiscoveryCameraType, CameraRecord[]> = {
+  photo: PHOTO_CAMERA_DATABASE
+    .map((camera) => normalizeCatalogCamera(camera as unknown as Record<string, unknown>, 'photo'))
+    .filter((camera) => Boolean(camera.id && camera.brand && camera.model)),
+  video: VIDEO_CAMERA_DATABASE
+    .map((camera) => normalizeCatalogCamera(camera as unknown as Record<string, unknown>, 'video'))
+    .filter((camera) => Boolean(camera.id && camera.brand && camera.model)),
+};
+
+const WORLD_CAMERA_STORE: Record<DiscoveryCameraType, CameraRecord[]> = WORLD_CAMERA_DATABASE.reduce(
+  (acc, camera) => {
+    const normalizedCategory = normalizeCameraCategory(camera.category);
+    const type = inferDiscoveryTypeFromCategory(normalizedCategory);
+    const nowIso = new Date().toISOString();
+
+    acc[type].push(
+      buildCameraRecord({
+        id: `${camera.brand}-${camera.model}-${type}-world`,
+        externalId: `${camera.brand}:${camera.model}`,
+        type,
+        brand: camera.brand,
+        model: camera.model,
+        category: normalizedCategory,
+        priceRange: normalizedCategory === 'cinema' ? 'cinema' : 'professional',
+        description: `${camera.brand} ${camera.model} (${camera.year}) fra utstyrsdatabasen.`,
+        features: [
+          `${camera.megapixels}MP sensor`,
+          `Kort: ${camera.cardTypes.join(', ')}`,
+          `Format: ${camera.fileFormat.join(', ')}`,
+        ],
+        isVideoOptimized: type === 'video' || normalizedCategory === 'mirrorless',
+        isPhotoOptimized: normalizedCategory !== 'cinema',
+        logFormats: type === 'video' ? ['Log'] : undefined,
+        resolution: type === 'video' ? ['4K', '1080p'] : undefined,
+        frameRates: type === 'video' ? ['24fps', '30fps', '60fps'] : undefined,
+        videoResolution: normalizedCategory === 'mirrorless' ? ['4K'] : undefined,
+        megapixels: camera.megapixels,
+        releaseDate: `${camera.year}-01-01`,
+        source: 'seed',
+        lastSeenAt: nowIso,
+        isDeprecated: false,
+        addedDate: nowIso,
+        lastUpdated: nowIso,
+        version: 1,
+        specs: {
+          fileFormat: camera.fileFormat,
+          averageRawSize: camera.averageRawSize,
+          averageCrawSize: camera.averageCrawSize,
+          cardTypes: camera.cardTypes,
+          year: camera.year,
+        },
+      })
+    );
+
+    return acc;
+  },
+  { photo: [] as CameraRecord[], video: [] as CameraRecord[] }
+);
+
+const RELEASE_REGISTRY_STORE: Record<DiscoveryCameraType, CameraRecord[]> = CAMERA_RELEASE_REGISTRY_2020_2026.reduce(
+  (acc, item) => {
+    const nowIso = new Date().toISOString();
+    const normalizedCategory = normalizeCameraCategory(item.category);
+    const type: DiscoveryCameraType = item.type === 'video' ? 'video' : 'photo';
+
+    const baseFeatures: string[] = [];
+    if (normalizedCategory.includes('drone')) baseFeatures.push('Droneplattform');
+    if (normalizedCategory.includes('action')) baseFeatures.push('Actionkamera');
+    if (normalizedCategory.includes('mobile')) baseFeatures.push('Mobil enhet');
+    if (normalizedCategory.includes('tablet')) baseFeatures.push('Nettbrett');
+    if (normalizedCategory.includes('cine')) baseFeatures.push('Cine-produksjon');
+    if (normalizedCategory.includes('webcam')) baseFeatures.push('Webkamera');
+
+    const fallbackFeature = type === 'video' ? 'Videoarbeidsflyt' : 'Fotoarbeidsflyt';
+    const features = baseFeatures.length ? baseFeatures : [fallbackFeature];
+
+    acc[type].push(
+      buildCameraRecord({
+        id: `${item.id}-${type}-registry`,
+        externalId: item.externalId,
+        type,
+        brand: item.brand,
+        model: item.model,
+        category: normalizedCategory,
+        priceRange: normalizedCategory.includes('cine') ? 'cinema' : 'professional',
+        description: `${item.brand} ${item.model} (${item.releaseDate.slice(0, 4)}) fra 2020–2026 release-register.`,
+        features,
+        isVideoOptimized: type === 'video',
+        isPhotoOptimized: type === 'photo',
+        logFormats: normalizedCategory.includes('cine') ? ['Log'] : undefined,
+        resolution: type === 'video' ? ['4K', '1080p'] : undefined,
+        frameRates: type === 'video' ? ['24fps', '30fps', '60fps'] : undefined,
+        videoResolution: type === 'video' ? ['4K', '1080p'] : undefined,
+        releaseDate: item.releaseDate,
+        source: 'seed',
+        lastSeenAt: nowIso,
+        isDeprecated: false,
+        addedDate: nowIso,
+        lastUpdated: nowIso,
+        version: 1,
+        specs: {
+          registryCategory: item.category,
+          registrySource: item.source,
+          releaseYear: item.releaseDate.slice(0, 4),
+        },
+      })
+    );
+
+    return acc;
+  },
+  { photo: [] as CameraRecord[], video: [] as CameraRecord[] }
+);
+
+const LEGACY_BRAND_ALIASES: Record<string, string> = {
+  ARR: 'ARRI',
+  RE: 'RED',
+  DJ: 'DJI',
+};
+
+const normalizeLegacyBrand = (brand: string): string => {
+  const compact = brand.replace(/\s+/g, ' ').trim();
+  if (!compact) return compact;
+  const alias = LEGACY_BRAND_ALIASES[compact.toUpperCase()];
+  return alias ?? compact;
+};
+
+const normalizeLegacyModel = (model: string): string =>
+  model
+    .replace(/\s+/g, ' ')
+    .replace(/[,;]+$/g, '')
+    .trim();
+
+const LEGACY_CAMERA_ENTRY_REGEX =
+  /id:\s*'([^']+)'[\s\S]{0,320}?brand:\s*'([^']+)'[\s\S]{0,320}?model:\s*'([^']+)'(?:[\s\S]{0,240}?category:\s*'([^']+)')?(?:[\s\S]{0,240}?priceRange:\s*'([^']+)')?/g;
+
+const parseLegacyCameraBackup = (raw: string, type: DiscoveryCameraType): CameraRecord[] => {
+  const nowIso = new Date().toISOString();
+  const parsed: CameraRecord[] = [];
+  const seen = new Set<string>();
+
+  for (const match of raw.matchAll(LEGACY_CAMERA_ENTRY_REGEX)) {
+    const id = toOptionalString(match[1]);
+    const brand = normalizeLegacyBrand(match[2] ?? '');
+    const model = normalizeLegacyModel(match[3] ?? '');
+    if (!id || !brand || !model) continue;
+    if (isPlaceholderCameraValue(brand) || isPlaceholderCameraValue(model)) continue;
+
+    const normalizedCategory = normalizeCameraCategory(match[4] ?? (type === 'video' ? 'cinema' : 'mirrorless'));
+    const normalizedPriceRange = match[5];
+    const priceRange =
+      normalizedPriceRange === 'budget' ||
+      normalizedPriceRange === 'mid-range' ||
+      normalizedPriceRange === 'professional' ||
+      normalizedPriceRange === 'cinema'
+        ? normalizedPriceRange
+        : normalizedCategory === 'cinema'
+        ? 'cinema'
+        : 'professional';
+
+    const externalId = `${brand}:${model}`;
+    if (seen.has(externalId.toLowerCase())) continue;
+    seen.add(externalId.toLowerCase());
+
+    parsed.push(
+      buildCameraRecord({
+        id: `${id}-legacy-${type}`,
+        externalId,
+        type,
+        brand,
+        model,
+        category: normalizedCategory,
+        priceRange,
+        description: `${brand} ${model} (legacy-import).`,
+        features: ['Legacy katalogimport'],
+        isVideoOptimized: type === 'video' || normalizedCategory === 'mirrorless',
+        isPhotoOptimized: type === 'photo',
+        source: 'seed',
+        lastSeenAt: nowIso,
+        isDeprecated: false,
+        addedDate: nowIso,
+        lastUpdated: nowIso,
+        version: 1,
+        specs: {
+          importSource: 'legacy-backup',
+        },
+      })
+    );
+  }
+
+  return parsed;
+};
+
+let legacyCameraStorePromise: Promise<Record<DiscoveryCameraType, CameraRecord[]>> | null = null;
+
+const loadLegacyCameraStore = async (): Promise<Record<DiscoveryCameraType, CameraRecord[]>> => {
+  if (legacyCameraStorePromise) return legacyCameraStorePromise;
+
+  legacyCameraStorePromise = (async () => {
+    const store: Record<DiscoveryCameraType, CameraRecord[]> = { photo: [], video: [] };
+    const sources: Array<{ type: DiscoveryCameraType; filePath: string }> = [
+      {
+        type: 'photo',
+        filePath: path.resolve(REPO_ROOT, 'frontend/client/src/data/photo-camera-database.ts.bak'),
+      },
+      {
+        type: 'video',
+        filePath: path.resolve(REPO_ROOT, 'frontend/client/src/data/video-camera-database.ts.bak'),
+      },
+    ];
+
+    for (const source of sources) {
+      try {
+        const raw = await fs.readFile(source.filePath, 'utf8');
+        store[source.type].push(...parseLegacyCameraBackup(raw, source.type));
+      } catch {
+        // Legacy backup source is optional in this runtime.
+      }
+    }
+
+    return store;
+  })();
+
+  return legacyCameraStorePromise;
+};
+
+const DB_CAMERA_CACHE_TTL_MS = 60_000;
+let dbCameraCache: { expiresAt: number; cameras: CameraRecord[] } = {
+  expiresAt: 0,
+  cameras: [],
+};
+
+const loadDatabaseCameraStore = async (): Promise<CameraRecord[]> => {
+  const now = Date.now();
+  if (dbCameraCache.expiresAt > now) return dbCameraCache.cameras;
+
+  const nowIso = new Date().toISOString();
+  const toObject = (value: unknown): Record<string, unknown> => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+    if (typeof value !== 'string') return {};
+    const trimmed = value.trim();
+    if (!trimmed || !trimmed.startsWith('{')) return {};
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const buildDatabaseCamera = (input: {
+    id?: unknown;
+    brand?: unknown;
+    model?: unknown;
+    displayName?: unknown;
+    category?: unknown;
+    releaseYear?: unknown;
+    supportedCards?: unknown;
+    specs?: unknown;
+    features?: unknown;
+    createdAt?: unknown;
+    updatedAt?: unknown;
+  }): CameraRecord | null => {
+    let brand = toOptionalString(input.brand);
+    let model = toOptionalString(input.model);
+    const displayName = toOptionalString(input.displayName);
+
+    if (!brand && displayName) {
+      const [firstToken] = displayName.split(/\s+/);
+      brand = firstToken || undefined;
+    }
+    if (!model && displayName && brand) {
+      const withoutBrand = displayName.replace(new RegExp(`^${brand}\\s+`, 'i'), '').trim();
+      model = withoutBrand || displayName;
+    } else if (!model && displayName) {
+      model = displayName;
+    }
+    if (!brand || !model) return null;
+    if (isPlaceholderCameraValue(brand) || isPlaceholderCameraValue(model)) return null;
+    if (brand.length > 50 || model.length > 150) return null;
+
+    const specs = toObject(input.specs);
+    const supportedMemoryCardTypes = toFlexibleStringArray(input.supportedCards) ?? [];
+    const baseFeatures = toFlexibleStringArray(input.features) ?? [];
+    const categoryRaw = toOptionalString(input.category) ?? toOptionalString(specs.category) ?? 'mirrorless';
+    const category = normalizeCameraCategory(categoryRaw || 'mirrorless');
+    const featureHints = baseFeatures.join(' ').toLowerCase();
+    const inferredTypeFromFeatures =
+      featureHints.includes('4k') ||
+      featureHints.includes('6k') ||
+      featureHints.includes('8k') ||
+      featureHints.includes('log')
+        ? 'video'
+        : null;
+    const type = inferredTypeFromFeatures ?? inferDiscoveryTypeFromCategory(category);
+    const videoCapabilities = toFlexibleStringArray(specs.videoCapabilities);
+    const releaseDate =
+      toOptionalString(specs.releaseDate) ?? toReleaseDateFromYear(input.releaseYear ?? specs.releaseYear);
+
+    return buildCameraRecord({
+      id: toOptionalString(input.id) ?? `${brand}-${model}-${type}-db`,
+      externalId: `${brand}:${model}`,
+      type,
+      brand,
+      model,
+      category,
+      priceRange: category === 'cinema' ? 'cinema' : 'professional',
+      description: displayName ?? `${brand} ${model}`,
+      features: [
+        ...baseFeatures,
+        ...(supportedMemoryCardTypes.length ? [`Kort: ${supportedMemoryCardTypes.join(', ')}`] : []),
+      ],
+      isVideoOptimized: type === 'video' || category === 'mirrorless',
+      isPhotoOptimized: category !== 'cinema',
+      logFormats: toFlexibleStringArray(specs.logFormats),
+      resolution: toFlexibleStringArray(specs.resolution) ?? videoCapabilities,
+      frameRates: toFlexibleStringArray(specs.frameRates),
+      colorSpace: toFlexibleStringArray(specs.colorSpace),
+      videoResolution: toFlexibleStringArray(specs.videoResolution) ?? videoCapabilities,
+      videoFrameRates: toFlexibleStringArray(specs.videoFrameRates),
+      videoCodecs: toFlexibleStringArray(specs.videoCodecs),
+      megapixels: toOptionalNumber(specs.megapixels) ?? parseMegapixels(specs.resolution),
+      sensorSize: toOptionalString(specs.sensorSize),
+      isoRange: toOptionalString(specs.isoRange) ?? toOptionalString(specs.iso),
+      mount: toOptionalString(specs.mount),
+      releaseDate,
+      source: 'api',
+      lastSeenAt: nowIso,
+      isDeprecated: false,
+      addedDate: toIsoStringOrFallback(input.createdAt, nowIso),
+      lastUpdated: toIsoStringOrFallback(input.updatedAt, nowIso),
+      version: 1,
+      specs: {
+        ...specs,
+        supportedMemoryCardTypes,
+      },
+    });
+  };
+
+  try {
+    const collected: CameraRecord[] = [];
+
+    if (await hasTable('cameras')) {
+      const cameraColumns = await getTableColumns('cameras');
+      if (cameraColumns.has('brand') && cameraColumns.has('model')) {
+        try {
+          const result = await pool.query(
+            `
+              select *
+              from cameras
+              limit 2000
+            `
+          );
+
+          result.rows.forEach((row) => {
+            const record = buildDatabaseCamera({
+              id: row.id,
+              brand: row.brand,
+              model: row.model,
+              displayName: row.full_name,
+              category: row.category,
+              releaseYear: row.release_year,
+              supportedCards: row.supported_memory_card_types,
+              specs: row.specs,
+              features: row.features,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            });
+            if (record) collected.push(record);
+          });
+        } catch (error) {
+          console.warn('Skipping cameras table for equipment API:', error);
+        }
+      }
+    }
+
+    if (await hasTable('camera_profiles')) {
+      const profileColumns = await getTableColumns('camera_profiles');
+      if (profileColumns.has('manufacturer') && profileColumns.has('model')) {
+        try {
+          const result = await pool.query(
+            `
+              select *
+              from camera_profiles
+              limit 2000
+            `
+          );
+
+          result.rows.forEach((row) => {
+            const settings = toObject(row.settings);
+            const record = buildDatabaseCamera({
+              id: row.id,
+              brand: row.manufacturer,
+              model: row.model,
+              displayName: row.nickname,
+              category: settings.category,
+              supportedCards: row.supported_card_types,
+              specs: settings,
+              features: toFlexibleStringArray(settings.features) ?? toFlexibleStringArray(settings.videoCapabilities),
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            });
+            if (record) collected.push(record);
+          });
+        } catch (error) {
+          console.warn('Skipping camera_profiles table for equipment API:', error);
+        }
+      }
+    }
+
+    if (await hasTable('ccapi_cameras')) {
+      const ccapiColumns = await getTableColumns('ccapi_cameras');
+      if (ccapiColumns.has('camera_name') || ccapiColumns.has('model')) {
+        try {
+          const result = await pool.query(
+            `
+              select *
+              from ccapi_cameras
+              limit 2000
+            `
+          );
+
+          result.rows.forEach((row) => {
+            const metadata = toObject(row.metadata);
+            const record = buildDatabaseCamera({
+              id: row.id,
+              brand: metadata.brand,
+              model: row.model,
+              displayName: row.camera_name,
+              category: metadata.category,
+              supportedCards: metadata.supportedMemoryCardTypes,
+              specs: metadata,
+              features: row.supported_features,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            });
+            if (record) collected.push(record);
+          });
+        } catch (error) {
+          console.warn('Skipping ccapi_cameras table for equipment API:', error);
+        }
+      }
+    }
+
+    const deduped = Array.from(
+      new Map(collected.map((camera) => [camera.externalId || camera.id, camera])).values()
+    );
+
+    dbCameraCache = {
+      expiresAt: now + DB_CAMERA_CACHE_TTL_MS,
+      cameras: deduped,
+    };
+    return deduped;
+  } catch (error) {
+    console.warn('Unable to load cameras from database tables:', error);
+    dbCameraCache = { expiresAt: now + DB_CAMERA_CACHE_TTL_MS, cameras: [] };
+    return [];
+  }
+};
+
+const mergeCameraLists = (base: CameraRecord[], extras: CameraRecord[]): CameraRecord[] => {
+  const merged = new Map<string, CameraRecord>();
+  for (const camera of [...base, ...extras]) {
+    const key = camera.externalId || camera.id;
+    if (!merged.has(key)) merged.set(key, camera);
+  }
+  return Array.from(merged.values());
+};
+
+const getCameraArrayByType = (type: DiscoveryCameraType): CameraRecord[] => EQUIPMENT_CAMERA_STORE[type];
+
+const getDiscoveryStats = (type: DiscoveryCameraType) => {
+  const cameras = getCameraArrayByType(type);
+  const now = Date.now();
+  const newThreshold = now - 30 * 24 * 60 * 60 * 1000;
+  const recentThreshold = now - 7 * 24 * 60 * 60 * 1000;
+
+  const newCameras = cameras.filter((camera) => new Date(camera.addedDate).getTime() >= newThreshold).length;
+  const recentlyUpdated = cameras.filter(
+    (camera) => new Date(camera.lastUpdated).getTime() >= recentThreshold
+  ).length;
+
+  return { totalCameras: cameras.length, newCameras, recentlyUpdated };
+};
+
+const getMemoryCardIdsForCamera = (cameraId: string): string[] => {
+  const exact = CAMERA_MEMORY_COMPATIBILITY[cameraId];
+  if (exact) return exact;
+
+  const fallback = CAMERA_MEMORY_FALLBACK.find((candidate) => candidate.pattern.test(cameraId));
+  return fallback ? fallback.cardTypeIds : ['sdxc-uhs-i-v30'];
+};
+
+const resolveDiscoveryType = (value: unknown): DiscoveryCameraType | null => {
+  if (value === 'photo' || value === 'video') return value;
+  return null;
+};
+
+app.post('/api/equipment/discovery/sync', (req, res) => {
+  const type = resolveDiscoveryType(req.query.type);
+  if (!type) {
+    res.status(400).json({ error: 'Invalid type. Use photo|video' });
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  const syncId = `${type}-${Date.now()}`;
+  const candidates = buildDiscoveryCandidates(type);
+  const store = getCameraArrayByType(type);
+
+  const byId = new Map(store.map((camera) => [camera.id, camera]));
+  const byExternalId = new Map(store.map((camera) => [camera.externalId, camera.id]));
+
+  let inserted = 0;
+  let updated = 0;
+  let rejected = 0;
+  let conflicts = 0;
+
+  candidates.forEach((candidate) => {
+    const existingId = byId.has(candidate.id) ? candidate.id : byExternalId.get(candidate.externalId);
+    if (!existingId) {
+      store.push(candidate);
+      byId.set(candidate.id, candidate);
+      byExternalId.set(candidate.externalId, candidate.id);
+      inserted += 1;
+      return;
+    }
+
+    const existing = byId.get(existingId);
+    if (!existing) {
+      rejected += 1;
+      return;
+    }
+
+    if (existing.externalId !== candidate.externalId && existing.id === candidate.id) {
+      conflicts += 1;
+      return;
+    }
+
+    const merged = buildCameraRecord({
+      ...existing,
+      ...candidate,
+      id: existing.id,
+      externalId: existing.externalId,
+      source: 'discovery',
+      lastSeenAt: nowIso,
+      lastUpdated: nowIso,
+      version: Math.max(existing.version, candidate.version) + 1,
+      specs: { ...existing.specs, ...candidate.specs },
+    });
+
+    const hasMeaningfulChange =
+      existing.description !== merged.description ||
+      JSON.stringify(existing.features) !== JSON.stringify(merged.features) ||
+      JSON.stringify(existing.logFormats ?? []) !== JSON.stringify(merged.logFormats ?? []) ||
+      JSON.stringify(existing.resolution ?? []) !== JSON.stringify(merged.resolution ?? []);
+
+    if (hasMeaningfulChange) {
+      const index = store.findIndex((camera) => camera.id === existing.id);
+      if (index >= 0) {
+        store[index] = merged;
+      }
+      byId.set(existing.id, merged);
+      updated += 1;
+    }
+  });
+
+  EQUIPMENT_DISCOVERY_STATUS[type] = {
+    ...EQUIPMENT_DISCOVERY_STATUS[type],
+    lastUpdate: nowIso,
+    syncId,
+    inserted,
+    updated,
+    rejected,
+    conflicts,
+    source: `backend-${type}-sync`,
+  };
+
+  res.json({
+    success: true,
+    type,
+    source: EQUIPMENT_DISCOVERY_STATUS[type].source,
+    timestamp: nowIso,
+    syncId,
+    inserted,
+    updated,
+    rejected,
+    conflicts,
+    totalCameras: store.length,
+  });
+});
+
+app.get('/api/equipment/discovery/status', (req, res) => {
+  const type = resolveDiscoveryType(req.query.type);
+  if (!type) {
+    res.status(400).json({ error: 'Invalid type. Use photo|video' });
+    return;
+  }
+
+  const status = EQUIPMENT_DISCOVERY_STATUS[type];
+  const stats = getDiscoveryStats(type);
+
+  res.json({
+    ...status,
+    ...stats,
+    type,
+  });
+});
+
+app.get('/api/equipment/cameras', async (req, res) => {
+  const type = resolveDiscoveryType(req.query.type);
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const brand = typeof req.query.brand === 'string' ? req.query.brand.trim().toLowerCase() : '';
+  const category =
+    typeof req.query.category === 'string' ? normalizeCameraCategory(req.query.category) : '';
+  const yearFromRaw = Number(req.query.yearFrom);
+  const yearToRaw = Number(req.query.yearTo);
+  const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
+  const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
+  const minYear = Math.min(yearFrom, yearTo);
+  const maxYear = Math.max(yearFrom, yearTo);
+  const includeUndated =
+    req.query.includeUndated === 'true' || req.query.includeUndated === '1';
+  const netflixCertifiedOnly =
+    req.query.netflixCertified === 'true' || req.query.netflixCertified === '1';
+
+  const extractReleaseYear = (camera: CameraRecord): number | null => {
+    if (typeof camera.releaseDate !== 'string') return null;
+    const trimmed = camera.releaseDate.trim();
+    const match = trimmed.match(/^(\d{4})-\d{2}-\d{2}$/);
+    if (!match) return null;
+    const parsed = Number.parseInt(match[1], 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const runtimeSource = type
+    ? getCameraArrayByType(type)
+    : [...EQUIPMENT_CAMERA_STORE.photo, ...EQUIPMENT_CAMERA_STORE.video];
+  const catalogSource = type
+    ? CATALOG_CAMERA_STORE[type]
+    : [...CATALOG_CAMERA_STORE.photo, ...CATALOG_CAMERA_STORE.video];
+  const worldSource = type
+    ? WORLD_CAMERA_STORE[type]
+    : [...WORLD_CAMERA_STORE.photo, ...WORLD_CAMERA_STORE.video];
+  const releaseRegistrySource = type
+    ? RELEASE_REGISTRY_STORE[type]
+    : [...RELEASE_REGISTRY_STORE.photo, ...RELEASE_REGISTRY_STORE.video];
+  const legacyStore = await loadLegacyCameraStore();
+  const legacySource = type ? legacyStore[type] : [...legacyStore.photo, ...legacyStore.video];
+  const databaseSourceAll = await loadDatabaseCameraStore();
+  const databaseSource = type
+    ? databaseSourceAll.filter((camera) => camera.type === type)
+    : databaseSourceAll;
+
+  const mergedCatalog = mergeCameraLists(runtimeSource, catalogSource);
+  const mergedRegistry = mergeCameraLists(mergedCatalog, releaseRegistrySource);
+  const mergedWorld = mergeCameraLists(mergedRegistry, worldSource);
+  const mergedLegacy = mergeCameraLists(mergedWorld, legacySource);
+  const source = mergeCameraLists(mergedLegacy, databaseSource);
+
+  const baseFiltered = source.filter((camera) => {
+    if (brand && camera.brand.toLowerCase() !== brand) return false;
+    if (category && normalizeCameraCategory(camera.category) !== category) return false;
+    if (!q) return true;
+    return [camera.brand, camera.model, camera.description, camera.category]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
+  });
+
+  const withDateMeta = baseFiltered.map((camera) => {
+    const releaseYear = extractReleaseYear(camera);
+    const isNetflixCertified = isNetflixCertifiedCineCamera(camera);
+    return {
+      camera,
+      releaseYear,
+      hasReleaseDate: releaseYear !== null,
+      inYearRange: releaseYear !== null && releaseYear >= minYear && releaseYear <= maxYear,
+      isNetflixCertified,
+    };
+  });
+
+  const undated = withDateMeta.filter((entry) => !entry.hasReleaseDate);
+  const outOfRange = withDateMeta.filter((entry) => entry.hasReleaseDate && !entry.inYearRange);
+
+  const filtered = withDateMeta
+    .filter((entry) => {
+      if (netflixCertifiedOnly && !entry.isNetflixCertified) return false;
+      if (entry.inYearRange) return true;
+      if (includeUndated && !entry.hasReleaseDate) return true;
+      return false;
+    })
+    .map((entry) => ({
+      ...entry.camera,
+      releaseYear: entry.releaseYear,
+      hasReleaseDate: entry.hasReleaseDate,
+      isNetflixCertified: entry.isNetflixCertified,
+    }))
+    .sort((a, b) => {
+    const byBrand = a.brand.localeCompare(b.brand, 'nb');
+    if (byBrand !== 0) return byBrand;
+    return a.model.localeCompare(b.model, 'nb');
+  });
+
+  res.json({
+    success: true,
+    type: type ?? 'all',
+    total: filtered.length,
+    sources: {
+      runtime: runtimeSource.length,
+      catalog: catalogSource.length,
+      releaseRegistry: releaseRegistrySource.length,
+      world: worldSource.length,
+      legacy: legacySource.length,
+      database: databaseSource.length,
+    },
+    filters: {
+      minYear,
+      maxYear,
+      includeUndated,
+      netflixCertifiedOnly,
+    },
+    quality: {
+      matchedBeforeDateFilter: baseFiltered.length,
+      excludedUndated: includeUndated ? 0 : undated.length,
+      excludedOutOfRange: outOfRange.length,
+      undatedCandidates: undated.slice(0, 25).map((entry) => ({
+        id: entry.camera.id,
+        brand: entry.camera.brand,
+        model: entry.camera.model,
+        category: entry.camera.category,
+        source: entry.camera.source,
+      })),
+    },
+    data: filtered,
+    results: filtered,
+    cameras: filtered,
+  });
+});
+
+app.get('/api/equipment/memory-cards', (req, res) => {
+  const cameraId = typeof req.query.cameraId === 'string' ? req.query.cameraId.trim() : '';
+  const sourceCards = cameraId
+    ? getMemoryCardTypesByCameraFromDatabase(cameraId)
+    : MEMORY_CARD_TYPES_DB;
+
+  type MemoryCardApiResponseItem = {
+    id: string;
+    name: string;
+    fullName: string;
+    category: string;
+    readSpeed: number;
+    writeSpeed: number;
+    maxCapacity: string;
+    commonCapacities: string[];
+    videoClass?: string;
+    uhsClass?: string;
+    priceRange: string;
+    reliability: string;
+    description: string;
+    icon: string;
+    color: string;
+    pricePerGB: {
+      budget: number;
+      mid: number;
+      premium: number;
+      professional: number;
+    };
+  };
+
+  const cards: MemoryCardApiResponseItem[] = sourceCards.map((card) => ({
+    id: card.id,
+    name: card.name,
+    fullName: card.fullName,
+    category: card.category,
+    readSpeed: card.readSpeed,
+    writeSpeed: card.writeSpeed,
+    maxCapacity: card.maxCapacity,
+    commonCapacities: card.commonCapacities,
+    videoClass: card.videoClass,
+    uhsClass: card.uhsClass,
+    priceRange: card.priceRange,
+    reliability: card.reliability,
+    description: card.description,
+    icon: card.icon,
+    color: card.color,
+    pricePerGB: card.pricePerGB,
+  }));
+
+  const storageMediaOptions: MemoryCardApiResponseItem[] = [
+    {
+      id: 'storage-ssd',
+      name: 'SSD',
+      fullName: 'SSD (ekstern/produksjon)',
+      category: 'storage-media',
+      readSpeed: 0,
+      writeSpeed: 0,
+      maxCapacity: '8TB',
+      commonCapacities: ['500GB', '1TB', '2TB', '4TB'],
+      videoClass: '',
+      uhsClass: '',
+      priceRange: 'mid',
+      reliability: 'excellent',
+      description: 'Rask lokal lagring for backup på sett.',
+      icon: '💽',
+      color: '#00acc1',
+      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
+    },
+    {
+      id: 'storage-hdd',
+      name: 'HDD',
+      fullName: 'HDD (ekstern disk)',
+      category: 'storage-media',
+      readSpeed: 0,
+      writeSpeed: 0,
+      maxCapacity: '24TB',
+      commonCapacities: ['1TB', '2TB', '4TB', '8TB'],
+      videoClass: '',
+      uhsClass: '',
+      priceRange: 'budget',
+      reliability: 'good',
+      description: 'Kostnadseffektiv lagring for ekstra kopi.',
+      icon: '🗄️',
+      color: '#607d8b',
+      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
+    },
+    {
+      id: 'storage-nas',
+      name: 'NAS',
+      fullName: 'NAS-lagring',
+      category: 'storage-media',
+      readSpeed: 0,
+      writeSpeed: 0,
+      maxCapacity: '64TB+',
+      commonCapacities: ['4TB', '8TB', '16TB', '32TB'],
+      videoClass: '',
+      uhsClass: '',
+      priceRange: 'premium',
+      reliability: 'professional',
+      description: 'Nettverkslagring for team-tilgang og sikkerhetskopi.',
+      icon: '🖧',
+      color: '#5e35b1',
+      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
+    },
+    {
+      id: 'storage-raid',
+      name: 'RAID',
+      fullName: 'RAID-lagring',
+      category: 'storage-media',
+      readSpeed: 0,
+      writeSpeed: 0,
+      maxCapacity: '64TB+',
+      commonCapacities: ['4TB', '8TB', '16TB', '32TB'],
+      videoClass: '',
+      uhsClass: '',
+      priceRange: 'premium',
+      reliability: 'professional',
+      description: 'Redundant lagring for robust backup-flyt.',
+      icon: '🧱',
+      color: '#3949ab',
+      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
+    },
+    {
+      id: 'storage-usb',
+      name: 'USB',
+      fullName: 'USB-lagring',
+      category: 'storage-media',
+      readSpeed: 0,
+      writeSpeed: 0,
+      maxCapacity: '2TB',
+      commonCapacities: ['64GB', '128GB', '256GB', '512GB', '1TB'],
+      videoClass: '',
+      uhsClass: '',
+      priceRange: 'budget',
+      reliability: 'good',
+      description: 'Bærbar lagring for overføring i felt.',
+      icon: '🔌',
+      color: '#26a69a',
+      pricePerGB: { budget: 0, mid: 0, premium: 0, professional: 0 },
+    },
+  ];
+
+  const cardById = new Map<string, MemoryCardApiResponseItem>();
+  for (const card of [...cards, ...storageMediaOptions]) {
+    if (!cardById.has(card.id)) {
+      cardById.set(card.id, card);
+    }
+  }
+  const mergedCards = Array.from(cardById.values());
+  const cardTypeIds = mergedCards.map((card) => card.id);
+
+  res.json({
+    success: true,
+    cameraId: cameraId || null,
+    cardTypeIds,
+    total: mergedCards.length,
+    source: 'memory-card-database.ts + storage-media-defaults',
+    data: mergedCards,
+    results: mergedCards,
+  });
+});
+
+app.get('/api/equipment/audio-storage-devices', (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const brand = typeof req.query.brand === 'string' ? req.query.brand.trim() : '';
+  const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+  const storageMedium =
+    typeof req.query.storageMedium === 'string'
+      ? req.query.storageMedium.trim()
+      : typeof req.query.medium === 'string'
+      ? req.query.medium.trim()
+      : '';
+  const yearFromRaw = Number(req.query.yearFrom);
+  const yearToRaw = Number(req.query.yearTo);
+  const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
+  const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
+  const limit = parseLimitParam(req.query.limit, 200);
+
+  const filtered = searchAudioStorageDevices({
+    q,
+    brand,
+    category,
+    storageMedium,
+    yearFrom,
+    yearTo,
+  });
+
+  const results = filtered.slice(0, limit);
+  const availableCategories = Array.from(
+    new Set(AUDIO_STORAGE_DEVICE_DATABASE.map((device) => device.category))
+  ).sort((a, b) => a.localeCompare(b, 'nb'));
+  const availableStorageMedia = Array.from(
+    new Set(AUDIO_STORAGE_DEVICE_DATABASE.flatMap((device) => device.storageMedia))
+  ).sort((a, b) => a.localeCompare(b, 'nb'));
+
+  res.json({
+    success: true,
+    source: 'audio-storage-device-database.ts',
+    total: filtered.length,
+    count: results.length,
+    filters: {
+      q,
+      brand: brand || null,
+      category: category || null,
+      storageMedium: storageMedium || null,
+      yearFrom,
+      yearTo,
+      limit,
+    },
+    availableCategories,
+    availableStorageMedia,
+    data: results,
+    results,
+    devices: results,
+  });
+});
+
+app.get('/api/equipment/audio-interfaces', (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const records = searchAudioStorageDevices({ q, yearFrom: 2020, yearTo: 2026 }).map((device) => {
+    const maxSampleRateKhz = Math.round(device.maxSampleRateHz / 1000);
+    const storageFeature = `Lagring: ${device.storageMedia.join(', ')}`;
+    return {
+      id: device.id,
+      brand: device.brand,
+      model: device.model,
+      type: device.category,
+      inputs: Math.max(1, Math.ceil(device.channelCount / 2)),
+      outputs: Math.max(1, Math.ceil(device.channelCount / 2)),
+      preamps: Math.max(1, Math.ceil(device.channelCount / 2)),
+      maxSampleRate: `${maxSampleRateKhz} kHz`,
+      bitDepth: device.bitDepthOptions,
+      features: [...device.recordingFormats, storageFeature],
+      description: device.description,
+      compatibility: ['macOS', 'Windows', 'iOS', 'Android'],
+      category: device.category,
+      storageMedia: device.storageMedia,
+      releaseYear: device.releaseYear,
+    };
+  });
+
+  res.json(records);
+});
+
+app.get('/api/equipment/search', (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const brand = typeof req.query.brand === 'string' ? req.query.brand.trim().toLowerCase() : '';
+  const category = normalizeCatalogCategory(
+    typeof req.query.category === 'string' ? req.query.category : ''
+  );
+  const year = typeof req.query.year === 'string' ? Number(req.query.year) : NaN;
+  const limit = parseLimitParam(req.query.limit, 80);
+
+  const filtered = COMPAT_EQUIPMENT_CATALOG.filter((item) => {
+    if (brand && brand !== 'alle' && item.brand.toLowerCase() !== brand) return false;
+    if (category && item.category !== category) return false;
+    if (Number.isFinite(year) && item.releaseYear !== year) return false;
+    if (!q) return true;
+
+    const searchable = [
+      item.brand,
+      item.model,
+      item.description,
+      item.category,
+      item.mount || '',
+      item.type || '',
+      item.norwegianSupplier || '',
+    ]
+      .join(' ')
+      .toLowerCase();
+
+    return searchable.includes(q);
+  }).slice(0, limit);
+
+  res.json({
+    success: true,
+    source: 'compat-catalog',
+    total: filtered.length,
+    data: filtered,
+    results: filtered,
+  });
+});
+
+app.get('/api/gear-news', (req, res) => {
+  const profession = typeof req.query.profession === 'string' ? req.query.profession : '';
+  const normalizedProfession = profession.trim().toLowerCase();
+
+  const filtered = normalizedProfession
+    ? COMPAT_GEAR_NEWS.filter((item) =>
+        Array.isArray(item.professions)
+          ? item.professions.map((entry) => entry.toLowerCase()).includes(normalizedProfession)
+          : true
+      )
+    : COMPAT_GEAR_NEWS;
+
+  res.json({
+    success: true,
+    source: 'compat-news',
+    data: filtered,
+  });
+});
+
+app.get('/api/gear-news/:profession/firmware', (_req, res) => {
+  res.json({
+    success: true,
+    updatesAvailable: 2,
+    data: [
+      {
+        id: 'fw-canon-r5-1',
+        device: 'Canon EOS R5 Mark II',
+        latestVersion: '1.2.0',
+        currentVersion: '1.1.0',
+        priority: 'recommended',
+        releaseDate: '2026-02-10',
+      },
+      {
+        id: 'fw-sony-a7s3-1',
+        device: 'Sony A7S III',
+        latestVersion: '4.0.1',
+        currentVersion: '3.2.0',
+        priority: 'critical',
+        releaseDate: '2026-01-29',
+      },
+    ],
+  });
+});
+
+app.get('/api/equipment/market-prices', (_req, res) => {
+  const data = COMPAT_EQUIPMENT_CATALOG.map((item, index) => {
+    const msrp = Math.round(item.priceNOK * 1.12);
+    const rating = (4.0 + (index % 7) * 0.1).toFixed(1);
+    return {
+      id: item.id,
+      brand: item.brand,
+      model: item.model,
+      category: item.category,
+      currentPrice: String(item.priceNOK),
+      msrp: String(msrp),
+      availability: item.availability,
+      photographerRating: rating,
+      videographerRating: rating,
+      sourceUrl: `https://example.com/prices/${item.id}`,
+    };
+  });
+
+  res.json(data);
+});
+
+app.get('/api/equipment/lenses', (_req, res) => {
+  const lenses = COMPAT_EQUIPMENT_CATALOG
+    .filter((item) => item.category === 'lenses')
+    .map((item) => ({
+      id: item.id,
+      brand: item.brand,
+      model: item.model,
+      focalLength: typeof item.specifications.focalLength === 'string' ? item.specifications.focalLength : '',
+      aperture: typeof item.specifications.maxAperture === 'string' ? item.specifications.maxAperture : '',
+      mount: item.mount || '',
+      lensType:
+        typeof item.specifications.lensType === 'string'
+          ? item.specifications.lensType
+          : item.type || '',
+      imageStabilization: Boolean(item.specifications.imageStabilization),
+      weatherSealing: Boolean(item.specifications.weatherSealed),
+      weight:
+        typeof item.specifications.weight === 'string'
+          ? item.specifications.weight
+          : String(item.specifications.weight || ''),
+      currentPrice: String(item.priceNOK),
+    }));
+
+  res.json(lenses);
+});
+
+app.get('/api/equipment/firmware-updates/:userId', async (req, res) => {
+  try {
+    const userIdRaw = req.params.userId;
+    const userId = userIdRaw && userIdRaw !== 'guest' ? userIdRaw : null;
+    const profession =
+      typeof req.query.profession === 'string' ? req.query.profession : null;
+    const updates = await loadFirmwareUpdates(userId, profession);
+    res.json(updates);
+  } catch (error) {
+    console.error('Firmware compatibility endpoint error:', error);
+    res.status(500).json({ error: 'Failed to load firmware updates' });
+  }
+});
+
+app.get('/api/role-room/vendor-links', (req, res) => {
+  const category = typeof req.query.category === 'string' ? req.query.category.trim().toLowerCase() : '';
+  const links = category
+    ? COMPAT_VENDOR_LINKS.filter((item) => item.category.toLowerCase() === category)
+    : COMPAT_VENDOR_LINKS;
+  res.json({ links });
+});
+
+app.get('/api/role-room/vendor-links/categories', (_req, res) => {
+  const counts = new Map<string, number>();
+  COMPAT_VENDOR_LINKS.forEach((item) => {
+    counts.set(item.category, (counts.get(item.category) || 0) + 1);
+  });
+  const categories = Array.from(counts.entries()).map(([category, count]) => ({
+    category,
+    count,
+  }));
+  res.json({ categories });
+});
+
+app.get('/api/equipment/inventory', async (req, res) => {
+  try {
+    const userId = typeof req.query.userId === 'string' ? req.query.userId : null;
+    const profession = typeof req.query.profession === 'string' ? req.query.profession : null;
+    const conditions = [];
+    if (userId) {
+      conditions.push(eq(schema.userEquipment.userId, userId));
+    }
+    if (profession) {
+      conditions.push(eq(schema.userEquipment.userType, profession));
+    }
+
+    const rows = await db
+      .select()
+      .from(schema.userEquipment)
+      .where(conditions.length ? and(...conditions) : sql`true`)
+      .orderBy(desc(schema.userEquipment.createdAt));
+
+    const inventory = rows.map((item) => {
+      const settings = parseSettings(item.settings);
+      return {
+        id: item.id,
+        userId: item.userId,
+        profession: item.userType,
+        name: readString(settings.name) || `${item.brand} ${item.model}`.trim(),
+        brand: item.brand,
+        model: item.model,
+        category: item.category,
+        status: readString(settings.status) || item.condition || 'available',
+        imageUrl: readString(settings.imageUrl) || null,
+        specifications: settings.specifications ?? {},
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      };
+    });
+
+    res.json(inventory);
+  } catch (error) {
+    console.error('Equipment inventory list error:', error);
+    res.status(500).json({ error: 'Failed to load equipment inventory' });
+  }
+});
+
+app.post('/api/equipment/inventory', async (req, res) => {
+  try {
+    const {
+      userId,
+      profession,
+      name,
+      brand,
+      model,
+      category,
+      imageUrl,
+      specifications,
+      status,
+      condition,
+    } = req.body || {};
+
+    if (!userId || !brand || !model) {
+      res.status(400).json({ error: 'Missing required fields' });
+      return;
+    }
+
+    const mergedSettings = {
+      name: typeof name === 'string' ? name : `${brand} ${model}`,
+      imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
+      specifications: specifications && typeof specifications === 'object' ? specifications : {},
+      status: typeof status === 'string' ? status : 'available',
+    };
+
+    const [inserted] = await db
+      .insert(schema.userEquipment)
+      .values({
+        userId,
+        userType: typeof profession === 'string' ? profession : null,
+        brand,
+        model,
+        category: typeof category === 'string' ? category : null,
+        condition: typeof condition === 'string' ? condition : (typeof status === 'string' ? status : 'available'),
+        settings: mergedSettings,
+      })
+      .returning();
+
+    res.status(201).json({
+      id: inserted.id,
+      userId: inserted.userId,
+      profession: inserted.userType,
+      name: mergedSettings.name,
+      brand: inserted.brand,
+      model: inserted.model,
+      category: inserted.category,
+      status: mergedSettings.status,
+      imageUrl: mergedSettings.imageUrl,
+      specifications: mergedSettings.specifications,
+      createdAt: inserted.createdAt,
+      updatedAt: inserted.updatedAt,
+    });
+  } catch (error) {
+    console.error('Equipment inventory create error:', error);
+    res.status(500).json({ error: 'Failed to create inventory item' });
+  }
+});
+
+app.post('/api/equipment/sync-firmware', async (req, res) => {
+  try {
+    const userId = typeof req.body?.userId === 'string'
+      ? req.body.userId
+      : typeof req.query.userId === 'string'
+        ? req.query.userId
+        : null;
+    const profession = typeof req.body?.profession === 'string'
+      ? req.body.profession
+      : typeof req.query.profession === 'string'
+        ? req.query.profession
+        : null;
+
+    const updates = await loadFirmwareUpdates(userId, profession);
+    const devices = await loadFirmwareDevices(userId, profession);
+    const history = await loadFirmwareHistory(userId, profession);
+
+    res.json({
+      success: true,
+      checkedAt: new Date().toISOString(),
+      updates,
+      devices,
+      history,
+      updatesCount: updates.length,
+    });
+  } catch (error) {
+    console.error('Firmware sync compatibility endpoint error:', error);
+    res.status(500).json({ error: 'Failed to sync firmware updates' });
+  }
+});
+
 // ── Dev Compatibility APIs (legacy frontend paths) ────────────────────────
 // These lightweight routes keep older frontend modules functional in local dev.
 type LegacySettingEntry = {
@@ -198,6 +2741,7 @@ type LegacyStoryLogicEntry = {
 const legacySettingsStore = new Map<string, LegacySettingEntry>();
 const legacyCastingProjects = new Map<string, any>();
 const legacyShotListsByProject = new Map<string, any[]>();
+const legacyTeamDashboardSnapshotsByProject = new Map<string, any[]>();
 const legacyStoryLogicByProject = new Map<string, LegacyStoryLogicEntry>();
 const legacyFavoritesStore = new Map<string, string[]>();
 const legacyCandidatePool = new Map<string, any>();
@@ -1187,6 +3731,7 @@ app.put('/api/casting/projects/:projectId', (req, res) => {
 app.delete('/api/casting/projects/:projectId', (req, res) => {
   legacyCastingProjects.delete(req.params.projectId);
   legacyShotListsByProject.delete(req.params.projectId);
+  legacyTeamDashboardSnapshotsByProject.delete(req.params.projectId);
   res.status(204).end();
 });
 
@@ -1235,6 +3780,38 @@ app.post('/api/casting/projects/:projectId/shot-lists/reorder', (req, res) => {
     legacyShotListsByProject.set(projectId, incoming.map((item: any) => ({ ...item, projectId })));
   }
   res.json({ ok: true });
+});
+
+app.get('/api/casting/projects/:projectId/team-dashboard/snapshots', (req, res) => {
+  const projectId = req.params.projectId;
+  const snapshots = legacyTeamDashboardSnapshotsByProject.get(projectId) || [];
+  res.json({ success: true, snapshots });
+});
+
+app.post('/api/casting/projects/:projectId/team-dashboard/snapshots', (req, res) => {
+  const projectId = req.params.projectId;
+  const payload = req.body || {};
+  const current = legacyTeamDashboardSnapshotsByProject.get(projectId) || [];
+  const id = typeof payload.id === 'string' && payload.id.trim() ? payload.id : `snapshot-${Date.now()}`;
+  const snapshot = {
+    ...payload,
+    id,
+    projectId,
+    createdAt: typeof payload.createdAt === 'string' && payload.createdAt.trim()
+      ? payload.createdAt
+      : new Date().toISOString(),
+  };
+
+  const next = [...current];
+  const index = next.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    next[index] = snapshot;
+  } else {
+    next.unshift(snapshot);
+  }
+
+  legacyTeamDashboardSnapshotsByProject.set(projectId, next.slice(0, 100));
+  res.json({ success: true, snapshot });
 });
 
 // Favorites (legacy compatibility for Role/Candidate panels)
@@ -2630,12 +5207,17 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    const loginType = typeof req.body?.type === 'string' ? req.body.type.toLowerCase() : 'general';
     if (!email) return res.status(400).json({ error: 'E-post er påkrevd' });
+    const normalizedEmail = email.toLowerCase().trim();
+    const prototypeGuestEmails = new Set([
+      'academy-guest@creatorhubn.com',
+    ]);
 
     // Look up user by email
     const result = await pool.query(
-      'SELECT id, email, username, first_name, last_name, password FROM users WHERE email = $1',
-      [email.toLowerCase().trim()]
+      'SELECT id, email, username, first_name, last_name, password, role FROM users WHERE email = $1',
+      [normalizedEmail]
     );
 
     if (!result.rowCount || result.rowCount === 0) {
@@ -2643,10 +5225,43 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const dbUser = result.rows[0];
+    const storedPassword = typeof dbUser.password === 'string' ? dbUser.password : '';
+
+    if (storedPassword) {
+      const bcrypt = await import('bcrypt');
+      const isPasswordHashed = /^\$2[ayb]\$/.test(storedPassword);
+      const passwordValid = isPasswordHashed
+        ? await bcrypt.default.compare(password || '', storedPassword)
+        : password === storedPassword;
+
+      if (!passwordValid) {
+        return res.status(401).json({ error: 'Ugyldig e-post eller passord' });
+      }
+    } else {
+      const prototypeGuestPassword = process.env.PROTOTYPE_GUEST_PASSWORD || 'guest-access';
+      const canUsePrototypeFallback = loginType === 'prototype' && prototypeGuestEmails.has(dbUser.email);
+      if (!canUsePrototypeFallback || password !== prototypeGuestPassword) {
+        return res.status(401).json({ error: 'Ugyldig e-post eller passord' });
+      }
+    }
 
     // Determine role
     let role = 'user';
-    if (dbUser.email === 'daniel@creatorhubn.com') role = 'admin';
+    const dbRole = String(dbUser.role || '').toLowerCase();
+    const fullAccessGuestEmails = new Set([
+      'daniel@creatorhubn.com',
+      'academy-guest@creatorhubn.com',
+    ]);
+    if (dbRole === 'admin' || dbRole === 'super_admin' || fullAccessGuestEmails.has(dbUser.email)) {
+      role = 'admin';
+    }
+    if (loginType === 'prototype') {
+      if (dbRole === 'prototype_tester' || prototypeGuestEmails.has(dbUser.email)) {
+        role = 'prototype_tester';
+      } else {
+        return res.status(403).json({ error: 'Prototype tester-tilgang krever godkjenning' });
+      }
+    }
     
     // Check couple_profiles
     const coupleCheck = await pool.query(
@@ -2654,7 +5269,7 @@ app.post('/api/auth/login', async (req, res) => {
       [dbUser.email]
     ).catch(() => ({ rows: [], rowCount: 0 }));
 
-    if (coupleCheck.rows.length > 0) role = 'couple';
+    if (loginType !== 'prototype' && coupleCheck.rows.length > 0) role = 'couple';
 
     // Check vendors table
     const vendorCheck = await pool.query(
@@ -2662,7 +5277,7 @@ app.post('/api/auth/login', async (req, res) => {
       [dbUser.email]
     ).catch(() => ({ rows: [], rowCount: 0 }));
 
-    if (vendorCheck.rows.length > 0) role = 'vendor';
+    if (loginType !== 'prototype' && vendorCheck.rows.length > 0) role = 'vendor';
 
     // Create session token
     const sessionToken = crypto.randomUUID();

@@ -1,4 +1,4 @@
-import { PROFESSION_FEATURE_MATRIX, getFeaturesByCategory } from '@shared/profession-feature-matrix';
+import { PROFESSION_FEATURE_MATRIX, getFeaturesByCategory } from '../../../shared/profession-feature-matrix';
 
 export type FeaturePlan = 'basic' | 'pro' | 'enterprise' | 'marketplace';
 export type FeatureImpact = 'low' | 'medium' | 'high' | 'critical';
@@ -138,4 +138,3 @@ export function getFeatureMetadata(featureId: string): FeatureMetadata | null {
 
   return metadata;
 }
-

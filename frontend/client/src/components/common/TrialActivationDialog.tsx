@@ -1,35 +1,31 @@
-// client/src/components/common/TrialActivationDialog.tsx
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
+  alpha,
   Box,
-  Typography,
+  Button,
   Chip,
   Collapse,
-  Paper,
-  useTheme,
-  alpha,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
-  Tooltip,
+  Paper,
+  Typography,
+  useTheme,
 } from '@mui/material';
 import {
   AutoAwesome,
   CheckCircle,
-  PlayArrow as PlayArrowArrow,
+  Close,
+  PlayArrow,
+  Security,
+  Speed,
+  Star,
+  Timer,
   Upgrade,
   Visibility,
   VisibilityOff,
-  Close,
-  Star,
-  Timer,
-  Security,
-  Speed as Speed,
-  Palette,
 } from '@mui/icons-material';
 import type { TrialFeature, TrialStatus } from '@/services/TrialFeatureManager';
 
@@ -40,7 +36,54 @@ interface TrialActivationDialogProps {
   onDecline: () => void;
   onUpgrade?: () => void;
   trialStatus?: TrialStatus | null;
-  loading?: boolean
+  loading?: boolean;
+}
+
+function formatDate(value: Date | string | undefined): string {
+  if (!value) {
+    return 'Unknown';
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+
+  return date.toLocaleDateString('nb-NO');
+}
+
+function getCategoryColor(category: TrialFeature['category']): string {
+  switch (category) {
+    case 'editor':
+      return '#8e24aa';
+    case 'ai':
+      return '#ef6c00';
+    case 'analytics':
+      return '#1976d2';
+    case 'productivity':
+      return '#2e7d32';
+    case 'communication':
+      return '#c62828';
+    default:
+      return '#546e7a';
+  }
+}
+
+function getCategoryIcon(category: TrialFeature['category']): JSX.Element {
+  switch (category) {
+    case 'editor':
+      return <Star fontSize="large" />;
+    case 'ai':
+      return <AutoAwesome fontSize="large" />;
+    case 'analytics':
+      return <Speed fontSize="large" />;
+    case 'productivity':
+      return <Timer fontSize="large" />;
+    case 'communication':
+      return <Security fontSize="large" />;
+    default:
+      return <Star fontSize="large" />;
+  }
 }
 
 export function TrialActivationDialog({
@@ -50,281 +93,211 @@ export function TrialActivationDialog({
   onDecline,
   onUpgrade,
   trialStatus,
-  loading = false
-}: TrialActivationDialogProps) {
+  loading = false,
+}: TrialActivationDialogProps): JSX.Element {
   const theme = useTheme();
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [showPreview, setShowPreview] = useState(false);
 
-  const isExpired = trialStatus?.hasExpired;
-  const canUpgrade = trialStatus?.canUpgrade;
-  const isActive = trialStatus?.isActive;
-
-  const getCategoryIcon = (category: string) => {
-    switch (category) {
-      case 'editor': return theming.getThemedIcon(', ');
-      case 'ai': return theming.getThemedIcon('autoAwesome');
-      case 'analytics': return theming.getThemedIcon('speed');
-      case 'productivity': return <Timer />;
-      case 'communication': return theming.getThemedIcon('security');
-      default: return theming.getThemedIcon(', ');
-  }
-};
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'editor': return '#9C27B0';
-      case 'ai': return '#FF9800';
-      case 'analytics': return '#2196F3';
-      case 'productivity': return '#4CAF50';
-      case 'communication': return '#F44336';
-      default: return '#607D8B';
-}
-};
+  const isExpired = trialStatus?.hasExpired === true;
+  const isActive = trialStatus?.isActive === true;
+  const canUpgrade = trialStatus?.canUpgrade === true || feature.upgradeRequired;
 
   const categoryColor = getCategoryColor(feature.category);
 
+  const titleText = useMemo(() => {
+    if (isExpired) {
+      return 'Trial Ended';
+    }
+    if (isActive) {
+      return 'Trial Active';
+    }
+    return 'Enhanced Feature Available';
+  }, [isActive, isExpired]);
+
+  const subtitleText = useMemo(() => {
+    if (isExpired) {
+      return `Your ${feature.name} trial has ended. Upgrade to continue with full capability.`;
+    }
+    if (isActive) {
+      return `You are currently in a ${feature.trialDuration}-day trial.`;
+    }
+    return feature.description;
+  }, [feature.description, feature.name, feature.trialDuration, isActive, isExpired]);
+
+  const PreviewComponent = feature.previewComponent;
+
   return (
-    <Dialog 
+    <Dialog
       open={open}
-      maxWidth="md" 
       fullWidth
+      maxWidth="md"
+      onClose={onDecline}
       PaperProps={{
         sx: {
-          borderRadius: 4,
-          background: `linear-gradient(135deg, ${categoryColor} 0%, ${alpha(categoryColor, 0.8)} 100%)`,
-          color: 'white',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-          overflow: 'hidden'
-    }
-    }}
+          borderRadius: 3,
+          overflow: 'hidden',
+          background: `linear-gradient(145deg, ${categoryColor} 0%, ${alpha(categoryColor, 0.85)} 100%)`,
+          color: '#fff',
+        },
+      }}
     >
-      {/* Header */}
-      <DialogTitle sx={{ textAlign: 'center', pb: 1, position: 'relative'}}>
+      <DialogTitle sx={{ position: 'relative', pt: 3, pb: 1.5 }}>
         <IconButton
           onClick={onDecline}
-          sx={{
-            position: 'absolute',
-            right:  16,
-            top:  16,
-            color: 'white', '&:hover': { bgcolor: 'rgba(25,255,255,0.1)' }
-        }}
+          sx={{ position: 'absolute', right: 12, top: 12, color: '#fff' }}
+          aria-label="Close trial dialog"
         >
-          {theming.getThemedIcon('close')}
+          <Close />
         </IconButton>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, justifyContent: 'center' }}>
           {getCategoryIcon(feature.category)}
-          <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
-            {isExpired ? 'Trial Utløpt' : isActive ? 'Trial Aktiv' : 'Forbedret Løsning Tilgjengelig!'}
+          <Typography variant="h5" sx={{ fontWeight: 800 }}>
+            {titleText}
           </Typography>
         </Box>
 
-        {/* Feature Category Badge */}
-        <Chip
-          label={feature.category.toUpperCase()}
-          sx={{
-            bgcolor: 'rgba(25,255,255,0.2)',
-            color: 'white',
-            fontWeight: 'bold',
-            textTransform: 'uppercase',
-            letterSpacing: 1 }}
-        />
+        <Box sx={{ mt: 1.5, display: 'flex', justifyContent: 'center' }}>
+          <Chip
+            label={feature.category.toUpperCase()}
+            sx={{
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              bgcolor: alpha(theme.palette.common.white, 0.2),
+              color: '#fff',
+            }}
+          />
+        </Box>
       </DialogTitle>
 
-      <DialogContent sx={{ textAlign: 'center', py:  3 }}>
-        {isExpired ? (
-          <Box>
-            <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-              Din prøveperiode for {feature.name} har utløpt
-            </Typography>
-            <Typography variant="body1" sx={{ mb:  3, opacity: 0, .maxWidth: 40, mx: 'auto'}}>
-              Oppgrader for å fortsette å bruke alle funksjonene og få tilgang til enda flere avanserte verktøy.
-            </Typography>
-            
-            {/* Usage Stats */}
-            {trialStatus && (
-              <Paper sx={{ 
-                p: 2, bgcolor: 'rgba(25,255,255,0.1)', 
-                borderRadius:  2,
-                mb:  3,
-                maxWidth: 30,
-                mx: 'auto'
-          ,  ...theming.getThemedCardSx() }}>
-                <Typography variant="body2" sx={{ opacity: 0.9}}>
-                  Du brukte funksjonen {trialStatus.usageCount} ganger
-                </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.7}}>
-                  Sist brukt: {new Date(trialStatus.lastUsed).toLocaleDateString(', ')}
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-        ) : isActive ? (
-          <Box>
-            <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-              Din prøveperiode er aktiv!
-            </Typography>
-            <Typography variant="body1" sx={{ mb:  3, opacity: 0.9}}>
-              Du har tilgang til {feature.name} i {feature.trialDuration} dager.
-            </Typography>
-            
-            {/* Trial Progress */}
-            {trialStatus && (
-              <Paper sx={{ 
-                p: 2, bgcolor: 'rgba(25,255,255,0.1)', 
-                borderRadius:  2,
-                mb:  3,
-                maxWidth: 30,
-                mx: 'auto'
-          ,  ...theming.getThemedCardSx() }}>
-                <Typography variant="body2" sx={{ opacity: 0, .mb:  1 }}>
-                  Prøveperiode aktiv
-                </Typography>
-                <Typography variant="caption" sx={{ opacity: 0.7}}>
-                  Utløper: {new Date(trialStatus.endDate).toLocaleDateString(', ')}
-                </Typography>
-              </Paper>
-            )}
-          </Box>
-        ) : (
-          <Box>
-            <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-              Vi har en forbedret løsning for deg!
-            </Typography>
-            <Typography variant="body1" sx={{ mb:  3, opacity: 0, .maxWidth: 50, mx: 'auto'}}>
-              {feature.description}
-            </Typography>
+      <DialogContent sx={{ pb: 1 }}>
+        <Typography variant="h6" sx={{ textAlign: 'center', fontWeight: 700, mb: 1 }}>
+          {feature.name}
+        </Typography>
 
-            {/* Benefits List */}
-            <Box sx={{ mb:  3, maxWidth: 40, mx: 'auto'}}>
-              {feature.benefits.map((benefit, index) => (
-                <Box key={index} sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  mb: 1.5,
-                  p:  1,
-                  bgcolor: 'rgba(25,255,255,0.1)',
-                  borderRadius: 1 }}>
-                  <CheckCircle sx={{ mr: 1, .color: '#4CAF50', fontSize: 20}} />
-                  <Typography variant="body2" sx={{ textAlign: 'left', flex:  1 }}>
-                    {benefit}
-                  </Typography>
-                </Box>
-              ))}
+        <Typography variant="body1" sx={{ textAlign: 'center', opacity: 0.95, mb: 2 }}>
+          {subtitleText}
+        </Typography>
+
+        <Paper
+          sx={{
+            p: 2,
+            mb: 2,
+            bgcolor: alpha(theme.palette.common.white, 0.12),
+            color: '#fff',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.2)}`,
+          }}
+        >
+          <Box sx={{ display: 'grid', gap: 1 }}>
+            <Typography variant="body2">
+              Trial duration: <strong>{feature.trialDuration} days</strong>
+            </Typography>
+            <Typography variant="body2">
+              Status: <strong>{isExpired ? 'Expired' : isActive ? 'Active' : 'Not started'}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Expires: <strong>{formatDate(trialStatus?.endDate)}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Usage count: <strong>{trialStatus?.usageCount ?? 0}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Last used: <strong>{formatDate(trialStatus?.lastUsed)}</strong>
+            </Typography>
+          </Box>
+        </Paper>
+
+        <Box sx={{ mb: 2 }}>
+          {feature.benefits.map((benefit) => (
+            <Box
+              key={benefit}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                px: 1.5,
+                py: 0.75,
+                mb: 1,
+                borderRadius: 1,
+                bgcolor: alpha(theme.palette.common.white, 0.11),
+              }}
+            >
+              <CheckCircle fontSize="small" sx={{ color: '#81c784' }} />
+              <Typography variant="body2">{benefit}</Typography>
             </Box>
+          ))}
+        </Box>
 
-            {/* Trial Duration Badge */}
-            <Chip 
-              label={`${feature.trialDuration} dager gratis prøveperiode`}
-              sx={{ 
-                bgcolor: 'rgba(25,255,255,0.2)', 
-                color: 'white',
-                fontWeight: 'bold',
-                mb:  2,
-                fontSize: '0.9rem',
-                py:  2,
-                px: 3 }}
-            />
-          </Box>
-        )}
-
-        {/* Feature Preview */}
-        <Box sx={{ mt:  3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
           <Button
             variant="outlined"
-            startIcon={showPreview ? theming.getThemedIcon('visibilityOff') : theming.getThemedIcon('visibility')}
-            onClick={() => setShowPreview(!showPreview)}
-            sx={{ 
-              borderColor: 'white', 
-              color: 'white',
-              fontWeight: 60
-             , px:  3,
-              py: 1, '&:hover': { 
-                borderColor: '#FFD700', 
-                color: '#FFD700',
-                bgcolor: 'rgba(25,215,0,0.1)'
-            }
-          }}
+            onClick={() => setShowPreview((previous) => !previous)}
+            startIcon={showPreview ? <VisibilityOff /> : <Visibility />}
+            sx={{
+              borderColor: alpha(theme.palette.common.white, 0.7),
+              color: '#fff',
+              '&:hover': {
+                borderColor: '#fff',
+                bgcolor: alpha(theme.palette.common.white, 0.12),
+              },
+            }}
           >
-            {showPreview ? 'Skjul' : 'Se'} Forhåndsvisning
+            {showPreview ? 'Hide preview' : 'Show preview'}
           </Button>
-
-          <Collapse in={showPreview} sx={{ mt:  2 }}>
-            <Paper sx={{ 
-              p:  3, 
-              bgcolor: 'rgba(25,255,255,0.95)',
-              color: 'text.primary',
-              borderRadius:  2,
-              maxHeight: 40,
-              overflow: 'auto'
-        ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" sx={{  mb: 2, color: categoryColor  }}>
-                {feature.name} - Forhåndsvisning
-              </Typography>
-              <feature.previewComponent />
-            </Paper>
-          </Collapse>
         </Box>
+
+        <Collapse in={showPreview}>
+          <Paper
+            sx={{
+              p: 2,
+              bgcolor: alpha(theme.palette.common.white, 0.97),
+              color: theme.palette.text.primary,
+              maxHeight: 280,
+              overflow: 'auto',
+            }}
+          >
+            <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 700, color: categoryColor }}>
+              Preview
+            </Typography>
+            <PreviewComponent />
+          </Paper>
+        </Collapse>
       </DialogContent>
 
-      <DialogActions sx={{ justifyContent: 'center', pb:  4, gap:  2 }}>
-        {isExpired || canUpgrade ? (
+      <DialogActions sx={{ justifyContent: 'center', gap: 1.5, px: 3, pb: 3 }}>
+        {(isExpired || canUpgrade) && onUpgrade ? (
           <>
             <Button
               variant="outlined"
               onClick={onDecline}
               disabled={loading}
-              sx={{ 
-                borderColor: 'white', 
-                color: 'white',
-                fontWeight: 60
-               , px:  4,
-                py: 1.5, '&:hover': { 
-                  borderColor: '#FFD700', 
-                  color: '#FFD700',
-                  bgcolor: 'rgba(25,215,0,0.1)'
-              }
-            }}
+              sx={{ borderColor: alpha(theme.palette.common.white, 0.8), color: '#fff' }}
             >
-              Ikke nå
+              Not now
             </Button>
-            <Button variant="contained"
+            <Button
+              variant="contained"
               onClick={onUpgrade}
               disabled={loading}
               startIcon={<Upgrade />}
-              sx={{ 
-                bgcolor: '#FFD700', 
-                color: '#00',
-                fontWeight: 'bold',
-                px:  4,
-                py: 1.5, '&:hover': { bgcolor: '#FFC100',
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 4px 12px rgba(25,215,0,0.4)'
-              }
-            }}
+              sx={{
+                bgcolor: '#ffd54f',
+                color: '#1a1a1a',
+                '&:hover': { bgcolor: '#ffca28' },
+              }}
             >
-              Oppgrader Nå
+              Upgrade
             </Button>
           </>
         ) : isActive ? (
-          <Button variant="contained"
+          <Button
+            variant="contained"
             onClick={onDecline}
             disabled={loading}
-            startIcon={theming.getThemedIcon('checkCircle')}
-            sx={{ 
-              bgcolor: '#4CAF50', 
-              color: 'white',
-              fontWeight: 'bold',
-              px:  4,
-              py: 1.5, '&:hover': { bgcolor: '#45a040',
-                transform: 'translateY(-2px)'
-          }
-          }}
-           sx={theming.getThemedButtonSx()}>
-            Fortsett med Trial
+            startIcon={<CheckCircle />}
+            sx={{ bgcolor: '#43a047', '&:hover': { bgcolor: '#388e3c' } }}
+          >
+            Continue trial
           </Button>
         ) : (
           <>
@@ -332,36 +305,18 @@ export function TrialActivationDialog({
               variant="outlined"
               onClick={onDecline}
               disabled={loading}
-              sx={{ 
-                borderColor: 'white', 
-                color: 'white',
-                fontWeight: 60
-               , px:  4,
-                py: 1.5, '&:hover': { 
-                  borderColor: '#FFD700', 
-                  color: '#FFD700',
-                  bgcolor: 'rgba(25,215,0,0.1)'
-              }
-            }}
+              sx={{ borderColor: alpha(theme.palette.common.white, 0.8), color: '#fff' }}
             >
-              Ikke nå
+              Not now
             </Button>
-            <Button variant="contained"
+            <Button
+              variant="contained"
               onClick={onAccept}
               disabled={loading}
-              startIcon={theming.getThemedIcon('play')}
-              sx={{ 
-                bgcolor: '#4CAF50', 
-                color: 'white',
-                fontWeight: 'bold',
-                px:  4,
-                py: 1.5, '&:hover': { bgcolor: '#45a040',
-                  transform: 'translateY(-2px)',
-                  boxShadow: '0 4px 12px rgba(6,175,80,0.4)'
-              }
-            }}
-             sx={theming.getThemedButtonSx()}>
-              Prøv Gratis
+              startIcon={<PlayArrow />}
+              sx={{ bgcolor: '#43a047', '&:hover': { bgcolor: '#388e3c' } }}
+            >
+              Start trial
             </Button>
           </>
         )}
@@ -369,3 +324,5 @@ export function TrialActivationDialog({
     </Dialog>
   );
 }
+
+export default TrialActivationDialog;

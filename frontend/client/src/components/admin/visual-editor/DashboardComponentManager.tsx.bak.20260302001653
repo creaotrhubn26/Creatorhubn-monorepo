@@ -1,0 +1,1154 @@
+/**
+ * Dashboard Component Manager
+ * Visual Editor component for managing and customizing all UniversalDashboard components
+ * Provides comprehensive editing capabilities for every connected component
+ */
+
+import * as React from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Tabs,
+  Tab,
+  Button,
+  IconButton,
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  FormControlLabel,
+  Slider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Divider,
+  Alert,
+  Stack,
+  Badge,
+  Tooltip,
+  Paper,
+} from '@mui/material';
+
+import {
+  ExpandMore,
+  Edit,
+  Preview,
+  Settings,
+  Code,
+  Palette,
+  ViewQuilt as Layout,
+  Psychology as Behavior,
+  Visibility,
+  VisibilityOff,
+  Save,
+  Undo,
+  Redo,
+  Add,
+  Delete,
+  Search,
+  FilterList,
+  Sort,
+  Launch,
+  Build,
+  Dashboard,
+  PhotoCamera,
+  VideoCall,
+  LibraryMusic,
+  Store,
+  Group,
+  Email,
+  Folder,
+  Settings as SettingsIcon,
+  AutoFixHigh,
+  Star,
+  Article,
+  Chat,
+} from '@mui/icons-material';
+
+import { 
+  UNIVERSAL_DASHBOARD_COMPONENTS,
+  getComponentsByCategory,
+  getComponentsByProfession,
+  getEditableComponents,
+  getComponentById,
+  ComponentMetadata
+} from './componentRegistry';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
+import { useTheming } from '../../../utils/theming-helper';
+
+interface DashboardComponentManagerProps {
+  selectedProject?: { id: string; name?: string };
+  onProjectUpdate?: (project: Record<string, unknown>) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
+  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
+}
+
+interface ComponentCustomization {
+  id: string;
+  componentId: string;
+  props: Record<string, unknown>;
+  styles: Record<string, unknown>;
+  layout: Record<string, unknown>;
+  behavior: Record<string, unknown>;
+  enabled: boolean;
+  visible: boolean;
+}
+
+const DashboardComponentManager: React.FC<DashboardComponentManagerProps> = ({
+  selectedProject,
+  onProjectUpdate,
+  onNotificationCreate,
+  profession = 'admin'
+}) => {
+  // Enhanced Master Integration
+  const { 
+    analytics, 
+    lifecycle, 
+    debugging, 
+    performance 
+} = useEnhancedMasterIntegration();
+
+  // State management
+  const [activeTab, setActiveTab] = useState<'overview' | 'components' | 'customize' | 'preview' | 'export'>('overview');
+  const [selectedComponent, setSelectedComponent] = useState<ComponentMetadata | null>(null);
+  const [customizations, setCustomizations] = useState<ComponentCustomization[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Theming system
+  const theming = useTheming('prototype_tester');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [professionFilter, setProfessionFilter] = useState<string>(profession);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const [showComponentDialog, setShowComponentDialog] = useState(false);
+  const [dialogComponent, setDialogComponent] = useState<ComponentMetadata | null>(null);
+  const [sortOrder, setSortOrder] = useState<'name' | 'category'>('name');
+  const [showFilters, setShowFilters] = useState(false);
+  const [undoStack, setUndoStack] = useState<ComponentCustomization[][]>([]);
+  const [redoStack, setRedoStack] = useState<ComponentCustomization[][]>([]);
+  const [componentEnabled, setComponentEnabled] = useState<Record<string, boolean>>({});
+  const [fontSize, setFontSize] = useState(14);
+  const [spacing, setSpacing] = useState(8);
+
+  // Performance tracking
+  const performanceData = useMemo(() => ({
+    renderCount: performance?.renderCount ?? 0,
+    avgRenderTime: performance?.avgRenderTime ?? 0,
+    memoryUsage: performance?.memoryUsage ?? 0
+  }), [performance]);
+
+  // Component registration
+  useEffect(() => {
+    lifecycle.registerComponent({
+      id: 'DashboardComponentManager',
+      type: 'component-manager',
+      version: '1.0.0',
+      capabilities: {
+        data: ['component:read','component:write','customization:manage'],
+        events: ['component:selected','customization:applied','preview:generated'],
+        actions: ['edit','preview','export','reset'],
+        ui: ['component:list','customization:form','preview:render'],
+        system: ['integration:track','performance:monitor']
+      },
+      dependencies: ['@mui/material','@tanstack/react-query'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0
+      }
+    });
+
+    analytics.trackEvent('dashboard_component_manager_initialized', {
+      profession,
+      totalComponents: UNIVERSAL_DASHBOARD_COMPONENTS.length,
+      editableComponents: getEditableComponents().length
+    });
+
+    return () => {
+      lifecycle.unregisterComponent('DashboardComponentManager');
+    };
+  }, [lifecycle, analytics, profession]);
+
+  // Filter components based on search and filters
+  const filteredComponents = useCallback(() => {
+    let components = UNIVERSAL_DASHBOARD_COMPONENTS;
+
+    // Filter by profession
+    if (professionFilter !== 'all') {
+      components = components.filter(comp => comp.profession.includes(professionFilter as 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise'));
+    }
+
+    // Filter by category
+    if (categoryFilter !== 'all') {
+      components = components.filter(comp => comp.category === categoryFilter);
+    }
+
+    // Filter by search term
+    if (searchTerm) {
+      components = components.filter(comp =>
+        comp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (comp.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Sort
+    if (sortOrder === 'name') {
+      components = [...components].sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      components = [...components].sort((a, b) => a.category.localeCompare(b.category));
+    }
+
+    return components;
+  }, [searchTerm, categoryFilter, professionFilter, sortOrder]);
+
+  // Get component categories
+  const categories = [
+    { id: 'all', label: 'All Components', icon: <Dashboard /> },
+    { id: 'orchestrator', label: 'Orchestrators', icon: <Settings /> },
+    { id: 'management', label: 'Management', icon: <SettingsIcon /> },
+    { id: 'communication', label: 'Communication', icon: <Chat /> },
+    { id: 'showcase', label: 'Showcase', icon: <Star /> },
+    { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
+    { id: 'integration', label: 'Integration', icon: <Code /> },
+    { id: 'ai', label: 'AI Enhancement', icon: <AutoFixHigh /> },
+    { id: 'file', label: 'File Management', icon: <Folder /> },
+    { id: 'equipment', label: 'Equipment', icon: <Build /> },
+    { id: 'contract', label: 'Contracts', icon: <Article /> },
+    { id: 'crm', label: 'CRM', icon: <Group /> },
+    { id: 'tutorial', label: 'Tutorials', icon: <Email /> },
+    { id: 'modal', label: 'Modals', icon: <Layout /> }
+  ];
+
+  // Get profession icons
+  const getProfessionIcon = (prof: string) => {
+    switch (prof) {
+      case 'photographer': return <PhotoCamera />;
+      case 'videographer': return <VideoCall />;
+      case 'music_producer': return <LibraryMusic />;
+      case 'vendor': return <Store />;
+      case 'admin': return <SettingsIcon />;
+      case 'enterprise': return <Group />;
+      default: return <Dashboard />;
+    }
+  };
+
+  // Handle component selection
+  const handleComponentSelect = useCallback((component: ComponentMetadata) => {
+    setSelectedComponent(component);
+    setActiveTab('customize');
+    
+    analytics.trackEvent('component_selected', {
+      componentId: component.id,
+      componentName: component.name,
+      category: component.category,
+      profession: profession
+    });
+
+    debugging.logIntegration('info','Component selected for customization', {
+      componentId: component.id,
+      componentName: component.name
+    });
+  }, [analytics, debugging, profession]);
+
+  // Handle component detail dialog
+  const handleComponentDetail = useCallback((componentId: string) => {
+    const component = getComponentById(componentId);
+    if (component) {
+      setDialogComponent(component);
+      setShowComponentDialog(true);
+    }
+  }, []);
+
+  // Handle customization save with undo support
+  const handleCustomizationSave = useCallback((customization: ComponentCustomization) => {
+    setUndoStack(prev => [...prev, customizations]);
+    setRedoStack([]);
+
+    setCustomizations(prev => {
+      const existing = prev.find(c => c.id === customization.id);
+      if (existing) {
+        return prev.map(c => c.id === customization.id ? customization : c);
+      } else {
+        return [...prev, customization];
+      }
+    });
+
+    // Update project if linked
+    if (selectedProject && onProjectUpdate) {
+      onProjectUpdate({
+        ...selectedProject,
+        customizations: [...(selectedProject.customizations || []), customization],
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    analytics.trackEvent('customization_saved', {
+      componentId: customization.componentId,
+      customizationId: customization.id,
+      profession: profession
+    });
+
+    onNotificationCreate?.({
+      id: `customization_saved_${Date.now()}`,
+      type: 'success',
+      title: 'Customization Saved',
+      message: `Customization for ${selectedComponent?.name} saved successfully`,
+      priority: 'low',
+      source: 'dashboard_component_manager',
+      timestamp: new Date().toISOString()
+    });
+  }, [analytics, onNotificationCreate, profession, selectedComponent, customizations, selectedProject, onProjectUpdate]);
+
+  // Undo / Redo
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setRedoStack(r => [...r, customizations]);
+    setCustomizations(prev);
+    setUndoStack(u => u.slice(0, -1));
+  }, [undoStack, customizations]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setUndoStack(u => [...u, customizations]);
+    setCustomizations(next);
+    setRedoStack(r => r.slice(0, -1));
+  }, [redoStack, customizations]);
+
+  // Toggle component enabled/disabled
+  const handleToggleComponent = useCallback((componentId: string, enabled: boolean) => {
+    setComponentEnabled(prev => ({ ...prev, [componentId]: enabled }));
+    analytics.trackEvent('component_toggled', { componentId, enabled });
+  }, [analytics]);
+
+  // Delete customization
+  const handleDeleteCustomization = useCallback((customizationId: string) => {
+    setUndoStack(prev => [...prev, customizations]);
+    setRedoStack([]);
+    setCustomizations(prev => prev.filter(c => c.id !== customizationId));
+  }, [customizations]);
+
+  // Render component overview
+  const renderOverview = () => (
+    <Box>
+      <Typography variant="h4" gutterBottom sx={{  mb:  4  }}>
+        Dashboard Component Manager
+      </Typography>
+      
+      <Alert severity="info" sx={{ mb:  3 }}>
+        Manage and customize all components connected to UniversalDashboard.tsx. 
+        This tool provides comprehensive editing capabilities for every dashboard component.
+      </Alert>
+
+      {/* Performance Stats */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Stack direction="row" spacing={3} alignItems="center">
+          <Chip icon={<Behavior />} label={`Renders: ${performanceData.renderCount}`} variant="outlined" />
+          <Chip icon={<Code />} label={`Avg Render: ${performanceData.avgRenderTime.toFixed(1)}ms`} variant="outlined" />
+          <Chip icon={<Palette />} label={`Memory: ${(performanceData.memoryUsage / 1024).toFixed(1)}KB`} variant="outlined" />
+        </Stack>
+      </Paper>
+
+      {/* Project context */}
+      {selectedProject && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Folder color="primary" />
+            <Typography variant="subtitle1">
+              Project: <strong>{selectedProject.name || selectedProject.id}</strong>
+            </Typography>
+            <Chip label={selectedProject.status || 'active'} size="small" color="success" />
+          </Stack>
+        </Paper>
+      )}
+
+      <Grid container spacing={3}>
+        {/* Statistics Cards */}
+        <Grid size={{ xs:  12, md:  3 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Badge badgeContent={UNIVERSAL_DASHBOARD_COMPONENTS.length} color="primary">
+                <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+                  {UNIVERSAL_DASHBOARD_COMPONENTS.length}
+                </Typography>
+              </Badge>
+              <Typography variant="body2" color="text.secondary">
+                Total Components
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid size={{ xs:  12, md:  3 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Badge badgeContent={getEditableComponents().length} color="success">
+                <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+                  {getEditableComponents().length}
+                </Typography>
+              </Badge>
+              <Typography variant="body2" color="text.secondary">
+                Editable Components
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid size={{ xs:  12, md:  3 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
+                {getComponentsByProfession(profession).length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {profession} Components
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid size={{ xs:  12, md:  3 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" color="warning.main" sx={{ color: theming.colors.primary }}>
+                {customizations.length}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Active Customizations
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Category Overview */}
+        <Grid size={{ xs: 12 }}>
+          <Card sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                Component Categories
+              </Typography>
+              <Grid container spacing={2}>
+                {categories.slice(1).map(category => {
+                  const count = getComponentsByCategory(category.id as string).length;
+                  return (
+                    <Grid size={{ xs:  6, sm:  4, md:  3 }} key={category.id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        {category.icon}
+                        <Typography variant="body2">
+                          {category.label} ({count})
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  );
+              })}
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+
+  // Render component list
+  const renderComponents = () => (
+    <Box>
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }} flexWrap="wrap" alignItems="center">
+        <TextField
+          placeholder="Search components..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ minWidth: 200 }}
+          InputProps={{ startAdornment: <Search sx={{ mr: 1, color: 'text.secondary' }} /> }}
+        />
+        
+        <FormControl size="small" sx={{ minWidth: 150}}>
+          <InputLabel>Category</InputLabel>
+          <Select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            label="Category"
+          >
+            {categories.map(category => (
+              <MenuItem key={category.id} value={category.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                  {category.icon}
+                  {category.label}
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        <FormControl size="small" sx={{ minWidth: 150}}>
+          <InputLabel>Profession</InputLabel>
+          <Select
+            value={professionFilter}
+            onChange={(e) => setProfessionFilter(e.target.value)}
+            label="Profession"
+          >
+            <MenuItem value="all">All Professions</MenuItem>
+            <MenuItem value="photographer"><PhotoCamera sx={{ mr: 1 }} /> Photographer</MenuItem>
+            <MenuItem value="videographer"><VideoCall sx={{ mr: 1 }} /> Videographer</MenuItem>
+            <MenuItem value="music_producer"><LibraryMusic sx={{ mr: 1 }} /> Music Producer</MenuItem>
+            <MenuItem value="vendor"><Store sx={{ mr: 1 }} /> Vendor</MenuItem>
+            <MenuItem value="enterprise"><Group sx={{ mr: 1 }} /> Enterprise</MenuItem>
+            <MenuItem value="admin"><SettingsIcon sx={{ mr: 1 }} /> Admin</MenuItem>
+          </Select>
+        </FormControl>
+
+        <Tooltip title="Toggle Filters">
+          <IconButton onClick={() => setShowFilters(!showFilters)}>
+            <FilterList />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title={`Sort by ${sortOrder === 'name' ? 'category' : 'name'}`}>
+          <IconButton onClick={() => setSortOrder(sortOrder === 'name' ? 'category' : 'name')}>
+            <Sort />
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title="Add Custom Component">
+          <IconButton color="primary" onClick={() => setShowComponentDialog(true)}>
+            <Add />
+          </IconButton>
+        </Tooltip>
+
+        <Chip 
+          label={`${filteredComponents().length} results`} 
+          variant="outlined" 
+          size="small" 
+        />
+      </Stack>
+
+      {/* Advanced Filters */}
+      {showFilters && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Stack direction="row" spacing={3} alignItems="center">
+            <FormControlLabel
+              control={<Switch defaultChecked />}
+              label="Show Editable Only"
+            />
+            <Box sx={{ width: 200 }}>
+              <Typography variant="caption">Font Size: {fontSize}px</Typography>
+              <Slider
+                value={fontSize}
+                onChange={(_, val) => setFontSize(val as number)}
+                min={10}
+                max={24}
+                size="small"
+              />
+            </Box>
+            <Box sx={{ width: 200 }}>
+              <Typography variant="caption">Spacing: {spacing}px</Typography>
+              <Slider
+                value={spacing}
+                onChange={(_, val) => setSpacing(val as number)}
+                min={4}
+                max={24}
+                size="small"
+              />
+            </Box>
+          </Stack>
+        </Paper>
+      )}
+
+      <Grid container spacing={spacing / 4}>
+        {filteredComponents().map((component) => (
+          <Grid size={{ xs:  12, sm:  6, md:  4 }} key={component.id}>
+            <Card
+              sx={{
+                cursor: 'pointer',
+                transition: 'all 0.2s ease-in-out',
+                fontSize: `${fontSize}px`,
+                opacity: componentEnabled[component.id] === false ? 0.5 : 1,
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: 4
+                }
+              }}
+              onClick={() => handleComponentSelect(component)}
+            >
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                  <Typography variant="h6" sx={{ flexGrow: 1, color: theming.colors.primary }}>
+                    {component.name}
+                  </Typography>
+                  <Switch
+                    size="small"
+                    checked={componentEnabled[component.id] !== false}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      handleToggleComponent(component.id, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {component.visualEditor.editable && (
+                    <Chip
+                      label="Editable"
+                      size="small"
+                      color="success"
+                    />
+                  )}
+                </Box>
+                
+                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
+                  {component.description}
+                </Typography>
+
+                <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap'}}>
+                  {component.profession.map(prof => (
+                    <Chip
+                      key={prof}
+                      label={prof}
+                      size="small"
+                      icon={getProfessionIcon(prof)}
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                  <Chip 
+                    label={component.category} 
+                    size="small" 
+                    color="primary"
+                    variant="outlined"
+                  />
+                  
+                  <Box sx={{ display: 'flex', gap: 0.5}}>
+                    <Tooltip title="Edit Component">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleComponentSelect(component); }}>
+                        <Edit />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Component Details">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleComponentDetail(component.id); }}>
+                        <Visibility />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Preview Component">
+                      <IconButton size="small" onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedComponent(component);
+                        setShowPreview(true);
+                      }}>
+                        <Preview />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+
+  // Render customization interface
+  const renderCustomize = () => {
+    if (!selectedComponent) {
+      return (
+        <Box sx={{ textAlign: 'center', py:  4 }}>
+          <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
+            Select a component to customize
+          </Typography>
+        </Box>
+      );
+  }
+
+    return (
+      <Box>
+        <Stack direction="row" spacing={2} sx={{ mb: 3 }} alignItems="center">
+          <Typography variant="h5" sx={{ color: theming.colors.primary, flexGrow: 1 }}>
+            Customize: {selectedComponent.name}
+          </Typography>
+          <Chip 
+            label={selectedComponent.category} 
+            color="primary" 
+            variant="outlined"
+          />
+          <Tooltip title="Undo">
+            <span>
+              <IconButton onClick={handleUndo} disabled={undoStack.length === 0}>
+                <Undo />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Redo">
+            <span>
+              <IconButton onClick={handleRedo} disabled={redoStack.length === 0}>
+                <Redo />
+              </IconButton>
+            </span>
+          </Tooltip>
+          <Tooltip title="Delete Customization">
+            <IconButton 
+              color="error" 
+              onClick={() => {
+                const existing = customizations.find(c => c.componentId === selectedComponent.id);
+                if (existing) handleDeleteCustomization(existing.id);
+              }}
+            >
+              <Delete />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+
+        <Grid container spacing={3}>
+          <Grid size={{ xs:  12, md:  8 }}>
+            <Accordion defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Settings sx={{ mr: 1 }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Component Properties</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {selectedComponent.props.required.map(prop => (
+                    <Grid size={{ xs:  12, sm:  6 }} key={prop}>
+                      <TextField
+                        fullWidth
+                        label={`${prop} (Required)`}
+                        variant="outlined"
+                        size="small"
+                        required
+                      />
+                    </Grid>
+                  ))}
+                  {selectedComponent.props.optional.map(prop => (
+                    <Grid size={{ xs:  12, sm:  6 }} key={prop}>
+                      <TextField
+                        fullWidth
+                        label={`${prop} (Optional)`}
+                        variant="outlined"
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Palette sx={{ mr: 1 }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Style Customization</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {selectedComponent.customization.styles.map(style => (
+                    <Grid size={{ xs:  12, sm:  6 }} key={style}>
+                      <TextField
+                        fullWidth
+                        label={style}
+                        variant="outlined"
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Layout sx={{ mr: 1 }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Layout Customization</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {selectedComponent.customization.layout.map(layout => (
+                    <Grid size={{ xs:  12, sm:  6 }} key={layout}>
+                      <TextField
+                        fullWidth
+                        label={layout}
+                        variant="outlined"
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMore />}>
+                <Behavior sx={{ mr: 1 }} />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Behavior Customization</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {selectedComponent.customization.behavior.map(behavior => (
+                    <Grid size={{ xs:  12, sm:  6 }} key={behavior}>
+                      <TextField
+                        fullWidth
+                        label={behavior}
+                        variant="outlined"
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          </Grid>
+
+          <Grid size={{ xs:  12, md:  4 }}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Component Info
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Category" 
+                      secondary={selectedComponent.category}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Professions" 
+                      secondary={selectedComponent.profession.join(', ')}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Tab Index" 
+                      secondary={selectedComponent.tabIndex || 'N/A'}
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemText 
+                      primary="Dependencies" 
+                      secondary={selectedComponent.dependencies.join(', ')}
+                    />
+                  </ListItem>
+                </List>
+
+                <Divider sx={{ my:  2 }} />
+
+                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                  Visual Editor Capabilities
+                </Typography>
+                <List dense>
+                  <ListItem>
+                    <ListItemIcon>
+                      {selectedComponent.visualEditor.editable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
+                    </ListItemIcon>
+                    <ListItemText primary="Editable" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      {selectedComponent.visualEditor.previewable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
+                    </ListItemIcon>
+                    <ListItemText primary="Previewable" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      {selectedComponent.visualEditor.templateable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
+                    </ListItemIcon>
+                    <ListItemText primary="Templateable" />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      {selectedComponent.visualEditor.propsEditable ? <Visibility color="success" /> : <VisibilityOff color="disabled" />}
+                    </ListItemIcon>
+                    <ListItemText primary="Props Editable" />
+                  </ListItem>
+                </List>
+
+                <Box sx={{ mt: 3, display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<Save />}
+                    fullWidth
+                    sx={theming.getThemedButtonSx()}
+                    onClick={() => handleCustomizationSave({
+                      id: `custom_${selectedComponent.id}_${Date.now()}`,
+                      componentId: selectedComponent.id,
+                      props: {},
+                      styles: {},
+                      layout: {},
+                      behavior: {},
+                      enabled: true,
+                      visible: true
+                    })}
+                  >
+                    Save Changes
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<Preview />}
+                    fullWidth
+                    onClick={() => setShowPreview(true)}
+                  >
+                    Preview
+                  </Button>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Box>
+    );
+  };
+
+  // Render preview panel
+  const renderPreview = () => (
+    <Box>
+      <Stack direction="row" spacing={2} sx={{ mb: 3 }} alignItems="center">
+        <Typography variant="h5" sx={{ color: theming.colors.primary, flexGrow: 1 }}>
+          Component Preview
+        </Typography>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Preview Mode</InputLabel>
+          <Select
+            value={previewMode}
+            onChange={(e) => setPreviewMode(e.target.value as 'desktop' | 'tablet' | 'mobile')}
+            label="Preview Mode"
+          >
+            <MenuItem value="desktop">Desktop</MenuItem>
+            <MenuItem value="tablet">Tablet</MenuItem>
+            <MenuItem value="mobile">Mobile</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
+
+      <Paper
+        sx={{
+          p: 3,
+          border: '2px dashed',
+          borderColor: 'divider',
+          minHeight: 400,
+          maxWidth: previewMode === 'desktop' ? '100%' : previewMode === 'tablet' ? 768 : 375,
+          mx: 'auto',
+          transition: 'max-width 0.3s ease'
+        }}
+      >
+        {selectedComponent ? (
+          <Box>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Previewing: <strong>{selectedComponent.name}</strong> in {previewMode} mode
+            </Alert>
+            <Typography variant="body2" color="text.secondary">
+              {selectedComponent.description}
+            </Typography>
+            <Divider sx={{ my: 2 }} />
+            <Stack spacing={1}>
+              <Chip label={`Category: ${selectedComponent.category}`} icon={<Palette />} />
+              <Chip label={`Tab Index: ${selectedComponent.tabIndex ?? 'N/A'}`} icon={<Code />} />
+              <Chip label={`Professions: ${selectedComponent.profession.join(', ')}`} icon={<Group />} />
+            </Stack>
+          </Box>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" color="text.secondary">
+              Select a component to preview
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    </Box>
+  );
+
+  // Render export panel
+  const renderExport = () => (
+    <Box>
+      <Typography variant="h5" sx={{ color: theming.colors.primary, mb: 3 }}>
+        Export Configuration
+      </Typography>
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>Active Customizations ({customizations.length})</Typography>
+        {customizations.length === 0 ? (
+          <Alert severity="info">No customizations to export. Customize components first.</Alert>
+        ) : (
+          <List>
+            {customizations.map(c => {
+              const comp = getComponentById(c.componentId);
+              return (
+                <ListItem key={c.id}>
+                  <ListItemIcon><Star color="primary" /></ListItemIcon>
+                  <ListItemText
+                    primary={comp?.name || c.componentId}
+                    secondary={`ID: ${c.id} | Enabled: ${c.enabled} | Visible: ${c.visible}`}
+                  />
+                </ListItem>
+              );
+            })}
+          </List>
+        )}
+      </Paper>
+
+      <Stack direction="row" spacing={2}>
+        <Button variant="contained" startIcon={<Launch />} sx={theming.getThemedButtonSx()}>
+          Export as JSON
+        </Button>
+        <Button variant="outlined" startIcon={<Code />}>
+          Export as Code
+        </Button>
+        <Button variant="outlined" startIcon={<Article />}>
+          Export Documentation
+        </Button>
+      </Stack>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <Box sx={{ p: 3, borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
+          Dashboard Component Manager
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Manage and customize all components connected to UniversalDashboard.tsx
+        </Typography>
+      </Box>
+
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs
+          value={activeTab}
+          onChange={(_, newValue) => setActiveTab(newValue)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab label="Overview" value="overview" icon={<Dashboard />} />
+          <Tab label={<Badge badgeContent={filteredComponents().length} color="primary">Components</Badge>} value="components" icon={<Build />} />
+          <Tab label="Customize" value="customize" icon={<Edit />} />
+          <Tab label="Preview" value="preview" icon={<Preview />} />
+          <Tab label="Export" value="export" icon={<Launch />} />
+        </Tabs>
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ flex: 1, p: 3, overflow: 'auto' }}>
+        {activeTab === 'overview' && renderOverview()}
+        {activeTab === 'components' && renderComponents()}
+        {activeTab === 'customize' && renderCustomize()}
+        {activeTab === 'preview' && renderPreview()}
+        {activeTab === 'export' && renderExport()}
+      </Box>
+
+      {/* Preview Dialog */}
+      <Dialog
+        open={showPreview && !!selectedComponent}
+        onClose={() => setShowPreview(false)}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Preview />
+            <Typography variant="h6">Preview: {selectedComponent?.name}</Typography>
+            <FormControl size="small" sx={{ ml: 'auto', minWidth: 120 }}>
+              <Select
+                value={previewMode}
+                onChange={(e) => setPreviewMode(e.target.value as 'desktop' | 'tablet' | 'mobile')}
+                size="small"
+              >
+                <MenuItem value="desktop">Desktop</MenuItem>
+                <MenuItem value="tablet">Tablet</MenuItem>
+                <MenuItem value="mobile">Mobile</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Paper
+            sx={{
+              p: 3,
+              minHeight: 300,
+              maxWidth: previewMode === 'desktop' ? '100%' : previewMode === 'tablet' ? 768 : 375,
+              mx: 'auto',
+              border: '1px dashed',
+              borderColor: 'divider'
+            }}
+          >
+            <Alert severity="info">
+              Live preview of <strong>{selectedComponent?.name}</strong> ({previewMode} view)
+            </Alert>
+          </Paper>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowPreview(false)}>Close</Button>
+          <Button variant="contained" startIcon={<Save />} sx={theming.getThemedButtonSx()}>Apply</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Component Detail Dialog */}
+      <Dialog
+        open={showComponentDialog && !!dialogComponent}
+        onClose={() => { setShowComponentDialog(false); setDialogComponent(null); }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Email />
+            <Typography variant="h6">{dialogComponent?.name}</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {dialogComponent && (
+            <Box>
+              <Typography variant="body1" sx={{ mb: 2 }}>{dialogComponent.description}</Typography>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="subtitle2" gutterBottom>Professions:</Typography>
+              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                {dialogComponent.profession.map(prof => (
+                  <Chip key={prof} label={prof} icon={getProfessionIcon(prof)} />
+                ))}
+              </Stack>
+              <Typography variant="subtitle2" gutterBottom>Dependencies:</Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                {dialogComponent.dependencies.map(dep => (
+                  <Chip key={dep} label={dep} variant="outlined" size="small" />
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setShowComponentDialog(false); setDialogComponent(null); }}>Close</Button>
+          <Button
+            variant="contained"
+            startIcon={<Edit />}
+            onClick={() => {
+              if (dialogComponent) {
+                handleComponentSelect(dialogComponent);
+                setShowComponentDialog(false);
+                setDialogComponent(null);
+              }
+            }}
+          >
+            Customize
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
+
+export default DashboardComponentManager;

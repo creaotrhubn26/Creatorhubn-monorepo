@@ -11,7 +11,7 @@ import {
   Typography,
   TextField,
   List,
-  ListItem,
+  ListItemButton,
   ListItemText,
   ListItemIcon,
   Chip,
@@ -463,8 +463,7 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
           ) : (
             filteredShortcuts.map((shortcut, index) => (
               <React.Fragment key={shortcut.id}>
-                <ListItem
-                  button={mode === 'palette'}
+                <ListItemButton
                   onClick={mode === 'palette' ? () => handleCommandSelect(shortcut.id) : undefined}
                   sx={{
                     py: 1.5,
@@ -493,7 +492,7 @@ export const KeyboardShortcuts: React.FC<KeyboardShortcutsProps> = ({
                       fontWeight: 600,
                       bgcolor: '#f5f5f5',
                       border: '1px solid #e0e0e0'}} />
-                </ListItem>
+                </ListItemButton>
                 {index < filteredShortcuts.length - 1 && <Divider />}
               </React.Fragment>
             ))

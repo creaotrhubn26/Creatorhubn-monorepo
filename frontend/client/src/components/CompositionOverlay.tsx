@@ -1,75 +1,53 @@
-import { useTheming } from '../utils/theming-helper';
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  IconButton,
   Button,
-  Switch,
-  FormControlLabel,
-  Slider,
-  Stack,
-  Chip,
-  Tooltip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Grid,
   Card,
   CardContent,
-  CardActions,
-  Alert,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Badge,
+  FormControlLabel,
+  IconButton,
+  Paper,
+  Slider,
+  Stack,
+  Switch,
+  Typography,
 } from '@mui/material';
 import {
+  AutoFixHigh,
+  ExpandMore,
   GridOn,
-  AspectRatio,
-  Straighten,
   Palette,
+  Settings,
+  Straighten,
   Visibility,
   VisibilityOff,
-  Settings,
-  AutoFixHigh,
-  Lightbulb,
-  TrendingUp,
-  CheckCircle,
-  Warning,
-  Info,
-  ExpandMore,
-  CropFree,
-  CropSquare,
-  Crop,
-  CenterFocusStrong,
-  Timeline,
-  Psychology,
-  ColorLens,
-  BlurOn,
-  StraightenSharp,
-  GridView,
-  Rule,
-  Balance,
-  CameraAlt,
-  Movie,
-  PhotoCamera,
 } from '@mui/icons-material';
+import { useTheming } from '../utils/theming-helper';
+
+type StoryType =
+  | 'wedding'
+  | 'corporate'
+  | 'documentary'
+  | 'commercial'
+  | 'music_video'
+  | 'event';
+
+type StoryPhase = 'setup' | 'conflict' | 'climax' | 'resolution' | 'denouement';
 
 interface CompositionOverlayProps {
   isVisible: boolean;
   onToggle: (visible: boolean) => void;
-  onAnalysisComplete?: (analysis: any) => void;
+  onAnalysisComplete?: (analysis: CompositionAnalysis) => void;
   currentImageUrl?: string;
-  storyType?: 'wedding' | 'corporate' | 'documentary' | 'commercial' | 'music_video' | 'event';
-  currentPhase?: 'setup' | 'conflict' | 'climax' | 'resolution' | 'denouement'
+  storyType?: StoryType;
+  currentPhase?: StoryPhase;
 }
 
 interface OverlaySettings {
@@ -83,20 +61,23 @@ interface OverlaySettings {
   safeAreas: boolean;
   opacity: number;
   color: string;
-  thickness: number
+  thickness: number;
 }
 
-interface CompositionGuide {
-  id: string;
-  name: string;
-  icon: React.ReactNode;
-  description: string;
-  category: 'basic' | 'advanced' | 'creative';
-  enabled: boolean;
-  settings?: any
+interface CompositionAnalysis {
+  score: number;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+  generatedAt: string;
+  context: {
+    storyType: StoryType;
+    phase: StoryPhase;
+    activeGuides: string[];
+  };
 }
 
-const INITIAL_OVERLAY_SETTINGS: OverlaySettings = {
+const INITIAL_SETTINGS: OverlaySettings = {
   ruleOfThirds: true,
   goldenRatio: false,
   goldenSpiral: false,
@@ -105,77 +86,36 @@ const INITIAL_OVERLAY_SETTINGS: OverlaySettings = {
   symmetryLines: false,
   aspectRatio: true,
   safeAreas: false,
-  opacity: 0.7,
-  color: '#00ff00',
-  thickness:  2,
+  opacity: 0.72,
+  color: '#21ff7a',
+  thickness: 2,
 };
 
-const COMPOSITION_GUIDES: CompositionGuide[] = [
-  {
-    id: 'rule-of-thirds',
-    name: 'Rule of Thirds',
-    icon: <GridOn />,
-    description: 'Divide frame into 9 equal sections for balanced composition',
-    category: 'basic',
-    enabled: true,
-},
-  {
-    id: 'golden-ratio',
-    name: 'Golden Ratio',
-    icon: <Spiral />,
-    description: 'Mathematical ratio for naturally pleasing compositions',
-    category: 'advanced',
-    enabled: false,
-},
-  {
-    id: 'golden-spiral',
-    name: 'Golden Spiral',
-    icon: <Rule />,
-    description: 'Fibonacci spiral for dynamic composition flow',
-    category: 'advanced',
-    enabled: false,
-},
-  {
-    id: 'center-crosshair',
-    name: 'Center Crosshair',
-    icon: <CenterFocusStrong />,
-    description: 'Center point reference for symmetrical compositions',
-    category: 'basic',
-    enabled: true,
-},
-  {
-    id: 'diagonal-lines',
-    name: 'Diagonal Lines',
-    icon: <StraightenSharp />,
-    description: 'Dynamic diagonal guides for movement and energy',
-    category: 'creative',
-    enabled: false,
-},
-  {
-    id: 'symmetry-lines',
-    name: 'Symmetry Lines',
-    icon: <Balance />,
-    description: 'Horizontal and vertical symmetry references',
-    category: 'basic',
-    enabled: false,
-},
-  {
-    id: 'aspect-ratio',
-    name: 'Aspect Ratio',
-    icon: <AspectRatio />,
-    description: 'Common aspect ratio guides (16:9, 4:3, 1:1)',
-    category: 'basic',
-    enabled: true,
-},
-  {
-    id: 'safe-areas',
-    name: 'Safe Areas',
-    icon: <GridOn />,
-    description: 'Title safe and action safe areas for broadcast',
-    category: 'advanced',
-    enabled: false,
-},
-];
+function hexToRgba(hex: string, alpha: number): string {
+  const cleaned = hex.replace('#', '');
+  const normalized =
+    cleaned.length === 3
+      ? cleaned
+          .split('')
+          .map((char) => `${char}${char}`)
+          .join('')
+      : cleaned;
+
+  const value = Number.parseInt(normalized, 16);
+  const red = (value >> 16) & 255;
+  const green = (value >> 8) & 255;
+  const blue = value & 255;
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function storyTypeLabel(type: StoryType): string {
+  switch (type) {
+    case 'music_video':
+      return 'Music Video';
+    default:
+      return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+}
 
 export default function CompositionOverlay({
   isVisible,
@@ -185,618 +125,422 @@ export default function CompositionOverlay({
   storyType = 'wedding',
   currentPhase = 'setup',
 }: CompositionOverlayProps) {
-  const [settings, setSettings] = useState<OverlaySettings>(INITIAL_OVERLAY_SETTINGS);
-  const [showSettings, setShowSettings] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const theming = useTheming('videographer');
+  const [settings, setSettings] = useState<OverlaySettings>(INITIAL_SETTINGS);
+  const [analysis, setAnalysis] = useState<CompositionAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [activeGuides, setActiveGuides] = useState<Set<string>>(new Set(['rule-of-thirds','center-crosshair','aspect-ratio']));
-  const [showGuides, setShowGuides] = useState(true);
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const stroke = useMemo(
+    () => hexToRgba(settings.color, settings.opacity),
+    [settings.color, settings.opacity],
+  );
 
-  // Update overlay settings
-  const updateSetting = useCallback((key: keyof OverlaySettings, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-}, []);
+  const activeGuides = useMemo(() => {
+    const guides: string[] = [];
+    if (settings.ruleOfThirds) guides.push('Rule of Thirds');
+    if (settings.goldenRatio) guides.push('Golden Ratio');
+    if (settings.goldenSpiral) guides.push('Golden Spiral');
+    if (settings.centerCrosshair) guides.push('Center Crosshair');
+    if (settings.diagonalLines) guides.push('Diagonal Lines');
+    if (settings.symmetryLines) guides.push('Symmetry Lines');
+    if (settings.aspectRatio) guides.push('Aspect Ratio');
+    if (settings.safeAreas) guides.push('Safe Areas');
+    return guides;
+  }, [settings]);
 
-  // Toggle guide visibility
-  const toggleGuide = useCallback((guideId: string) => {
-    setActiveGuides(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(guideId)) {
-        newSet.delete(guideId);
-  } else {
-        newSet.add(guideId);
-    }
-      return newSet;
-  });
-}, []);
+  const updateSetting = <K extends keyof OverlaySettings>(key: K, value: OverlaySettings[K]) => {
+    setSettings((previous) => ({ ...previous, [key]: value }));
+  };
 
-  // Analyze current composition
-  const analyzeComposition = useCallback(async () => {
-    if (!currentImageUrl) {
-      console.warn('No image URL provided for analysis');
-      return;
-  }
-
+  const analyzeComposition = async () => {
     setIsAnalyzing(true);
+
     try {
-      const response = await fetch('/api/composition-analysis/analyze', {
-        method: 'POS',
-        headers: {
-          , 'Content-Type': 'application/json',
-      },
-        body: JSON.stringify({
-          imageUrl: currentImageUl,
+      let remoteAnalysis: CompositionAnalysis | null = null;
+
+      if (currentImageUrl) {
+        const response = await fetch('/api/composition-analysis/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageUrl: currentImageUrl,
+            context: {
+              storyType,
+              currentPhase,
+              activeGuides,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const payload = (await response.json()) as {
+            data?: Partial<CompositionAnalysis>;
+          };
+
+          if (payload.data) {
+            const score = Number(payload.data.score ?? 0);
+            remoteAnalysis = {
+              score: Number.isFinite(score) ? score : 0,
+              strengths: payload.data.strengths ?? [],
+              weaknesses: payload.data.weaknesses ?? [],
+              suggestions: payload.data.suggestions ?? [],
+              generatedAt: payload.data.generatedAt ?? new Date().toISOString(),
+              context: {
+                storyType,
+                phase: currentPhase,
+                activeGuides,
+              },
+            };
+          }
+        }
+      }
+
+      const fallbackScoreBase = 55 + Math.min(activeGuides.length * 4, 25);
+      const phaseBonus = currentPhase === 'climax' ? 8 : currentPhase === 'resolution' ? 4 : 0;
+      const fallbackScore = Math.min(100, fallbackScoreBase + phaseBonus);
+
+      const nextAnalysis: CompositionAnalysis =
+        remoteAnalysis ?? {
+          score: fallbackScore,
+          strengths: [
+            `Guide density is ${activeGuides.length} active overlays`,
+            `${storyTypeLabel(storyType)} framing tuned for ${currentPhase}`,
+          ],
+          weaknesses: activeGuides.length < 2 ? ['Consider enabling additional guide lines for framing confidence'] : [],
+          suggestions: [
+            settings.ruleOfThirds ? 'Keep primary subject near intersection points' : 'Enable rule-of-thirds for balanced placement',
+            settings.safeAreas ? 'Safe-area margins are enabled for title/action fit' : 'Enable safe areas for delivery-safe framing',
+            settings.centerCrosshair
+              ? 'Use center crosshair for hero lock-off shots'
+              : 'Enable center crosshair for symmetric shots',
+          ],
+          generatedAt: new Date().toISOString(),
           context: {
             storyType,
-            currentPhase,
-        },
-      }),
-    });
+            phase: currentPhase,
+            activeGuides,
+          },
+        };
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-    }
-
-      const result = await response.json();
-      setAnalysisResult(result.data);
-      setShowAnalysis(true);
-      onAnalysisComplete?.(result.data);
-      
-      console.log('✅ Composition analysis completed: ', result.data);
-  } catch (error) {
-      console.error('❌ Composition analysis failed: ', error);
-  } finally {
+      setAnalysis(nextAnalysis);
+      onAnalysisComplete?.(nextAnalysis);
+    } finally {
       setIsAnalyzing(false);
-  }
-}, [currentImageUrl, storyType, currentPhase, onAnalysisComplete]);
-
-  // Draw overlay guides
-  const drawOverlayGuides = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    ctx.strokeStyle = settings.color;
-    ctx.lineWidth = settings.thickness;
-    ctx.globalAlpha = settings.opacity;
-
-    // Rule of Thirds
-    if (activeGuides.has('rule-of-thirds') && settings.ruleOfThirds) {
-      ctx.beginPath();
-      // Vertical lines
-      ctx.moveTo(width / 3, 0);
-      ctx.lineTo(width / 3, height);
-      ctx.moveTo((width * 2) / 3, 0);
-      ctx.lineTo((width * 2) / 3, height);
-      // Horizontal lines
-      ctx.moveTo(0, height / 3);
-      ctx.lineTo(width, height / 3);
-      ctx.moveTo(0, (height * 2) / 3);
-      ctx.lineTo(width, (height * 2) / 3);
-      ctx.stroke();
-  }
-
-    // Center Crosshair
-    if (activeGuides.has('center-crosshair') && settings.centerCrosshair) {
-      ctx.beginPath();
-      ctx.moveTo(width / 2 - 20, height / 2);
-      ctx.lineTo(width / 2 + 20, height / 2);
-      ctx.moveTo(width / 2, height / 2 - 20);
-      ctx.lineTo(width / 2, height / 2 + 20);
-      ctx.stroke();
-  }
-
-    // Golden Ratio
-    if (activeGuides.has('golden-ratio') && settings.goldenRatio) {
-      const phi = 1.618;
-      const goldenWidth = width / phi;
-      const goldenHeight = height / phi;
-      
-      ctx.beginPath();
-      ctx.rect(width - goldenWidthgoldenWidth, height);
-      ctx.rect(0, height - goldenHeight, width, goldenHeight);
-      ctx.stroke();
-  }
-
-    // Golden Spiral
-    if (activeGuides.has('golden-spiral') && settings.goldenSpiral) {
-      const centerX = width * 0.382; // Golden ratio point
-      const centerY = height * 0.382;
-      const maxRadius = Math.min(width, height) * 0.8;
-      
-      ctx.beginPath();
-      for (let angle = 0; angle < Math.PI * 8; angle += 0.1) {
-        const radius = (angle / (Math.PI * 8)) * maxRadius;
-        const x = centerX + Math.cos(angle) * radius;
-        const y = centerY + Math.sin(angle) * radius;
-        
-        if (angle === 0) {
-          ctx.moveTo(x, y);
-      } else {
-          ctx.lineTo(x, y);
-      }
-    }
-      ctx.stroke();
-  }
-
-    // Diagonal Lines
-    if (activeGuides.has('diagonal-lines') && settings.diagonalLines) {
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(width, height);
-      ctx.moveTo(width, 0);
-      ctx.lineTo(0, height);
-      ctx.stroke();
-  }
-
-    // Symmetry Lines
-    if (activeGuides.has('symmetry-lines') && settings.symmetryLines) {
-      ctx.beginPath();
-      // Horizontal center
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      // Vertical center
-      ctx.moveTo(width / 2, 0);
-      ctx.lineTo(width / 2, height);
-      ctx.stroke();
-  }
-
-    // Aspect Ratio Guides
-    if (activeGuides.has('aspect-ratio') && settings.aspectRatio) {
-      const ratios = [
-        { name: '16:9', ratio: 16 / 9 },
-        { name: '4:3', ratio: 4 / 3 },
-        { name: '1:1', ratio: 1 },
-        { name: '21:9', ratio: 21 / 9 },
-      ];
-
-      ratios.forEach((ratioObj, index) => {
-        const ratioWidth = Math.min(width, height * ratioObj.ratio);
-        const ratioHeight = ratioWidth / ratioObj.ratio;
-        const x = (width - ratioWidth) / 2;
-        const y = (height - ratioHeight) / 2;
-
-        ctx.strokeStyle = `${settings.color}${Math.floor(settings.opacity * 0.5 * 255).toString(16).padStart(2, '0')}`;
-        ctx.beginPath();
-        ctx.rect(xyratioWidth, ratioHeight);
-        ctx.stroke();
-
-        // Label
-        ctx.fillStyle = settings.color;
-        ctx.font = '12px Arial';
-        ctx.fillText(ratioObj.name, x + 5, y + 15);
-    });
-  }
-
-    // Safe Areas
-    if (activeGuides.has('safe-areas') && settings.safeAreas) {
-      const titleSafe = 0.9;
-      const actionSafe = 0.95;
-      
-      // Title safe area
-      ctx.strokeStyle = `${settings.color}80`;
-      ctx.beginPath();
-      ctx.rect(
-        width * (1 - titleSafe) / 2,
-        height * (1 - titleSafe) / 2,
-        width * titleSafe,
-        height * titleSafe
-      );
-      ctx.stroke();
-
-      // Action safe area
-      ctx.strokeStyle = `${settings.color}60`;
-      ctx.beginPath();
-      ctx.rect(
-        width * (1 - actionSafe) / 2,
-        height * (1 - actionSafe) / 2,
-        width * actionSafe,
-        height * actionSafe
-      );
-      ctx.stroke();
-  }
-}, [settings, activeGuides]);
-
-  // Update canvas when settings change
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !isVisible) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-
-    ctx.clearRect(0canvas.width, canvas.height);
-    drawOverlayGuides(ctx, canvas.width, canvas.height);
-}, [settings, activeGuides, isVisible, drawOverlayGuides]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
-          case 'g':
-            e.preventDefault();
-            onToggle(!isVisible);
-            break;
-          case 'a':
-            e.preventDefault();
-            analyzeComposition();
-            break;
-          case 's':
-            e.preventDefault();
-            setShowSettings(!showSettings);
-            break;
-    }
     }
   };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-}, [isVisible, onToggle, analyzeComposition, showSettings]);
-
-  if (!isVisible) return null;
-
   return (
-    <Box
-      ref={overlayRef}
-      sx={{
-        position: 'fixed',
-        top:  0,
-        left:  0,
-        right:  0,
-        bottom:  0,
-        pointerEvents: 'none',
-        zIndex: 10}}
-    >
-      {/* Overlay Canvas */}
-      <canvas
-        ref={canvasRef}
-        style={{
-          position: 'absolute',
-          top:  0,
-          left:  0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none'}}
-      />
-
-      {/* Control Panel */}
-      <Paper
-        sx={{
-          position: 'fixed',
-          top:  20,
-          right:  20,
-          width: 30,
-          maxHeight: '80vh',
-          overflow: 'auto',
-          pointerEvents: 'auto',
-          opacity: 0.5}}
-       sx={theming.getThemedCardSx()}>
-        <Box sx={{ p:  2 }}>
-          {/* Header */}
-          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb:  2 }}>
-            <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-              <CameraAlt />
-              Composition Overlay
-            </Typography>
-            <Stack direction="row" spacing={1}>
-              <Tooltip title="Analyze Composition (Ctrl+A)">
-                <IconButton
-                  onClick={analyzeComposition}
-                  disabled={isAnalyzing || !currentImageUrl}
-                  size="small"
-                >
-                  {theming.getThemedIcon('autoFixHigh')}
-                </IconButton>
-              </Tooltip>
-              <Tooltip title="Settings (Ctrl+S)">
-                <IconButton onClick={() => setShowSettings(true)} size="small">
-                  {theming.getThemedIcon('settings')}
-                </IconButton>
-              </Tooltip>
-              <IconButton onClick={() => onToggle(false)} size="small">
-                {theming.getThemedIcon('visibilityOff')}
-              </IconButton>
-            </Stack>
-          </Stack>
-
-          {/* Quick Toggle */}
-          <FormControlLabel
-            control={
-              <Switch
-                checked={showGuides}
-                onChange={(e) => setShowGuides(e.target.checked)}
-              />
-          }
-            label="Show Guides"
-            sx={{ mb:  2 }}
-          />
-
-          {/* Composition Guides */}
-          <Accordion expanded={showGuides}>
-            <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-              <Typography variant="subtitle2">Composition Guides</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={1}>
-                {COMPOSITION_GUIDES.map((guide) => (
-                  <Grid item xs={12} key={guide.id}>
-                    <Card
-                      sx={{
-                        cursor: 'pointer',
-                        border: activeGuides.has(guide.id) ? 2 : 1,
-                        borderColor: activeGuides.has(guide.id) ? 'primary.main' : 'divider', '&:hover': { boxShadow:  2 }}}
-                      onClick={() => toggleGuide(guide.id)}
-                    >
-                      <CardContent sx={{ p: 1, '&:last-child': { pb: 1 }, ...theming.getThemedCardSx() }}>
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          {guide.icon}
-                          <Box sx={{ flex: 1, minWidth:  0 }}>
-                            <Typography variant="caption" fontWeight={600} noWrap>
-                              {guide.name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {guide.category}
-                            </Typography>
-                          </Box>
-                          {activeGuides.has(guide.id) && (
-                            <CheckCircle color="primary" fontSize="small" />
-                          )}
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-
-          {/* Story Context */}
-          <Box sx={{ mt:  2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              Story Context
-            </Typography>
-            <Stack direction="row" spacing={1}, sx={{ flexWrap: 'wrap', gap:  1 }}>
-              <Chip
-                label={storyType}
-                size="small"
-                icon={<Movie />}
-                color="primary"
-                variant="outlined"
-              />
-              <Chip
-                label={currentPhase}
-                size="small"
-                icon={<Box />}
-                color="secondary"
-                variant="outlined"
-              />
-            </Stack>
-          </Box>
-
-          {/* Quick Actions */}
-          <Stack spacing={1}, sx={{ mt:  2 }}>
-            <Button
-              variant="outlined"
-              startIcon={<Lightbulb />}
-              onClick={() => setShowAnalysis(true)}
-              disabled={!analysisResult}
-              size="small"
-              fullWidth
-            >
-              View Analysis
-            </Button>
-            <Button variant="contained"
-              startIcon={theming.getThemedIcon('autoFixHigh')}
-              onClick={analyzeComposition}
-              disabled={isAnalyzing || !currentImageUrl}
-              size="small"
-              fullWidth
-             sx={theming.getThemedButtonSx()}>
-              {isAnalyzing ? 'Analyzing...' : 'Analyze Composition'}
-            </Button>
-          </Stack>
-
-          {/* Keyboard Shortcuts */}
-          <Box sx={{ mt:  2 }}>
-            <Typography variant="caption" color="text.secondary">
-              Shortcuts: Ctrl+G (Toggle), Ctrl+A (Analyze), Ctrl+S (Settings)
-            </Typography>
-          </Box>
+    <Paper variant="outlined" sx={{ p: 2 }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        alignItems={{ xs: 'flex-start', md: 'center' }}
+        justifyContent="space-between"
+        spacing={1.5}
+        sx={{ mb: 2 }}
+      >
+        <Box>
+          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <GridOn fontSize="small" />
+            Composition Overlay
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {storyTypeLabel(storyType)} • {currentPhase} • {activeGuides.length} active guides
+          </Typography>
         </Box>
-      </Paper>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant={isVisible ? 'contained' : 'outlined'}
+            startIcon={isVisible ? <Visibility /> : <VisibilityOff />}
+            onClick={() => onToggle(!isVisible)}
+            sx={isVisible ? theming.getThemedButtonSx() : undefined}
+          >
+            {isVisible ? 'Overlay On' : 'Overlay Off'}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<AutoFixHigh />}
+            onClick={analyzeComposition}
+            disabled={isAnalyzing}
+          >
+            {isAnalyzing ? 'Analyzing…' : 'Analyze'}
+          </Button>
+          <IconButton onClick={() => setShowSettingsDialog(true)}>
+            <Settings fontSize="small" />
+          </IconButton>
+        </Stack>
+      </Stack>
 
-      {/* Settings Dialog */}
-      <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Overlay Settings</DialogTitle>
+      <Box
+        sx={{
+          position: 'relative',
+          width: '100%',
+          aspectRatio: '16 / 9',
+          borderRadius: 1,
+          overflow: 'hidden',
+          bgcolor: '#101824',
+          border: '1px solid',
+          borderColor: 'divider',
+          backgroundImage: currentImageUrl
+            ? `url(${currentImageUrl})`
+            : 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {isVisible && (
+          <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+            {settings.ruleOfThirds && (
+              <>
+                <line x1="33.333" y1="0" x2="33.333" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="66.666" y1="0" x2="66.666" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="0" y1="33.333" x2="100" y2="33.333" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="0" y1="66.666" x2="100" y2="66.666" stroke={stroke} strokeWidth={settings.thickness} />
+              </>
+            )}
+
+            {settings.goldenRatio && (
+              <>
+                <line x1="38.2" y1="0" x2="38.2" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="61.8" y1="0" x2="61.8" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="0" y1="38.2" x2="100" y2="38.2" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="0" y1="61.8" x2="100" y2="61.8" stroke={stroke} strokeWidth={settings.thickness} />
+              </>
+            )}
+
+            {settings.centerCrosshair && (
+              <>
+                <line x1="50" y1="0" x2="50" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="0" y1="50" x2="100" y2="50" stroke={stroke} strokeWidth={settings.thickness} />
+              </>
+            )}
+
+            {settings.diagonalLines && (
+              <>
+                <line x1="0" y1="0" x2="100" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+                <line x1="100" y1="0" x2="0" y2="100" stroke={stroke} strokeWidth={settings.thickness} />
+              </>
+            )}
+
+            {settings.symmetryLines && (
+              <>
+                <line x1="25" y1="0" x2="25" y2="100" stroke={stroke} strokeWidth={settings.thickness} strokeDasharray="2 2" />
+                <line x1="75" y1="0" x2="75" y2="100" stroke={stroke} strokeWidth={settings.thickness} strokeDasharray="2 2" />
+                <line x1="0" y1="25" x2="100" y2="25" stroke={stroke} strokeWidth={settings.thickness} strokeDasharray="2 2" />
+                <line x1="0" y1="75" x2="100" y2="75" stroke={stroke} strokeWidth={settings.thickness} strokeDasharray="2 2" />
+              </>
+            )}
+
+            {settings.safeAreas && (
+              <rect
+                x="10"
+                y="10"
+                width="80"
+                height="80"
+                fill="none"
+                stroke={stroke}
+                strokeWidth={settings.thickness}
+                strokeDasharray="3 2"
+              />
+            )}
+
+            {settings.aspectRatio && (
+              <rect
+                x="6"
+                y="18"
+                width="88"
+                height="64"
+                fill="none"
+                stroke={stroke}
+                strokeWidth={Math.max(1, settings.thickness - 0.5)}
+              />
+            )}
+
+            {settings.goldenSpiral && (
+              <path
+                d="M 0 100 Q 0 0 100 0 Q 60 60 20 80"
+                fill="none"
+                stroke={stroke}
+                strokeWidth={settings.thickness}
+              />
+            )}
+          </svg>
+        )}
+      </Box>
+
+      <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }} useFlexGap>
+        {activeGuides.map((guide) => (
+          <Chip key={guide} label={guide} size="small" variant="outlined" />
+        ))}
+      </Stack>
+
+      {analysis && (
+        <Card variant="outlined" sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle1" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Straighten fontSize="small" />
+              Composition Analysis (Score {analysis.score}/100)
+            </Typography>
+            <Stack spacing={1}>
+              <Typography variant="body2" color="text.secondary">
+                Generated {new Date(analysis.generatedAt).toLocaleString()}
+              </Typography>
+
+              {analysis.strengths.length > 0 && (
+                <Alert severity="success">
+                  <Typography variant="subtitle2">Strengths</Typography>
+                  <ul>
+                    {analysis.strengths.map((item) => (
+                      <li key={item}>
+                        <Typography variant="body2">{item}</Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Alert>
+              )}
+
+              {analysis.weaknesses.length > 0 && (
+                <Alert severity="warning">
+                  <Typography variant="subtitle2">Weaknesses</Typography>
+                  <ul>
+                    {analysis.weaknesses.map((item) => (
+                      <li key={item}>
+                        <Typography variant="body2">{item}</Typography>
+                      </li>
+                    ))}
+                  </ul>
+                </Alert>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={showSettingsDialog} onClose={() => setShowSettingsDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Palette fontSize="small" />
+          Overlay Settings
+        </DialogTitle>
         <DialogContent>
-          <Stack spacing={3}, sx={{ mt:  1 }}>
-            {/* Opacity */}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="subtitle2">Guides</Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.ruleOfThirds}
+                  onChange={(event) => updateSetting('ruleOfThirds', event.target.checked)}
+                />
+              }
+              label="Rule of Thirds"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.goldenRatio}
+                  onChange={(event) => updateSetting('goldenRatio', event.target.checked)}
+                />
+              }
+              label="Golden Ratio"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.goldenSpiral}
+                  onChange={(event) => updateSetting('goldenSpiral', event.target.checked)}
+                />
+              }
+              label="Golden Spiral"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.centerCrosshair}
+                  onChange={(event) => updateSetting('centerCrosshair', event.target.checked)}
+                />
+              }
+              label="Center Crosshair"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.diagonalLines}
+                  onChange={(event) => updateSetting('diagonalLines', event.target.checked)}
+                />
+              }
+              label="Diagonal Lines"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.symmetryLines}
+                  onChange={(event) => updateSetting('symmetryLines', event.target.checked)}
+                />
+              }
+              label="Symmetry Lines"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.aspectRatio}
+                  onChange={(event) => updateSetting('aspectRatio', event.target.checked)}
+                />
+              }
+              label="Aspect Ratio"
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.safeAreas}
+                  onChange={(event) => updateSetting('safeAreas', event.target.checked)}
+                />
+              }
+              label="Safe Areas"
+            />
+
+            <Divider />
+
+            <Typography variant="subtitle2">Style</Typography>
+            <TextField
+              label="Guide Color"
+              type="color"
+              value={settings.color}
+              onChange={(event) => updateSetting('color', event.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+
             <Box>
-              <Typography gutterBottom>Opacity: {Math.round(settings.opacity * 10)}%</Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Opacity ({settings.opacity.toFixed(2)})
+              </Typography>
               <Slider
                 value={settings.opacity}
-                onChange={(_, value) => updateSetting('opacity', value)}
                 min={0.1}
                 max={1}
-                step={0.1}
-                valueLabelDisplay="auto"
-                valueLabelFormat={(value) => `${Math.round(value * 100)}%`}
+                step={0.01}
+                onChange={(_, value) => updateSetting('opacity', value as number)}
               />
             </Box>
 
-            {/* Line Thickness */}
             <Box>
-              <Typography gutterBottom>Line Thickness: {settings.thickness}px</Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Thickness ({settings.thickness}px)
+              </Typography>
               <Slider
                 value={settings.thickness}
-                onChange={(_, value) => updateSetting('thickness', value)}
                 min={1}
-                max={5}
+                max={6}
                 step={1}
-                marks
-                valueLabelDisplay="auto"
+                onChange={(_, value) => updateSetting('thickness', value as number)}
               />
-            </Box>
-
-            {/* Color */}
-            <Box>
-              <Typography gutterBottom>Color</Typography>
-              <Stack direction="row" spacing={1}>
-                {['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff'].map((color) => (
-                  <Box
-                    key={color}
-                    sx={{
-                      width:  30,
-                      height:  30,
-                      bgcolor: color,
-                      border: settings.color === color ? 3 : 1,
-                      borderColor: settings.color === color ? 'primary.main' : 'divider',
-                      cursor: 'pointer',
-                      borderRadius:  1}}
-                    onClick={() => updateSetting('color', color)}
-                  />
-                ))}
-              </Stack>
-            </Box>
-
-            {/* Guide Toggles */}
-            <Box>
-              <Typography gutterBottom>Guide Options</Typography>
-              <Stack spacing={1}>
-                {COMPOSITION_GUIDES.map((guide) => (
-                  <FormControlLabel
-                    key={guide.id}
-                    control={
-                      <Switch
-                        checked={activeGuides.has(guide.id)}
-                        onChange={() => toggleGuide(guide.id)}
-                      />
-                  }
-                    label={guide.name}
-                  />
-                ))}
-              </Stack>
             </Box>
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowSettings(false)}>Close</Button>
-          <Button onClick={() => setSettings(INITIAL_OVERLAY_SETTINGS)}>Reset</Button>
+          <Button onClick={() => setShowSettingsDialog(false)} startIcon={<ExpandMore />}>
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Analysis Dialog */}
-      <Dialog open={showAnalysis} onClose={() => setShowAnalysis(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Composition Analysis</DialogTitle>
-        <DialogContent>
-          {analysisResult && (
-            <Stack spacing={3}>
-              {/* Overall Score */}
-              <Box sx={{ textAlign: 'center'}}>
-                <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                  {analysisResult.overallScore}/100
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Overall Composition Score
-                </Typography>
-              </Box>
-
-              {/* Strengths */}
-              {analysisResult.strengths && analysisResult.strengths.length > 0 && (
-                <Box>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    <CheckCircle color="success" sx={{ mr: 1, verticalAlign: 'middle'}} />
-                    Strengths
-                  </Typography>
-                  <List dense>
-                    {analysisResult.strengths.map((strength: string, index: number) => (
-                      <ListItem key={index}>
-                        <ListItemIcon>
-                          <CheckCircle color="success" fontSize="small" />
-                        </ListItemIcon>
-                        <ListItemText primary={strength} />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-
-              {/* Improvements */}
-              {analysisResult.improvements && analysisResult.improvements.length > 0 && (
-                <Box>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    <Warning color="warning" sx={{ mr: 1, verticalAlign: 'middle'}} />
-                    Areas for Improvement
-                  </Typography>
-                  <List dense>
-                    {analysisResult.improvements.map((improvement: string, index: number) => (
-                      <ListItem key={index}>
-                        <ListItemIcon>
-                          <Warning color="warning" fontSize="small" />
-                        </ListItemIcon>
-                        <ListItemText primary={improvement} />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-
-              {/* Suggestions */}
-              {analysisResult.suggestions && analysisResult.suggestions.length > 0 && (
-                <Box>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    <Lightbulb color="info" sx={{ mr: 1, verticalAlign: 'middle'}} />
-                    AI Suggestions
-                  </Typography>
-                  <Grid container spacing={2}>
-                    {analysisResult.suggestions.map((suggestion: any, index: number) => (
-                      <Grid item xs={12} key={index}>
-                        <Card variant="outlined" sx={theming.getThemedCardSx()}>
-                          <CardContent sx={theming.getThemedCardSx()}>
-                            <Stack direction="row" alignItems="center" spacing={1}, sx={{ mb:  1 }}>
-                              <Typography variant="subtitle2">{suggestion.title}</Typography>
-                              <Chip
-                                label={suggestion.priority}
-                                size="small"
-                                color={
-                                  suggestion.priority === 'high' ? 'error' :
-                                  suggestion.priority === 'medium' ? 'warning' : 'default'
-                              }
-                              />
-                            </Stack>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                              {suggestion.description}
-                            </Typography>
-                            <Typography variant="caption" color="primary">
-                              Impact: {suggestion.impact}
-                            </Typography>
-                          </CardContent>
-                          <CardActions sx={theming.getThemedCardSx()}>
-                            <Button size="small" startIcon={theming.getThemedIcon('autoFixHigh')}>
-                              Apply
-                            </Button>
-                          </CardActions>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              )}
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowAnalysis(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+    </Paper>
   );
 }

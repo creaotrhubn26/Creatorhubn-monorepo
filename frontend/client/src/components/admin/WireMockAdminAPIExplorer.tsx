@@ -47,7 +47,7 @@ const ADMIN_API_ENDPOINTS: AdminAPIEndpoint[] = [
     description: 'Create a new stub mapping',
     requestBody: JSON.stringify({
       request: {
-        method: 'GET,',
+        method: 'GET',
         url: '/api/example'
       },
       response: {

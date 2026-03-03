@@ -43,22 +43,23 @@ import {
 } from '@mui/icons-material';
 
 // Import all tool components
-import { AdvancedTools } from './AdvancedTools';
-import { NoteEditorPanel } from './NoteEditorPanel';
-import { AnimationTools } from './AnimationTools';
-import { AnimationDashboard } from './AnimationDashboard';
-import { AnalyticsDashboard } from './AnalyticsDashboard';
-import { AIIntegrationDashboard } from './AIIntegrationDashboard';
-import { AIAssistanceDashboard } from './AIAssistanceDashboard';
-import { CollaborationDashboard } from './CollaborationDashboard';
-import { CollaborationTools } from './CollaborationTools';
-import { ComponentLibraryDashboard } from './ComponentLibraryDashboard';
-import { DesignSystemDashboard } from './DesignSystemDashboard';
-import { ExportDashboard } from './ExportDashboard';
-import { ExportPresetsDashboard } from './ExportPresetsDashboard';
-import { DashboardIntegrationPanel } from './DashboardIntegrationPanel';
-import { DashboardComponentManager } from './DashboardComponentManager';
+import AdvancedTools from './AdvancedTools';
+import NoteEditorPanel from './NoteEditorPanel';
+import AnimationTools from './AnimationTools';
+import AnimationDashboard from './AnimationDashboard';
+import AnalyticsDashboard from './AnalyticsDashboard';
+import AIIntegrationDashboard from './AIIntegrationDashboard';
+import AIAssistanceDashboard from './AIAssistanceDashboard';
+import CollaborationDashboard from './CollaborationDashboard';
+import CollaborationTools from './CollaborationTools';
+import ComponentLibraryDashboard from './ComponentLibraryDashboard';
+import DesignSystemDashboard from './DesignSystemDashboard';
+import ExportDashboard from './ExportDashboard';
+import ExportPresetsDashboard from './ExportPresetsDashboard';
+import DashboardIntegrationPanel from './DashboardIntegrationPanel';
+import DashboardComponentManager from './DashboardComponentManager';
 import { useVisualEditor } from './VisualEditorContext';
+import type { EditorElement, Notification } from './VisualEditorContext';
 
 interface ToolsPanelProps {
   isOpen: boolean;
@@ -66,7 +67,7 @@ interface ToolsPanelProps {
   mode?: 'drawer' | 'dialog';
   selectedProject?: { id: string; name?: string };
   onProjectUpdate?: (project: unknown) => void;
-  onNotificationCreate?: (notification: unknown) => void;
+  onNotificationCreate?: (notification: Record<string, unknown>) => void;
 }
 
 interface TabPanelProps {
@@ -74,6 +75,46 @@ interface TabPanelProps {
   index: number;
   value: number;
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const isEditorElementInput = (value: unknown): value is Omit<EditorElement, 'id'> =>
+  isRecord(value) &&
+  typeof value.type === 'string' &&
+  typeof value.x === 'number' &&
+  typeof value.y === 'number' &&
+  typeof value.width === 'number' &&
+  typeof value.height === 'number' &&
+  isRecord(value.styles) &&
+  isRecord(value.props);
+
+const normalizeNotification = (
+  notification: Record<string, unknown>,
+): Omit<Notification, 'id' | 'timestamp'> => {
+  const type = notification.type;
+  const normalizedType: Notification['type'] =
+    type === 'success' || type === 'warning' || type === 'error' || type === 'info'
+      ? type
+      : 'info';
+
+  const action = isRecord(notification.action)
+    && typeof notification.action.label === 'string'
+    && typeof notification.action.callback === 'function'
+      ? {
+          label: notification.action.label,
+          callback: notification.action.callback as () => void,
+        }
+      : undefined;
+
+  return {
+    type: normalizedType,
+    title: typeof notification.title === 'string' ? notification.title : 'Tool Notification',
+    message: typeof notification.message === 'string' ? notification.message : '',
+    read: typeof notification.read === 'boolean' ? notification.read : false,
+    action,
+  };
+};
 
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
@@ -169,10 +210,14 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({
   onNotificationCreate,
 }) => {
   const [activeTab, setActiveTab] = useState(0);
+  const noop = () => undefined;
 
   // Connect to Visual Editor context
   const { state, addElement, updateElement, selectElement, addNotification, setZoom, saveProject } =
     useVisualEditor();
+  const resolvedProject =
+    selectedProject
+    ?? (state.currentProject ? { id: state.currentProject.id, name: state.currentProject.name } : undefined);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
@@ -181,21 +226,34 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({
   // Handle tool actions that communicate with Visual Editor
   const handleToolAction = (action: string, data: unknown) => {
     switch (action) {
-      case 'addElement': addElement(data);
-        addNotification({
-          type: 'success',
-          title: 'Element Added',
-          message: `Added ${data.type} to canvas`,
-          read: false,
-        });
+      case 'addElement':
+        if (isEditorElementInput(data)) {
+          addElement(data);
+          addNotification({
+            type: 'success',
+            title: 'Element Added',
+            message: `Added ${data.type} to canvas`,
+            read: false,
+          });
+        }
         break;
-      case 'updateElement': updateElement(data.id, data.updates);
+      case 'updateElement':
+        if (isRecord(data) && typeof data.id === 'string' && isRecord(data.updates)) {
+          updateElement(data.id, data.updates as Partial<EditorElement>);
+        }
         break;
-      case 'selectElement': selectElement(data.id);
+      case 'selectElement':
+        if (isRecord(data) && typeof data.id === 'string') {
+          selectElement(data.id);
+        }
         break;
-      case 'setZoom': setZoom(data.zoom);
+      case 'setZoom':
+        if (isRecord(data) && typeof data.zoom === 'number') {
+          setZoom(data.zoom);
+        }
         break;
-      case 'saveProject': saveProject();
+      case 'saveProject':
+        saveProject();
         addNotification({
           type: 'success',
           title: 'Project Saved',
@@ -244,11 +302,13 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({
           variant="scrollable"
           scrollButtons="auto"
           sx={{
-            minHeight: 48'& .MuiTab-root': {
+            minHeight: 48,
+            '& .MuiTab-root': {
               minHeight: 48,
               textTransform: 'none',
               fontSize: '0.875rem',
-            }}}
+            },
+          }}
         >
           {TOOL_CATEGORIES.map((tool, index) => (
             <Tab
@@ -280,15 +340,21 @@ export const ToolsPanel: React.FC<ToolsPanelProps> = ({
           return (
             <TabPanel key={tool.label} value={activeTab} index={index}>
               <ToolComponent
-                selectedProject={selectedProject || state.currentProject}
+                selectedProject={resolvedProject}
                 onProjectUpdate={onProjectUpdate}
-                onNotificationCreate={(notification) => {
+                onNotificationCreate={(notification: Record<string, unknown>) => {
                   if (onNotificationCreate) {
                     onNotificationCreate(notification);
                   } else {
-                    addNotification(notification);
+                    addNotification(normalizeNotification(notification));
                   }
                 }}
+                onSettingsClick={noop}
+                onSuggestionsClick={noop}
+                onConversationsClick={noop}
+                onCodeGenerationClick={noop}
+                onDesignSuggestionsClick={noop}
+                onWorkflowsClick={noop}
               />
             </TabPanel>
           );

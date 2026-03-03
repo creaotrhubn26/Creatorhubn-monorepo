@@ -80,7 +80,7 @@ export const AdminConsole: React.FC = () => {
   const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
 
   // User
   const { user } = useAuth();

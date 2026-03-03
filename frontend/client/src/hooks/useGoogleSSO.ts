@@ -83,16 +83,25 @@ export const useGoogleSSO = () => {
   const getCurrentUser = useCallback(async (): Promise<GoogleUser | null> => {
     // First check integration provider
     if (auth.state.isAuthenticated && auth.state.user) {
+      const rawRole = String(auth.state.user.role ?? '').trim().replace(/,$/, '');
+      const normalizedRole: GoogleUser['role'] =
+        rawRole === 'admin' ||
+        rawRole === 'prototype_tester' ||
+        rawRole === 'learner' ||
+        rawRole === 'instructor'
+          ? rawRole
+          : 'learner';
+
       return {
         id: auth.state.user.id,
         email: auth.state.user.email,
         name: auth.state.user.name,
-        picture: auth.state.user.picture || ', ',
+        picture: auth.state.user.picture || '',
         verified_email: true,
-        role: auth.state.user.role,
+        role: normalizedRole,
         permissions: auth.state.user.permissions,
         organization: auth.state.user.organization,
-        isAdmin: auth.state.user.role ==='admin',
+        isAdmin: normalizedRole === 'admin',
       };
     }
 

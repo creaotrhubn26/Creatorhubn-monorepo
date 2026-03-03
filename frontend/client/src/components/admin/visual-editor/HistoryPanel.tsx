@@ -46,16 +46,43 @@ export const HistoryPanel: React.FC = () => {
     redo,
     canUndo,
     canRedo,
-    jumpToHistory,
-    clearHistory,
-    getUndoDescription,
-    getRedoDescription,
   } = useVisualEditor();
 
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [historyViewStart, setHistoryViewStart] = useState(0);
+
+  type TimelineEntry = {
+    id: string;
+    action: string;
+    description: string;
+    timestamp: string;
+    userName?: string;
+  };
+
+  const timelineEntries: TimelineEntry[] = state.history.map((_, index) => {
+    const historyEntry = state.historyEntries[index];
+    return {
+      id: historyEntry?.id ?? `snapshot-${index}`,
+      action: historyEntry?.action ?? 'snapshot',
+      description: historyEntry?.description ?? `History state ${index + 1}`,
+      timestamp: historyEntry?.timestamp ?? new Date().toISOString(),
+      userName: undefined,
+    };
+  });
 
   const handleJumpTo = (index: number) => {
-    jumpToHistory(index);
+    if (index < 0 || index >= state.history.length || index === state.historyIndex) {
+      return;
+    }
+
+    const stepCount = Math.abs(index - state.historyIndex);
+    for (let step = 0; step < stepCount; step += 1) {
+      if (index < state.historyIndex) {
+        undo();
+      } else {
+        redo();
+      }
+    }
   };
 
   const handleClearHistory = () => {
@@ -63,12 +90,16 @@ export const HistoryPanel: React.FC = () => {
   };
 
   const executeClearHistory = () => {
-    clearHistory();
+    setHistoryViewStart(state.historyIndex);
     setConfirmClearOpen(false);
   };
 
-  const undoDescription = getUndoDescription();
-  const redoDescription = getRedoDescription();
+  const undoDescription =
+    state.historyIndex > historyViewStart
+      ? timelineEntries[state.historyIndex - 1]?.description ?? null
+      : null;
+  const redoDescription = timelineEntries[state.historyIndex + 1]?.description ?? null;
+  const visibleEntries = timelineEntries.slice(historyViewStart);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -91,7 +122,7 @@ export const HistoryPanel: React.FC = () => {
           <Box
             sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">Quick Actions</Typography>
-            <Chip label={`${state.history.length} entries`} color="primary" size="small" />
+            <Chip label={`${visibleEntries.length} entries`} color="primary" size="small" />
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
@@ -116,7 +147,7 @@ export const HistoryPanel: React.FC = () => {
               color="error"
               startIcon={<Clear />}
               onClick={handleClearHistory}
-              disabled={state.history.length === 0}
+              disabled={visibleEntries.length === 0}
             >
               Clear History
             </Button>
@@ -148,7 +179,7 @@ export const HistoryPanel: React.FC = () => {
             Click on any point to restore that state
           </Typography>
 
-          {state.history.length === 0 ? (
+          {visibleEntries.length === 0 ? (
             <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.default' }}>
               <History sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
               <Typography variant="body2" color="textSecondary">
@@ -157,10 +188,11 @@ export const HistoryPanel: React.FC = () => {
             </Paper>
           ) : (
             <List sx={{ maxHeight: 600, overflow: 'auto' }}>
-              {state.history.map((entry, index) => {
-                const isCurrent = index === state.historyIndex;
-                const isPast = index < state.historyIndex;
-                const isFuture = index > state.historyIndex;
+              {visibleEntries.map((entry, visibleIndex) => {
+                const actualIndex = historyViewStart + visibleIndex;
+                const isCurrent = actualIndex === state.historyIndex;
+                const isPast = actualIndex < state.historyIndex;
+                const isFuture = actualIndex > state.historyIndex;
 
                 return (
                   <React.Fragment key={entry.id}>
@@ -181,7 +213,7 @@ export const HistoryPanel: React.FC = () => {
                             ? 'background.paper'
                             : 'action.disabledBackground',
                         opacity: isFuture ? 0.5 : 1}}>
-                      <ListItemButton onClick={() => handleJumpTo(index)} disabled={isCurrent}>
+                      <ListItemButton onClick={() => handleJumpTo(actualIndex)} disabled={isCurrent}>
                         <ListItemIcon>
                           {isCurrent ? (
                             <CheckCircle color="primary" />
@@ -226,7 +258,7 @@ export const HistoryPanel: React.FC = () => {
                               color="primary"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleJumpTo(index);
+                                handleJumpTo(actualIndex);
                               }}
                             >
                               <RestoreFromTrash fontSize="small" />
@@ -235,11 +267,11 @@ export const HistoryPanel: React.FC = () => {
                         )}
                       </ListItemButton>
                     </ListItem>
-                    {index < state.history.length - 1 && (
+                    {visibleIndex < visibleEntries.length - 1 && (
                       <Divider
                         sx={{
                           ml: 4,
-                          borderColor: index < state.historyIndex ? 'success.main' : 'grey.300'}} />
+                          borderColor: actualIndex < state.historyIndex ? 'success.main' : 'grey.300'}} />
                     )}
                   </React.Fragment>
                 );
@@ -260,7 +292,7 @@ export const HistoryPanel: React.FC = () => {
               <Typography variant="caption" color="textSecondary">
                 Total Entries
               </Typography>
-              <Typography variant="h4">{state.history.length}</Typography>
+              <Typography variant="h4">{visibleEntries.length}</Typography>
             </Paper>
             <Paper sx={{ p: 2, flex: 1, minWidth: 150 }}>
               <Typography variant="caption" color="textSecondary">

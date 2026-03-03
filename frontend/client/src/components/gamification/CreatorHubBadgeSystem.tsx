@@ -1,51 +1,45 @@
 /**
- * CreatorHub Verified Badge System - Gamifisert belønningssystem
- * Brukere tjener poeng og badges gjennom å lage kvalitets-tutorials
+ * CreatorHub Verified Badge System - Gamifisert belonningssystem
+ * Brukere tjener poeng og badges gjennom a lage kvalitets-tutorials
  */
 
+import React, { useMemo, useState } from 'react';
 import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  LinearProgress,
-  Avatar,
   Chip,
-  Button,
   Dialog,
-  DialogTitle,
   DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider,
-  Grid,
-  IconButton,
-  Tooltip,
-  Alert,
-  Badge,
-  Stepper,
   Step,
   StepLabel,
-  StepIcon,
+  Stepper,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Verified as VerifiedIcon,
-  Star as StarIcon,
+  Close as CloseIcon,
   EmojiEvents as TrophyIcon,
+  Psychology as ExpertIcon,
+  Security as QualityIcon,
+  Star as StarIcon,
+  TrendingUp as TrendingIcon,
+  Verified as VerifiedIcon,
   VideoLibrary as VideoIcon,
   PhotoLibrary as PhotoIcon,
-  ThumbUp as LikeIcon,
   Visibility as ViewIcon,
-  TrendingUp as TrendingIcon,
-  Speed as SpeedIcon,
-  Security as QualityIcon,
-  Psychology as ExpertIcon,
-  Close as CloseIcon,
-  Info as InfoIcon,
 } from '@mui/icons-material';
 
 interface BadgeLevel {
@@ -56,7 +50,7 @@ interface BadgeLevel {
   color: string;
   icon: React.ReactNode;
   benefits: string[];
-  nextLevel?: string
+  nextLevel?: string;
 }
 
 interface UserProgress {
@@ -70,7 +64,7 @@ interface UserProgress {
   averageRating: number;
   faqPublished: number;
   streakDays: number;
-  lastActivity: string
+  lastActivity: string;
 }
 
 interface Achievement {
@@ -80,206 +74,208 @@ interface Achievement {
   icon: React.ReactNode;
   points: number;
   unlocked: boolean;
-  unlockedAt?: string
 }
-
-const BADGE_LEVELS: BadgeLevel[] = [
-  {
-    id: 'newcomer',
-    name: 'Newcomer',
-    description: 'Velkommen til CreatorHub community, !',
-    requiredPoints:  0,
-    color: '#9E9E90',
-    icon: <InfoIcon />,
-    benefits: ['Tilgang til tutorial creator','Community support'],
-    nextLevel: 'bronze'
-},
-  {
-    id: 'bronze',
-    name: 'Bronze Verified',
-    description: 'Din første verified status, !',
-    requiredPoints: 10,
-    color: '#CD7F30',
-    icon: <VerifiedIcon />,
-    benefits: ['Bronze badge','Prioritert support','Tutorial featured mulighet'],
-    nextLevel: 'silver'
-},
-  {
-    id: 'silver',
-    name: 'Silver Verified',
-    description: 'Etablert community bidragsyter',
-    requiredPoints: 30,
-    color: '#C0C0C0',
-    icon: <StarIcon />,
-    benefits: ['Silver badge','FAQ curator rolle','Beta features access'],
-    nextLevel: 'gold'
-},
-  {
-    id: 'gold',
-    name: 'Gold Verified',
-    description: 'Elite content creator',
-    requiredPoints: 70,
-    color: '#FFD700',
-    icon: <TrophyIcon />,
-    benefits: ['Gold badge','Direct FAQ publish','Revenue sharing'],
-    nextLevel: 'platinum'
-},
-  {
-    id: 'platinum',
-    name: 'Platinum Expert',
-    description: 'CreatorHub champion og ekspert',
-    requiredPoints: 150,
-    color: '#E5E4E0',
-    icon: <ExpertIcon />,
-    benefits: ['Platinum badge','Community moderator','Ekspert konsultasjoner','Platform partnership'],
-    nextLevel: undefined
-}
-];
 
 interface CreatorHubBadgeSystemProps {
   open?: boolean;
   onClose?: () => void;
   userProgress?: UserProgress;
   onPointsEarned?: (points: number, reason: string) => void;
-  // Integration props for universal workflow connectivity
   profession?: string;
   userId?: string;
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void
+  onMeetingCreate?: (meeting: unknown) => void;
+  onProjectUpdate?: (project: unknown) => void;
+  onWorklogCreate?: (worklog: unknown) => void;
+  selectedProject?: unknown;
+  onProjectSelect?: (project: unknown) => void;
 }
+
+const BADGE_LEVELS: BadgeLevel[] = [
+  {
+    id: 'newcomer',
+    name: 'Newcomer',
+    description: 'Velkommen til CreatorHub community',
+    requiredPoints: 0,
+    color: '#9E9E9E',
+    icon: <VerifiedIcon fontSize="small" />,
+    benefits: ['Tilgang til tutorial creator', 'Community support'],
+    nextLevel: 'bronze',
+  },
+  {
+    id: 'bronze',
+    name: 'Bronze Verified',
+    description: 'Din forste verified-status',
+    requiredPoints: 10,
+    color: '#CD7F32',
+    icon: <VerifiedIcon fontSize="small" />,
+    benefits: ['Bronze badge', 'Prioritert support', 'Tutorial featured mulighet'],
+    nextLevel: 'silver',
+  },
+  {
+    id: 'silver',
+    name: 'Silver Verified',
+    description: 'Etablert community bidragsyter',
+    requiredPoints: 30,
+    color: '#C0C0C0',
+    icon: <StarIcon fontSize="small" />,
+    benefits: ['Silver badge', 'FAQ curator rolle', 'Beta features access'],
+    nextLevel: 'gold',
+  },
+  {
+    id: 'gold',
+    name: 'Gold Verified',
+    description: 'Elite content creator',
+    requiredPoints: 70,
+    color: '#FFD700',
+    icon: <TrophyIcon fontSize="small" />,
+    benefits: ['Gold badge', 'Direct FAQ publish', 'Revenue sharing'],
+    nextLevel: 'platinum',
+  },
+  {
+    id: 'platinum',
+    name: 'Platinum Expert',
+    description: 'CreatorHub champion og ekspert',
+    requiredPoints: 150,
+    color: '#E5E4E2',
+    icon: <ExpertIcon fontSize="small" />,
+    benefits: ['Platinum badge', 'Community moderator', 'Ekspertkonsultasjoner', 'Platform partnership'],
+  },
+];
+
+const DEFAULT_PROGRESS: UserProgress = {
+  currentPoints: 0,
+  currentLevel: 'newcomer',
+  totalTutorials: 0,
+  videoTutorials: 0,
+  screenshotTutorials: 0,
+  totalViews: 0,
+  totalLikes: 0,
+  averageRating: 0,
+  faqPublished: 0,
+  streakDays: 0,
+  lastActivity: new Date(0).toISOString(),
+};
+
+const getCurrentLevel = (progress: UserProgress): BadgeLevel => {
+  for (let i = BADGE_LEVELS.length - 1; i >= 0; i -= 1) {
+    if (progress.currentPoints >= BADGE_LEVELS[i].requiredPoints) {
+      return BADGE_LEVELS[i];
+    }
+  }
+  return BADGE_LEVELS[0];
+};
+
+const getNextLevel = (level: BadgeLevel): BadgeLevel | null => {
+  if (!level.nextLevel) return null;
+  return BADGE_LEVELS.find((entry) => entry.id === level.nextLevel) ?? null;
+};
 
 export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
   open = false,
-  onClose = () => {},
-  userProgress = { totalPoints: 0, completedTutorials: 0, badges:  [], level: 'bronze' },
-  onPointsEarned,
-  profession,
-  userId,
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  selectedProject,
-  onProjectSelect
+  onClose,
+  userProgress = DEFAULT_PROGRESS,
 }) => {
-  const [selectedTab, setSelectedTab] = useState(false);
-  
-  // Theming system
   const theming = useTheming('photographer');
   const [showAchievements, setShowAchievements] = useState(false);
-  
-  // Calculate current and next level
-  const getCurrentLevel = (): BadgeLevel => {
-    for (let i = BADGE_LEVELS.length - 1; i >= 0; i--) {
-      if (userProgress.currentPoints >= BADGE_LEVELS[i].requiredPoints) {
-        return BADGE_LEVELS[i];
-    }
-  }
-    return BADGE_LEVELS[0];
-};
 
-  const getNextLevel = (): BadgeLevel | null => {
-    const currentLevel = getCurrentLevel();
-    const nextLevelId = currentLevel.nextLevel;
-    return nextLevelId ? BADGE_LEVELS.find(l => l.id === nextLevelId) || null : null;
-};
+  const currentLevel = useMemo(() => getCurrentLevel(userProgress), [userProgress]);
+  const nextLevel = useMemo(() => getNextLevel(currentLevel), [currentLevel]);
 
-  const currentLevel = getCurrentLevel();
-  const nextLevel = getNextLevel();
-  
-  const progressToNext = nextLevel 
-    ? ((userProgress.currentPoints - currentLevel.requiredPoints) / (nextLevel.requiredPoints - currentLevel.requiredPoints)) * 100
-    : 100;
+  const progressToNext = useMemo(() => {
+    if (!nextLevel) return 100;
+    const span = nextLevel.requiredPoints - currentLevel.requiredPoints;
+    if (span <= 0) return 100;
+    return Math.max(0, Math.min(100, ((userProgress.currentPoints - currentLevel.requiredPoints) / span) * 100));
+  }, [currentLevel, nextLevel, userProgress.currentPoints]);
 
-  const pointsToNext = nextLevel 
-    ? nextLevel.requiredPoints - userProgress.currentPoints
-    : 0;
+  const pointsToNext = nextLevel ? Math.max(0, nextLevel.requiredPoints - userProgress.currentPoints) : 0;
 
-  // Define achievements
-  const achievements: Achievement[] = [
-    {
-      id: 'first_tutorial',
-      title: 'First Steps',
-      description: 'Lag din første tutorial',
-      icon: <VideoIcon />,
-      points:  25,
-      unlocked: userProgress.totalTutorials > 0 },
-    {
-      id: 'video_master',
-      title: 'Video Master',
-      description: 'Lag 5 video-tutorials',
-      icon: <VideoIcon />,
-      points:  75,
-      unlocked: userProgress.videoTutorials >= 5 },
-    {
-      id: 'popular_creator',
-      title: 'Popular Creator',
-      description: 'Få 1000+ visninger totalt',
-      icon: <ViewIcon />,
-      points:  50,
-      unlocked: userProgress.totalViews >= 1000 },
-    {
-      id: 'quality_guru',
-      title: 'Quality Guru',
-      description: 'Oppnå 4.5+ gjennomsnittlig rating',
-      icon: <QualityIcon />,
-      points: 10,
-      unlocked: userProgress.averageRating >= 4.5 },
-    {
-      id: 'faq_contributor',
-      title: 'FAQ Contributor',
-      description: 'Få 3+ tutorials publisert i FA',
-      icon: <TrophyIcon />,
-      points: 15,
-      unlocked: userProgress.faqPublished >= 3 },
-    {
-      id: 'streak_champion',
-      title: 'Streak Champion',
-      description: '7 dager på rad med aktivitet',
-      icon: <TrendingIcon />,
-      points:  75,
-      unlocked: userProgress.streakDays >= 7 }
-  ];
+  const achievements: Achievement[] = useMemo(
+    () => [
+      {
+        id: 'first_tutorial',
+        title: 'First Steps',
+        description: 'Lag din forste tutorial',
+        icon: <VideoIcon color="primary" fontSize="small" />,
+        points: 25,
+        unlocked: userProgress.totalTutorials > 0,
+      },
+      {
+        id: 'video_master',
+        title: 'Video Master',
+        description: 'Lag 5 video-tutorials',
+        icon: <VideoIcon color="primary" fontSize="small" />,
+        points: 75,
+        unlocked: userProgress.videoTutorials >= 5,
+      },
+      {
+        id: 'popular_creator',
+        title: 'Popular Creator',
+        description: 'Fa 1000+ visninger totalt',
+        icon: <ViewIcon color="info" fontSize="small" />,
+        points: 50,
+        unlocked: userProgress.totalViews >= 1000,
+      },
+      {
+        id: 'quality_guru',
+        title: 'Quality Guru',
+        description: 'Oppna 4.5+ gjennomsnittlig rating',
+        icon: <QualityIcon color="success" fontSize="small" />,
+        points: 10,
+        unlocked: userProgress.averageRating >= 4.5,
+      },
+      {
+        id: 'faq_contributor',
+        title: 'FAQ Contributor',
+        description: 'Fa 3+ tutorials publisert i FAQ',
+        icon: <TrophyIcon color="warning" fontSize="small" />,
+        points: 15,
+        unlocked: userProgress.faqPublished >= 3,
+      },
+      {
+        id: 'streak_champion',
+        title: 'Streak Champion',
+        description: '7 dager pa rad med aktivitet',
+        icon: <TrendingIcon color="error" fontSize="small" />,
+        points: 75,
+        unlocked: userProgress.streakDays >= 7,
+      },
+    ],
+    [userProgress],
+  );
 
-  const unlockedAchievements = achievements.filter(a => a.unlocked);
-  const totalAchievementPoints = unlockedAchievements.reduce((sum, a) => sum + a.points, 0);
+  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked);
+  const totalAchievementPoints = unlockedAchievements.reduce((sum, achievement) => sum + achievement.points, 0);
 
-  // Calculate scoring breakdown
-  const getPointBreakdown = () => {
-    return {
-      videoTutorials: userProgress.videoTutorials * 25, // 25 points per video
-      screenshotTutorials: userProgress.screenshotTutorials * 10, // 10 points per screenshot
-      faqPublished: userProgress.faqPublished * 50, // 50 points per FAQ publish
-      qualityBonus: Math.floor(userProgress.averageRating * 2), // Rating * 20
-      popularityBonus: Math.floor(userProgress.totalViews / 10), // 1 point per 100 views
-      likesBonus: userProgress.totalLikes *,  2// 2 points per like
-      achievements: totalAchievementPoints,
-      streakBonus: userProgress.streakDays * 5 // 5 points per streak day
-};
-};
-
-  const pointBreakdown = getPointBreakdown();
+  const pointBreakdown = {
+    videoTutorials: userProgress.videoTutorials * 25,
+    screenshotTutorials: userProgress.screenshotTutorials * 10,
+    faqPublished: userProgress.faqPublished * 50,
+    qualityBonus: Math.floor(userProgress.averageRating * 20),
+    popularityBonus: Math.floor(userProgress.totalViews / 100),
+    likesBonus: userProgress.totalLikes * 2,
+    achievements: totalAchievementPoints,
+    streakBonus: userProgress.streakDays * 5,
+  };
 
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <Avatar 
-              sx={{ 
-                bgcolor: currentLevel.color, 
-                width:  56, 
-                height:  56,
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Avatar
+              sx={{
+                bgcolor: currentLevel.color,
+                width: 56,
+                height: 56,
                 border: '3px solid #fff',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-            }}
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              }}
             >
               {currentLevel.icon}
             </Avatar>
             <Box>
-              <Typography variant="h5" sx={{  color: currentLevel.color, fontWeight: 'bold'  }}>
+              <Typography variant="h5" sx={{ color: currentLevel.color, fontWeight: 'bold' }}>
                 CreatorHub {currentLevel.name}
               </Typography>
               <Typography variant="subtitle1" color="text.secondary">
@@ -293,158 +289,161 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
         </DialogTitle>
 
         <DialogContent>
-          {/* Progress Overview */}
-          <Card sx={{ mb:  3, background: 'linear-gradient(135deg, rgba(255,193,7,0.1), rgba(255,152,0,0.1))' ,  ...theming.getThemedCardSx() }}>
+          <Card
+            sx={{
+              mb: 3,
+              background: 'linear-gradient(135deg, rgba(255,193,7,0.1), rgba(255,152,0,0.1))',
+              ...theming.getThemedCardSx(),
+            }}
+          >
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🎯 Progress til {nextLevel ? nextLevel.name : 'Max Level Reached!'}
+                Progress til {nextLevel ? nextLevel.name : 'Maksniva'}
               </Typography>
-              
+
               {nextLevel ? (
                 <>
-                  <LinearProgress 
-                    variant="determinate" 
+                  <LinearProgress
+                    variant="determinate"
                     value={progressToNext}
-                    sx={{ 
-                      height:  12, 
-                      borderRadius:  6,
-                      bgcolor: 'rgba(0,0,0,0.1)', '& .MuiLinearProgress-bar': {
-                        background: `linear-gradient(90deg, ${currentLevel.color}, ${nextLevel.color})`
-                    }
-                  }}
+                    sx={{
+                      height: 12,
+                      borderRadius: 6,
+                      bgcolor: 'rgba(0,0,0,0.1)',
+                      '& .MuiLinearProgress-bar': {
+                        background: `linear-gradient(90deg, ${currentLevel.color}, ${nextLevel.color})`,
+                      },
+                    }}
                   />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt:  1 }}>
-                    <Typography variant="body2">
-                      {Math.round(progressToNext)}% complete
-                    </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                    <Typography variant="body2">{Math.round(progressToNext)}% fullfort</Typography>
                     <Typography variant="body2" fontWeight="bold">
                       {pointsToNext} poeng igjen
                     </Typography>
                   </Box>
-                  
-                  {/* Motivational Message when close to 70% */}
-                  {progressToNext >= 70 && (
+                  {progressToNext >= 70 ? (
                     <Alert severity="info" sx={{ mt: 2, bgcolor: 'rgba(5,118,210,0.1)' }}>
-                      🎉 <strong>Nesten der!</strong> Du er {Math.round(progressToNext)}% av veien til {nextLevel.name}! 
-                      <br />
-                      💡 Lag flere veiledninger for å låse opp din neste CreatorHub Badge!
-                      <br />
-                      🙏 <em>CreatorHub Norge setter stor pris på dine bidrag til fellesskapet!</em>
+                      Nesten der. Du er {Math.round(progressToNext)}% av veien til {nextLevel.name}.
                     </Alert>
-                  )}
-                  
-                  {/* Encouragement for lower progress */}
-                  {progressToNext < 70 && progressToNext > 0 && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(6,175,80,0.1)', borderRadius:  1 }}>
+                  ) : (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'rgba(6,175,80,0.1)', borderRadius: 1 }}>
                       <Typography variant="body2" color="text.secondary">
-                        💪 Fortsett å dele din kunnskap! Hver veiledning du lager hjelper andre og bringer deg nærmere neste badge.
+                        Fortsett a dele kunnskap. Hver veiledning gir poeng og hjelper andre.
                       </Typography>
                     </Box>
                   )}
                 </>
               ) : (
-                <Alert severity="success">
-                  🏆 Gratulerer! Du har nådd maksimalt verified nivå!
-                  <br />
-                  🙏 <strong>Tusen takk for alle dine fantastiske bidrag til CreatorHub Norge!</strong>
-                </Alert>
+                <Alert severity="success">Gratulerer! Du har nadd maksimalt niva.</Alert>
               )}
             </CardContent>
           </Card>
 
-          {/* Stats Grid */}
-          <Grid container spacing={2} sx={{ mb:  3 }}>
-            <Grid size={{ xs:  6 }} md={3}>
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ textAlign: 'center', py:  2 ,  ...theming.getThemedCardSx() }}>
-                  <VideoIcon color="primary" sx={{ fontSize:  40, mb:  1 }} />
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>{userProgress.totalTutorials}</Typography>
-                  <Typography variant="caption">Totale Tutorials</Typography>
+                <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
+                  <VideoIcon color="primary" sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {userProgress.totalTutorials}
+                  </Typography>
+                  <Typography variant="caption">Totale tutorials</Typography>
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs:  6 }} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ textAlign: 'center', py:  2 ,  ...theming.getThemedCardSx() }}>
-                  <ViewIcon color="info" sx={{ fontSize:  40, mb:  1 }} />
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>{userProgress.totalViews.toLocaleString()}</Typography>
-                  <Typography variant="caption">Totale Visninger</Typography>
+                <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
+                  <ViewIcon color="info" sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {userProgress.totalViews.toLocaleString()}
+                  </Typography>
+                  <Typography variant="caption">Visninger</Typography>
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs:  6 }} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ textAlign: 'center', py:  2 ,  ...theming.getThemedCardSx() }}>
-                  <StarIcon color="warning" sx={{ fontSize:  40, mb:  1 }} />
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>{userProgress.averageRating.toFixed(1)}</Typography>
-                  <Typography variant="caption">Snitt Rating</Typography>
+                <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
+                  <StarIcon color="warning" sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {userProgress.averageRating.toFixed(1)}
+                  </Typography>
+                  <Typography variant="caption">Snitt rating</Typography>
                 </CardContent>
               </Card>
             </Grid>
-            <Grid size={{ xs:  6 }} md={3}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ textAlign: 'center', py:  2 ,  ...theming.getThemedCardSx() }}>
-                  <TrophyIcon color="success" sx={{ fontSize:  40, mb:  1 }} />
-                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>{userProgress.faqPublished}</Typography>
-                  <Typography variant="caption">FAQ Publisert</Typography>
+                <CardContent sx={{ textAlign: 'center', py: 2, ...theming.getThemedCardSx() }}>
+                  <TrophyIcon color="success" sx={{ fontSize: 40, mb: 1 }} />
+                  <Typography variant="h4" fontWeight="bold" sx={{ color: theming.colors.primary }}>
+                    {userProgress.faqPublished}
+                  </Typography>
+                  <Typography variant="caption">FAQ publisert</Typography>
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
 
-          {/* Earning Breakdown */}
-          <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📊 Poeng Oversikt
+                Poengoversikt
               </Typography>
               <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <List dense>
                     <ListItem>
-                      <ListItemIcon><VideoIcon color="primary" /></ListItemIcon>
-                      <ListItemText 
-                        primary={`Video Tutorials (${userProgress.videoTutorials})`}
-                        secondary={`${pointBreakdown.videoTutorials} poeng (25 per video)`}
+                      <ListItemIcon>
+                        <VideoIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`Video tutorials (${userProgress.videoTutorials})`}
+                        secondary={`${pointBreakdown.videoTutorials} poeng`}
                       />
                     </ListItem>
                     <ListItem>
-                      <ListItemIcon><PhotoIcon color="secondary" /></ListItemIcon>
-                      <ListItemText 
+                      <ListItemIcon>
+                        <PhotoIcon color="secondary" />
+                      </ListItemIcon>
+                      <ListItemText
                         primary={`Screenshots (${userProgress.screenshotTutorials})`}
-                        secondary={`${pointBreakdown.screenshotTutorials} poeng (10 per screenshot)`}
+                        secondary={`${pointBreakdown.screenshotTutorials} poeng`}
                       />
                     </ListItem>
                     <ListItem>
-                      <ListItemIcon><TrophyIcon color="warning" /></ListItemIcon>
-                      <ListItemText 
-                        primary={`FAQ Publisert (${userProgress.faqPublished})`}
-                        secondary={`${pointBreakdown.faqPublished} poeng (50 per FAQ)`}
+                      <ListItemIcon>
+                        <TrophyIcon color="warning" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`FAQ (${userProgress.faqPublished})`}
+                        secondary={`${pointBreakdown.faqPublished} poeng`}
                       />
                     </ListItem>
                   </List>
                 </Grid>
-                <Grid size={{ xs: 12 }} md={6}>
+                <Grid size={{ xs: 12, md: 6 }}>
                   <List dense>
                     <ListItem>
-                      <ListItemIcon><QualityIcon color="success" /></ListItemIcon>
-                      <ListItemText 
-                        primary="Kvalitet Bonus"
-                        secondary={`${pointBreakdown.qualityBonus} poeng (rating × 20)`}
-                      />
+                      <ListItemIcon>
+                        <QualityIcon color="success" />
+                      </ListItemIcon>
+                      <ListItemText primary="Kvalitet" secondary={`${pointBreakdown.qualityBonus} poeng`} />
                     </ListItem>
                     <ListItem>
-                      <ListItemIcon><ViewIcon color="info" /></ListItemIcon>
-                      <ListItemText 
-                        primary="Popularitet Bonus"
-                        secondary={`${pointBreakdown.popularityBonus} poeng (1 per 100 views)`}
-                      />
+                      <ListItemIcon>
+                        <ViewIcon color="info" />
+                      </ListItemIcon>
+                      <ListItemText primary="Popularitet" secondary={`${pointBreakdown.popularityBonus} poeng`} />
                     </ListItem>
                     <ListItem>
-                      <ListItemIcon><TrendingIcon color="error" /></ListItemIcon>
-                      <ListItemText 
-                        primary={`Streak Bonus (${userProgress.streakDays} dager)`}
-                        secondary={`${pointBreakdown.streakBonus} poeng (5 per dag)`}
+                      <ListItemIcon>
+                        <TrendingIcon color="error" />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={`Streak (${userProgress.streakDays} dager)`}
+                        secondary={`${pointBreakdown.streakBonus} poeng`}
                       />
                     </ListItem>
                   </List>
@@ -453,17 +452,16 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
             </CardContent>
           </Card>
 
-          {/* Badge Levels */}
-          <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
+          <Card sx={{ mb: 3, ...theming.getThemedCardSx() }}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🏆 Badge Nivåer
+                Badge-nivaer
               </Typography>
               <Stepper orientation="vertical">
-                {BADGE_LEVELS.map((level, index) => {
+                {BADGE_LEVELS.map((level) => {
                   const isCompleted = userProgress.currentPoints >= level.requiredPoints;
                   const isCurrent = level.id === currentLevel.id;
-                  
+
                   return (
                     <Step key={level.id} completed={isCompleted} active={isCurrent}>
                       <StepLabel
@@ -472,9 +470,10 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
                             sx={{
                               bgcolor: level.color,
                               color: 'white',
-                              width:  32,
-                              height:  32,
-                              opacity: isCompleted ? 1 : 0.5 }}
+                              width: 32,
+                              height: 32,
+                              opacity: isCompleted ? 1 : 0.5,
+                            }}
                           >
                             {level.icon}
                           </Avatar>
@@ -487,15 +486,15 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
                           <Typography variant="body2" color="text.secondary">
                             {level.description}
                           </Typography>
-                          <Box sx={{ mt:  1 }}>
-                            {level.benefits.map((benefit, idx) => (
+                          <Box sx={{ mt: 1 }}>
+                            {level.benefits.map((benefit) => (
                               <Chip
-                                key={idx}
+                                key={benefit}
                                 label={benefit}
                                 size="small"
-                                sx={{ mr: 0, .mb: 0.5}}
-                                color={isCompleted ? "success" : "default"}
-                                variant={isCompleted ? "filled" : "outlined"}
+                                sx={{ mr: 0.5, mb: 0.5 }}
+                                color={isCompleted ? 'success' : 'default'}
+                                variant={isCompleted ? 'filled' : 'outlined'}
                               />
                             ))}
                           </Box>
@@ -503,45 +502,42 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
                       </StepLabel>
                     </Step>
                   );
-              })}
+                })}
               </Stepper>
             </CardContent>
           </Card>
 
-          {/* Achievements */}
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                  🎖️ Achievements ({unlockedAchievements.length}/{achievements.length})
+                  Achievements ({unlockedAchievements.length}/{achievements.length})
                 </Typography>
-                <Button 
-                  variant="outlined" 
-                  size="small"
-                  onClick={() => setShowAchievements(true)}
-                >
-                  Se Alle
+                <Button variant="outlined" size="small" onClick={() => setShowAchievements(true)}>
+                  Se alle
                 </Button>
               </Box>
-              
+
               <Grid container spacing={1}>
                 {achievements.slice(0, 6).map((achievement) => (
-                  <Grid size={{ xs:  6 }} md={4} key={achievement.id}>
+                  <Grid size={{ xs: 6, md: 4 }} key={achievement.id}>
                     <Tooltip title={achievement.description}>
-                      <Card 
-                        sx={{ 
+                      <Card
+                        sx={{
                           opacity: achievement.unlocked ? 1 : 0.5,
-                          border: achievement.unlocked ? '2px solid gold' : '1px solid #ccc'}}
-                       sx={theming.getThemedCardSx()}>
-                        <CardContent sx={{ textAlign: 'center', py:  1 ,  ...theming.getThemedCardSx() }}>
+                          border: achievement.unlocked ? '2px solid gold' : '1px solid #ccc',
+                          ...theming.getThemedCardSx(),
+                        }}
+                      >
+                        <CardContent sx={{ textAlign: 'center', py: 1, ...theming.getThemedCardSx() }}>
                           {achievement.icon}
                           <Typography variant="caption" display="block">
                             {achievement.title}
                           </Typography>
-                          <Chip 
+                          <Chip
                             label={`${achievement.points}p`}
-                            size="small" 
-                            color={achievement.unlocked ? "success" : "default"}
+                            size="small"
+                            color={achievement.unlocked ? 'success' : 'default'}
                           />
                         </CardContent>
                       </Card>
@@ -554,29 +550,28 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Achievements Details Dialog */}
       <Dialog open={showAchievements} onClose={() => setShowAchievements(false)} maxWidth="md" fullWidth>
-        <DialogTitle>🎖️ Alle Achievements</DialogTitle>
+        <DialogTitle>Alle achievements</DialogTitle>
         <DialogContent>
           <Grid container spacing={2}>
             {achievements.map((achievement) => (
-              <Grid size={{ xs: 12 }} md={6} key={achievement.id}>
-                <Card sx={{ opacity: achievement.unlocked ? 1 : 0.6,  ...theming.getThemedCardSx() }}>
+              <Grid size={{ xs: 12, md: 6 }} key={achievement.id}>
+                <Card sx={{ opacity: achievement.unlocked ? 1 : 0.6, ...theming.getThemedCardSx() }}>
                   <CardContent sx={theming.getThemedCardSx()}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                       {achievement.icon}
-                      <Box sx={{ flex:  1 }}>
+                      <Box sx={{ flex: 1 }}>
                         <Typography variant="subtitle1" fontWeight="bold">
                           {achievement.title}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {achievement.description}
                         </Typography>
-                        <Chip 
+                        <Chip
                           label={achievement.unlocked ? `Unlocked! +${achievement.points}p` : `${achievement.points} poeng`}
-                          color={achievement.unlocked ? "success" : "default"}
+                          color={achievement.unlocked ? 'success' : 'default'}
                           size="small"
-                          sx={{ mt:  1 }}
+                          sx={{ mt: 1 }}
                         />
                       </Box>
                     </Box>
@@ -590,3 +585,5 @@ export const CreatorHubBadgeSystem: React.FC<CreatorHubBadgeSystemProps> = ({
     </>
   );
 };
+
+export default CreatorHubBadgeSystem;

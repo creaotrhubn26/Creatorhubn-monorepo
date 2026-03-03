@@ -1,280 +1,277 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Badge,
   Box,
   Button,
-  Typography,
-  Paper,
+  Card,
+  CardContent,
+  Chip,
   CircularProgress,
-  Alert,
+  FormControlLabel,
+  Grid,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Chip,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Divider,
+  Paper,
+  Stack,
   Switch,
-  FormControlLabel,
-  Badge,
-  Tooltip,
-  IconButton,
+  Typography,
 } from '@mui/material';
 import {
-  Refresh,
-  NewReleases,
-  Update,
+  AutoAwesome,
   CameraAlt,
   CheckCircle,
-  Error,
-  Info,
-  Settings,
-  AutoAwesome,
+  Error as ErrorIcon,
+  NewReleases,
+  Refresh,
+  Update,
 } from '@mui/icons-material';
-import { photoCameraDiscovery, CameraDiscoveryResult } from '../../data/photo-camera-discovery';
 import { PhotoCamera } from '../../data/photo-camera-database';
+import { CameraDiscoveryResult, photoCameraDiscovery } from '../../data/photo-camera-discovery';
 
 interface PhotoCameraDiscoveryManagerProps {
   onCameraUpdate?: (cameras: PhotoCamera[]) => void;
 }
 
+interface DiscoveryStatus {
+  totalSources: number;
+  enabledSources: number;
+  lastUpdate: string;
+  totalCameras: number;
+  newCameras: number;
+  recentlyUpdated: number;
+}
+
+function normalizeDiscoveryStatus(raw: unknown): DiscoveryStatus {
+  if (typeof raw !== 'object' || raw === null) {
+    return {
+      totalSources: 0,
+      enabledSources: 0,
+      lastUpdate: '',
+      totalCameras: 0,
+      newCameras: 0,
+      recentlyUpdated: 0,
+    };
+  }
+
+  const record = raw as Record<string, unknown>;
+  const getNumber = (key: string): number => {
+    const value = record[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+
+  return {
+    totalSources: getNumber('totalSources'),
+    enabledSources: getNumber('enabledSources'),
+    lastUpdate: typeof record.lastUpdate === 'string' ? record.lastUpdate : '',
+    totalCameras: getNumber('totalCameras'),
+    newCameras: getNumber('newCameras'),
+    recentlyUpdated: getNumber('recentlyUpdated'),
+  };
+}
+
+function formatDate(value: string): string {
+  if (!value) {
+    return 'Ikke tilgjengelig';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Ikke tilgjengelig';
+  }
+
+  return parsed.toLocaleString();
+}
+
+function sourceLabel(camera: PhotoCamera): string {
+  if (camera.source === 'api') {
+    return 'API';
+  }
+
+  if (camera.source === 'discovery') {
+    return 'Discovery';
+  }
+
+  return 'Manual';
+}
+
 export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerProps> = ({
-  onCameraUpdate
+  onCameraUpdate,
 }) => {
   const [isDiscovering, setIsDiscovering] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
   const [discoveryResults, setDiscoveryResults] = useState<CameraDiscoveryResult[]>([]);
   const [newCameras, setNewCameras] = useState<PhotoCamera[]>([]);
   const [recentlyUpdated, setRecentlyUpdated] = useState<PhotoCamera[]>([]);
-  const [discoveryStatus, setDiscoveryStatus] = useState<any>(null);
   const [showNewOnly, setShowNewOnly] = useState(false);
+  const [status, setStatus] = useState<DiscoveryStatus>(() =>
+    normalizeDiscoveryStatus(photoCameraDiscovery.getDiscoveryStatus()),
+  );
+
+  const refreshData = useCallback(() => {
+    setStatus(normalizeDiscoveryStatus(photoCameraDiscovery.getDiscoveryStatus()));
+    setNewCameras(photoCameraDiscovery.getCamerasByStatus('new'));
+    setRecentlyUpdated(photoCameraDiscovery.getCamerasByStatus('recently-updated'));
+  }, []);
+
+  const handleCameraUpdate = useCallback(
+    (cameras: PhotoCamera[]) => {
+      setNewCameras((previous) => {
+        const previousIds = new Set(previous.map((camera) => camera.id));
+        const merged = [...previous];
+
+        cameras.forEach((camera) => {
+          if (!previousIds.has(camera.id)) {
+            merged.push(camera);
+            previousIds.add(camera.id);
+          }
+        });
+
+        return merged;
+      });
+
+      onCameraUpdate?.(cameras);
+      refreshData();
+    },
+    [onCameraUpdate, refreshData],
+  );
 
   useEffect(() => {
-    // Load initial data
-    loadDiscoveryData();
-    
-    // Subscribe to updates
+    refreshData();
     photoCameraDiscovery.onCameraUpdate(handleCameraUpdate);
-    
+
     return () => {
       photoCameraDiscovery.offCameraUpdate(handleCameraUpdate);
-  };
-}, []);
+    };
+  }, [handleCameraUpdate, refreshData]);
 
-  const loadDiscoveryData = () => {
-    const status = photoCameraDiscovery.getDiscoveryStatus();
-    setDiscoveryStatus(status);
-    
-    const newCams = photoCameraDiscovery.getCamerasByStatus('new');
-    const recentCams = photoCameraDiscovery.getCamerasByStatus('recently-updated');
-    
-    setNewCameras(newCams);
-    setRecentlyUpdated(recentCams);
-};
-
-  const handleCameraUpdate = (cameras: PhotoCamera[]) => {
-    setNewCameras(prev => [...prev, ...cameras]);
-    onCameraUpdate?.(cameras);
-    loadDiscoveryData();
-};
-
-  const handleTriggerDiscovery = async () => {
+  const triggerDiscovery = async () => {
     setIsDiscovering(true);
     try {
       const results = await photoCameraDiscovery.triggerDiscovery();
       setDiscoveryResults(results);
-      loadDiscoveryData();
-  } catch (error) {
-      console.error('Discovery failed: ', error);
-  } finally {
+      refreshData();
+    } finally {
       setIsDiscovering(false);
-  }
-};
+    }
+  };
 
-  const getStatusIcon = (success: boolean) => {
-    return success ? <CheckCircle color="success" /> : <Error color="error" />;
-};
+  const visibleCameras = useMemo(() => {
+    if (showNewOnly) {
+      const updatedIds = new Set(recentlyUpdated.map((camera) => camera.id));
+      return [...newCameras, ...recentlyUpdated.filter((camera) => !updatedIds.has(camera.id))];
+    }
 
-  const getStatusColor = (success: boolean) => {
-    return success ? 'success' : 'error';
-};
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-};
-
-  const getCameraStatusChips = (camera: PhotoCamera) => {
-    const chips = [];
-    
-    if (camera.isNew) {
-      chips.push(
-        <Chip
-          key="new"
-          icon={<NewReleases />}
-          label="NEW"
-          color="primary"
-          size="small"
-          sx={{ mr:  1 }}
-        />
-      );
-  }
-    
-    if (camera.isRecentlyUpdated) {
-      chips.push(
-        <Chip
-          key="updated"
-          icon={<Update />}
-          label="UPDATED"
-          color="secondary"
-          size="small"
-          sx={{ mr:  1 }}
-        />
-      );
-  }
-    
-    if (camera.source === 'api') {
-      chips.push(
-        <Chip
-          key="auto"
-          icon={theming.getThemedIcon('autoAwesome')}}
-          label="AUTO-DISCOVERED"
-          color="info"
-          size="small"
-        />
-      );
-  }
-    
-    return chips;
-};
+    const all = photoCameraDiscovery.getCamerasByStatus('all');
+    return all.slice(0, 80);
+  }, [newCameras, recentlyUpdated, showNewOnly]);
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        📸 Photo Camera Discovery Manager
+    <Box sx={{ p: 3 }}>
+      <Typography variant="h5" fontWeight={700} sx={{ mb: 2 }}>
+        Photo Camera Discovery Manager
       </Typography>
-      
-      {/* Status Overview */}
-      <Grid container spacing={3}, sx={{ mb:  3 }}>
+
+      <Grid container spacing={2} sx={{ mb: 2 }}>
         <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
                 Total Cameras
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                {discoveryStatus?.totalCameras || 0}
+              <Typography variant="h4" fontWeight={700}>
+                {status.totalCameras}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
                 New Cameras
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                <Badge badgeContent={newCameras.length} color="primary">
-                  {newCameras.length}
+              <Typography variant="h4" fontWeight={700}>
+                <Badge badgeContent={status.newCameras} color="primary">
+                  {status.newCameras}
                 </Badge>
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="warning.main" sx={{ color: theming.colors.primary }}>
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
                 Recently Updated
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                <Badge badgeContent={recentlyUpdated.length} color="secondary">
-                  {recentlyUpdated.length}
+              <Typography variant="h4" fontWeight={700}>
+                <Badge badgeContent={status.recentlyUpdated} color="secondary">
+                  {status.recentlyUpdated}
                 </Badge>
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
-                Data Sources
+          <Card>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary">
+                Sources
               </Typography>
-              <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                {discoveryStatus?.enabledSources || 0}/{discoveryStatus?.totalSources || 0}
+              <Typography variant="h4" fontWeight={700}>
+                {status.enabledSources}/{status.totalSources}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Discovery Controls */}
-      <Paper sx={{ p:  3, mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            Discovery Controls
-          </Typography>
-          <Box>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          spacing={2}
+          justifyContent="space-between"
+          alignItems={{ xs: 'flex-start', md: 'center' }}
+        >
+          <Stack>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Discovery Controls
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Last update: {formatDate(status.lastUpdate)}
+            </Typography>
+          </Stack>
+
+          <Stack direction="row" spacing={1} alignItems="center">
             <FormControlLabel
-              control={
-                <Switch
-                  checked={showNewOnly}
-                  onChange={(e) => setShowNewOnly(e.target.checked)}
-                />
-            }
-              label="Show New/Updated Only"
+              control={<Switch checked={showNewOnly} onChange={(event) => setShowNewOnly(event.target.checked)} />}
+              label="Show New/Updated only"
             />
-            <Button variant="contained"
-              startIcon={isDiscovering ? <CircularProgress size={20}, sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('refresh')}
-              onClick={handleTriggerDiscovery}
+            <Button
+              variant="contained"
+              startIcon={isDiscovering ? <CircularProgress size={16} /> : <Refresh />}
               disabled={isDiscovering}
-              sx={{ ml:  2 }}
+              onClick={() => void triggerDiscovery()}
             >
               {isDiscovering ? 'Discovering...' : 'Trigger Discovery'}
             </Button>
-          </Box>
-        </Box>
-        
-        {discoveryStatus?.lastUpdate && (
-          <Typography variant="body2" color="text.secondary">
-            Last Update: {formatDate(discoveryStatus.lastUpdate)}
-          </Typography>
-        )}
+          </Stack>
+        </Stack>
       </Paper>
 
-      {/* Discovery Results */}
       {discoveryResults.length > 0 && (
-        <Paper sx={{ p:  3, mb:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
             Latest Discovery Results
           </Typography>
-          <List>
+          <List dense>
             {discoveryResults.map((result, index) => (
-              <ListItem key={index}>
-                <ListItemIcon>
-                  {getStatusIcon(result.success)}
-                </ListItemIcon>
+              <ListItem key={`${result.source}-${result.timestamp}-${index}`}>
+                {result.success ? <CheckCircle color="success" sx={{ mr: 1 }} /> : <ErrorIcon color="error" sx={{ mr: 1 }} />}
                 <ListItemText
-                  primary={result.source}
-                  secondary={
-                    result.success 
-                      ? `Found ${result.cameras.length} cameras at ${formatDate(result.timestamp)}`
-                      : `Error: ${result.error}`
-                }
-                />
-                <Chip
-                  label={result.success ? 'Success' : 'Failed'}
-                  color={getStatusColor(result.success)}
-                  size="small"
+                  primary={`${result.source}: ${result.success ? 'OK' : 'Failed'}`}
+                  secondary={`Found ${result.cameras.length} cameras at ${formatDate(result.timestamp)}`}
                 />
               </ListItem>
             ))}
@@ -282,116 +279,48 @@ export const PhotoCameraDiscoveryManager: React.FC<PhotoCameraDiscoveryManagerPr
         </Paper>
       )}
 
-      {/* New Cameras */}
-      {newCameras.length > 0 && (
-        <Paper sx={{ p:  3, mb:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            🆕 New Cameras ({newCameras.length})
-          </Typography>
-          <Grid container spacing={2}>
-            {newCameras.map((camera) => (
-              <Grid item xs={12} sm={6} md={4} key={camera.id}>
-                <Card sx={theming.getThemedCardSx()}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  1 }}>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                        {camera.brand} {camera.model}
-                      </Typography>
-                      <Box>
-                        {getCameraStatusChips(camera)}
-                      </Box>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                      {camera.description}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Added: {formatDate(camera.addedDate)}
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={theming.getThemedCardSx()}>
-                    <Button size="small">View Details</Button>
-                    <Button size="small">Add to Favorites</Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Paper>
-      )}
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
+          Cameras ({visibleCameras.length})
+        </Typography>
 
-      {/* Recently Updated Cameras */}
-      {recentlyUpdated.length > 0 && (
-        <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            🔄 Recently Updated Cameras ({recentlyUpdated.length})
-          </Typography>
-          <Grid container spacing={2}>
-            {recentlyUpdated.map((camera) => (
-              <Grid item xs={12} sm={6} md={4} key={camera.id}>
-                <Card sx={theming.getThemedCardSx()}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  1 }}>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                        {camera.brand} {camera.model}
-                      </Typography>
-                      <Box>
-                        {getCameraStatusChips(camera)}
-                      </Box>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                      {camera.description}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Updated: {formatDate(camera.lastUpdated)}
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={theming.getThemedCardSx()}>
-                    <Button size="small">View Changes</Button>
-                    <Button size="small">Compare</Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Paper>
-      )}
+        {visibleCameras.length === 0 && (
+          <Alert severity="info">Ingen kameraer å vise ennå. Kjør discovery for å hente nye modeller.</Alert>
+        )}
 
-      {/* No New Cameras Message */}
-      {newCameras.length === 0 && recentlyUpdated.length === 0 && (
-        <Paper sx={{ p:  3, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-          <CameraAlt sx={{ fontSize:  64, color:'text.secondary', mb:  2 }} />
-          <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-            No new or updated cameras found
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-            The discovery system will automatically check for new cameras periodically.
-          </Typography>
-          <Button
-            variant="outlined"
-            startIcon={theming.getThemedIcon('refresh')}
-            onClick={handleTriggerDiscovery}
-            disabled={isDiscovering}
-          >
-            Check Now
-          </Button>
-        </Paper>
-      )}
+        <List dense>
+          {visibleCameras.map((camera) => (
+            <ListItem key={camera.id} divider>
+              <ListItemText
+                primary={
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <CameraAlt fontSize="small" />
+                    <Typography variant="body2" fontWeight={600}>
+                      {camera.brand} {camera.model}
+                    </Typography>
+                    {camera.isNew && <Chip icon={<NewReleases />} label="New" size="small" color="primary" />}
+                    {camera.isRecentlyUpdated && (
+                      <Chip icon={<Update />} label="Updated" size="small" color="secondary" />
+                    )}
+                    {camera.source !== 'manual' && (
+                      <Chip icon={<AutoAwesome />} label={sourceLabel(camera)} size="small" variant="outlined" />
+                    )}
+                  </Stack>
+                }
+                secondary={
+                  <Stack direction="row" spacing={2} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                    <Typography variant="caption">{camera.category}</Typography>
+                    <Typography variant="caption">{camera.megapixels} MP</Typography>
+                    <Typography variant="caption">Released: {camera.releaseDate}</Typography>
+                  </Stack>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
     </Box>
   );
 };
 
 export default PhotoCameraDiscoveryManager;
-
-
-
-
-
-
-
-
-
-
-
-
-
-

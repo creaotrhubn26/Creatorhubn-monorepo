@@ -259,7 +259,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
           "Content-Type" : "application/json"
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ userId })
       });
     },
@@ -287,7 +287,7 @@ export const GoogleDriveManager: React.FC<GoogleDriveManagerProps> = ({
           "Content-Type" : "application/json"
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           ...folderData,
           enableChangeTracking: changeTrackingEnabled,

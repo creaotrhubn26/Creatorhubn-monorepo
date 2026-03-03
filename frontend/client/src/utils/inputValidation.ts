@@ -4,6 +4,7 @@
  */
 
 import { ValidationError } from './errorHandling';
+import * as React from 'react';
 
 // Validation rules
 export interface ValidationRule {
@@ -34,7 +35,7 @@ export const VALIDATION_PATTERNS = {
 
 // Sanitization functions
 export const sanitizeInput = (input: string): string => {
-  if (typeof input !== 'string') return ',';
+  if (typeof input !== 'string') return '';
 
   return input
     .trim()
@@ -45,7 +46,7 @@ export const sanitizeInput = (input: string): string => {
 };
 
 export const sanitizeHTML = (html: string): string => {
-  if (typeof html !== 'string') return ',';
+  if (typeof html !== 'string') return '';
 
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -125,13 +126,14 @@ export const validatePassword = (password: string): ValidationResult => {
     minLength: 8,
     maxLength: 18,
     custom: (value) => {
-      if (!/(?=.*[a-z])/.test(value)) {
+      const normalizedValue = typeof value === 'string' ? value : String(value ?? '');
+      if (!/(?=.*[a-z])/.test(normalizedValue)) {
         return 'Password must contain at least one lowercase letter';
   }
-      if (!/(?=.*[A-Z])/.test(value)) {
+      if (!/(?=.*[A-Z])/.test(normalizedValue)) {
         return 'Password must contain at least one uppercase letter';
     }
-      if (!/(?=.*\d)/.test(value)) {
+      if (!/(?=.*\d)/.test(normalizedValue)) {
         return 'Password must contain at least one number';
     }
       return true;
@@ -159,14 +161,15 @@ export const validateHTML = (html: string): ValidationResult => {
     required: true,
     maxLength: 5000,
     custom: (value) => {
+      const normalizedValue = typeof value === 'string' ? value : String(value ?? '');
       // Check for dangerous patterns
-      if (/<script/i.test(value)) {
+      if (/<script/i.test(normalizedValue)) {
         return 'Script tags are not allowed';
   }
-      if (/javascript: /i.test(value)) {
+      if (/javascript:/i.test(normalizedValue)) {
         return 'JavaScript protocols are not allowed';
   }
-      if (/on\w+\s*=/i.test(value)) {
+      if (/on\w+\s*=/i.test(normalizedValue)) {
         return 'Event handlers are not allowed';
     }
       return true;
@@ -177,7 +180,7 @@ export const validateHTML = (html: string): ValidationResult => {
 export const validateURL = (url: string): ValidationResult => {
   return validateInput(url, {
     required: true,
-    pattern: VALIDATION_PATTERNS.UL,
+    pattern: VALIDATION_PATTERNS.URL,
     maxLength: 208,
     sanitize: true,
 });
@@ -186,7 +189,7 @@ export const validateURL = (url: string): ValidationResult => {
 export const validatePhone = (phone: string): ValidationResult => {
   return validateInput(phone, {
     required: true,
-    pattern: VALIDATION_PATTERNS.PHOE,
+    pattern: VALIDATION_PATTERNS.PHONE,
     maxLength:  20,
     sanitize: true,
 });
@@ -226,7 +229,7 @@ export const useFormValidation = (initialData: Record<string, any>, rules: Recor
     
     // Group errors by field
     result.errors.forEach(error => {
-      const [field, message] = error.split(' : ');
+      const [field, message] = error.split(': ');
       if (field && message) {
         if (!fieldErrors[field]) fieldErrors[field] = [];
         fieldErrors[field].push(message);
@@ -269,7 +272,7 @@ export const validateFile = (file: File, options: {
   
   // Size validation
   if (options.maxSize && file.size > options.maxSize) {
-    errors.push(`File size must be less than ${Math.round(options.maxSize / 1024 / 102)}MB`);
+    errors.push(`File size must be less than ${Math.round(options.maxSize / 1024 / 1024)}MB`);
 }
   
   // Type validation
@@ -281,7 +284,7 @@ export const validateFile = (file: File, options: {
   if (options.allowedExtensions) {
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (!extension || !options.allowedExtensions.includes(extension)) {
-      errors.push(`File extension must be one of: ${options.allowedExtensions.join('')}`);
+      errors.push(`File extension must be one of: ${options.allowedExtensions.join(', ')}`);
   }
 }
   

@@ -32,6 +32,7 @@ import {
   Stack,
   Snackbar,
 } from '@mui/material';
+import type { TableHeadProps } from '@mui/material/TableHead';
 import {
   CheckCircle,
   Cancel,
@@ -56,7 +57,7 @@ interface RefundRequest {
 
 export default function RefundRequestsTable() {
   const queryClient = useQueryClient();
-  const { trackEvent } = useEnhancedMasterIntegration();
+  const { analytics } = useEnhancedMasterIntegration();
   const { professionConfigs: apiProfessionConfigs } = useProfessionConfigs();
   const professionAdapter = useProfessionAdapter();
   const currentProfession = professionAdapter.profession || 'admin';
@@ -113,7 +114,7 @@ export default function RefundRequestsTable() {
   // Bulk approve mutation
   const bulkApproveMutation = useMutation({
     mutationFn: async (refundIds: number[]) => {
-      trackEvent('bulk_refund_approve', { count: refundIds.length });
+      analytics.trackEvent('bulk_refund_approve', { count: refundIds.length });
       return Promise.all(
         refundIds.map(id =>
           apiRequest(`/api/admin/refund-requests/${id}/approve`, { method: 'POST' })
@@ -133,7 +134,7 @@ export default function RefundRequestsTable() {
   // Bulk reject mutation
   const bulkRejectMutation = useMutation({
     mutationFn: async ({ refundIds, reason }: { refundIds: number[]; reason: string }) => {
-      trackEvent('bulk_refund_reject', { count: refundIds.length });
+      analytics.trackEvent('bulk_refund_reject', { count: refundIds.length });
       return Promise.all(
         refundIds.map(id =>
           apiRequest(`/api/admin/refund-requests/${id}/reject`, {
@@ -172,14 +173,14 @@ export default function RefundRequestsTable() {
 
   const handleApprove = () => {
     if (selectedRefund) {
-      trackEvent('refund_approve', { refundId: selectedRefund.id });
+      analytics.trackEvent('refund_approve', { refundId: selectedRefund.id });
       approveMutation.mutate(selectedRefund.id);
     }
   };
 
   const handleReject = () => {
     if (selectedRefund) {
-      trackEvent('refund_reject', { refundId: selectedRefund.id });
+      analytics.trackEvent('refund_reject', { refundId: selectedRefund.id });
       rejectMutation.mutate({ refundId: selectedRefund.id, reason: rejectionReason });
     }
   };
@@ -249,6 +250,12 @@ export default function RefundRequestsTable() {
   };
 
   const pendingCount = requests.filter((r: RefundRequest) => r.status === 'pending').length;
+  const renderedProfessionIcon = React.isValidElement(professionIcon)
+    ? React.cloneElement(
+        professionIcon as React.ReactElement<{ sx?: Record<string, unknown> }>,
+        { sx: { color: professionColor, fontSize: 28 } },
+      )
+    : null;
 
   return (
     <>
@@ -256,9 +263,7 @@ export default function RefundRequestsTable() {
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {React.cloneElement(professionIcon as any, {
-              sx: { color: professionColor, fontSize: 28 }
-            })}
+            {renderedProfessionIcon}
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.1 }}>
@@ -325,7 +330,7 @@ export default function RefundRequestsTable() {
               <IconButton
                 color="inherit"
                 onClick={() => {
-                  trackEvent('bulk_email_refund_users', { count: selectedIds.length });
+                  analytics.trackEvent('bulk_email_refund_users', { count: selectedIds.length });
                   setSnackbar({ open: true, message: `Sender e-post til ${selectedIds.length} brukere...` });
                 }}
               >
@@ -337,6 +342,10 @@ export default function RefundRequestsTable() {
       )}
 
       <Paper style={{ height: 600, width: '100%' }}>
+        {/*
+          react-virtuoso expects function components with plain table props for table sections.
+          MUI's overridable component types need a tiny wrapper to satisfy that contract.
+        */}
         <TableVirtuoso
           data={requests}
           components={{
@@ -346,7 +355,9 @@ export default function RefundRequestsTable() {
             Table: (props) => (
               <Table {...props} sx={{ borderCollapse: 'separate', tableLayout: 'fixed' }} />
             ),
-            TableHead,
+            TableHead: React.forwardRef<HTMLTableSectionElement, TableHeadProps>((props, ref) => (
+              <TableHead {...props} ref={ref} />
+            )),
             TableRow: ({ item: _item, ...props }) => <TableRow {...props} />,
             TableBody: React.forwardRef<HTMLTableSectionElement>((props, ref) => (
               <TableBody {...props} ref={ref} />
@@ -623,4 +634,3 @@ export default function RefundRequestsTable() {
     </>
   );
 }
-

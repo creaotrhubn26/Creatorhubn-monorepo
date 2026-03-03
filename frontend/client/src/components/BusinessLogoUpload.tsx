@@ -73,7 +73,7 @@ export const BusinessLogoUpload: React.FC<BusinessLogoUploadProps> = ({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: formData
   });
   },
@@ -198,7 +198,7 @@ export const BusinessLogoUpload: React.FC<BusinessLogoUploadProps> = ({
               right: -8,
               bgcolor: 'success.main',
               color: 'white',
-              borderRadius: '50, %',
+              borderRadius: '50%',
               fontSize: 20 }}
           />
         )}

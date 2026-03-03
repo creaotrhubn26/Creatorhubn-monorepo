@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'wouter';
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,11 @@ interface AuthMessage {
   error?: string;
 }
 
+const AUTH_TOKEN_KEY = 'creatorhub_auth_token';
+const AUTH_USER_KEY = 'creatorhub_auth_user';
+const PROTOTYPE_GUEST_EMAIL = 'academy-guest@creatorhubn.com';
+const PROTOTYPE_GUEST_PASSWORD = 'guest-access';
+
 // Context-based title mapping
 const getContextTitle = (context?: string) => {
   switch (context) {
@@ -46,6 +52,7 @@ const getContextTitle = (context?: string) => {
 };
 
 export function LoginModal({ open, onClose, context = 'general' }: LoginModalProps) {
+  const [, setLocation] = useLocation();
   const [loginType, setLoginType] = useState<'general' | 'prototype' | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +178,40 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
       console.error('❌ Login error:', error);
       setIsLoading(false);
       setError(error instanceof Error ? error.message : 'An unexpected error occurred');
+    }
+  };
+
+  const handlePrototypeGuestLogin = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: PROTOTYPE_GUEST_EMAIL,
+          password: PROTOTYPE_GUEST_PASSWORD,
+          type: 'prototype',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.success || !data?.token || !data?.user) {
+        throw new Error(data?.error || 'Prototype-innlogging feilet');
+      }
+
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
+      window.dispatchEvent(new Event('auth-changed'));
+      onClose();
+      setLocation('/academy-dashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Prototype-innlogging feilet';
+      setError(message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -464,6 +505,42 @@ export function LoginModal({ open, onClose, context = 'general' }: LoginModalPro
                 {isLoading ? 'Logger inn...' : 'Fortsett med Google'}
               </Button>
             </Box>
+
+            {loginType === 'prototype' && (
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography
+                  variant="caption"
+                  sx={{ color: 'rgba(255, 255, 255, 0.5)', display: 'block', mb: 1.5 }}
+                >
+                  eller
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<AccountCircle />}
+                  onClick={handlePrototypeGuestLogin}
+                  disabled={isLoading}
+                  sx={{
+                    borderColor: 'rgba(139, 92, 246, 0.45)',
+                    color: '#c4b5fd',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    borderRadius: '12px',
+                    px: 3,
+                    py: 1.1,
+                    '&:hover': {
+                      borderColor: 'rgba(139, 92, 246, 0.8)',
+                      background: 'rgba(139, 92, 246, 0.12)',
+                    },
+                    '&:disabled': {
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                      color: 'rgba(255, 255, 255, 0.35)',
+                    },
+                  }}
+                >
+                  Logg inn med academy-guest
+                </Button>
+              </Box>
+            )}
 
             <Box sx={{ 
               textAlign: 'center',

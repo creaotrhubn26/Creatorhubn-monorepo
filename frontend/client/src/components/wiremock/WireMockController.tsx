@@ -11,7 +11,7 @@ import {
   FormControlLabel,
   Card,
   CardContent,
-  Grid,
+  Grid2 as Grid,
   Chip,
   Button,
   Dialog,
@@ -82,18 +82,19 @@ export function WireMockController() {
     refresh
 } = useWireMock();
 
-  const [activeTab, setActiveTab] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   
   // Theming system
   const theming = useTheming('photographer');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedService, setSelectedService] = useState<string>('all');
+  type EndpointMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
   const [newEndpoint, setNewEndpoint] = useState({
-    name: ',',
-    method: 'GET' as 'GET' | 'POST' | 'PUT' | 'DELET',
+    name: '',
+    method: 'GET' as EndpointMethod,
     url: '',
-    responseStatus: 20,
-    responseBody:  ', {}, ',
+    responseStatus: 200,
+    responseBody: '{}',
     service: 'custom',
     delay: 0 });
 
@@ -108,11 +109,11 @@ export function WireMockController() {
       if (endpoint) {
         setShowCreateDialog(false);
         setNewEndpoint({
-          name: ', ',
-          method: 'GE',
-          url: ', ',
-          responseStatus: 20,
-          responseBody:  ', {}',
+          name: '',
+          method: 'GET',
+          url: '',
+          responseStatus: 200,
+          responseBody: '{}',
           service: 'custom',
           delay: 0 });
     }
@@ -156,7 +157,7 @@ export function WireMockController() {
             </Typography>
           </Grid>
           
-          <Grid size={{ xs: 12 }} md={6}>
+          <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={2}>
               <ContextualAITooltip
                 context={{
@@ -204,7 +205,7 @@ export function WireMockController() {
 
       {/* Status Cards */}
       <Grid container spacing={3} sx={{ mb:  3 }}>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography color="text.secondary" gutterBottom>
@@ -217,7 +218,7 @@ export function WireMockController() {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography color="text.secondary" gutterBottom>
@@ -230,7 +231,7 @@ export function WireMockController() {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography color="text.secondary" gutterBottom>
@@ -243,7 +244,7 @@ export function WireMockController() {
           </Card>
         </Grid>
         
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
               <Typography color="text.secondary" gutterBottom>
@@ -434,7 +435,7 @@ export function WireMockController() {
               const activeCount = serviceEndpoints.filter(ep => ep.isActive).length;
               
               return (
-                <Grid size={{ xs: 12 }} sm={6} md={4} key={service}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={service}>
                   <Card sx={theming.getThemedCardSx()}>
                     <CardContent sx={theming.getThemedCardSx()}>
                       <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -479,7 +480,7 @@ export function WireMockController() {
           </Alert>
           
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -508,7 +509,7 @@ export function WireMockController() {
               </Card>
             </Grid>
             
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -537,7 +538,7 @@ export function WireMockController() {
               </Card>
             </Grid>
             
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -557,7 +558,7 @@ export function WireMockController() {
               </Card>
             </Grid>
             
-            <Grid size={{ xs: 12 }} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={theming.getThemedCardSx()}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
@@ -614,7 +615,12 @@ export function WireMockController() {
                 <Select
                   value={newEndpoint.method}
                   label="Method"
-                  onChange={(e) => setNewEndpoint(prev => ({ ...prev, method: e.target.value as any }))}
+                  onChange={(e) =>
+                    setNewEndpoint((prev) => ({
+                      ...prev,
+                      method: e.target.value as EndpointMethod,
+                    }))
+                  }
                 >
                   <MenuItem value="GET">GET</MenuItem>
                   <MenuItem value="POST">POST</MenuItem>
@@ -649,7 +655,12 @@ export function WireMockController() {
                 type="number"
                 label="Response Status"
                 value={newEndpoint.responseStatus}
-                onChange={(e) => setNewEndpoint(prev => ({ ...prev, responseStatus: parseInt(e.target.value, ),}))}
+                onChange={(e) =>
+                  setNewEndpoint((prev) => ({
+                    ...prev,
+                    responseStatus: parseInt(e.target.value, 10) || 200,
+                  }))
+                }
               />
             </Grid>
             
@@ -659,7 +670,12 @@ export function WireMockController() {
                 type="number"
                 label="Delay (ms)"
                 value={newEndpoint.delay}
-                onChange={(e) => setNewEndpoint(prev => ({ ...prev, delay: parseInt(e.target.value, ),}))}
+                onChange={(e) =>
+                  setNewEndpoint((prev) => ({
+                    ...prev,
+                    delay: parseInt(e.target.value, 10) || 0,
+                  }))
+                }
               />
             </Grid>
             

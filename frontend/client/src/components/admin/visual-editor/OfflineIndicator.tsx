@@ -104,7 +104,8 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
       setShowSnackbar(true);
   },
     onSyncError: (error: unknown) => {
-      setSnackbarMessage(`Sync error: ${error.message || 'Unknown error'}`);
+      const message = error instanceof globalThis.Error ? error.message : 'Unknown error';
+      setSnackbarMessage(`Sync error: ${message}`);
       setShowSnackbar(true);
   },
     onOnline: () => {
@@ -176,7 +177,7 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
 }, [clearAllData]);
 
   // Get status color
-  const getStatusColor = useCallback(() => {
+  const getStatusColor = useCallback((): 'success' | 'info' | 'warning' | 'error' => {
     if (isSyncing) return 'info';
     if (isOfflineMode) return 'warning';
     if (hasUnsyncedData) return 'error';
@@ -184,12 +185,19 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
 }, [isSyncing, isOfflineMode, hasUnsyncedData]);
 
   // Get status icon
-  const getStatusIcon = useCallback(() => {
+  const getStatusIcon = useCallback((): React.ReactElement => {
     if (isSyncing) return <CloudSync />;
-    if (isOfflineMode) return theming.getThemedIcon('wifiOff');
+    if (isOfflineMode) return <WifiOff />;
     if (hasUnsyncedData) return <SyncProblem />;
-    return theming.getThemedIcon('wifi');
+    return <Wifi />;
 }, [isSyncing, isOfflineMode, hasUnsyncedData]);
+
+  const getStatusTextColor = useCallback((): 'info.main' | 'warning.main' | 'error.main' | 'success.main' => {
+    if (isSyncing) return 'info.main';
+    if (isOfflineMode) return 'warning.main';
+    if (hasUnsyncedData) return 'error.main';
+    return 'success.main';
+  }, [hasUnsyncedData, isOfflineMode, isSyncing]);
 
   // Get status text
   const getStatusText = useCallback(() => {
@@ -242,7 +250,7 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
-          <Typography variant="body2" color={getStatusColor() + '.main'}>
+          <Typography variant="body2" color={getStatusTextColor()}>
             {getStatusText()}
           </Typography>
         </Box>
@@ -339,7 +347,10 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
               <Typography variant="subtitle2" gutterBottom>
                 Conflicts
               </Typography>
-              <Typography variant="h4" color={conflictCount  sx={{ color: theming.colors.primary }}> 0 ? 'warning' : 'text.secondary'}>
+              <Typography
+                variant="h4"
+                sx={{ color: conflictCount > 0 ? 'warning.main' : 'text.secondary' }}
+              >
                 {conflictCount}
               </Typography>
             </CardContent>
@@ -352,7 +363,10 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
               <Typography variant="subtitle2" gutterBottom>
                 Errors
               </Typography>
-              <Typography variant="h4" color={errorCount  sx={{ color: theming.colors.primary }}> 0 ? 'error' : 'text.secondary'}>
+              <Typography
+                variant="h4"
+                sx={{ color: errorCount > 0 ? 'error.main' : 'text.secondary' }}
+              >
                 {errorCount}
               </Typography>
             </CardContent>
@@ -534,8 +548,6 @@ const OfflineIndicator: React.FC<OfflineIndicatorProps> = memo(({
 OfflineIndicator.displayName ='OfflineIndicator';
 
 export default OfflineIndicator;
-
-
 
 
 

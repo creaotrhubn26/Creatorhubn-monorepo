@@ -1,68 +1,105 @@
 /**
  * Complete Integration Overview
- * Shows how all systems are connected through useProfessionAdapter
+ * Displays live profession-adapter integrations and cross-system status.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Grid,
   Chip,
+  CircularProgress,
+  Grid,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
-  Alert,
-  CircularProgress,
-  Divider,
-  Paper,
+  ListItemText,
+  Snackbar,
   Stack,
-  IconButton,
-  Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Snackbar,
+  Typography,
 } from '@mui/material';
-import { TrendingUp,
-  Search,
-  AutoFixHigh,
-  CheckCircle,
-  Refresh,
-  Analytics,
-  LocationOn,
-  Schedule,
-  Star,
-  ExpandMore,
-  Link,
-  Code,
-  Dashboard,
-  People,
-  CorporateIcon,
-  MusicNoteNote,
-  CameraAltAlt,
-  Videocamcam,
-  Store,
-  Psychology,
-  Speed,
-  Visibility} from '../shared/CreatorHubIcons';
-import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
+import {
+  Analytics as AnalyticsIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  CheckCircle as CheckCircleIcon,
+  Link as LinkIcon,
+  Refresh as RefreshIcon,
+  TrendingUp as TrendingUpIcon,
+  Visibility as VisibilityIcon,
+} from '@mui/icons-material';
+import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import getProfessionIcon from '@/utils/profession-icons';
+import { useTheming } from '@/utils/theming-helper';
+import type { GoogleTrendsData } from '@/services/GoogleTrendsService';
+
+type SnackbarState = {
+  open: boolean;
+  message: string;
+  severity: 'success' | 'error' | 'info';
+};
+
+type ConnectedComponentRow = {
+  component: string;
+  connection: string;
+  status: 'Active' | 'Partial' | 'Disabled';
+};
+
+const CORE_COMPONENT_ROWS: ConnectedComponentRow[] = [
+  { component: 'ProfessionAdapter', connection: 'Context + hook bridge', status: 'Active' },
+  { component: 'Universal CRM Dashboard', connection: 'Profession-adapted labels/data', status: 'Active' },
+  { component: 'Communication Hub', connection: 'Dynamic profession config', status: 'Active' },
+  { component: 'Smart Workflow System', connection: 'Feature matrix + profession config', status: 'Active' },
+];
+
+const SEO_COMPONENT_ROWS: ConnectedComponentRow[] = [
+  { component: 'SEO Specialist Management', connection: 'SEO suggestions + analytics', status: 'Active' },
+  { component: 'SEO Trends Dashboard', connection: 'Google Trends data path', status: 'Active' },
+  { component: 'Visual Editor', connection: 'SEO validation + content metadata', status: 'Active' },
+  { component: 'Profession Trends Integration', connection: 'Dynamic profession + trends merge', status: 'Active' },
+];
+
+function statusColor(status: ConnectedComponentRow['status']): 'success' | 'warning' | 'default' {
+  if (status === 'Active') return 'success';
+  if (status === 'Partial') return 'warning';
+  return 'default';
+}
+
+function ConnectedTable({ rows }: { rows: ConnectedComponentRow[] }) {
+  return (
+    <TableContainer>
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>Component</TableCell>
+            <TableCell>Connection</TableCell>
+            <TableCell>Status</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.component}>
+              <TableCell>{row.component}</TableCell>
+              <TableCell>{row.connection}</TableCell>
+              <TableCell>
+                <Chip size="small" label={row.status} color={statusColor(row.status)} />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+}
 
 export default function CompleteIntegrationOverview() {
   const {
@@ -70,13 +107,9 @@ export default function CompleteIntegrationOverview() {
     config,
     getProjectTypes,
     getDefaultHourlyRate,
-    hasFeature,
     getContractTemplates,
-    adaptProjectTypeLabel,
     adaptDashboardTitle,
-    adaptTabLabels,
     supportsWeddingTimeline,
-    // Google Trends & SEO integration
     loadTrendsData,
     getTrendingKeywords,
     getSEOSuggestions,
@@ -86,104 +119,114 @@ export default function CompleteIntegrationOverview() {
     getProfessionSEOTips,
     trackProfessionActivity,
     getProfessionAnalytics,
-} = useProfessionAdapter();
+  } = useProfessionAdapter();
 
-  const {
-    professionConfigs,
-    getCurrentUserProfession,
-    getProfessionDisplayName,
-    getUserProfessionColor,
-} = useDynamicProfessions();
+  const { getProfessionDisplayName, getUserProfessionColor } = useDynamicProfessions();
+  const theming = useTheming(profession);
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [trendsData, setTrendsData] = useState<any>(null);
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+  const [loading, setLoading] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarState>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
+  const professionIcon = useMemo(() => getProfessionIcon(profession), [profession]);
+  const trendingKeywords = getTrendingKeywords();
+  const seoSuggestions = getSEOSuggestions();
+  const seoInsights = getSEOInsights();
+  const professionKeywords = getProfessionSpecificKeywords();
+  const professionSEOTips = getProfessionSEOTips();
+
+  const loadIntegrationData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await loadTrendsData('norway');
+      const analytics = await getProfessionAnalytics();
+      if (analytics && typeof analytics === 'object') {
+        setAnalyticsData(analytics as Record<string, unknown>);
+      } else {
+        setAnalyticsData(null);
+      }
+    } catch (error) {
+      console.error('Failed to load integration overview data:', error);
+      setSnackbar({
+        open: true,
+        message: 'Kunne ikke laste integrasjonsdata',
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [getProfessionAnalytics, loadTrendsData]);
 
   useEffect(() => {
-    loadData();
-}, [profession]);
+    void loadIntegrationData();
+  }, [loadIntegrationData]);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    try {
-      const trends = await loadTrendsData('norway');
-      const analytics = await getProfessionAnalytics();
-      setTrendsData(trends);
-      setAnalyticsData(analytics);
-  } catch (error) {
-      console.error('Error loading data:', error);
-  } finally {
-      setIsLoading(false);
-  }
-};
-
-  const handleApplySEOFixes = async () => {
-    const success = await applySEOFixes('norway');
-    if (success) {
-      setSnackbar({ open: true, message: '✅ SEO fixes applied successfully!', severity: 'success' });
+  const handleApplySEOFixes = useCallback(async () => {
+    const ok = await applySEOFixes('norway');
+    if (ok) {
+      setSnackbar({
+        open: true,
+        message: 'SEO-forslag ble brukt',
+        severity: 'success',
+      });
       await trackProfessionActivity('seo_fixes_applied', { profession });
-  } else {
-      setSnackbar({ open: true, message: '❌ Error applying SEO fixes', severity: 'error' });
-  }
-};
+      return;
+    }
 
-  const getProfessionIcon = (prof: string) => {
-    const icons = {
-      photographer: <PhotographyIcon />,
-      videographer: <VideographyIcon />,
-      music_producer: <MusicProductionIcon />,
-      vendor: <CorporateIcon />,
-  };
-    return icons[prof as keyof typeof icons] || theming.getThemedIcon('people');
-};
+    setSnackbar({
+      open: true,
+      message: 'SEO-forslag kunne ikke brukes',
+      severity: 'error',
+    });
+  }, [applySEOFixes, profession, trackProfessionActivity]);
 
   return (
-    <Box sx={{ width: '100%'}}>
-      {/* Header */}
-      <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-          🔗 Complete Integration Overview
+    <Box sx={{ width: '100%', display: 'grid', gap: 2 }}>
+      <Box>
+        <Typography variant="h4" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+          Complete Integration Overview
         </Typography>
-        <Typography variant="body1" color="text.secondary">
-          How useProfessionAdapter connects all CreatorHub systems
+        <Typography variant="body2" color="text.secondary">
+          Live status for adapter, trends, SEO and cross-component data flow.
         </Typography>
       </Box>
 
-      {/* Current Profession Context */}
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Current Profession Context
-          </Typography>
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent>
           <Grid container spacing={2}>
-            <Grid item >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                {getProfessionIcon(profession)}
+            <Grid item xs={12} md={8}>
+              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 1.5 }}>
+                <Box sx={{ color: getUserProfessionColor(profession), display: 'flex', alignItems: 'center' }}>
+                  {professionIcon}
+                </Box>
                 <Box>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>{getProfessionDisplayName(profession)}</Typography>
+                  <Typography variant="h6">{getProfessionDisplayName(profession)}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {profession} • {getUserProfessionColor(profession)}
+                    {profession}
                   </Typography>
                 </Box>
-              </Box>
+              </Stack>
               <Typography variant="body2">
-                <strong>Dashboard Title: </strong> {adaptDashboardTitle()}
+                <strong>Dashboard:</strong> {adaptDashboardTitle()}
               </Typography>
               <Typography variant="body2">
-                <strong>Default Rate: </strong> {getDefaultHourlyRate()} NOK/time
+                <strong>Default hourly rate:</strong> {getDefaultHourlyRate()} NOK
               </Typography>
               <Typography variant="body2">
-                <strong>Wedding Timeline: </strong> {supportsWeddingTimeline() ? 'Yes' : 'N'}
+                <strong>Wedding timeline support:</strong> {supportsWeddingTimeline() ? 'Yes' : 'No'}
               </Typography>
             </Grid>
-            <Grid item >
-              <Typography variant="subtitle2" gutterBottom>
-                Special Features
+            <Grid item xs={12} md={4}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Special features
               </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 {config.specialFeatures.map((feature) => (
-                  <Chip key={feature} label={feature} size="small" color="primary" />
+                  <Chip key={feature} size="small" label={feature} color="primary" />
                 ))}
               </Stack>
             </Grid>
@@ -191,24 +234,22 @@ export default function CompleteIntegrationOverview() {
         </CardContent>
       </Card>
 
-      {/* Integration Systems */}
-      <Grid container spacing={3}>
-        {/* 1. Project Types Integration */}
-        <Grid item >
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📋 Project Types Integration
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Project Types
               </Typography>
               <List dense>
                 {getProjectTypes().map((projectType) => (
                   <ListItem key={projectType.value}>
                     <ListItemIcon>
-                      <CheckCircle color="success" />
+                      <CheckCircleIcon color="success" />
                     </ListItemIcon>
                     <ListItemText
                       primary={projectType.label}
-                      secondary={`${projectType.description} • ${projectType.defaultHours}h`}
+                      secondary={`${projectType.description ?? 'No description'} • ${projectType.defaultHours ?? 0}h`}
                     />
                   </ListItem>
                 ))}
@@ -217,18 +258,17 @@ export default function CompleteIntegrationOverview() {
           </Card>
         </Grid>
 
-        {/* 2. Contract Templates Integration */}
-        <Grid item >
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                📄 Contract Templates Integration
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Contract Templates
               </Typography>
               <List dense>
                 {getContractTemplates().map((template) => (
                   <ListItem key={template}>
                     <ListItemIcon>
-                      <CheckCircle color="success" />
+                      <CheckCircleIcon color="success" />
                     </ListItemIcon>
                     <ListItemText primary={template} />
                   </ListItem>
@@ -238,122 +278,103 @@ export default function CompleteIntegrationOverview() {
           </Card>
         </Grid>
 
-        {/* 3. Google Trends Integration */}
-        <Grid item >
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🔥 Google Trends Integration
-              </Typography>
-              {isLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', p:  2 }}>
-                  <CircularProgress />
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <TrendingUpIcon color="primary" />
+                <Typography variant="h6">Google Trends</Typography>
+              </Stack>
+              {loading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={28} />
                 </Box>
+              ) : trendingKeywords.length === 0 ? (
+                <Alert severity="info">No trends loaded yet.</Alert>
               ) : (
-                <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Trending Keywords
-                  </Typography>
-                  <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb:  2 }}>
-                    {getTrendingKeywords().slice(0, 5).map((keyword, index) => (
-                      <Chip
-                        key={index}
-                        label={keyword.keyword}
-                        size="small"
-                        color={keyword.trend === 'rising' ? 'success' : 'default'}
-                      />
-                    ))}
-                  </Stack>
-                  
-                  {getSEOInsights() && (
-                    <Paper sx={{ p: 2, bgcolor: 'grey.50'}}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        SEO Insights
-                      </Typography>
-                      <Typography variant="body2">
-                        Search Volume: {getSEOInsights()?.searchVolume.toLocaleString()}
-                      </Typography>
-                      <Typography variant="body2">
-                        Trend: {getSEOInsights()?.trend}
-                      </Typography>
-                      <Typography variant="body2">
-                        Opportunity: {getSEOInsights()?.opportunity}
-                      </Typography>
-                    </Paper>
-                  )}
-                </Box>
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  {(trendingKeywords as GoogleTrendsData[]).slice(0, 8).map((keyword) => (
+                    <Chip
+                      key={keyword.keyword}
+                      size="small"
+                      label={`${keyword.keyword} (${keyword.searchVolume})`}
+                      color={keyword.trend === 'rising' ? 'success' : 'default'}
+                    />
+                  ))}
+                </Stack>
               )}
             </CardContent>
           </Card>
         </Grid>
 
-        {/* 4. SEO Suggestions Integration */}
-        <Grid item >
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                💡 SEO Suggestions Integration
-              </Typography>
-              {getSEOSuggestions().length > 0 ? (
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <AutoFixHighIcon color="primary" />
+                <Typography variant="h6">SEO Suggestions</Typography>
+              </Stack>
+              {seoSuggestions.length === 0 ? (
+                <Alert severity="info">No SEO suggestions available.</Alert>
+              ) : (
                 <List dense>
-                  {getSEOSuggestions().slice(0, 3).map((suggestion, index) => (
-                    <ListItem key={index}>
+                  {seoSuggestions.slice(0, 5).map((suggestion, index) => (
+                    <ListItem key={`seo-suggestion-${index}`}>
                       <ListItemIcon>
-                        <AutoFixHigh color="primary" />
+                        <AutoFixHighIcon color="action" />
                       </ListItemIcon>
                       <ListItemText
-                        primary={suggestion.title}
-                        secondary={suggestion.description}
+                        primary={typeof suggestion?.title === 'string' ? suggestion.title : 'SEO item'}
+                        secondary={
+                          typeof suggestion?.description === 'string'
+                            ? suggestion.description
+                            : 'No detailed description'
+                        }
                       />
                     </ListItem>
                   ))}
                 </List>
-              ) : (
-                <Alert severity="info">
-                  No SEO suggestions available. Load trends data to see suggestions.
-                </Alert>
               )}
-              <Button variant="contained"
-                startIcon={theming.getThemedIcon('autoFixHigh')}
-                onClick={handleApplySEOFixes}
-                fullWidth
-                sx={{ mt:  2 }}
+              <Button
+                variant="contained"
                 color="success"
-               sx={theming.getThemedButtonSx()}>
+                startIcon={<AutoFixHighIcon />}
+                onClick={() => void handleApplySEOFixes()}
+                sx={{ mt: 1 }}
+              >
                 Apply SEO Fixes
               </Button>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* 5. Profession-Specific Keywords */}
-        <Grid item >
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                🔍 Profession-Specific Keywords
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Profession Keywords
               </Typography>
-              <Stack direction="row" spacing={1} flexWrap="wrap">
-                {getProfessionSpecificKeywords().map((keyword, index) => (
-                  <Chip key={index} label={keyword} size="small" color="secondary" />
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                {professionKeywords.map((keyword) => (
+                  <Chip key={keyword} size="small" label={keyword} variant="outlined" />
                 ))}
               </Stack>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* 6. SEO Tips */}
-        <Grid item >
+        <Grid item xs={12} md={6}>
           <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                💡 SEO Tips
-              </Typography>
+            <CardContent>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <VisibilityIcon color="primary" />
+                <Typography variant="h6">SEO Tips</Typography>
+              </Stack>
               <List dense>
-                {getProfessionSEOTips().slice(0, 3).map((tip, index) => (
-                  <ListItem key={index}>
+                {professionSEOTips.slice(0, 5).map((tip, index) => (
+                  <ListItem key={`seo-tip-${index}`}>
                     <ListItemIcon>
-                      <Visibility color="info" />
+                      <VisibilityIcon color="action" />
                     </ListItemIcon>
                     <ListItemText primary={tip} />
                   </ListItem>
@@ -364,143 +385,76 @@ export default function CompleteIntegrationOverview() {
         </Grid>
       </Grid>
 
-      {/* Connected Components */}
-      <Card sx={{ mt:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            🔗 Connected Components
-          </Typography>
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="subtitle1">Core Components</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Component</TableCell>
-                      <TableCell>Connection Type</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>ProfessionAdapter</TableCell>
-                      <TableCell>Direct Integration</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>UniversalCRMDashboard</TableCell>
-                      <TableCell>useProfessionAdapter Hook</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>UniversalCommunicationHub</TableCell>
-                      <TableCell>useDynamicProfessions Hook</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>SmartWorkflowSystem</TableCell>
-                      <TableCell>useDynamicProfessions Hook</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </AccordionDetails>
-          </Accordion>
-
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="subtitle1">SEO & Analytics Components</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Component</TableCell>
-                      <TableCell>Connection Type</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell>SeoSpecialistManagement</TableCell>
-                      <TableCell>Google Analytics Integration</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>SEOTrendsDashboard</TableCell>
-                      <TableCell>Google Trends Integration</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>CreatorhubVisualEditor</TableCell>
-                      <TableCell>Lighthouse + SEO Validation</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell>ProfessionTrendsIntegration</TableCell>
-                      <TableCell>useDynamicProfessions + Trends</TableCell>
-                      <TableCell><Chip label="Active" color="success" size="small" /></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </AccordionDetails>
-          </Accordion>
-
-          <Accordion>
-            <AccordionSummary expandIcon={<ExpandMore />}>
-              <Typography variant="subtitle1">Data Flow</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap'}}>
-                <Chip label="useDynamicProfessions" icon={<Psychology />} color="primary" />
-                <Typography>→</Typography>
-                <Chip label="useProfessionAdapter" icon={<Link />} color="secondary" />
-                <Typography>→</Typography>
-                <Chip label="Google Trends" icon={theming.getThemedIcon('trendingUp')}} color="success" />
-                <Typography>→</Typography>
-                <Chip label="SEO Suggestions" icon={theming.getThemedIcon('autoFixHigh')}} color="warning" />
-                <Typography>→</Typography>
-                <Chip label="Google Analytics" icon={theming.getThemedIcon('analytics')}} color="info" />
-              </Box>
-            </AccordionDetails>
-          </Accordion>
+      <Card sx={theming.getThemedCardSx()}>
+        <CardContent sx={{ display: 'grid', gap: 2 }}>
+          <Box>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Connected Components
+            </Typography>
+            <ConnectedTable rows={CORE_COMPONENT_ROWS} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              SEO & Analytics Components
+            </Typography>
+            <ConnectedTable rows={SEO_COMPONENT_ROWS} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Data Flow
+            </Typography>
+            <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center">
+              <Chip label="Dynamic Professions" color="primary" />
+              <Typography>→</Typography>
+              <Chip label="Profession Adapter" color="secondary" />
+              <Typography>→</Typography>
+              <Chip label="Google Trends" color="success" />
+              <Typography>→</Typography>
+              <Chip label="SEO Suggestions" color="warning" />
+              <Typography>→</Typography>
+              <Chip label="Analytics" color="info" />
+            </Stack>
+          </Box>
+          {seoInsights && (
+            <Alert severity="info" icon={<AnalyticsIcon />}>
+              {`SEO Insight: volume ${seoInsights.searchVolume}, trend ${seoInsights.trend}, opportunity ${seoInsights.opportunity}`}
+            </Alert>
+          )}
+          {analyticsData && (
+            <Alert severity="success" icon={<AnalyticsIcon />}>
+              Analytics data connected ({Object.keys(analyticsData).length} fields).
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
-      {/* Action Buttons */}
-      <Box sx={{ mt:  3, display: 'flex', gap: 2, justifyContent: 'center'}}>
-        <Button variant="contained"
-          startIcon={theming.getThemedIcon('refresh')}
-          onClick={loadData}
-          disabled={isLoading}
-         sx={theming.getThemedButtonSx()}>
-          Refresh All Data
+      <Stack direction="row" spacing={1}>
+        <Button
+          variant="contained"
+          startIcon={<RefreshIcon />}
+          onClick={() => void loadIntegrationData()}
+          disabled={loading}
+        >
+          Refresh Data
         </Button>
         <Button
           variant="outlined"
-          startIcon={theming.getThemedIcon('analytics')}
-          onClick={() => trackProfessionActivity('integration_overview_viewed', { profession })}
+          startIcon={<LinkIcon />}
+          onClick={() => void trackProfessionActivity('integration_overview_viewed', { profession })}
         >
           Track View
         </Button>
-      </Box>
+      </Stack>
 
-      {/* Snackbar Notifications */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={5000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
           severity={snackbar.severity}
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
           sx={{ width: '100%' }}
         >
           {snackbar.message}

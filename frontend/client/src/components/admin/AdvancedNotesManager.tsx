@@ -78,7 +78,7 @@ export default function AdvancedNotesManager({
   const [searchQuery, setSearchQuery] = useState('');
   
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<NotesData | null>(null);

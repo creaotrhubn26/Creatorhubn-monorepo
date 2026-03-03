@@ -1,916 +1,538 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
-  CardHeader,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  LinearProgress,
   List,
   ListItem,
+  ListItemSecondaryAction,
   ListItemText,
-  ListItemIcon,
-  Chip,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-  Divider,
-  Tooltip,
-  Badge,
-  Avatar,
-  Tabs,
-  Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Alert,
-  AlertTitle,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  Switch,
-  FormControlLabel,
   Slider,
-  LinearProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Checkbox,
-  Radio,
-  RadioGroup,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import {
+  Analytics,
+  CheckCircle,
+  Edit,
+  ErrorOutline,
+  FileDownload,
+  Notifications,
+  WarningAmber,
+} from '@mui/icons-material';
 
-// Types
-interface PerformanceMetric {
-  id: string;
-  name: string;
-  description: string;
-  category: 'core_web_vitals' | 'performance' | 'accessibility' | 'seo' | 'best_practices';
-  value: number;
-  threshold: number;
-  unit: 'ms' | 'score' | 'bytes' | 'count' | 'percentage';
-  status: 'good' | 'needs_improvement' | 'poor';
-  trend: 'up' | 'down' | 'stable';
-  lastUpdated: Date;
-  history: PerformanceDataPoint[]
-}
+type MetricCategory =
+  | 'core_web_vitals'
+  | 'performance'
+  | 'accessibility'
+  | 'seo'
+  | 'best_practices';
+
+type MetricUnit = 'ms' | 'score' | 'bytes' | 'count' | 'percentage';
+type MetricStatus = 'good' | 'needs_improvement' | 'poor';
+type Trend = 'up' | 'down' | 'stable';
+
+type AlertType = 'threshold' | 'anomaly' | 'degradation';
+type AlertSeverity = 'low' | 'medium' | 'high' | 'critical';
+type AlertStatus = 'active' | 'resolved' | 'dismissed';
 
 interface PerformanceDataPoint {
   timestamp: Date;
   value: number;
-  context?: string
+  context?: string;
+}
+
+interface PerformanceMetric {
+  id: string;
+  name: string;
+  description: string;
+  category: MetricCategory;
+  value: number;
+  threshold: number;
+  unit: MetricUnit;
+  status: MetricStatus;
+  trend: Trend;
+  lastUpdated: Date;
+  history: PerformanceDataPoint[];
 }
 
 interface PerformanceAlert {
   id: string;
   metricId: string;
-  type: 'threshold' | 'anomaly' | 'degradation';
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  type: AlertType;
+  severity: AlertSeverity;
   message: string;
   triggered: Date;
   resolved?: Date;
-  status: 'active' | 'resolved' | 'dismissed'
+  status: AlertStatus;
 }
 
 interface PerformanceMonitoringProps {
   className?: string;
   onMetricChange?: (metric: PerformanceMetric) => void;
   onAlertChange?: (alert: PerformanceAlert) => void;
-  onPerformanceExport?: (data: { metrics: PerformanceMetric[], alerts: PerformanceAlert[, ],}) => void;
+  onPerformanceExport?: (data: { metrics: PerformanceMetric[]; alerts: PerformanceAlert[] }) => void;
 }
 
-// Mock data
-const defaultMetrics: PerformanceMetric[] = [
+const INITIAL_METRICS: PerformanceMetric[] = [
   {
     id: 'lcp',
     name: 'Largest Contentful Paint',
-    description: 'Time to render the largest content element',
+    description: 'Time to render the largest visible content element.',
     category: 'core_web_vitals',
     value: 2.1,
     threshold: 2.5,
     unit: 'ms',
     status: 'good',
     trend: 'stable',
-    lastUpdated: new Date('2024-01-15', ),
-    history: [
-      { timestamp: new Date('2024-01-10,', ), value: 2.3,},
-      { timestamp: new Date('2024-01-11,', ), value: 2.1,},
-      { timestamp: new Date('2024-01-12', ), value: 2.0,},
-      { timestamp: new Date('2024-01-13', ), value: 2.2,},
-      { timestamp: new Date('2024-01-14', ), value: 2.1,},
-      { timestamp: new Date('2024-01-15', ), value: 2.1,}
-    ]
-},
-  {
-    id: 'fid',
-    name: 'First Input Delay',
-    description: 'Time from first user interaction to browser response',
-    category: 'core_web_vitals',
-    value:  45,
-    threshold: 10,
-    unit: 'ms',
-    status: 'good',
-    trend: 'down',
-    lastUpdated: new Date('2024-01-15', ),
-    history: [
-      { timestamp: new Date('2024-01-10', ), value: 60,},
-      { timestamp: new Date('2024-01-11', ), value: 55,},
-      { timestamp: new Date('2024-01-12', ), value: 50,},
-      { timestamp: new Date('2024-01-13', ), value: 48,},
-      { timestamp: new Date('2024-01-14', ), value: 46,},
-      { timestamp: new Date('2024-01-15', ), value: 45,}
-    ]
-},
+    lastUpdated: new Date(),
+    history: [],
+  },
   {
     id: 'cls',
     name: 'Cumulative Layout Shift',
-    description: 'Visual stability of the page',
+    description: 'Measures visual layout stability.',
     category: 'core_web_vitals',
-    value: 0.5,
+    value: 0.18,
     threshold: 0.1,
     unit: 'score',
     status: 'needs_improvement',
     trend: 'up',
-    lastUpdated: new Date('2024-01-15', ),
-    history: [
-      { timestamp: new Date('2024-01-10', ), value: 0.1, 2,},
-      { timestamp: new Date('2024-01-11', ), value: 0.1, 3,},
-      { timestamp: new Date('2024-01-12', ), value: 0.1, 4,},
-      { timestamp: new Date('2024-01-13', ), value: 0.1, 5,},
-      { timestamp: new Date('2024-01-14', ), value: 0.1, 5,},
-      { timestamp: new Date('2024-01-15', ), value: 0.1, 5,}
-    ]
-},
+    lastUpdated: new Date(),
+    history: [],
+  },
   {
     id: 'ttfb',
     name: 'Time to First Byte',
-    description: 'Time until the first byte of response',
+    description: 'Server response delay to first byte.',
     category: 'performance',
-    value: 80,
-    threshold: 60,
+    value: 780,
+    threshold: 600,
     unit: 'ms',
     status: 'needs_improvement',
     trend: 'stable',
-    lastUpdated: new Date('2024-01-15', ),
-    history: [
-      { timestamp: new Date('2024-01-10', ), value: 850,},
-      { timestamp: new Date('2024-01-11', ), value: 820,},
-      { timestamp: new Date('2024-01-12', ), value: 800,},
-      { timestamp: new Date('2024-01-13', ), value: 810,},
-      { timestamp: new Date('2024-01-14', ), value: 800,},
-      { timestamp: new Date('2024-01-15', ), value: 800,}
-    ]
-},
+    lastUpdated: new Date(),
+    history: [],
+  },
   {
-    id: 'accessibility',
+    id: 'a11y',
     name: 'Accessibility Score',
-    description: 'Overall accessibility compliance',
+    description: 'Accessibility audit score.',
     category: 'accessibility',
-    value:  85,
-    threshold:  90,
+    value: 86,
+    threshold: 90,
     unit: 'score',
     status: 'needs_improvement',
     trend: 'up',
-    lastUpdated: new Date('2024-01-15', ),
-    history: [
-      { timestamp: new Date('2024-01-10', ), value: 80,},
-      { timestamp: new Date('2024-01-11', ), value: 82,},
-      { timestamp: new Date('2024-01-12', ), value: 83,},
-      { timestamp: new Date('2024-01-13', ), value: 84,},
-      { timestamp: new Date('2024-01-14', ), value: 85,},
-      { timestamp: new Date('2024-01-15', ), value: 85,}
-    ]
-}
+    lastUpdated: new Date(),
+    history: [],
+  },
 ];
 
-const defaultAlerts: PerformanceAlert[] = [
-  {
-    id: 'alert',
-    metricId: 'cls',
-    type: 'threshold',
-    severity: 'medium',
-    message: 'Cumulative Layout Shift exceeds threshold',
-    triggered: new Date('2024-01-15', ),
-    status: 'active'
-},
-  {
-    id: 'alert',
-    metricId: 'ttfb',
-    type: 'threshold',
-    severity: 'low',
-    message: 'Time to First Byte is above recommended value',
-    triggered: new Date('2024-01-14', ),
-    status: 'active'
+const CATEGORY_LABELS: Record<MetricCategory, string> = {
+  core_web_vitals: 'Core Web Vitals',
+  performance: 'Performance',
+  accessibility: 'Accessibility',
+  seo: 'SEO',
+  best_practices: 'Best Practices',
+};
+
+function metricStatus(value: number, threshold: number, unit: MetricUnit): MetricStatus {
+  const scoreLike = unit === 'score' || unit === 'percentage';
+
+  if (scoreLike) {
+    if (value >= threshold) {
+      return 'good';
+    }
+    if (value >= threshold * 0.9) {
+      return 'needs_improvement';
+    }
+    return 'poor';
+  }
+
+  if (value <= threshold) {
+    return 'good';
+  }
+  if (value <= threshold * 1.2) {
+    return 'needs_improvement';
+  }
+  return 'poor';
 }
-];
+
+function randomDeltaForUnit(unit: MetricUnit): number {
+  switch (unit) {
+    case 'ms':
+      return (Math.random() - 0.5) * 60;
+    case 'score':
+    case 'percentage':
+      return (Math.random() - 0.5) * 1.8;
+    case 'bytes':
+      return (Math.random() - 0.5) * 12000;
+    default:
+      return (Math.random() - 0.5) * 3;
+  }
+}
+
+function formatMetricValue(value: number, unit: MetricUnit): string {
+  if (unit === 'ms') {
+    return `${value.toFixed(0)} ms`;
+  }
+  if (unit === 'score') {
+    return value.toFixed(2);
+  }
+  if (unit === 'percentage') {
+    return `${value.toFixed(1)}%`;
+  }
+  if (unit === 'bytes') {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return value.toFixed(0);
+}
+
+function statusColor(status: MetricStatus): 'success' | 'warning' | 'error' {
+  if (status === 'good') {
+    return 'success';
+  }
+  if (status === 'needs_improvement') {
+    return 'warning';
+  }
+  return 'error';
+}
+
+function severityFromStatus(status: MetricStatus): AlertSeverity {
+  if (status === 'poor') {
+    return 'high';
+  }
+  if (status === 'needs_improvement') {
+    return 'medium';
+  }
+  return 'low';
+}
 
 const PerformanceMonitoring: React.FC<PerformanceMonitoringProps> = ({
-  className =', ',
+  className,
   onMetricChange,
   onAlertChange,
-  onPerformanceExport
+  onPerformanceExport,
 }) => {
-  // State
-  const [activeTab, setActiveTab] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [selectedMetric, setSelectedMetric] = useState<PerformanceMetric | null>(null);
-  const [selectedAlert, setSelectedAlert] = useState<PerformanceAlert | null>(null);
-  const [showMetricEditor, setShowMetricEditor] = useState(false);
-  const [showAlertDialog, setShowAlertDialog] = useState(false);
-  const [metrics, setMetrics] = useState<PerformanceMetric[]>(defaultMetrics);
-  const [alerts, setAlerts] = useState<PerformanceAlert[]>(defaultAlerts);
-  const [isMonitoring, setIsMonitoring] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(30);
+  const [tab, setTab] = useState(0);
+  const [metrics, setMetrics] = useState<PerformanceMetric[]>(INITIAL_METRICS);
+  const [alerts, setAlerts] = useState<PerformanceAlert[]>([]);
+  const [monitoringEnabled, setMonitoringEnabled] = useState(true);
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(30);
+  const [editingMetric, setEditingMetric] = useState<PerformanceMetric | null>(null);
+  const [thresholdDraft, setThresholdDraft] = useState('');
 
-  // Handlers
-  const handleMetricSelect = useCallback((metric: PerformanceMetric) => {
-    setSelectedMetric(metric);
-    onMetricChange?.(metric);
-}, [onMetricChange]);
-
-  const handleAlertSelect = useCallback((alert: PerformanceAlert) => {
-    setSelectedAlert(alert);
-    setShowAlertDialog(true);
-}, []);
-
-  const handleMetricEdit = useCallback((metric: PerformanceMetric) => {
-    setSelectedMetric(metric);
-    setShowMetricEditor(true);
-}, []);
-
-  const handleMetricSave = useCallback(() => {
-    if (selectedMetric) {
-      const existingIndex = metrics.findIndex(m => m.id === selectedMetric.id);
-      if (existingIndex >= 0) {
-        setMetrics(prev => prev.map((m, i) => i === existingIndex ? selectedMetric : m));
-    } else {
-        setMetrics(prev => [...prev, selectedMetric]);
+  useEffect(() => {
+    if (!monitoringEnabled) {
+      return;
     }
-      setShowMetricEditor(false);
-  }
-}, [selectedMetric, metrics]);
 
-  const handleAlertDismiss = useCallback((alertId: string) => {
-    setAlerts(prev => prev.map(a => 
-      a.id === alertId ? { .., .status: 'dismissed' as const } : a
-    ));
-}, []);
+    const intervalId = window.setInterval(() => {
+      setMetrics((previousMetrics) => {
+        const now = new Date();
+        const nextMetrics = previousMetrics.map((metric) => {
+          const nextValue = Math.max(0, metric.value + randomDeltaForUnit(metric.unit));
+          const nextStatus = metricStatus(nextValue, metric.threshold, metric.unit);
+          const nextTrend: Trend = nextValue > metric.value ? 'up' : nextValue < metric.value ? 'down' : 'stable';
 
-  const handleAlertResolve = useCallback((alertId: string) => {
-    setAlerts(prev => prev.map(a => 
-      a.id === alertId ? { .., .status: 'resolved' as const, resolved: new Date(),} : a
-    ));
-}, []);
+          const updatedMetric: PerformanceMetric = {
+            ...metric,
+            value: nextValue,
+            status: nextStatus,
+            trend: nextTrend,
+            lastUpdated: now,
+            history: [...metric.history.slice(-29), { timestamp: now, value: nextValue }],
+          };
 
-  const handlePerformanceExport = useCallback(() => {
+          onMetricChange?.(updatedMetric);
+          return updatedMetric;
+        });
+
+        setAlerts((previousAlerts) => {
+          const nextAlerts = [...previousAlerts];
+
+          for (const metric of nextMetrics) {
+            const hasActiveAlert = nextAlerts.some(
+              (alert) => alert.metricId === metric.id && alert.status === 'active',
+            );
+
+            if (metric.status !== 'good' && !hasActiveAlert) {
+              const alert: PerformanceAlert = {
+                id: `${metric.id}-${Date.now()}`,
+                metricId: metric.id,
+                type: metric.status === 'poor' ? 'degradation' : 'threshold',
+                severity: severityFromStatus(metric.status),
+                message: `${metric.name} is now ${metric.status.replace('_', ' ')}`,
+                triggered: now,
+                status: 'active',
+              };
+
+              onAlertChange?.(alert);
+              nextAlerts.unshift(alert);
+            }
+          }
+
+          return nextAlerts.slice(0, 80);
+        });
+
+        return nextMetrics;
+      });
+    }, refreshIntervalSeconds * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [monitoringEnabled, refreshIntervalSeconds, onAlertChange, onMetricChange]);
+
+  const activeAlerts = useMemo(
+    () => alerts.filter((alert) => alert.status === 'active'),
+    [alerts],
+  );
+
+  const dashboardScore = useMemo(() => {
+    if (metrics.length === 0) {
+      return 0;
+    }
+
+    const score =
+      metrics.reduce((sum, metric) => {
+        if (metric.status === 'good') {
+          return sum + 100;
+        }
+        if (metric.status === 'needs_improvement') {
+          return sum + 65;
+        }
+        return sum + 35;
+      }, 0) / metrics.length;
+
+    return Math.round(score);
+  }, [metrics]);
+
+  const openMetricEditor = (metric: PerformanceMetric) => {
+    setEditingMetric(metric);
+    setThresholdDraft(metric.threshold.toString());
+  };
+
+  const saveMetricThreshold = () => {
+    if (!editingMetric) {
+      return;
+    }
+
+    const parsedThreshold = Number(thresholdDraft);
+    if (!Number.isFinite(parsedThreshold) || parsedThreshold <= 0) {
+      return;
+    }
+
+    setMetrics((previous) =>
+      previous.map((metric) =>
+        metric.id === editingMetric.id
+          ? {
+              ...metric,
+              threshold: parsedThreshold,
+              status: metricStatus(metric.value, parsedThreshold, metric.unit),
+            }
+          : metric,
+      ),
+    );
+
+    setEditingMetric(null);
+  };
+
+  const updateAlertStatus = (alertId: string, status: AlertStatus) => {
+    setAlerts((previous) =>
+      previous.map((alert) =>
+        alert.id === alertId
+          ? {
+              ...alert,
+              status,
+              resolved: status === 'active' ? undefined : new Date(),
+            }
+          : alert,
+      ),
+    );
+  };
+
+  const exportSnapshot = () => {
     onPerformanceExport?.({ metrics, alerts });
-}, [metrics, alerts, onPerformanceExport]);
-
-  const getCategoryIcon = useCallback((category: string) => {
-    switch (category) {
-      case 'core_web_vitals': return <CREATOR_HUB_ICONS.timeline />;
-      case 'performance': return <CREATOR_HUB_ICONS.speed />;
-      case 'accessibility': return <CREATOR_HUB_ICONS.accessibility />;
-      case 'seo': return <CREATOR_HUB_ICONS.seo />;
-      case 'best_practices': return <CREATOR_HUB_ICONS.checkCircle />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  const getStatusIcon = useCallback((status: string) => {
-    switch (status) {
-      case 'good': return <CREATOR_HUB_ICONS.checkCircle />;
-      case 'needs_improvement': return <CREATOR_HUB_ICONS.warning />;
-      case 'poor': return <CREATOR_HUB_ICONS.error />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'good': return 'success';
-      case 'needs_improvement': return 'warning';
-      case 'poor': return 'error';
-      default: return 'default';
-}
-}, []);
-
-  const getSeverityColor = useCallback((severity: string) => {
-    switch (severity) {
-      case 'low': return 'info';
-      case 'medium': return 'warning';
-      case 'high': return 'error';
-      case 'critical': return 'error';
-      default: return 'default';
-}
-}, []);
-
-  const getTrendIcon = useCallback((trend: string) => {
-    switch (trend) {
-      case 'up': return <CREATOR_HUB_ICONS.trendingUp />;
-      case 'down': return <CREATOR_HUB_ICONS.trendingDown />;
-      case 'stable': return <CREATOR_HUB_ICONS.trendingFlat />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  // Memoized data
-  const performanceStats = useMemo(() => {
-    const totalMetrics = metrics.length;
-    const goodMetrics = metrics.filter(m => m.status === 'good').length;
-    const needsImprovementMetrics = metrics.filter(m => m.status === 'needs_improvement').length;
-    const poorMetrics = metrics.filter(m => m.status === 'poor').length;
-    const activeAlerts = alerts.filter(a => a.status === 'active').length;
-    const avgScore = metrics.reduce((sum, m) => sum + m.value, 0) / metrics.length;
-    
-    return { totalMetrics, goodMetrics, needsImprovementMetrics, poorMetrics, activeAlerts, avgScore };
-}, [metrics, alerts]);
-
-  const recentActivity = useMemo(() => {
-    return [
-      { id: 1, action: 'Performance metric updated', metric: 'LC', timestamp: new Date(), type: 'metric',},
-      { id: 2, action: 'Alert triggered', alert: 'CLS threshold exceeded', timestamp: new Date(), type: 'alert',},
-      { id:  3, action: 'Performance test completed', test: 'Core Web Vitals', timestamp: new Date(), type: 'test',},
-    ];
-}, []);
+  };
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.performance sx={{ fontSize:  32, color: 'primary.main'}} />
+    <Box className={className}>
+      <Card variant="outlined" sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center" justifyContent="space-between">
             <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Performance Monitoring</Typography>
+              <Typography variant="h6">Performance Monitoring</Typography>
               <Typography variant="body2" color="text.secondary">
-                Real-time performance metrics and monitoring
+                Live monitoring av vitals, tilgjengelighet og stabilitet.
               </Typography>
             </Box>
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Chip icon={<Analytics fontSize="small" />} label={`Score ${dashboardScore}`} color={dashboardScore >= 80 ? 'success' : dashboardScore >= 60 ? 'warning' : 'error'} />
+              <Chip
+                icon={<Notifications fontSize="small" />}
+                label={`${activeAlerts.length} active alerts`}
+                color={activeAlerts.length === 0 ? 'success' : 'warning'}
+              />
+              <Button startIcon={<FileDownload />} variant="outlined" onClick={exportSnapshot}>
+                Export
+              </Button>
+            </Stack>
           </Stack>
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.add />}
-              onClick={() => {
-                setSelectedMetric({
-                  id: `metric-${Date.now()}`,
-                  name: 'New Metric',
-                  description: 'Custom performance metric',
-                  category: 'performance',
-                  value:  0,
-                  threshold: 10,
-                  unit: 'score',
-                  status: 'good',
-                  trend: 'stable',
-                  lastUpdated: new Date(),
-                  history: []
-            });
-                setShowMetricEditor(true);
-            }}
-            >
-              New Metric
-            </Button>
-            <Button variant="contained"
-              startIcon={isMonitoring ? <CREATOR_HUB_ICONS.pause sx={theming.getThemedButtonSx()} /> : <CREATOR_HUB_ICONS.playArrow />}
-              onClick={() => setIsMonitoring(!isMonitoring)}
-            >
-              {isMonitoring ? 'Pause' : 'Start'} Monitoring
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.download />}
-              onClick={handlePerformanceExport}
-            >
-              Export
-            </Button>
-          </Stack>
-        </Stack>
-      </Paper>
+          <LinearProgress variant="determinate" value={dashboardScore} sx={{ mt: 2 }} />
+        </CardContent>
+      </Card>
 
-      {/* Stats Cards */}
-      <Grid container spacing={2} sx={{ mb:  3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.performance sx={{ fontSize:  40, color: 'primary.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{performanceStats.totalMetrics}</Typography>
-                  <Typography variant="body2" color="text.secondary">Total Metrics</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.checkCircle sx={{ fontSize:  40, color: 'success.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{performanceStats.goodMetrics}</Typography>
-                  <Typography variant="body2" color="text.secondary">Good Metrics</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.warning sx={{ fontSize:  40, color: 'warning.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{performanceStats.needsImprovementMetrics}</Typography>
-                  <Typography variant="body2" color="text.secondary">Need Improvement</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.error sx={{ fontSize:  40, color: 'error.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{performanceStats.activeAlerts}</Typography>
-                  <Typography variant="body2" color="text.secondary">Active Alerts</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Card variant="outlined">
+        <CardContent>
+          <Tabs value={tab} onChange={(_, value) => setTab(value)}>
+            <Tab label="Metrics" />
+            <Tab label="Alerts" />
+            <Tab label="Settings" />
+          </Tabs>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
-        <Tab label="Metrics" icon={<CREATOR_HUB_ICONS.timeline />} />
-        <Tab label="Alerts" icon={<CREATOR_HUB_ICONS.warning />} />
-        <Tab label="Trends" icon={<CREATOR_HUB_ICONS.trendingUp />} />
-        <Tab label="Activity" icon={<CREATOR_HUB_ICONS.history />} />
-      </Tabs>
+          <Divider sx={{ my: 2 }} />
 
-      {/* Metrics Tab */}
-      {activeTab === 0 && (
-        <Grid container spacing={2}>
-          {metrics.map((metric) => (
-            <Grid item xs={12} sm={6} md={4} key={metric.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2',
-                  border: selectedMetric?.id === metric.id ? 2 : 0,
-                  borderColor: selectedMetric?.id === metric.id ? 'primary.main' : 'transparent'
-            }}
-                onClick={() => handleMetricSelect(metric)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getCategoryIcon(metric.category)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {metric.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {metric.description}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip 
-                          label={metric.category.replace('_', ', ')}
-                          size="small" 
-                          color="primary"
-                        />
-                        <Chip 
-                          icon={getStatusIcon(metric.status)}
-                          label={metric.status}
-                          size="small" 
-                          color={getStatusColor(metric.status) as any}
-                        />
-                        <Chip 
-                          icon={getTrendIcon(metric.trend)}
-                          label={metric.trend}
-                          size="small" 
-                          variant="outlined"
-                        />
-                      </Stack>
-                      
-                      <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
+          {tab === 0 && (
+            <Grid container spacing={2}>
+              {metrics.map((metric) => (
+                <Grid item xs={12} md={6} key={metric.id}>
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1}>
                         <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Current Value
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            {metric.name}
                           </Typography>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {metric.value} {metric.unit}
+                          <Typography variant="body2" color="text.secondary">
+                            {metric.description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {CATEGORY_LABELS[metric.category]}
                           </Typography>
                         </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Threshold
-                          </Typography>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {metric.threshold} {metric.unit}
-                          </Typography>
-                        </Box>
+                        <IconButton size="small" onClick={() => openMetricEditor(metric)}>
+                          <Edit fontSize="small" />
+                        </IconButton>
                       </Stack>
-                      
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={(metric.value / metric.threshold) * 100}
-                        sx={{ mb: 2, height:  4, borderRadius:  2 }}
-                        color={metric.status === 'good' ? 'success' : metric.status === 'needs_improvement' ? 'warning' : 'error'}
+
+                      <Stack direction="row" spacing={1} sx={{ mt: 1.25, mb: 1 }}>
+                        <Chip label={formatMetricValue(metric.value, metric.unit)} size="small" color={statusColor(metric.status)} />
+                        <Chip label={`Threshold ${formatMetricValue(metric.threshold, metric.unit)}`} size="small" variant="outlined" />
+                        <Chip label={metric.trend} size="small" variant="outlined" />
+                      </Stack>
+
+                      <LinearProgress
+                        variant="determinate"
+                        value={
+                          metric.unit === 'score' || metric.unit === 'percentage'
+                            ? Math.max(0, Math.min(100, (metric.value / Math.max(metric.threshold, 1)) * 100))
+                            : Math.max(0, Math.min(100, (Math.max(metric.threshold * 1.5 - metric.value, 0) / (metric.threshold * 1.5)) * 100))
+                        }
+                        color={statusColor(metric.status)}
                       />
-                      
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.edit />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMetricEdit(metric);
-                        }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.timeline />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle view history
-                        }}
-                        >
-                          History
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Alerts Tab */}
-      {activeTab === 1 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Performance Alerts
-          </Typography>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Alert</TableCell>
-                  <TableCell>Severity</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Triggered</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {alerts.map((alert) => (
-                  <TableRow key={alert.id}>
-                    <TableCell>
-                      <Typography variant="subtitle2">
-                        {alert.message}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {metrics.find(m => m.id === alert.metricId)?.name || 'Unknown Metric'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={alert.severity}
-                        color={getSeverityColor(alert.severity) as any}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={alert.status}
-                        color={alert.status === 'active' ? 'error' : 'success'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {alert.triggered.toLocaleString()}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => handleAlertSelect(alert)}
-                        >
-                          View
-                        </Button>
-                        {alert.status === 'active' && (
-                          <>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="success"
-                              onClick={() => handleAlertResolve(alert.id)}
-                            >
-                              Resolve
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              onClick={() => handleAlertDismiss(alert.id)}
-                            >
-                              Dismiss
-                            </Button>
-                          </>
-                        )}
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      )}
-
-      {/* Trends Tab */}
-      {activeTab === 2 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Performance Trends
-          </Typography>
-          <Grid container spacing={2}>
-            {metrics.map((metric) => (
-              <Grid item xs={12} md={6} key={metric.id}>
-                <Card sx={theming.getThemedCardSx()}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                      {metric.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      {metric.description}
-                    </Typography>
-                    
-                    <Box sx={{ height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                      <Typography variant="body1" color="text.secondary">
-                        Chart visualization would go here
-                      </Typography>
-                    </Box>
-                    
-                    <Stack direction="row" spacing={2} sx={{ mt:  2 }}>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Current
-                        </Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                          {metric.value} {metric.unit}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Trend
-                        </Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                          {metric.trend}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          Status
-                        </Typography>
-                        <Chip
-                          label={metric.status}
-                          color={getStatusColor(metric.status) as any}
-                          size="small"
-                        />
-                      </Box>
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
-      )}
-
-      {/* Activity Tab */}
-      {activeTab === 3 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Performance Activity
-          </Typography>
-          <List>
-            {recentActivity.map((activity) => (
-              <ListItem key={activity.id}>
-                <ListItemIcon>
-                  <CREATOR_HUB_ICONS.history />
-                </ListItemIcon>
-                <ListItemText
-                  primary={activity.action}
-                  secondary={`${activity.metric || activity.alert || activity.test} • ${activity.timestamp.toLocaleString()}`}
-                />
-                <Chip 
-                  label={activity.type}
-                  size="small" 
-                  color="primary"
-                />
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      )}
-
-      {/* Metric Editor Dialog */}
-      <Dialog open={showMetricEditor} onClose={() => setShowMetricEditor(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.performance />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedMetric?.id.startsWith('metric-') ? 'Create Metric' : 'Edit Metric'}
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedMetric && (
-            <Stack spacing={3} sx={{ mt:  2 }}>
-              <TextField
-                label="Metric Name"
-                value={selectedMetric.name}
-                onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, name: e.target.value } : null)}
-                fullWidth
-              />
-              <TextField
-                label="Description"
-                value={selectedMetric.description}
-                onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, description: e.target.value } : null)}
-                fullWidth
-                multiline
-                rows={2}
-              />
-              <Stack direction="row" spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={selectedMetric.category}
-                    onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, category: e.target.value as any } : null)}
-                  >
-                    <MenuItem value="core_web_vitals">Core Web Vitals</MenuItem>
-                    <MenuItem value="performance">Performance</MenuItem>
-                    <MenuItem value="accessibility">Accessibility</MenuItem>
-                    <MenuItem value="seo">SEO</MenuItem>
-                    <MenuItem value="best_practices">Best Practices</MenuItem>
-                  </Select>
-                </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Unit</InputLabel>
-                  <Select
-                    value={selectedMetric.unit}
-                    onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, unit: e.target.value as any } : null)}
-                  >
-                    <MenuItem value="ms">Milliseconds</MenuItem>
-                    <MenuItem value="score">Score</MenuItem>
-                    <MenuItem value="bytes">Bytes</MenuItem>
-                    <MenuItem value="count">Count</MenuItem>
-                    <MenuItem value="percentage">Percentage</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-              <Stack direction="row" spacing={2}>
-                <TextField
-                  label="Current Value"
-                  type="number"
-                  value={selectedMetric.value}
-                  onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, value: parseFloat(e.target.value, ),} : null)}
-                  fullWidth
-                />
-                <TextField
-                  label="Threshold"
-                  type="number"
-                  value={selectedMetric.threshold}
-                  onChange={(e) => setSelectedMetric(prev => prev ? { ...prev, threshold: parseFloat(e.target.value, ),} : null)}
-                  fullWidth
-                />
-              </Stack>
-            </Stack>
           )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowMetricEditor(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained" 
-            onClick={handleMetricSave}
-           sx={theming.getThemedButtonSx()}>
-            {selectedMetric?.id.startsWith('metric-') ? 'Create' : 'Update'} Metric
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* Alert Dialog */}
-      <Dialog open={showAlertDialog} onClose={() => setShowAlertDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.warning />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              Alert Details
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedAlert && (
-            <Stack spacing={2} sx={{ mt:  2 }}>
-              <Box>
-                <Typography variant="subtitle2">Message</Typography>
-                <Typography variant="body1">
-                  {selectedAlert.message}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Severity</Typography>
-                <Chip
-                  label={selectedAlert.severity}
-                  color={getSeverityColor(selectedAlert.severity) as any}
-                />
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Status</Typography>
-                <Chip
-                  label={selectedAlert.status}
-                  color={selectedAlert.status === 'active' ? 'error' : 'success'}
-                />
-              </Box>
-              <Box>
-                <Typography variant="subtitle2">Triggered</Typography>
-                <Typography variant="body1">
-                  {selectedAlert.triggered.toLocaleString()}
-                </Typography>
-              </Box>
-              {selectedAlert.resolved && (
-                <Box>
-                  <Typography variant="subtitle2">Resolved</Typography>
-                  <Typography variant="body1">
-                    {selectedAlert.resolved.toLocaleString()}
-                  </Typography>
-                </Box>
+          {tab === 1 && (
+            <List>
+              {alerts.length === 0 ? (
+                <Alert severity="success">Ingen varsler akkurat nå.</Alert>
+              ) : (
+                alerts.map((alert) => (
+                  <ListItem key={alert.id} divider alignItems="flex-start">
+                    <ListItemText
+                      primary={alert.message}
+                      secondary={`Severity: ${alert.severity} • Status: ${alert.status}`}
+                    />
+                    <ListItemSecondaryAction>
+                      {alert.status === 'active' && (
+                        <Stack direction="row" spacing={1}>
+                          <Button size="small" startIcon={<CheckCircle />} onClick={() => updateAlertStatus(alert.id, 'resolved')}>
+                            Resolve
+                          </Button>
+                          <Button size="small" startIcon={<ErrorOutline />} onClick={() => updateAlertStatus(alert.id, 'dismissed')}>
+                            Dismiss
+                          </Button>
+                        </Stack>
+                      )}
+                    </ListItemSecondaryAction>
+                  </ListItem>
+                ))
               )}
+            </List>
+          )}
+
+          {tab === 2 && (
+            <Stack spacing={3}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={monitoringEnabled}
+                    onChange={(event) => setMonitoringEnabled(event.target.checked)}
+                  />
+                }
+                label="Enable live monitoring"
+              />
+
+              <Box>
+                <Typography gutterBottom>Refresh interval (seconds)</Typography>
+                <Slider
+                  value={refreshIntervalSeconds}
+                  min={5}
+                  max={120}
+                  step={5}
+                  valueLabelDisplay="auto"
+                  onChange={(_, value) => setRefreshIntervalSeconds(value as number)}
+                />
+              </Box>
+
+              <Alert severity="info" icon={<WarningAmber />}>
+                Kortere intervall gir raskere deteksjon, men høyere runtime-overhead.
+              </Alert>
             </Stack>
           )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={Boolean(editingMetric)} onClose={() => setEditingMetric(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Edit metric threshold</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            label="Threshold"
+            type="number"
+            value={thresholdDraft}
+            onChange={(event) => setThresholdDraft(event.target.value)}
+            sx={{ mt: 1 }}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowAlertDialog(false)}>
-            Close
+          <Button onClick={() => setEditingMetric(null)}>Cancel</Button>
+          <Button variant="contained" onClick={saveMetricThreshold}>
+            Save
           </Button>
-          {selectedAlert?.status ==='active' && (
-            <>
-              <Button
-                variant="outlined"
-                color="success"
-                onClick={() => {
-                  handleAlertResolve(selectedAlert.id);
-                  setShowAlertDialog(false);
-              }}
-              >
-                Resolve
-              </Button>
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => {
-                  handleAlertDismiss(selectedAlert.id);
-                  setShowAlertDialog(false);
-              }}
-              >
-                Dismiss
-              </Button>
-            </>
-          )}
         </DialogActions>
       </Dialog>
     </Box>
@@ -918,4 +540,3 @@ const PerformanceMonitoring: React.FC<PerformanceMonitoringProps> = ({
 };
 
 export default PerformanceMonitoring;
-

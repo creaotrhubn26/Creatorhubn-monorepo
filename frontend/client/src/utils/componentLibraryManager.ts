@@ -579,7 +579,7 @@ class ComponentLibraryManager {
    */
   async updateComponent(id: string, updates: Partial<ComponentLibraryItem>): Promise<ComponentLibraryItem> {
     const component = this.state.items.get(id);
-    if (!component) throw new Error(`Component not found: ${d}`);
+    if (!component) throw new Error(`Component not found: ${id}`);
 
     try {
       // Update component
@@ -611,7 +611,7 @@ class ComponentLibraryManager {
    */
   async deleteComponent(id: string): Promise<void> {
     const component = this.state.items.get(id);
-    if (!component) throw new Error(`Component not found: ${d}`);
+    if (!component) throw new Error(`Component not found: ${id}`);
 
     try {
       // Remove from state
@@ -792,7 +792,6 @@ class ComponentLibraryManager {
 export const componentLibraryManager = new ComponentLibraryManager();
 
 export default componentLibraryManager;
-
 
 
 

@@ -434,11 +434,11 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
 
   // Change widget size
   const changeWidgetSize = (widgetId: string, size: 'small' | 'medium' | 'large') => {
-    const updatedWidgets = userWidgets.map((w) => (w.id === widgetId ? { .., .size } : w));
+    const updatedWidgets = userWidgets.map((w) => (w.id === widgetId ? { ...w, size } : w));
     setUserWidgets(updatedWidgets);
     saveWidgets(updatedWidgets);
     setWidgetMenuAnchor({ ...widgetMenuAnchor, [widgetId]: null });
-};
+  };
 
   // Handle drag end
   const handleDragEnd = (result: any) => {
@@ -446,7 +446,7 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
 
     const items = Array.from(userWidgets);
     const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.indexreorderedItem);
+    items.splice(result.destination.index, 0, reorderedItem);
 
     // Update positions
     const updatedWidgets = items.map((widget, index) => ({
@@ -456,7 +456,7 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
 
     setUserWidgets(updatedWidgets);
     saveWidgets(updatedWidgets);
-};
+  };
 
   // Get widget component
   const getWidgetComponent = (widget: DashboardWidget) => {
@@ -507,13 +507,16 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
                           {...provided.draggableProps}>
                           <Card
                             sx={{
+                              ...theming.getThemedCardSx(),
                               height: '100%',
                               transition: 'all 0.2s ease',
-                              transform: snapshot.isDragging ? 'rotate(5deg)' : 'rotate(0deg, )',
-                              boxShadow: snapshot.isDragging ? 8 : 1, '&:hover': {
-                                boxShadow:  3,
-                            }}}
-                           sx={theming.getThemedCardSx()}>
+                              transform: snapshot.isDragging ? 'rotate(5deg)' : 'rotate(0deg)',
+                              boxShadow: snapshot.isDragging ? 8 : 1,
+                              '&:hover': {
+                                boxShadow: 3,
+                              },
+                            }}
+                          >
                             <CardHeader
                               {...provided.dragHandleProps}
                               avatar={widgetDef.icon}
@@ -521,11 +524,11 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
                               action={
                                 <IconButton
                                   size="small"
-                                  onClick={(e) = sx={theming.getThemedCardSx()}>
+                                  onClick={(e) =>
                                     setWidgetMenuAnchor({
                                       ...widgetMenuAnchor,
                                       [widget.id]: e.currentTarget,
-                                  })
+                                    })
                                 }
                                 >
                                   {theming.getThemedIcon('moreVert')}
@@ -547,13 +550,13 @@ const DashboardWidgets: React.FC<DashboardWidgetsProps> = ({ profession }) => {
                               })
                             }
                             >
-                              <MenuItem onClick={() => changeWidgetSize(widget.id'small')}>
+                              <MenuItem onClick={() => changeWidgetSize(widget.id, 'small')}>
                                 Liten størrelse
                               </MenuItem>
-                              <MenuItem onClick={() => changeWidgetSize(widget.id'medium')}>
+                              <MenuItem onClick={() => changeWidgetSize(widget.id, 'medium')}>
                                 Medium størrelse
                               </MenuItem>
-                              <MenuItem onClick={() => changeWidgetSize(widget.id'large')}>
+                              <MenuItem onClick={() => changeWidgetSize(widget.id, 'large')}>
                                 Stor størrelse
                               </MenuItem>
                               <MenuItem

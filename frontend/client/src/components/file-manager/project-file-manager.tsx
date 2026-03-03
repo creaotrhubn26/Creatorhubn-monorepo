@@ -75,7 +75,7 @@ export default function ProjectFileManager() {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(fileData)
   });
   },

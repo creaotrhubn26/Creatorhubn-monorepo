@@ -1,5 +1,6 @@
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Card,
@@ -114,24 +115,24 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
   const theming = useTheming('photographer,');
 
   // Hent placeholder scan resultater
-  const { data: scanResult, isLoading, error } = useQuery({
+  const { data: scanResult, isLoading, error } = useQuery<PlaceholderScanResult>({
     queryKey: ['/api/development/placeholder-scan', ],
     refetchInterval: 3000000, // Oppdater hver 30. sekund
 });
 
   // Trigger ny scan
-  const { data: scanStatus, refetch: triggerScan } = useQuery({
+  const { data: scanStatus, refetch: triggerScan } = useQuery<unknown>({
     queryKey: ['/api/development/trigger-scan', ],
     enabled: false,
 });
 
-  const getSeverityColor = (severity: string) => {
-    const colors = {
+  const getSeverityColor = (severity: PlaceholderMatch['severity']) => {
+    const colors: Record<PlaceholderMatch['severity'], string> = {
       high: '#f44330',
       medium: '#ff9800', 
       low: '#4caf50'
 };
-    return colors[severity] || colors.low;
+    return colors[severity];
 };
 
   const getSeverityIcon = (severity: string) => {
@@ -143,18 +144,19 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
   }
 };
 
-  const getTypeIcon = (type: string) => {
-    const icons = {
+  const getTypeIcon = (type: PlaceholderMatch['type']): React.ReactElement => {
+    const icons: Record<PlaceholderMatch['type'], React.ReactNode> = {
       kommer_snart: theming.getThemedIcon(', '),
       placeholder: <FindInPage />,
       todo: theming.getThemedIcon(', '),
       mock_data: <BugReport />,
       fallback: theming.getThemedIcon(', ')
   };
-    return icons[type] || <Code />;
+    const icon = icons[type] ?? <Code />;
+    return React.isValidElement(icon) ? icon : <Code />;
 };
 
-  const filteredMatches = scanResult?.matches?.filter((match: PlaceholderMatch) => {
+  const filteredMatches = (scanResult?.matches ?? []).filter((match: PlaceholderMatch) => {
     const matchesType = filterType === 'all' || match.type === filterType;
     const matchesSeverity = filterSeverity === 'all' || match.severity === filterSeverity;
     const matchesSearch = searchTerm === ', ' || 
@@ -204,7 +206,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
     );
 }
 
-  const scanData = scanResult || {
+  const scanData: PlaceholderScanResult = scanResult ?? {
     totalFiles:  0,
     scannedFiles:  0,
     totalMatches:  0,
@@ -225,7 +227,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
           </Typography>
 
           <Grid container spacing={3}>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Typography variant="h3" sx={{ color: theming.colors.primary, mb: 1 }}>
@@ -239,7 +241,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesBySeverity?.high || 0} color="error">
@@ -253,7 +255,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Badge badgeContent={scanData.matchesByType?.kommer_snart || 0} color="warning">
@@ -267,7 +269,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
               </Card>
             </Grid>
 
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid item xs={12} md={3}>
               <Card sx={{ bgcolor: 'rgba(25,255,255,0.9)', ...theming.getThemedCardSx() }}>
                 <CardContent sx={{ textAlign: 'center', ...theming.getThemedCardSx() }}>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
@@ -301,7 +303,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
           </Typography>
           
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }} md={3}>
+            <Grid item xs={12} md={3}>
               <TextField
                 fullWidth
                 placeholder="Søk i filer, innhold, komponenter..."
@@ -312,7 +314,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
               }}
               />
             </Grid>
-            <Grid size={{ xs: 12 }} md={3}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Type</InputLabel>
                 <Select
@@ -329,7 +331,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }} md={3}>
+            <Grid item xs={12} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Alvorlighetsgrad</InputLabel>
                 <Select
@@ -344,7 +346,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12 }} md={3}>
+            <Grid item xs={12} md={3}>
               <Button
                 fullWidth
                 variant="outlined"
@@ -375,7 +377,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
           ) : (
             <List>
               {filteredMatches.map((match: PlaceholderMatch) => (
-                <React.Fragment key={match.d}>
+                <React.Fragment key={match.id}>
                   <ListItem
                     sx={{
                       border: `1px solid ${getSeverityColor(match.severity)}`,
@@ -439,7 +441,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                         <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>Kontekst og Detaljer</Typography>
 
                         <Grid container spacing={2}>
-                          <Grid size={{ xs: 12, md: 6 }}>
+                          <Grid item xs={12} md={6}>
                             <Typography variant="subtitle2" sx={{ mb:  1 }}>Fil informasjon: </Typography>
                             <Typography variant="body2" sx={{ mb: 1 }}>
                               <strong>Fil: </strong> {match.file}
@@ -452,7 +454,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                             </Typography>
                           </Grid>
                           
-                          <Grid size={{ xs: 12, md: 6 }}>
+                          <Grid item xs={12} md={6}>
                             <Typography variant="subtitle2" sx={{ mb: 1 }}>Klassifisering: </Typography>
                             <Typography variant="body2" sx={{ mb: 1 }}>
                               <strong>Type: </strong> {match.type.replace('_', ', ')}
@@ -462,7 +464,7 @@ const PlaceholderTextScanner: React.FC<PlaceholderTextScannerProps> = ({
                             </Typography>
                           </Grid>
 
-                          <Grid size={{ xs: 12 }}>
+                          <Grid item xs={12}>
                             <Typography variant="subtitle2" sx={{ mb: 1 }}>Kontekst: </Typography>
                             <Typography variant="body2" sx={{ mb: 2 }}>
                               {match.context}

@@ -84,7 +84,7 @@ export default function LightingSimulator3D() {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(newEquipment)
   });
   },
@@ -133,7 +133,7 @@ export default function LightingSimulator3D() {
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(setup)
   });
   },

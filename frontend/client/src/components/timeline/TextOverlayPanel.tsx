@@ -18,21 +18,44 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Slider,
-  Chip,
   Grid,
   Card,
   CardActionArea,
   IconButton,
 } from '@mui/material';
-import { Close, Add, PlayArrow } from '@mui/icons-material';
+import { Close, Add } from '@mui/icons-material';
 import { TextAnimationEngine } from '../../services/text-animation-engine';
-import { textOverlayEngine } from '../../services/text-overlay-engine';
+import {
+  TextOverlayEngine,
+  textOverlayEngine,
+  type TextOverlay,
+} from '../../services/text-overlay-engine';
 
 interface TextOverlayPanelProps {
   open: boolean;
   onClose: () => void;
-  onAddOverlay: (overlay: any) => void;
+  onAddOverlay: (overlay: TextOverlay) => void;
+}
+
+type TextPreset = { name: string; style: Partial<TextOverlay> };
+
+function getSafeTextPresets(): TextPreset[] {
+  const maybeEngine = textOverlayEngine as Partial<TextOverlayEngine> & {
+    getTextPresets?: () => TextPreset[];
+  };
+
+  if (typeof maybeEngine.getTextPresets === 'function') {
+    try {
+      const presets = maybeEngine.getTextPresets();
+      if (Array.isArray(presets) && presets.length > 0) {
+        return presets;
+      }
+    } catch (error) {
+      console.warn('Text preset instance API failed, using static fallback.', error);
+    }
+  }
+
+  return TextOverlayEngine.getTextPresets();
 }
 
 export default function TextOverlayPanel({
@@ -51,10 +74,10 @@ export default function TextOverlayPanel({
   const [animation, setAnimation] = useState('fade_in');
   const [duration, setDuration] = useState(1.0);
   
-  const presets = textOverlayEngine.getTextPresets();
+  const presets = getSafeTextPresets();
   const animations = TextAnimationEngine.getAnimationPresets();
   
-  const handleApplyPreset = (preset: any) => {
+  const handleApplyPreset = (preset: TextPreset) => {
     if (preset.style.fontSize) setFontSize(preset.style.fontSize);
     if (preset.style.fontFamily) setFontFamily(preset.style.fontFamily);
     if (preset.style.fill) setFill(preset.style.fill);
@@ -184,6 +207,31 @@ export default function TextOverlayPanel({
             ))}
           </Select>
         </FormControl>
+
+        <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+          <TextField
+            label="X"
+            type="number"
+            value={x}
+            onChange={(e) => setX(Number(e.target.value))}
+            sx={{ width: 120 }}
+          />
+          <TextField
+            label="Y"
+            type="number"
+            value={y}
+            onChange={(e) => setY(Number(e.target.value))}
+            sx={{ width: 120 }}
+          />
+          <TextField
+            label="Animation Duration (s)"
+            type="number"
+            value={duration}
+            onChange={(e) => setDuration(Number(e.target.value))}
+            inputProps={{ min: 0.1, step: 0.1 }}
+            sx={{ width: 200 }}
+          />
+        </Stack>
       </DialogContent>
       
       <DialogActions>
@@ -195,5 +243,3 @@ export default function TextOverlayPanel({
     </Dialog>
   );
 }
-
-

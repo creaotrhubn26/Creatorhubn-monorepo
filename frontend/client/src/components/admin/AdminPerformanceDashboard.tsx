@@ -112,7 +112,7 @@ export default function AdminPerformanceDashboard({ className }: AdminPerformanc
   const { auth } = useEnhancedMasterIntegration();
 
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
 
   // System metrics query

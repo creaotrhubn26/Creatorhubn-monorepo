@@ -53,7 +53,6 @@ import {
   InputLabel,
   Tabs,
   Tab,
-  Box,
   Drawer,
   AppBar,
   Toolbar,
@@ -168,7 +167,7 @@ export default function VisualCMSDashboard() {
 
   // State management
   const [selectedView, setSelectedView] = useState<
-    'overview' | 'api-bank' | 'workflow' | 'deployment'
+    'overview' | 'api-bank' | 'workflow' | 'deployment' | 'designer' | 'components' | 'code' | 'preview'
   >('overview');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [globalMockMode, setGlobalMockMode] = useState(false);
@@ -197,7 +196,7 @@ export default function VisualCMSDashboard() {
       healthyCount: 10,
       status: 'mixed',
       color: '#ff9800',
-      icon: <DatabaseIcon />,
+      icon: <StorageIcon />,
   },
     {
       id: 'internal-showcase',
@@ -431,7 +430,7 @@ export default function VisualCMSDashboard() {
   const toggleGlobalMockMode = useMutation({
     mutationFn: async (enabled: boolean) => {
       const response = await fetch('/api/admin/wiremock/global-toggle', {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type':'application/json','x-user-email' : 'daniel@creatorhubn.com',
       },
@@ -461,7 +460,7 @@ export default function VisualCMSDashboard() {
   const startDeploymentWorkflow = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/admin/deployment/workflow/start', {
-        method: 'POS',
+        method: 'POST',
         headers: {
           'Content-Type':'application/json', 'x-user-email' : 'daniel@creatorhubn.com',
       },
@@ -731,7 +730,7 @@ export default function VisualCMSDashboard() {
             <Stack spacing={2}>
               <Button variant="contained"
                 size="large"
-                startIcon={<Science />}
+                startIcon={<TestIcon />}
                 onClick={() => setSelectedView('workflow')}
                 fullWidth
               >
@@ -805,7 +804,7 @@ export default function VisualCMSDashboard() {
           });
         }}
           onTaskComplete={(taskId) => {
-            console.log(`Task completed: ${taskd}`);
+            console.log(`Task completed: ${taskId}`);
         }}
           autoRefresh={true}
           refreshInterval={3000}

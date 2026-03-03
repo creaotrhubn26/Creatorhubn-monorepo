@@ -88,7 +88,7 @@ const ContractSigningPage: React.FC = () => {
       signerEmail: string;
 }) => {
       return apiRequest(`/api/contracts/${id}/sign`, {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(signatureData),
     });
   },

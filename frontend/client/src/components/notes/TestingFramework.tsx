@@ -926,7 +926,13 @@ const TestingFramework: React.FC<TestingFrameworkProps> = ({
               <TextField
                 label="Tags (comma-separated)"
                 value={selectedTestCase.tags.join(', ')}
-                onChange={(e) => setSelectedTestCase(prev => prev ? { ...prev, tags: e.target.value.split, (', ').map(t => t.trim()) } : null)}
+                onChange={(e) =>
+                  setSelectedTestCase((prev) =>
+                    prev
+                      ? { ...prev, tags: e.target.value.split(',').map((tag) => tag.trim()) }
+                      : null,
+                  )
+                }
                 fullWidth
               />
             </Stack>
@@ -948,4 +954,3 @@ const TestingFramework: React.FC<TestingFrameworkProps> = ({
 };
 
 export default TestingFramework;
-

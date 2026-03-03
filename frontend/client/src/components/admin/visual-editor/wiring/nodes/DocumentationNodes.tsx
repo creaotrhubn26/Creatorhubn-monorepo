@@ -31,6 +31,9 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 // Component Doc Node
 export const ComponentDocNode = memo(function ComponentDocNode({
   config,
@@ -100,7 +103,7 @@ export const ComponentDocNode = memo(function ComponentDocNode({
             <FormControlLabel
               control={
                 <Switch
-                  checked={data.includeDependencies || false}
+                  checked={getBooleanValue(data.includeDependencies)}
                   onChange={(e) => onChange('includeDependencies', e.target.checked)}
                   size="small"
                 />
@@ -345,7 +348,7 @@ export const READMENode = memo(function READMENode({
             <FormControlLabel
               control={
                 <Switch
-                  checked={data.includeAPI || false}
+                  checked={getBooleanValue(data.includeAPI)}
                   onChange={(e) => onChange('includeAPI', e.target.checked)}
                   size="small"
                 />
@@ -465,21 +468,21 @@ export const AutoDocTriggerNode = memo(function AutoDocTriggerNode({
           <Stack spacing={0.5}>
             <FormControlLabel
               control={
-                <Switch
-                  checked={data.onSave || false}
-                  onChange={(e) => onChange('onSave', e.target.checked)}
-                  size="small"
-                />
+                  <Switch
+                    checked={getBooleanValue(data.onSave)}
+                    onChange={(e) => onChange('onSave', e.target.checked)}
+                    size="small"
+                  />
               }
               label={<Typography variant="caption">On File Save</Typography>}
             />
             <FormControlLabel
               control={
-                <Switch
-                  checked={data.onCommit || false}
-                  onChange={(e) => onChange('onCommit', e.target.checked)}
-                  size="small"
-                />
+                  <Switch
+                    checked={getBooleanValue(data.onCommit)}
+                    onChange={(e) => onChange('onCommit', e.target.checked)}
+                    size="small"
+                  />
               }
               label={<Typography variant="caption">On Git Commit</Typography>}
             />
@@ -495,11 +498,11 @@ export const AutoDocTriggerNode = memo(function AutoDocTriggerNode({
             />
             <FormControlLabel
               control={
-                <Switch
-                  checked={data.scheduled || false}
-                  onChange={(e) => onChange('scheduled', e.target.checked)}
-                  size="small"
-                />
+                  <Switch
+                    checked={getBooleanValue(data.scheduled)}
+                    onChange={(e) => onChange('scheduled', e.target.checked)}
+                    size="small"
+                  />
               }
               label={<Typography variant="caption">Scheduled (daily)</Typography>}
             />
@@ -624,4 +627,3 @@ export const DOCUMENTATION_NODE_DEFINITIONS = [
 ];
 
 export default DOCUMENTATION_NODE_DEFINITIONS;
-

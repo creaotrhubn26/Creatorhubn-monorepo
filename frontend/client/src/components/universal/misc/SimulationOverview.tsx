@@ -231,7 +231,7 @@ export default function SimulationOverview() {
                 background: `linear-gradient(135deg, ${theme.palette.background.paper} 0%, ${theme.palette.background.default} 100%)`,
                 border: `1px solid ${theme.palette.divider}`, '&:hover': {
                   transform: 'translateY(-8px)',
-                  boxShadow: theme.shadows[],
+                  boxShadow: theme.shadows[8],
                   borderColor: theme.palette.primary.main
             }
             }}

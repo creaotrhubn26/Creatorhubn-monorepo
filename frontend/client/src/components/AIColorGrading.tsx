@@ -173,7 +173,7 @@ const AIColorGrading = React.memo(function AIColorGrading({ projectId = 'current
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: formData,
         credentials: 'include',
     });
@@ -215,7 +215,7 @@ const AIColorGrading = React.memo(function AIColorGrading({ projectId = 'current
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: formData,
         credentials: 'include',
     });
@@ -241,7 +241,7 @@ const AIColorGrading = React.memo(function AIColorGrading({ projectId = 'current
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         credentials: 'include',
     });
 

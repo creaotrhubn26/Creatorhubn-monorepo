@@ -1,38 +1,34 @@
 /**
  * Smart Notification System for Google Services
- * Context-aware notifications with actions and priority handling
+ * Context-aware notifications with actions and priority handling.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Snackbar,
   Alert,
   AlertTitle,
-  Button,
   Box,
-  Typography,
-  IconButton,
-  Collapse,
-  LinearProgress,
+  Button,
   Chip,
+  Collapse,
+  IconButton,
+  LinearProgress,
   Stack,
-  alpha,
-  useTheme,
+  Typography,
 } from '@mui/material';
 import {
-  Close,
-  Refresh,
   CheckCircle,
-  Error,
-  Warning,
-  Info,
-  CloudSync,
   CloudDone,
-  CloudOff,
+  Close,
+  Error,
+  ExpandLess,
+  ExpandMore,
+  Info,
   Settings,
-  Launch,
+  Warning,
 } from '@mui/icons-material';
+import { alpha, useTheme } from '@mui/material/styles';
+import { useTheming } from '../../utils/theming-helper';
 
 export interface SmartNotification {
   id: string;
@@ -48,10 +44,10 @@ export interface SmartNotification {
     current: number;
     total: number;
     label?: string;
-};
+  };
   persistent?: boolean;
   autoRetry?: boolean;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotificationAction {
@@ -59,7 +55,7 @@ export interface NotificationAction {
   action: () => void | Promise<void>;
   variant?: 'text' | 'outlined' | 'contained';
   color?: 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success';
-  icon?: React.ReactNode
+  icon?: React.ReactNode;
 }
 
 interface GoogleServicesNotificationSystemProps {
@@ -70,6 +66,22 @@ interface GoogleServicesNotificationSystemProps {
   enableVibration?: boolean;
 }
 
+type AlertSeverity = 'success' | 'info' | 'warning' | 'error';
+type NotificationPayload = Omit<SmartNotification, 'id' | 'timestamp'>;
+
+const PRIORITY_SCORE: Record<SmartNotification['priority'], number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+};
+
+declare global {
+  interface Window {
+    showGoogleServicesNotification?: (notification: NotificationPayload) => void;
+  }
+}
+
 export const GoogleServicesNotificationSystem: React.FC<GoogleServicesNotificationSystemProps> = ({
   maxNotifications = 5,
   autoHideDelay = 6000,
@@ -78,302 +90,271 @@ export const GoogleServicesNotificationSystem: React.FC<GoogleServicesNotificati
   enableVibration = false,
 }) => {
   const theme = useTheme();
-  
-  // Theming system
   const theming = useTheming('photographer');
+
   const [notifications, setNotifications] = useState<SmartNotification[]>([]);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
-  // Auto-expand high priority notifications
-  useEffect(() => {
-    notifications.forEach(notification => {
-      if (notification.priority === 'critical' || notification.priority === 'high') {
-        setExpanded(prev => ({ ...prev, [notification.id]: true }));
-    }
-  });
-}, [notifications]);
-
-  const getNotificationIcon = (type: SmartNotification['type']) => {
+  const getNotificationIcon = useCallback((type: SmartNotification['type']) => {
     switch (type) {
       case 'sync-complete':
-        return theming.getThemedIcon(', ');
+        return <CloudDone fontSize="small" />;
       case 'quota-warning':
-        return theming.getThemedIcon('warning');
+        return <Warning fontSize="small" />;
       case 'permission-required':
-        return theming.getThemedIcon('settings');
+        return <Settings fontSize="small" />;
       case 'error':
-        return theming.getThemedIcon('error');
+        return <Error fontSize="small" />;
       case 'success':
-        return theming.getThemedIcon('checkCircle');
-      case 'info':
-      default: return theming.getThemedIcon(', ');
-  }
-};
-
-  const getNotificationColor = (type: SmartNotification['type']priority: SmartNotification['priority']) => {
-    if (priority === 'critical') return theme.palette.error.main;
-    if (priority === 'high') return theme.palette.warning.main;
-    
-    switch (type) {
-      case 'error':
-        return theme.palette.error.main;
-      case 'warning':
-      case 'quota-warning':
-        return theme.palette.warning.main;
-      case 'success':
-      case 'sync-complete':
-        return theme.palette.success.main;
+        return <CheckCircle fontSize="small" />;
       case 'info':
       default:
-        return theme.palette.info.main;
-}
-};
+        return <Info fontSize="small" />;
+    }
+  }, []);
 
-  const getSeverity = (type: SmartNotification['type']priority: SmartNotification['priority']) => {
-    if (priority === 'critical') return 'error';
-    if (priority === 'high') return 'warning';
-    
-    switch (type) {
+  const getColor = useCallback(
+    (notification: SmartNotification) => {
+      if (notification.priority === 'critical') {
+        return theme.palette.error.main;
+      }
+      if (notification.priority === 'high') {
+        return theme.palette.warning.main;
+      }
+
+      switch (notification.type) {
+        case 'sync-complete':
+        case 'success':
+          return theme.palette.success.main;
+        case 'quota-warning':
+          return theme.palette.warning.main;
+        case 'error':
+          return theme.palette.error.main;
+        case 'permission-required':
+          return theme.palette.secondary.main;
+        default:
+          return theme.palette.info.main;
+      }
+    },
+    [theme],
+  );
+
+  const getSeverity = useCallback((notification: SmartNotification): AlertSeverity => {
+    if (notification.priority === 'critical') {
+      return 'error';
+    }
+
+    switch (notification.type) {
       case 'error':
         return 'error';
       case 'quota-warning':
+      case 'permission-required':
         return 'warning';
       case 'success':
       case 'sync-complete':
         return 'success';
       default:
         return 'info';
-}
-};
-
-  const handleClose = useCallback((notificationId: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    setExpanded(prev => {
-      const newExpanded = { ...prev };
-      delete newExpanded[notificationId];
-      return newExpanded;
-  });
-}, []);
-
-  const handleExpand = useCallback((notificationId: string) => {
-    setExpanded(prev => ({ ...prev, [notificationId]: !prev[notificationId] }));
-}, []);
-
-  const handleAction = useCallback(async (notification: SmartNotification, action: NotificationAction) => {
-    try {
-      await action.action();
-      
-      // Show success feedback
-      if (action.label !== 'Dismiss') {
-        showNotification({
-          type: 'success',
-          service: notification.service,
-          title: 'Action Completed',
-          message: `${action.label} completed successfully`,
-          priority: 'low',
-          duration: 300,
-      });
     }
-  } catch (error) {
-      console.error('Notification action failed: ', error);
-      showNotification({
-        type: 'error',
-        service: notification.service,
-        title: 'Action Failed',
-        message: `${action.label} failed: ${error.message}`,
-        priority: 'medium',
-        duration: 500,
+  }, []);
+
+  const closeNotification = useCallback((notificationId: string) => {
+    setNotifications((currentNotifications) =>
+      currentNotifications.filter((notification) => notification.id !== notificationId),
+    );
+    setExpandedRows((current) => {
+      if (!(notificationId in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[notificationId];
+      return next;
     });
-  }
-}, []);
+  }, []);
 
-  const showNotification = useCallback((notification: Omit<SmartNotification, 'id' | 'timestamp'>) => {
-    const newNotification: SmartNotification = {
-      ...notification,
-      id: `notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date(),
-      duration: notification.duration || autoHideDelay,
-  };
+  const toggleExpanded = useCallback((notificationId: string) => {
+    setExpandedRows((current) => ({ ...current, [notificationId]: !current[notificationId] }));
+  }, []);
 
-    setNotifications(prev => {
-      const updated = [...prev, newNotification];
-      
-      // Limit number of notifications
-      if (updated.length > maxNotifications) {
-        // Remove oldest low priority notifications first
-        const sorted = updated.sort((a, b) => {
-          const priorityOrder = { critical:  4, high:  3, medium: 2, low:  1 };
-          const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-          if (priorityDiff !== 0) return priorityDiff;
-          return a.timestamp.getTime() - b.timestamp.getTime();
-      });
-        
+  const showNotification = useCallback(
+    (notification: NotificationPayload) => {
+      const id = `gs-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const nextNotification: SmartNotification = {
+        ...notification,
+        id,
+        timestamp: new Date(),
+        duration: notification.duration ?? autoHideDelay,
+      };
+
+      setNotifications((currentNotifications) => {
+        const queued = [...currentNotifications, nextNotification];
+        const sorted = [...queued].sort((left, right) => {
+          const priorityDelta = PRIORITY_SCORE[right.priority] - PRIORITY_SCORE[left.priority];
+          if (priorityDelta !== 0) {
+            return priorityDelta;
+          }
+          return right.timestamp.getTime() - left.timestamp.getTime();
+        });
         return sorted.slice(0, maxNotifications);
-    }
-      
-      return updated;
-  });
+      });
 
-    // Play sound if enabled
-    if (enableSound && newNotification.priority !== 'low') {
-      // Play notification sound
-      const audio = new Audio('/notification.mp3');
-      audio.volume = 0.3;
-      audio.play().catch(() => {}); // Ignore errors
-  }
+      if (enableSound && nextNotification.priority !== 'low') {
+        const audio = new Audio('/notification.mp3');
+        audio.volume = 0.25;
+        void audio.play().catch(() => undefined);
+      }
 
-    // Vibrate if enabled
-    if (enableVibration && newNotification.priority === 'critical' && navigator.vibrate) {
-      navigator.vibrate([200, 100, 200]);
-  }
+      if (enableVibration && nextNotification.priority === 'critical' && 'vibrate' in navigator) {
+        navigator.vibrate([180, 80, 180]);
+      }
 
-    // Auto-hide notification
-    if (newNotification.duration && !newNotification.persistent) {
-      setTimeout(() => {
-        handleClose(newNotification.id);
-    }, newNotification.duration);
-  }
-}, [maxNotifications, autoHideDelay, enableSound, enableVibration, handleClose]);
+      if (!nextNotification.persistent && typeof nextNotification.duration === 'number') {
+        setTimeout(() => {
+          closeNotification(id);
+        }, nextNotification.duration);
+      }
+    },
+    [autoHideDelay, closeNotification, enableSound, enableVibration, maxNotifications],
+  );
 
-  // Expose showNotification globally for use by other components
   useEffect(() => {
-    (window as any).showGoogleServicesNotification = showNotification;
+    window.showGoogleServicesNotification = showNotification;
     return () => {
-      delete (window as any).showGoogleServicesNotification;
-  };
-}, [showNotification]);
+      delete window.showGoogleServicesNotification;
+    };
+  }, [showNotification]);
 
-  const getPositionStyles = () => {
-    const baseStyles = {
-      position: 'fixed' as const,
-      zIndex: , theme.zIndex.snackbar,
-  };
+  const handleAction = useCallback(
+    async (notification: SmartNotification, action: NotificationAction) => {
+      await action.action();
+
+      if (!notification.persistent) {
+        closeNotification(notification.id);
+      }
+    },
+    [closeNotification],
+  );
+
+  const containerPosition = useMemo(() => {
+    const base: React.CSSProperties = {
+      position: 'fixed',
+      zIndex: theme.zIndex.snackbar,
+      maxWidth: 460,
+      width: 'min(460px, calc(100vw - 24px))',
+    };
 
     switch (position) {
-      case 'top-right':
-        return { ...baseStyles, top:  16, right: 16,};
       case 'top-left':
-        return { ...baseStyles, top:  16, left: 16,};
+        return { ...base, top: 12, left: 12 };
       case 'bottom-right':
-        return { ...baseStyles, bottom:  16, right: 16,};
+        return { ...base, bottom: 12, right: 12 };
       case 'bottom-left':
-        return { ...baseStyles, bottom:  16, left: 16,};
-      default: return { ...baseStyles, top:  16, right: 16,};
-  }
-};
+        return { ...base, bottom: 12, left: 12 };
+      case 'top-right':
+      default:
+        return { ...base, top: 12, right: 12 };
+    }
+  }, [position, theme.zIndex.snackbar]);
 
   return (
-    <Box sx={getPositionStyles()}>
-      <Stack spacing={2}>
-        {notifications.map((notification, index) => {
-          const isExpanded = expanded[notification.id];
-          const color = getNotificationColor(notification.type, notification.priority);
-          const severity = getSeverity(notification.type, notification.priority);
+    <Box sx={containerPosition}>
+      <Stack spacing={1.25}>
+        {notifications.map((notification) => {
+          const color = getColor(notification);
+          const severity = getSeverity(notification);
+          const expanded = Boolean(expandedRows[notification.id]);
 
           return (
             <Alert
               key={notification.id}
-              severity={severity as any}
+              severity={severity}
               icon={getNotificationIcon(notification.type)}
               action={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                <Stack direction="row" spacing={0.5}>
                   {notification.actions && notification.actions.length > 0 && (
                     <IconButton
                       size="small"
-                      onClick={() => handleExpand(notification.id)}
-                      sx={{ color: 'inherit'}}
+                      color="inherit"
+                      aria-label={expanded ? 'Collapse actions' : 'Expand actions'}
+                      onClick={() => toggleExpanded(notification.id)}
                     >
-                      {isExpanded ? theming.getThemedIcon('close') : theming.getThemedIcon('launch')}
+                      {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
                     </IconButton>
                   )}
                   <IconButton
                     size="small"
-                    onClick={() => handleClose(notification.id)}
-                    sx={{ color: 'inherit'}}
+                    color="inherit"
+                    aria-label="Close notification"
+                    onClick={() => closeNotification(notification.id)}
                   >
-                    {theming.getThemedIcon('close')}
+                    <Close fontSize="small" />
                   </IconButton>
-                </Box>
-            }
+                </Stack>
+              }
               sx={{
-                minWidth: 30,
-                maxWidth: 40,
-                boxShadow: theme.shadows[],
-                border: `1px solid ${alpha(color, 0.3)}`'& .MuiAlert-icon': {
-                  color: color,
-              },
-                animation: `slideIn 0.3s ease-out ${index * 0.1}s both`'@keyframes slideIn': {
-                  from: {
-                    opacity: 0,
-                    transform: 'translateX(100%, )',
-                },
-                  to: {
-                    opacity: 1,
-                    transform: 'translateX(0, )',
-                },
-              }}}
+                border: `1px solid ${alpha(color, 0.35)}`,
+                boxShadow: 4,
+                ...theming.getThemedCardSx(),
+              }}
             >
-              <AlertTitle sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+              <AlertTitle sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.25 }}>
                 <Chip
-                  label={notification.service}
                   size="small"
+                  label={notification.service}
                   sx={{
-                    bgcolor: alpha(color, 0.1),
-                    color: color,
-                    fontWeight: 60
-                }}
+                    backgroundColor: alpha(color, 0.1),
+                    color,
+                    border: `1px solid ${alpha(color, 0.35)}`,
+                  }}
                 />
                 {notification.priority !== 'low' && (
                   <Chip
-                    label={notification.priority}
                     size="small"
-                    color={notification.priority === 'critical' ? 'error' : 'warning'}
+                    label={notification.priority}
                     variant="outlined"
+                    color={notification.priority === 'critical' ? 'error' : 'warning'}
                   />
                 )}
               </AlertTitle>
-              
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5}}>
+
+              <Typography variant="subtitle2" sx={{ mb: 0.25 }}>
                 {notification.title}
               </Typography>
-              
-              <Typography variant="body2" sx={{ mb:  1 }}>
-                {notification.message}
-              </Typography>
+              <Typography variant="body2">{notification.message}</Typography>
 
               {notification.progress && (
-                <Box sx={{ mb:  1 }}>
+                <Box sx={{ mt: 1 }}>
                   <LinearProgress
                     variant="determinate"
                     value={(notification.progress.current / notification.progress.total) * 100}
                     sx={{
-                      height:  4,
-                      borderRadius:  2,
-                      bgcolor: alpha(color, 0.1)'& .MuiLinearProgress-bar': {
-                        bgcolor: color,
-                    }}}
+                      height: 4,
+                      borderRadius: 999,
+                      backgroundColor: alpha(color, 0.18),
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: color,
+                      },
+                    }}
                   />
-                  <Typography variant="caption" color="text.secondary">
-                    {notification.progress.label || `${notification.progress.current} of ${notification.progress.total}`}
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.25, display: 'block' }}>
+                    {notification.progress.label ?? `${notification.progress.current}/${notification.progress.total}`}
                   </Typography>
                 </Box>
               )}
 
-              <Collapse in={isExpanded}>
+              <Collapse in={expanded}>
                 {notification.actions && notification.actions.length > 0 && (
-                  <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap'}}>
+                  <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
                     {notification.actions.map((action, actionIndex) => (
                       <Button
-                        key={actionIndex}
+                        key={`${notification.id}-${actionIndex}`}
                         size="small"
-                        variant={action.variant || 'outlined'}
-                        color={action.color || 'primary'}
+                        variant={action.variant ?? 'outlined'}
+                        color={action.color ?? 'primary'}
                         startIcon={action.icon}
-                        onClick={() => handleAction(notification, action)}
-                        sx={{
-                          minWidth: 'auto',
-                          fontSize: '0.75rem',
-                          py: 0.5}}
+                        onClick={() => {
+                          void handleAction(notification, action);
+                        }}
                       >
                         {action.label}
                       </Button>
@@ -382,74 +363,56 @@ export const GoogleServicesNotificationSystem: React.FC<GoogleServicesNotificati
                 )}
               </Collapse>
 
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt:  1 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
                 {notification.timestamp.toLocaleTimeString()}
               </Typography>
             </Alert>
           );
-      })}
+        })}
       </Stack>
     </Box>
   );
 };
 
-// Hook for using notifications in components
 export const useGoogleServicesNotifications = () => {
-  const showNotification = useCallback((notification: Omit<SmartNotification, 'id' | 'timestamp'>) => {
-    if ((window as any).showGoogleServicesNotification) {
-      (window as any).showGoogleServicesNotification(notification);
-  } else {
-      console.warn('Google Services Notification System not initialized');
-  }
-}, []);
+  const showNotification = useCallback((notification: NotificationPayload) => {
+    if (window.showGoogleServicesNotification) {
+      window.showGoogleServicesNotification(notification);
+      return;
+    }
+
+    // Fallback when the mounted system is unavailable.
+    // This still provides a visible signal in development.
+     
+    console.warn('GoogleServicesNotificationSystem is not mounted');
+  }, []);
 
   return {
     showNotification,
     showSuccess: (service: string, title: string, message: string, actions?: NotificationAction[]) =>
-      showNotification({
-        type: 'success',
-        service,
-        title,
-        message,
-        priority: 'low',
-        actions,
-    }),
+      showNotification({ type: 'success', service, title, message, priority: 'low', actions }),
     showError: (service: string, title: string, message: string, actions?: NotificationAction[]) =>
-      showNotification({
-        type: 'error',
-        service,
-        title,
-        message,
-        priority: 'high',
-        actions,
-    }),
+      showNotification({ type: 'error', service, title, message, priority: 'high', actions }),
     showWarning: (service: string, title: string, message: string, actions?: NotificationAction[]) =>
-      showNotification({
-        type: 'quota-warning',
-        service,
-        title,
-        message,
-        priority: 'medium',
-        actions,
-    }),
-    showSyncComplete: (service: string, message: string, itemsProcessed?: number) =>
+      showNotification({ type: 'quota-warning', service, title, message, priority: 'medium', actions }),
+    showSyncComplete: (service: string, message: string) =>
       showNotification({
         type: 'sync-complete',
         service,
-        title: 'Sync Complete',
+        title: 'Sync complete',
         message,
         priority: 'low',
-        duration: 400,
-    }),
+        duration: 4500,
+      }),
     showPermissionRequired: (service: string, actions?: NotificationAction[]) =>
       showNotification({
         type: 'permission-required',
         service,
-        title: 'Permissions Required',
-        message: `Additional permissions needed for ${service}`,
-        priority:'high',
+        title: 'Permission required',
+        message: `Additional permissions are required for ${service}.`,
+        priority: 'high',
         persistent: true,
         actions,
-    }),
-};
+      }),
+  };
 };

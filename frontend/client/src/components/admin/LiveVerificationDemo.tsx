@@ -259,7 +259,7 @@ export default function LiveVerificationDemo() {
       
   } catch (error) {
       console.error('Demo workflow failed:', error);
-      addNotification('error', `❌ Demo failed: ${error.message}`);
+      addNotification('error', `❌ Demo failed: ${error instanceof Error ? error.message : String(error)}`);
       setDemoState(prev => ({ ...prev, isRunning: false, currentStep: 'Demo failed',}));
   }
 };
@@ -296,7 +296,7 @@ export default function LiveVerificationDemo() {
       await loadFeedbackData();
 
     } catch (error) {
-      addNotification('error', `❌ Validation failed: ${error.message}`);
+      addNotification('error', `❌ Validation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -571,5 +571,4 @@ export default function LiveVerificationDemo() {
     </Box>
   );
 }
-
 

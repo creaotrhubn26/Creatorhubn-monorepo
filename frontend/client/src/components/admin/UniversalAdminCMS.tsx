@@ -28,6 +28,7 @@ import {
   IconButton,
   List,
   ListItem,
+  ListItemButton,
   ListItemText,
   ListItemSecondaryAction,
   Tabs,
@@ -131,13 +132,13 @@ export default function UniversalAdminCMS() {
   // Theming system
   const theming = useTheming('prototype_tester');
   const { auth } = useEnhancedMasterIntegration();
-  const user = auth.user;
+  const user = auth.state.user ?? auth.getUserProfile();
   const isAuthenticated = !!user;
 
   // State management
   const [activeTab, setActiveTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(true);
-  const [selectedSection, setSelectedSection] = useState('dashboard,');
+  const [selectedSection, setSelectedSection] = useState('dashboard');
   const [showIconLibrary, setShowIconLibrary] = useState(false);
   const [expandedMenu, setExpandedMenu] = useState<string[]>(['cms']);
 
@@ -253,7 +254,7 @@ export default function UniversalAdminCMS() {
         🎛️ Admin Dashboard
       </Typography>
 
-      <Grid container spacing={3}, sx={{ mb:  4 }}>
+      <Grid container spacing={3} sx={{ mb:  4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
@@ -442,7 +443,7 @@ export default function UniversalAdminCMS() {
                       startIcon={<EditIcon />}
                       onClick={() => {
                         // Open Visual CMS for this page
-                        window.open(`/admin/cms/edit/${page.id}`', '_blank');
+                        window.open(`/admin/cms/edit/${page.id}`, '_blank');
                     }}
                     >
                       Rediger
@@ -549,45 +550,51 @@ export default function UniversalAdminCMS() {
         variant="persistent"
         open={drawerOpen}
         sx={{
-          width: 20,
-          flexShrink: 0'& .MuiDrawer-paper': { width: 20,
+          width: 280,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: 280,
             boxSizing: 'border-box',
             mt:  8,
-        }}}
+          },
+        }}
       >
         <List>
           {menuItems.map((item) => (
             <React.Fragment key={item.id}>
-              <ListItem
-                button
-                onClick={() => {
-                  if (item.children.length > 0) {
-                    handleMenuToggle(item.id);
-                } else {
-                    handleMenuSelect(item.id);
-                }
-              }}
-                selected={selectedSection === item.id}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-                {item.children.length > 0 &&
-                  (expandedMenu.includes(item.id) ? theming.getThemedIcon('expandLess') : theming.getThemedIcon('expandMore'))}
+              <ListItem disablePadding>
+                <ListItemButton
+                  onClick={() => {
+                    if (item.children.length > 0) {
+                      handleMenuToggle(item.id);
+                    } else {
+                      handleMenuSelect(item.id);
+                    }
+                  }}
+                  selected={selectedSection === item.id}
+                >
+                  <ListItemIcon>{item.icon}</ListItemIcon>
+                  <ListItemText primary={item.label} />
+                  {item.children.length > 0 &&
+                    (expandedMenu.includes(item.id)
+                      ? theming.getThemedIcon('expandLess')
+                      : theming.getThemedIcon('expandMore'))}
+                </ListItemButton>
               </ListItem>
 
               {item.children.length > 0 && (
                 <Collapse in={expandedMenu.includes(item.id)} timeout="auto" unmountOnExit>
                   <List component="div" disablePadding>
                     {item.children.map((child) => (
-                      <ListItem
-                        key={child.id}
-                        button
-                        sx={{ pl:  4 }}
-                        onClick={() => handleMenuSelect(child.id)}
-                        selected={selectedSection === child.id}
-                      >
-                        <ListItemIcon>{child.icon}</ListItemIcon>
-                        <ListItemText primary={child.label} />
+                      <ListItem key={child.id} disablePadding>
+                        <ListItemButton
+                          sx={{ pl: 4 }}
+                          onClick={() => handleMenuSelect(child.id)}
+                          selected={selectedSection === child.id}
+                        >
+                          <ListItemIcon>{child.icon}</ListItemIcon>
+                          <ListItemText primary={child.label} />
+                        </ListItemButton>
                       </ListItem>
                     ))}
                   </List>
@@ -630,13 +637,13 @@ export default function UniversalAdminCMS() {
       >
         <DialogTitle>Opprett ny side</DialogTitle>
         <DialogContent>
-          <Stack spacing={3}, sx={{ mt:  1 }}>
+          <Stack spacing={3} sx={{ mt:  1 }}>
             <TextField label="Side navn" fullWidth placeholder="Min nye side" />
             <TextField label="Rute" fullWidth placeholder="/min-nye-side" />
             <FormControl fullWidth>
               <InputLabel>Profesjon</InputLabel>
               <Select defaultValue="photographer">
-                {professions.map((prof: any) => (
+                {professions.map((prof: { key: string; name: string }) => (
                   <MenuItem key={prof.key} value={prof.key}>
                     {prof.name}
                   </MenuItem>

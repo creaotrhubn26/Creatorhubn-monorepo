@@ -112,6 +112,6 @@ export function useFileStatusIndicators() {
     googleDriveMessage: getStatusText('googleDrive'),
     googlePhotosMessage: getStatusText('googlePhotos'),
 };
-
+}
 
 

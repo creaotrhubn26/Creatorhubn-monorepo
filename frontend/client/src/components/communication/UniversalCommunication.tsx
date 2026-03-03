@@ -132,7 +132,7 @@ export default function UniversalCommunication({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },
@@ -149,7 +149,7 @@ export default function UniversalCommunication({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },
@@ -166,7 +166,7 @@ export default function UniversalCommunication({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   });
   },

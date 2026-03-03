@@ -245,7 +245,7 @@ const EquipmentAdminPage: React.FC = () => {
   const searchProductMutation = useMutation({
     mutationFn: async (productInfo: { brand: string; model: string; type: string }) => {
       return apiRequest('/api/equipment-admin/search-product-info', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(productInfo),
         headers: { 'Content-Type' : 'application/json',},
     });
@@ -270,7 +270,7 @@ const EquipmentAdminPage: React.FC = () => {
   const enrichExistingProductsMutation = useMutation({
     mutationFn: async () => {
       return apiRequest('/api/equipment-admin/enrich-existing-products', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
     });
   },
@@ -306,7 +306,7 @@ const EquipmentAdminPage: React.FC = () => {
   const autoDiscoverBrandMutation = useMutation({
     mutationFn: async (brand: string) => {
       return apiRequest('/api/equipment-admin/auto-discover-brand', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ brand }),
         headers: { 'Content-Type' : 'application/json',},
     });
@@ -332,7 +332,7 @@ const EquipmentAdminPage: React.FC = () => {
   const createProductMutation = useMutation({
     mutationFn: async (data: NewProduct) => {
       return apiRequest('/api/equipment-admin/products', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
         headers: { 'Content-Type' : 'application/json',},
     });
@@ -434,7 +434,7 @@ const EquipmentAdminPage: React.FC = () => {
   const bulkImportMutation = useMutation({
     mutationFn: async (products: any[]) => {
       return apiRequest('/api/equipment-admin/bulk-import', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ products }),
         headers: { 'Content-Type' : 'application/json',},
     });

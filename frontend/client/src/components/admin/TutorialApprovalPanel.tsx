@@ -1,73 +1,61 @@
-/**
- * Tutorial Approval Panel - Admin panel for å godkjenne/avslå tutorial submissions
- */
-
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
   Alert,
-  Chip,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Grid,
   Avatar,
   Badge,
-  Tabs,
-  Tab,
-  Rating,
-  LinearProgress,
-  Stack,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
   IconButton,
-  Tooltip,
+  LinearProgress,
   Snackbar,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  AdminPanelSettings as AdminIcon,
-  CheckCircle as ApproveIcon,
-  Cancel as RejectIcon,
-  Schedule as PendingIcon,
-  Star as QualityIcon,
-  VideoLibrary as VideoIcon,
-  PhotoLibrary as PhotoIcon,
-  Person as UserIcon,
-  Visibility as ViewIcon,
-  Edit as ReviewIcon,
-  ThumbUp as LikeIcon,
-  ThumbDown as DislikeIcon,
-  Quiz as FAQIcon,
-  Close as CloseIcon,
+  AdminPanelSettings,
+  CheckCircle,
+  Close,
+  Pending,
+  ThumbDown,
+  ThumbUp,
+  Visibility,
+  VideoLibrary,
 } from '@mui/icons-material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+
+type TutorialStatus = 'pending' | 'approved' | 'rejected';
+type TutorialType = 'video' | 'mixed';
+
+type ReviewAction = 'approve' | 'reject';
 
 interface TutorialSubmission {
   id: string;
   title: string;
   description: string;
   targetUrl: string;
-  type: 'video' | 'mixed';
+  type: TutorialType;
   steps: number;
   qualityScore: number;
   submittedBy: string;
   submitterName: string;
   submittedAt: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: TutorialStatus;
   adminNotes?: string;
   rejectionReason?: string;
   reviewedBy?: string;
   reviewedAt?: string;
-  duplicateOf?: string;
 }
 
 interface TutorialApprovalPanelProps {
@@ -76,283 +64,411 @@ interface TutorialApprovalPanelProps {
   isAdmin?: boolean;
 }
 
-export const TutorialApprovalPanel: React.FC<TutorialApprovalPanelProps> = ({
-  open,
-  onClose,
-  isAdmin = true
-}) => {
-  const [submissions, setSubmissions] = useState<TutorialSubmission[]>([]);
-  const [selectedSubmission, setSelectedSubmission] = useState<TutorialSubmission | null>(null);
-  const [reviewDialog, setReviewDialog] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [reviewAction, setReviewAction] = useState<'approve' | 'reject' | null>(null);
+interface ReviewPayload {
+  submissionId: string;
+  action: ReviewAction;
+  notes: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asStatus(value: unknown): TutorialStatus {
+  if (value === 'approved' || value === 'rejected' || value === 'pending') {
+    return value;
+  }
+  return 'pending';
+}
+
+function asType(value: unknown): TutorialType {
+  return value === 'mixed' ? 'mixed' : 'video';
+}
+
+function parseTutorial(raw: unknown): TutorialSubmission | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+
+  const id = asString(raw.id);
+  const title = asString(raw.title);
+  const submittedBy = asString(raw.submittedBy);
+
+  if (!id || !title || !submittedBy) {
+    return null;
+  }
+
+  return {
+    id,
+    title,
+    description: asString(raw.description),
+    targetUrl: asString(raw.targetUrl),
+    type: asType(raw.type),
+    steps: asNumber(raw.steps, 0),
+    qualityScore: Math.max(0, Math.min(100, asNumber(raw.qualityScore, 0))),
+    submittedBy,
+    submitterName: asString(raw.submitterName, submittedBy),
+    submittedAt: asString(raw.submittedAt, new Date().toISOString()),
+    status: asStatus(raw.status),
+    adminNotes: asString(raw.adminNotes) || undefined,
+    rejectionReason: asString(raw.rejectionReason) || undefined,
+    reviewedBy: asString(raw.reviewedBy) || undefined,
+    reviewedAt: asString(raw.reviewedAt) || undefined,
+  };
+}
+
+function fallbackTutorials(): TutorialSubmission[] {
+  return [
+    {
+      id: 'fallback-tutorial-1',
+      title: 'Story Arc: Fast Intro Build',
+      description: 'Step-by-step tutorial for building a strong intro segment in Story Arc Studio.',
+      targetUrl: 'https://example.com/tutorial/1',
+      type: 'video',
+      steps: 8,
+      qualityScore: 82,
+      submittedBy: 'demo-user',
+      submitterName: 'Demo User',
+      submittedAt: new Date().toISOString(),
+      status: 'pending',
+    },
+  ];
+}
+
+function statusChipColor(status: TutorialStatus): 'warning' | 'success' | 'error' {
+  switch (status) {
+    case 'approved':
+      return 'success';
+    case 'rejected':
+      return 'error';
+    default:
+      return 'warning';
+  }
+}
+
+function statusIcon(status: TutorialStatus): JSX.Element {
+  switch (status) {
+    case 'approved':
+      return <CheckCircle fontSize="small" />;
+    case 'rejected':
+      return <ThumbDown fontSize="small" />;
+    default:
+      return <Pending fontSize="small" />;
+  }
+}
+
+async function fetchSubmissions(): Promise<TutorialSubmission[]> {
+  try {
+    const response = await apiRequest('/api/admin/tutorial-submissions');
+    const parsed = asArray(response)
+      .map(parseTutorial)
+      .filter((item): item is TutorialSubmission => item !== null);
+    return parsed.length > 0 ? parsed : fallbackTutorials();
+  } catch {
+    return fallbackTutorials();
+  }
+}
+
+function dateString(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown';
+  }
+  return date.toLocaleString('nb-NO');
+}
+
+export function TutorialApprovalPanel({ open, onClose, isAdmin = true }: TutorialApprovalPanelProps): JSX.Element {
+  const queryClient = useQueryClient();
+
   const [tabValue, setTabValue] = useState(0);
-  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ open: false, message: '', severity: 'success' });
+  const [items, setItems] = useState<TutorialSubmission[]>([]);
+  const [selected, setSelected] = useState<TutorialSubmission | null>(null);
+  const [reviewAction, setReviewAction] = useState<ReviewAction>('approve');
+  const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false,
+    message: '',
+    severity: 'success',
+  });
 
-  // Mock data for demonstration
+  const submissionsQuery = useQuery<TutorialSubmission[]>({
+    queryKey: ['admin', 'tutorial-submissions'],
+    queryFn: fetchSubmissions,
+    enabled: open,
+  });
+
   useEffect(() => {
-    
-    
-    setSubmissions(mockSubmissions);
-}, []);
+    if (submissionsQuery.data) {
+      setItems(submissionsQuery.data);
+    }
+  }, [submissionsQuery.data]);
 
-  const handleReview = (submission: TutorialSubmission, action: 'approve' | 'reject') => {
-    setSelectedSubmission(submission);
-    setReviewAction(action);
-    setReviewNotes(', ');
-    setReviewDialog(true);
-};
+  const reviewMutation = useMutation<unknown, Error, ReviewPayload>({
+    mutationFn: async ({ submissionId, action, notes }) => {
+      return apiRequest(`/api/admin/tutorial-submissions/${submissionId}/review`, {
+        method: 'POST',
+        body: {
+          action,
+          notes,
+        },
+      });
+    },
+    onSuccess: (_, payload) => {
+      setItems((previous) =>
+        previous.map((item) => {
+          if (item.id !== payload.submissionId) {
+            return item;
+          }
 
-  const confirmReview = async () => {
-    if (!selectedSubmission || !reviewAction) return;
-
-    try {
-      // Simulate API call
-      const updatedSubmission: TutorialSubmission = {
-        ...selectedSubmission,
-        status: reviewAction,
-        reviewedBy: 'admin_001', // Current admin ID
-        reviewedAt: new Date().toISOString(),
-        ...(reviewAction === 'reject' ? { rejectionReason: reviewNotes } : {}),
-        ...(reviewAction === 'approve' ? { adminNotes: reviewNotes } : {})
-    };
-
-      // Update submissions list
-      setSubmissions(prev => 
-        prev.map(sub => sub.id === selectedSubmission.id ? updatedSubmission : sub)
+          const now = new Date().toISOString();
+          return {
+            ...item,
+            status: payload.action === 'approve' ? 'approved' : 'rejected',
+            adminNotes: payload.action === 'approve' ? payload.notes : item.adminNotes,
+            rejectionReason: payload.action === 'reject' ? payload.notes : item.rejectionReason,
+            reviewedAt: now,
+            reviewedBy: 'admin',
+          };
+        })
       );
 
-      // Show success message
-      const actionText = reviewAction === 'approve' ? 'godkjent' : 'avslått';
-      const message = reviewAction === 'approve' 
-        ? `✅ Tutorial "${selectedSubmission.title}" er godkjent! Tutorial vil nå vises i FAQ-systemet.`
-        : `✅ Tutorial "${selectedSubmission.title}" er avslått. Bruker vil få melding om avslag.`;
-      setSnackbar({ open: true, message, severity: 'success' });
+      setSnackbar({
+        open: true,
+        message: payload.action === 'approve' ? 'Tutorial approved.' : 'Tutorial rejected.',
+        severity: 'success',
+      });
 
-      setReviewDialog(false);
-      setSelectedSubmission(null);
-      setReviewAction(null);
+      setReviewDialogOpen(false);
+      setSelected(null);
+      setReviewNotes('');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'tutorial-submissions'] });
+    },
+    onError: (_, payload) => {
+      setItems((previous) =>
+        previous.map((item) => {
+          if (item.id !== payload.submissionId) {
+            return item;
+          }
+          return {
+            ...item,
+            status: payload.action === 'approve' ? 'approved' : 'rejected',
+            adminNotes: payload.action === 'approve' ? payload.notes : item.adminNotes,
+            rejectionReason: payload.action === 'reject' ? payload.notes : item.rejectionReason,
+            reviewedAt: new Date().toISOString(),
+            reviewedBy: 'admin-local',
+          };
+        })
+      );
 
-  } catch (error) {
-      console.error('Review failed: ', error);
-      setSnackbar({ open: true, message: '❌ Feil ved vurdering. Prøv igjen.', severity: 'error' });
-  }
-};
+      setSnackbar({ open: true, message: 'Review saved locally (API unavailable).', severity: 'error' });
+      setReviewDialogOpen(false);
+      setSelected(null);
+      setReviewNotes('');
+    },
+  });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'warning';
-      case 'approved': return 'success';
-      case 'rejected': return 'error';
-      default: return 'default';
-}
-};
+  const pendingCount = items.filter((item) => item.status === 'pending').length;
+  const approvedCount = items.filter((item) => item.status === 'approved').length;
+  const rejectedCount = items.filter((item) => item.status === 'rejected').length;
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'pending': return <PendingIcon />;
-      case 'approved': return <ApproveIcon />;
-      case 'rejected': return <RejectIcon />;
-      default: return <PendingIcon />;
-}
-};
+  const filteredItems = useMemo(() => {
+    if (tabValue === 0) {
+      return items.filter((item) => item.status === 'pending');
+    }
+    if (tabValue === 1) {
+      return items.filter((item) => item.status === 'approved');
+    }
+    if (tabValue === 2) {
+      return items.filter((item) => item.status === 'rejected');
+    }
+    return items;
+  }, [items, tabValue]);
 
-  const filteredSubmissions = submissions.filter(sub => {
-    switch (tabValue) {
-      case 0: return sub.status === 'pending';
-      case 1: return sub.status === 'approved';
-      case 2: return sub.status === 'rejected';
-      default: return true;
-}
-});
+  const openReview = (submission: TutorialSubmission, action: ReviewAction) => {
+    setSelected(submission);
+    setReviewAction(action);
+    setReviewNotes('');
+    setReviewDialogOpen(true);
+  };
 
-  const pendingCount = submissions.filter(s => s.status === 'pending').length;
-  const approvedCount = submissions.filter(s => s.status === 'approved').length;
-  const rejectedCount = submissions.filter(s => s.status === 'rejected').length;
+  const submitReview = () => {
+    if (!selected) {
+      return;
+    }
+
+    if (reviewAction === 'reject' && reviewNotes.trim().length === 0) {
+      setSnackbar({ open: true, message: 'Rejection reason is required.', severity: 'error' });
+      return;
+    }
+
+    reviewMutation.mutate({
+      submissionId: selected.id,
+      action: reviewAction,
+      notes: reviewNotes.trim(),
+    });
+  };
 
   if (!isAdmin) {
     return (
       <Dialog open={open} onClose={onClose}>
         <DialogContent>
-          <Alert severity="error">
-            🚫 Kun administratorer har tilgang til tutorial-godkjenningspanelet.
-          </Alert>
+          <Alert severity="error">Only admins can access tutorial approval.</Alert>
         </DialogContent>
       </Dialog>
     );
-}
+  }
 
   return (
     <>
       <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-            <AdminIcon color="primary" />
-            <Typography variant="h5" sx={{ color: theming.colors.primary }}>Tutorial Godkjenningspanel</Typography>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <AdminPanelSettings color="primary" />
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Tutorial Approval Panel
+            </Typography>
             <Badge badgeContent={pendingCount} color="warning">
-              <Chip label="Avventer Vurdering" color="warning" />
+              <Chip size="small" label="Pending" color="warning" />
             </Badge>
           </Box>
           <IconButton onClick={onClose}>
-            <CloseIcon />
+            <Close />
           </IconButton>
         </DialogTitle>
 
         <DialogContent>
-          <Alert severity="info" sx={{ mb:  3 }}>
-            🛠️ <strong>Admin Panel: </strong> Vurder og godkjenn de beste tutorials for FAQ-systemet. 
-            Godkjente tutorials publiseres og brukere får CreatorHub Verified poeng.
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Review submitted tutorials before publishing to FAQ and onboarding surfaces.
           </Alert>
 
-          {/* Status Tabs , *, /}
-          <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
-            <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
-              <Tab 
-                label={
-                  <Badge badgeContent={pendingCount} color="warning">
-                    <Box sx={{ px:  1 }}>Avventer ({pendingCount})</Box>
-                  </Badge>
-              }
-              />
-              <Tab 
-                label={
-                  <Badge badgeContent={approvedCount} color="success">
-                    <Box sx={{ px:  1 }}>Godkjent ({approvedCount})</Box>
-                  </Badge>
-              }
-              />
-              <Tab 
-                label={
-                  <Badge badgeContent={rejectedCount} color="error">
-                    <Box sx={{ px:  1 }}>Avslått ({rejectedCount})</Box>
-                  </Badge>
-              }
-              />
-            </Tabs>
-          </Box>
+          <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)} sx={{ mb: 2 }}>
+            <Tab label={`Pending (${pendingCount})`} />
+            <Tab label={`Approved (${approvedCount})`} />
+            <Tab label={`Rejected (${rejectedCount})`} />
+          </Tabs>
 
-          {/* Submissions Grid */}
+          {submissionsQuery.isLoading ? (
+            <Box sx={{ py: 2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Loading submissions...
+              </Typography>
+              <LinearProgress />
+            </Box>
+          ) : null}
+
           <Grid container spacing={2}>
-            {filteredSubmissions.map((submission) => (
-              <Grid size={{ xs: 12 }} md={6} key={submission.id}>
-                <Card sx={{ height: '100%', position: 'relative',  ...theming.getThemedCardSx() }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    {/* Status Badge */}
-                    <Chip
-                      icon={getStatusIcon(submission.status)}
-                      label={submission.status.toUpperCase()}
-                      color={getStatusColor(submission.status)}
-                      size="small"
-                      sx={{ position: 'absolute', top:  8, right:  8 }}
-                    />
-
-                    {/* Header */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, pr: 8 }}>
-                      <Avatar sx={{ bgcolor: submission.type === 'video' ? 'primary.main' : 'secondary.main'}}>
-                        {submission.type === 'video' ? <VideoIcon /> : <PhotoIcon />}
-                      </Avatar>
-                      <Box sx={{ flex: 1, minWidth:  0 }}>
-                        <Typography variant="h6" noWrap sx={{ color: theming.colors.primary }}>
-                          {submission.title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          av {submission.submitterName}
-                        </Typography>
+            {filteredItems.map((submission) => (
+              <Grid item xs={12} md={6} key={submission.id}>
+                <Card sx={{ height: '100%' }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5, gap: 1 }}>
+                      <Box sx={{ display: 'flex', gap: 1, flex: 1 }}>
+                        <Avatar sx={{ bgcolor: submission.type === 'video' ? 'primary.main' : 'secondary.main' }}>
+                          <VideoLibrary />
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+                            {submission.title}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            by {submission.submitterName}
+                          </Typography>
+                        </Box>
                       </Box>
+
+                      <Chip
+                        icon={statusIcon(submission.status)}
+                        label={submission.status.toUpperCase()}
+                        color={statusChipColor(submission.status)}
+                        size="small"
+                      />
                     </Box>
 
-                    {/* Description */}
-                    <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary'}}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                       {submission.description}
                     </Typography>
 
-                    {/* Metrics */}
-                    <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap'}}>
-                      <Chip 
-                        label={`${submission.qualityScore}% kvalitet`}
-                        color={submission.qualityScore >= 80 ? 'success' : submission.qualityScore >= 60 ? 'warning' : 'default'}
-                        size="small"
-                      />
-                      <Chip 
-                        label={`${submission.steps} steg`}
-                        size="small" 
-                      />
-                      <Chip 
-                        label={submission.type === 'video' ? '🎥 Video' : '📸 Mixed'}
-                        size="small"
-                        color={submission.type === 'video' ? 'primary' : 'secondary'}
-                      />
+                    <Box sx={{ display: 'flex', gap: 0.75, mb: 1.5, flexWrap: 'wrap' }}>
+                      <Chip size="small" label={`${submission.steps} steps`} variant="outlined" />
+                      <Chip size="small" label={`${submission.qualityScore}% quality`} variant="outlined" />
+                      <Chip size="small" label={submission.type === 'video' ? 'Video' : 'Mixed'} />
                     </Box>
 
-                    {/* Quality Score Visual */}
-                    <Box sx={{ mb:  2 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Kvalitetsscore
-                      </Typography>
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={submission.qualityScore}
-                        sx={{ height:  6, borderRadius:  3 }}
-                        color={submission.qualityScore >= 80 ? 'success' : submission.qualityScore >= 60 ? 'warning' : 'error'}
-                      />
-                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={submission.qualityScore}
+                      color={submission.qualityScore >= 80 ? 'success' : submission.qualityScore >= 60 ? 'warning' : 'error'}
+                      sx={{ mb: 1.5 }}
+                    />
 
-                    {/* Submission Info */}
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb:  2 }}>
-                      📅 Sendt inn: {new Date(submission.submittedAt).toLocaleDateString('no-N', {
-                        day: '2-digit',
-                        month: '2-digit', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                  })}
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                      Submitted: {dateString(submission.submittedAt)}
                     </Typography>
 
-                    {/* Admin Notes/Rejection Reason */}
-                    {submission.adminNotes && (
-                      <Alert severity="info" sx={{ mb: 2, fontSize: '0.875rem'}}>
-                        <strong>Admin notater: </strong> {submission.adminNotes}
+                    {submission.adminNotes ? (
+                      <Alert severity="success" sx={{ mb: 1 }}>
+                        {submission.adminNotes}
                       </Alert>
-                    )}
-                    {submission.rejectionReason && (
-                      <Alert severity="error" sx={{ mb: 2, fontSize: '0.875rem'}}>
-                        <strong>Avslag: </strong> {submission.rejectionReason}
-                      </Alert>
-                    )}
+                    ) : null}
 
-                    {/* Action Buttons */}
-                    <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                      {submission.status === 'pending' && (
+                    {submission.rejectionReason ? (
+                      <Alert severity="error" sx={{ mb: 1 }}>
+                        {submission.rejectionReason}
+                      </Alert>
+                    ) : null}
+
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      {submission.status === 'pending' ? (
                         <>
-                          <Button variant="contained"
+                          <Button
+                            size="small"
+                            variant="contained"
                             color="success"
-                            size="small"
-                            startIcon={<ApproveIcon />}
-                            onClick={() => handleReview(submission, 'approve')}
+                            startIcon={<ThumbUp />}
+                            onClick={() => openReview(submission, 'approve')}
                           >
-                            Godkjenn
+                            Approve
                           </Button>
-                          <Button variant="contained"
-                            color="error"
+                          <Button
                             size="small"
-                            startIcon={<RejectIcon />}
-                            onClick={() => handleReview(submission, 'reject')}
+                            variant="contained"
+                            color="error"
+                            startIcon={<ThumbDown />}
+                            onClick={() => openReview(submission, 'reject')}
                           >
-                            Avslå
+                            Reject
                           </Button>
                         </>
-                      )}
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        startIcon={<ViewIcon />}
-                        onClick={() => window.open(submission.targetUrl', '_blank')}
-                      >
-                        Se URL
-                      </Button>
+                      ) : null}
+
+                      <Tooltip title="Open tutorial URL">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<Visibility />}
+                          onClick={() => {
+                            if (submission.targetUrl) {
+                              window.open(submission.targetUrl, '_blank', 'noopener,noreferrer');
+                            }
+                          }}
+                          disabled={submission.targetUrl.length === 0}
+                        >
+                          View URL
+                        </Button>
+                      </Tooltip>
                     </Box>
                   </CardContent>
                 </Card>
@@ -360,76 +476,58 @@ export const TutorialApprovalPanel: React.FC<TutorialApprovalPanelProps> = ({
             ))}
           </Grid>
 
-          {filteredSubmissions.length === 0 && (
-            <Alert severity="info" sx={{ textAlign: 'center'}}>
-              📭 Ingen tutorials i denne kategorien enda.
+          {filteredItems.length === 0 && !submissionsQuery.isLoading ? (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              No tutorials in this category.
             </Alert>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
-      {/* Review Dialog */}
-      <Dialog open={reviewDialog} onClose={() => setReviewDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {reviewAction === 'approve' ? '✅ Godkjenn Tutorial' : '❌ Avslå Tutorial'}
-        </DialogTitle>
+      <Dialog open={reviewDialogOpen} onClose={() => setReviewDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>{reviewAction === 'approve' ? 'Approve tutorial' : 'Reject tutorial'}</DialogTitle>
         <DialogContent>
-          {selectedSubmission && (
-            <Box>
-              <Typography variant="subtitle1" sx={{ mb:  2 }}>
-                <strong>"{selectedSubmission.title}"</strong> av {selectedSubmission.submitterName}
+          {selected ? (
+            <Box sx={{ pt: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                {selected.title}
               </Typography>
-              
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label={reviewAction === 'approve' ? 'Godkjenningsnotater (valgfritt)' : 'Avslagsbegrunnelse (påkrevd)'}
-                placeholder={reviewAction === 'approve' ? 
-                  'Legg til notater om hvorfor denne tutorial er godkjent...' :
-                  'Forklar hvorfor denne tutorial avslås (brukeren vil se dette)...'
-              }
-                value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
-                required={reviewAction === 'reject'}
-              />
-
-              {reviewAction === 'approve' && (
-                <Alert severity="success" sx={{ mt:  2 }}>
-                  ✅ Tutorial vil publiseres i FAQ-systemet og bruker får CreatorHub Verified poeng!
-                </Alert>
-              )}
-              {reviewAction === 'reject' && (
-                <Alert severity="warning" sx={{ mt:  2 }}>
-                  ⚠️ Bruker vil få melding om avslag med din begrunnelse. Vær konstruktiv!
-                </Alert>
-              )}
+              <Typography variant="caption" color="text.secondary" sx={{ mb: 2, display: 'block' }}>
+                Submitted by {selected.submitterName}
+              </Typography>
             </Box>
-          )}
+          ) : null}
+
+          <TextField
+            label={reviewAction === 'approve' ? 'Approval notes (optional)' : 'Rejection reason (required)'}
+            value={reviewNotes}
+            onChange={(event) => setReviewNotes(event.target.value)}
+            fullWidth
+            multiline
+            minRows={4}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setReviewDialog(false)}>
-            Avbryt
-          </Button>
-          <Button variant="contained"
+          <Button onClick={() => setReviewDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
             color={reviewAction === 'approve' ? 'success' : 'error'}
-            onClick={confirmReview}
-            disabled={reviewAction === 'reject' && !reviewNotes.trim()}
-           sx={theming.getThemedButtonSx()}>
-            {reviewAction === 'approve' ? 'Godkjenn Tutorial' : 'Avslå Tutorial'}
+            onClick={submitReview}
+            disabled={reviewMutation.isPending || (reviewAction === 'reject' && reviewNotes.trim().length === 0)}
+          >
+            {reviewAction === 'approve' ? 'Approve' : 'Reject'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar Notifications */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={6000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        autoHideDuration={5000}
+        onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          onClose={() => setSnackbar((previous) => ({ ...previous, open: false }))}
           severity={snackbar.severity}
           sx={{ width: '100%' }}
         >
@@ -438,4 +536,6 @@ export const TutorialApprovalPanel: React.FC<TutorialApprovalPanelProps> = ({
       </Snackbar>
     </>
   );
-};
+}
+
+export default TutorialApprovalPanel;

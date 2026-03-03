@@ -192,7 +192,7 @@ export const useUploadQueue = (
 
         // Upload with progress tracking
         const response = await fetch('/api/photo-enhancement/start', {
-          method: 'POS',
+          method: 'POST',
           body: formData,
           signal: controller.signal,
           headers: {

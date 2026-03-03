@@ -28,6 +28,9 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
 // Required Validator Node
 export const RequiredNode = memo(function RequiredNode({
   config,
@@ -112,7 +115,7 @@ export const EmailValidatorNode = memo(function EmailValidatorNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.checkDomain || false}
+                checked={getBooleanValue(data.checkDomain)}
                 onChange={(e) => onChange('checkDomain', e.target.checked)}
                 size="small"
               />
@@ -372,7 +375,7 @@ export const CustomValidatorNode = memo(function CustomValidatorNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.async || false}
+                checked={getBooleanValue(data.async)}
                 onChange={(e) => onChange('async', e.target.checked)}
                 size="small"
               />
@@ -435,7 +438,7 @@ export const FormValidatorNode = memo(function FormValidatorNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.showAllErrors || false}
+                checked={getBooleanValue(data.showAllErrors)}
                 onChange={(e) => onChange('showAllErrors', e.target.checked)}
                 size="small"
               />
@@ -578,4 +581,3 @@ export const VALIDATION_NODE_DEFINITIONS = [
 ];
 
 export default VALIDATION_NODE_DEFINITIONS;
-

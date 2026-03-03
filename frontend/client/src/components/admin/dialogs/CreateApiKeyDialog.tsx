@@ -150,7 +150,7 @@ export default function CreateApiKeyDialog({
     resolver: zodResolver(createApiKeySchema),
     defaultValues: {
       name: '',
-      service: '',
+      service: ', ',
       keyType: 'api_key',
       permissions: [],
       environment: 'development',
@@ -479,7 +479,7 @@ export default function CreateApiKeyDialog({
                 )}
               </Box>
               <Box sx={{ mb: 1 }}>
-                <Button onClick={handleBack}, sx={{ mr: 1 }}>
+                <Button onClick={handleBack} sx={{ mr: 1 }}>
                   Tilbake
                 </Button>
                 <Button
@@ -568,7 +568,7 @@ export default function CreateApiKeyDialog({
                 )}
               </Box>
               <Box sx={{ mb: 1 }}>
-                <Button onClick={handleBack}, sx={{ mr: 1 }}>
+                <Button onClick={handleBack} sx={{ mr: 1 }}>
                   Tilbake
                 </Button>
                 <Button
@@ -686,7 +686,7 @@ export default function CreateApiKeyDialog({
                 )}
               </Box>
               <Box sx={{ mb: 1 }}>
-                <Button onClick={handleBack}, sx={{ mr: 1 }}>
+                <Button onClick={handleBack} sx={{ mr: 1 }}>
                   Tilbake
                 </Button>
                 <Button

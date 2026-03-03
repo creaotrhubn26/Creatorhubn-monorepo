@@ -29,6 +29,19 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getNumericValue = (value: unknown, fallback: number): number => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+};
+
+const getBooleanValue = (value: unknown, fallback: boolean): boolean => {
+  return typeof value === 'boolean' ? value : fallback;
+};
+
+const parseNumericInput = (value: string, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 // Animation Trigger Node
 export const AnimationTriggerNode = memo(function AnimationTriggerNode({
   config,
@@ -118,8 +131,8 @@ export const TimelineNode = memo(function TimelineNode({
             size="small"
             type="number"
             label="Duration (ms)"
-            value={data.duration || 1000}
-            onChange={(e) => onChange('duration', parseInt(e.target.value))}
+            value={getNumericValue(data.duration, 1000)}
+            onChange={(e) => onChange('duration', parseNumericInput(e.target.value, 1000))}
             sx={{ mb: 1 }}
           />
 
@@ -128,8 +141,8 @@ export const TimelineNode = memo(function TimelineNode({
             size="small"
             type="number"
             label="Delay (ms)"
-            value={data.delay || 0}
-            onChange={(e) => onChange('delay', parseInt(e.target.value))}
+            value={getNumericValue(data.delay, 0)}
+            onChange={(e) => onChange('delay', parseNumericInput(e.target.value, 0))}
             sx={{ mb: 1 }}
           />
 
@@ -152,14 +165,14 @@ export const TimelineNode = memo(function TimelineNode({
               size="small"
               type="number"
               label="Iterations"
-              value={data.iterations || 1}
-              onChange={(e) => onChange('iterations', parseInt(e.target.value))}
+              value={getNumericValue(data.iterations, 1)}
+              onChange={(e) => onChange('iterations', parseNumericInput(e.target.value, 1))}
               sx={{ flex: 1 }}
             />
             <FormControlLabel
               control={
                 <Switch
-                  checked={data.infinite || false}
+                  checked={getBooleanValue(data.infinite, false)}
                   onChange={(e) => onChange('infinite', e.target.checked)}
                   size="small"
                 />
@@ -229,8 +242,8 @@ export const TransitionNode = memo(function TransitionNode({
             size="small"
             type="number"
             label="Duration (ms)"
-            value={data.duration || 300}
-            onChange={(e) => onChange('duration', parseInt(e.target.value))}
+            value={getNumericValue(data.duration, 300)}
+            onChange={(e) => onChange('duration', parseNumericInput(e.target.value, 300))}
             sx={{ mb: 1 }}
           />
 
@@ -290,33 +303,33 @@ export const SpringNode = memo(function SpringNode({
       renderContent={(data, onChange) => (
         <Box>
           <Typography variant="caption" color="rgba(255,255,255,0.5)" gutterBottom>
-            Stiffness: {data.stiffness || 100}
+            Stiffness: {getNumericValue(data.stiffness, 100)}
           </Typography>
           <Slider
-            value={data.stiffness || 100}
-            onChange={(_, value) => onChange('stiffness', value)}
+            value={getNumericValue(data.stiffness, 100)}
+            onChange={(_, value) => onChange('stiffness', Array.isArray(value) ? value[0] : value)}
             min={10}
             max={500}
             sx={{ color: '#f44336', mb: 1 }}
           />
 
           <Typography variant="caption" color="rgba(255,255,255,0.5)" gutterBottom>
-            Damping: {data.damping || 10}
+            Damping: {getNumericValue(data.damping, 10)}
           </Typography>
           <Slider
-            value={data.damping || 10}
-            onChange={(_, value) => onChange('damping', value)}
+            value={getNumericValue(data.damping, 10)}
+            onChange={(_, value) => onChange('damping', Array.isArray(value) ? value[0] : value)}
             min={1}
             max={50}
             sx={{ color: '#f44336', mb: 1 }}
           />
 
           <Typography variant="caption" color="rgba(255,255,255,0.5)" gutterBottom>
-            Mass: {data.mass || 1}
+            Mass: {getNumericValue(data.mass, 1)}
           </Typography>
           <Slider
-            value={data.mass || 1}
-            onChange={(_, value) => onChange('mass', value)}
+            value={getNumericValue(data.mass, 1)}
+            onChange={(_, value) => onChange('mass', Array.isArray(value) ? value[0] : value)}
             min={0.1}
             max={10}
             step={0.1}
@@ -426,8 +439,8 @@ export const StaggerNode = memo(function StaggerNode({
             size="small"
             label="Stagger Delay (ms)"
             type="number"
-            value={data.staggerDelay || 100}
-            onChange={(e) => onChange('staggerDelay', parseInt(e.target.value))}
+            value={getNumericValue(data.staggerDelay, 100)}
+            onChange={(e) => onChange('staggerDelay', parseNumericInput(e.target.value, 100))}
             sx={{ mb: 1 }}
           />
 
@@ -542,7 +555,7 @@ export const ANIMATION_NODE_DEFINITIONS = [
     outputs: [
       { id: 'animation', name: 'animation', type: 'output' as const, dataType: 'object' as const },
     ],
-    defaultData: { name: '', keyframes: '', preset: '' },
+    defaultData: { name: '', keyframes: ', ', preset: '' },
     component: KeyframeNode,
   },
   {
@@ -565,4 +578,3 @@ export const ANIMATION_NODE_DEFINITIONS = [
 ];
 
 export default ANIMATION_NODE_DEFINITIONS;
-

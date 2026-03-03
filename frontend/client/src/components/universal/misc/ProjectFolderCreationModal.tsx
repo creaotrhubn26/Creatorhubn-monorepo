@@ -1,8 +1,5 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Dialog,
   DialogTitle,
@@ -27,7 +24,6 @@ import {
   CloudSync,
   CreateNewFolder,
   Security,
-  Share,
 } from '@mui/icons-material';
 
 interface ProjectFolderCreationModalProps {
@@ -53,7 +49,7 @@ const ProjectFolderCreationModal: React.FC<ProjectFolderCreationModalProps> = ({
   onComplete,
   onError
 }) => {
-  const [progress, setProgress] = useState(false);
+  const [progress, setProgress] = useState(0);
   
   // Theming system
   const theming = useTheming('photographer');
@@ -72,7 +68,7 @@ const ProjectFolderCreationModal: React.FC<ProjectFolderCreationModalProps> = ({
     if (open && !isCreating) {
       initializeFolderCreation();
   }
-}, [open]);
+}, [open, isCreating]);
 
   const initializeFolderCreation = () => {
     const folderSteps: FolderStep[] = [
@@ -194,7 +190,7 @@ const ProjectFolderCreationModal: React.FC<ProjectFolderCreationModalProps> = ({
     if (step.status === 'completed') {
       return <CheckCircle sx={{ color: '#4caf50'}} />;
   } else if (step.status === 'creating') {
-      return <Schedule sx={{ color: professionColors[projectType, ]}} />;
+      return <Schedule sx={{ color: professionColors[projectType] }} />;
   }
     return step.icon;
 };
@@ -203,7 +199,7 @@ const ProjectFolderCreationModal: React.FC<ProjectFolderCreationModalProps> = ({
     <Dialog open={open} maxWidth="md" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" gap={2}>
-          <CloudSync sx={{ color: professionColors[projectType, ]}} />
+          <CloudSync sx={{ color: professionColors[projectType] }} />
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
             Oppretter Google Drive mappestruktur
           </Typography>
@@ -241,9 +237,11 @@ const ProjectFolderCreationModal: React.FC<ProjectFolderCreationModalProps> = ({
                 sx={{
                   height:  8,
                   borderRadius:  4,
-                  backgroundColor: `${professionColors[projectType]}20`'& .MuiLinearProgress-bar': {
+                  backgroundColor: `${professionColors[projectType]}20`,
+                  '& .MuiLinearProgress-bar': {
                     backgroundColor: professionColors[projectType],
-                    borderRadius: 4 }
+                    borderRadius: 4,
+                  },
               }}
               />
               

@@ -336,7 +336,7 @@ const SceneContent: React.FC<ClassPhotoViewProps> = ({
       </mesh>
       
       {/* Grid helper */}
-      <gridHelper args={[sceneWidth + 2, 20'#444', '#333']} />
+      <gridHelper args={[sceneWidth + 2, 20, '#444', '#333']} />
       
       {/* Row indicators */}
       {session.rows.map((row) => (
@@ -436,4 +436,3 @@ export const ClassPhotoView: React.FC<ClassPhotoViewProps> = (props) => {
 };
 
 export default ClassPhotoView;
-

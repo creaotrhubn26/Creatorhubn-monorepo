@@ -107,7 +107,7 @@ export default function SystemIntegrationTester() {
   const updateSystemIntegrationTester = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/component/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: () => {
@@ -471,7 +471,7 @@ export default function SystemIntegrationTester() {
       acc[test.category].push(test);
       return acc;
   },
-    {} as { [key: string]: SystemTest[, ],},
+    {} as Record<string, SystemTest[]>,
   );
 
   const overallStats = {
@@ -490,8 +490,10 @@ export default function SystemIntegrationTester() {
         sx={{
           p:  3,
           mb:  3,
-          background: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%)' }}
-       sx={theming.getThemedCardSx()}>
+          background: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 50%, #FFD23F 100%)',
+          ...theming.getThemedCardSx(),
+        }}
+      >
         <Box
           sx={{
             display: 'flex',

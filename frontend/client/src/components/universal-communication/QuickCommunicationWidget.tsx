@@ -1,382 +1,279 @@
 /**
  * CreatorHub Norge - Quick Communication Widget
  * Compact floating widget for instant access to communication features
- * Material UI only, zero toast notifications
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
+  Avatar,
+  Badge,
   Box,
   Fab,
-  Badge,
   Menu,
   MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Divider,
-  Typography,
-  Chip,
-  Avatar,
-  Tooltip,
   SpeedDial,
   SpeedDialAction,
   SpeedDialIcon,
+  Tooltip,
+  Typography,
   Zoom,
-  Fade,
 } from '@mui/material';
 import {
   Chat as ChatIcon,
+  Close as CloseIcon,
   Email as EmailIcon,
+  Group as GroupIcon,
+  Message as MessageIcon,
   Notifications as NotificationIcon,
   VideoCall as MeetingIcon,
   Folder as ProjectIcon,
-  Add as AddIcon,
-  Close as CloseIcon,
-  Message as MessageIcon,
-  Person as PersonIcon,
-  Group as GroupIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
 
 interface QuickCommunicationWidgetProps {
   userId: string;
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   onOpenFull?: () => void;
-  onChannelSelect?: (channelId: string, type: string) => void
+  onChannelSelect?: (channelId: string, type: string) => void;
 }
+
+type ChannelType = 'chat' | 'email' | 'notification' | 'meeting' | 'project';
+
+interface CommunicationChannel {
+  id: string;
+  type: ChannelType;
+  name?: string;
+  description?: string;
+  unreadCount?: number;
+}
+
+interface CommunicationSummaryItem {
+  count: number;
+  unread: number;
+}
+
+interface CommunicationSummary {
+  chat: CommunicationSummaryItem;
+  email: CommunicationSummaryItem;
+  notification: CommunicationSummaryItem;
+  meeting: CommunicationSummaryItem;
+  project: CommunicationSummaryItem;
+  total: CommunicationSummaryItem;
+}
+
+const createEmptySummary = (): CommunicationSummary => ({
+  chat: { count: 0, unread: 0 },
+  email: { count: 0, unread: 0 },
+  notification: { count: 0, unread: 0 },
+  meeting: { count: 0, unread: 0 },
+  project: { count: 0, unread: 0 },
+  total: { count: 0, unread: 0 },
+});
+
+const CHANNEL_COLORS: Record<ChannelType, string> = {
+  chat: '#4caf50',
+  email: '#2196f3',
+  notification: '#ff9800',
+  meeting: '#9c27b0',
+  project: '#607d8b',
+};
+
+const getPositionStyles = (
+  position: QuickCommunicationWidgetProps['position'],
+): React.CSSProperties => {
+  const base: React.CSSProperties = { position: 'fixed', zIndex: 1300 };
+  switch (position) {
+    case 'bottom-left':
+      return { ...base, bottom: 24, left: 24 };
+    case 'top-right':
+      return { ...base, top: 88, right: 24 };
+    case 'top-left':
+      return { ...base, top: 88, left: 24 };
+    case 'bottom-right':
+    default:
+      return { ...base, bottom: 24, right: 24 };
+  }
+};
 
 export default function QuickCommunicationWidget({
   userId,
-  profession,
   position = 'bottom-right',
   onOpenFull,
-  onChannelSelect
-}: QuickCommunicationWidgetProps) {
+  onChannelSelect,
+}: QuickCommunicationWidgetProps): React.ReactElement {
   const [speedDialOpen, setSpeedDialOpen] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
-  const [totalUnread, setTotalUnread] = useState(0);
 
-  // Fetch unread counts across all communication types
-  const { data: communicationSummary = {} } = useQuery({
-    queryKey: ['/api/communication/summary,', userId],
-    queryFn: () => apiRequest(`/api/communication/channels?userId=${userId}`),
-    refetchInterval: 1000, // Check for updates every 10 seconds
-    select: (data) => {
-      const summary = {
-        chat: { count: 0, unread:  0 },
-        email: { count: 0, unread:  0 },
-        notification: { count: 0, unread:  0 },
-        meeting: { count: 0, unread:  0 },
-        project: { count: 0, unread:  0 },
-        total: { count: 0, unread:  0 }
-    };
+  const { data: channels = [] } = useQuery<CommunicationChannel[]>({
+    queryKey: ['/api/communication/channels', userId],
+    queryFn: async () => {
+      const response = await apiRequest(`/api/communication/channels?userId=${encodeURIComponent(userId)}`);
+      const payload = response as { channels?: CommunicationChannel[] } | CommunicationChannel[];
+      if (Array.isArray(payload)) {
+        return payload;
+      }
+      return payload.channels ?? [];
+    },
+    refetchInterval: 10000,
+    enabled: Boolean(userId),
+  });
 
-      if (data.channels) {
-        data.channels.forEach((channel: any) => {
-          summary[channel.type] = summary[channel.type] || { count: 0, unread:  0 };
-          summary[channel.type].count++;
-          summary[channel.type].unread += channel.unreadCount || 0;
-          summary.total.count++;
-          summary.total.unread += channel.unreadCount || 0;
-      });
-    }
+  const summary = useMemo<CommunicationSummary>(() => {
+    const result = createEmptySummary();
+    channels.forEach((channel) => {
+      const unread = channel.unreadCount ?? 0;
+      result[channel.type].count += 1;
+      result[channel.type].unread += unread;
+      result.total.count += 1;
+      result.total.unread += unread;
+    });
+    return result;
+  }, [channels]);
 
-      return summary;
-  }
-});
+  const recentNotifications = useMemo(
+    () => channels.filter((channel) => channel.type === 'notification').slice(0, 5),
+    [channels],
+  );
 
-  // Update total unread count
-  useEffect(() => {
-    setTotalUnread(communicationSummary.total?.unread || 0);
-}, [communicationSummary]);
-
-  const getPositionStyles = () => {
-    const baseStyles = { position: 'fixed', zIndex: 130,};
-    
-    switch (position) {
-      case 'bottom-right':
-        return { ...baseStyles, bottom:  24, right: 24,};
-      case 'bottom-left':
-        return { ...baseStyles, bottom:  24, left: 24,};
-      case 'top-right':
-        return { ...baseStyles, top:  88, right: 24,}; // Account for header
-      case 'top-left':
-        return { ...baseStyles, top:  88, left: 24,};
-      default: return { ...baseStyles, bottom:  24, right: 24,};
-  }
-};
-
-  const communicationActions = [
-    {
-      icon: <ChatIcon />,
-      name: 'Chat',
-      color: '#4caf50',
-      count: communicationSummary.chat?.count || 0,
-      unread: communicationSummary.chat?.unread || 0,
-      action: () => handleOpenCommunicationType('chat')
-},
-    {
-      icon: <EmailIcon />,
-      name: 'E-post',
-      color: '#2196f0',
-      count: communicationSummary.email?.count || 0,
-      unread: communicationSummary.email?.unread || 0,
-      action: () => handleOpenCommunicationType('email')
-},
-    {
-      icon: <NotificationIcon />,
-      name: 'Varslinger',
-      color: '#ff9800',
-      count: communicationSummary.notification?.count || 0,
-      unread: communicationSummary.notification?.unread || 0,
-      action: () => handleOpenCommunicationType('notification')
-},
-    {
-      icon: <MeetingIcon />,
-      name: 'Møter',
-      color: '#9c27b0',
-      count: communicationSummary.meeting?.count || 0,
-      unread: communicationSummary.meeting?.unread || 0,
-      action: () => handleOpenCommunicationType('meeting')
-},
-    {
-      icon: <ProjectIcon />,
-      name: 'Prosjekter',
-      color: '#607d80',
-      count: communicationSummary.project?.count || 0,
-      unread: communicationSummary.project?.unread || 0,
-      action: () => handleOpenCommunicationType('project')
-}
+  const actions: Array<{ type: ChannelType; label: string; icon: React.ReactNode }> = [
+    { type: 'chat', label: 'Chat', icon: <ChatIcon fontSize="small" /> },
+    { type: 'email', label: 'Email', icon: <EmailIcon fontSize="small" /> },
+    { type: 'notification', label: 'Notifications', icon: <NotificationIcon fontSize="small" /> },
+    { type: 'meeting', label: 'Meetings', icon: <MeetingIcon fontSize="small" /> },
+    { type: 'project', label: 'Projects', icon: <ProjectIcon fontSize="small" /> },
   ];
 
-  const handleOpenCommunicationType = (type: string) => {
+  const handleOpenType = (type: ChannelType): void => {
     setSpeedDialOpen(false);
-    if (onChannelSelect) {
-      onChannelSelect(', ', type);
-  }
-    if (onOpenFull) {
-      onOpenFull();
-  }
-};
-
-  const handleNotificationClick = (event: React.MouseEvent<HTMLElement>) => {
-    setNotificationAnchor(event.currentTarget);
-};
-
-  const handleNotificationClose = () => {
-    setNotificationAnchor(null);
-};
-
-  // Recent notifications for quick preview
-  const { data: recentNotifications = [, ],} = useQuery({
-    queryKey: ['/api/communication/recent-notifications', userId],
-    queryFn: () => apiRequest(`/api/communication/channels?userId=${userId}&type=notification&limit=5`),
-    refetchInterval: 3000,
-    select: (data) => data.channels || []
-});
+    onChannelSelect?.('', type);
+    onOpenFull?.();
+  };
 
   return (
-    <Box sx={getPositionStyles()}>
-      {/* Speed Dial for Communication Actions */}
+    <Box sx={getPositionStyles(position)}>
       <SpeedDial
-        ariaLabel="Communication SpeedDial"
+        ariaLabel="quick communication"
         icon={
-          <SpeedDialIcon 
+          <SpeedDialIcon
             icon={
-              <Badge badgeContent={totalUnread} color="error" max={99}>
+              <Badge badgeContent={summary.total.unread} color="error" max={99}>
                 <MessageIcon />
               </Badge>
-          }
+            }
             openIcon={<CloseIcon />}
           />
-      }
-        onClose={() => setSpeedDialOpen(false)}
-        onOpen={() => setSpeedDialOpen(true)}
+        }
         open={speedDialOpen}
+        onOpen={() => setSpeedDialOpen(true)}
+        onClose={() => setSpeedDialOpen(false)}
         direction="up"
-        sx={{
-          '& .MuiSpeedDial-fab': {
-            bgcolor: 'primary.main', '&:hover': {
-              bgcolor: 'primary.dark' },
-        }}}
       >
-        {communicationActions.map((action) => (
+        {actions.map((action) => (
           <SpeedDialAction
-            key={action.name}
+            key={action.type}
             icon={
-              <Badge badgeContent={action.unread} color="error" max={9}>
-                <Box sx={{ color: action.color }}>
-                  {action.icon}
-                </Box>
+              <Badge badgeContent={summary[action.type].unread} color="error" max={9}>
+                <Box sx={{ color: CHANNEL_COLORS[action.type], display: 'flex' }}>{action.icon}</Box>
               </Badge>
-          }
-            tooltipTitle={
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="body2" sx={{ fontWeight: 500}}>
-                  {action.name}
-                </Typography>
-                {action.count > 0 && (
-                  <Typography variant="caption" color="text.secondary">
-                    {action.count} kanaler
-                    {action.unread > 0 && ` • ${action.unread} uleste`}
-                  </Typography>
-                )}
-              </Box>
-          }
+            }
+            tooltipTitle={`${action.label} (${summary[action.type].count})`}
             tooltipPlacement="left"
-            onClick={action.action}
-            sx={{
-              '& .MuiSpeedDialAction-fab': {
-                bgcolor: 'background.paper',
-                border:  2,
-                borderColor: action.color, '&:hover': { bgcolor: action.color,
-                  color: 'white' },
-            }}}
+            onClick={() => handleOpenType(action.type)}
           />
         ))}
-        
-        {/* Open Full Communication Hub */}
         <SpeedDialAction
-          icon={<GroupIcon />}
-          tooltipTitle="Åpne kommunikasjonshub"
+          icon={<GroupIcon fontSize="small" />}
+          tooltipTitle="Open Full Hub"
           tooltipPlacement="left"
           onClick={() => {
             setSpeedDialOpen(false);
-            if (onOpenFull) onOpenFull();
-        }}
-          sx={{
-            '& .MuiSpeedDialAction-fab': {
-              bgcolor: '#ff6f00',
-              color: 'white','&:hover': {
-                bgcolor: '#f57c00' },
-          }}}
+            onOpenFull?.();
+          }}
         />
       </SpeedDial>
 
-      {/* Floating Notification Preview */}
-      {totalUnread > 0 && (
+      {summary.total.unread > 0 ? (
         <Zoom in={!speedDialOpen}>
-          <Tooltip 
-            title={`${totalUnread} uleste meldinger - Klikk for å se`}
-            placement="left"
-          >
+          <Tooltip title={`${summary.total.unread} unread - click to preview`} placement="left">
             <Fab
               size="small"
-              onClick={handleNotificationClick}
+              onClick={(event) => setNotificationAnchor(event.currentTarget)}
               sx={{
                 position: 'absolute',
-                top: -0,
-                right:  8,
+                top: -4,
+                right: 8,
+                width: 40,
+                height: 40,
                 bgcolor: '#ff6f00',
                 color: 'white',
-                width:  40,
-                height: 40, '&:hover': { bgcolor: '#f57c00' },
-                animation: totalUnread > 5 ? 'pulse 2s infinite' : 'none', '@keyframes pulse': {
-                  '0%': {
-                    transform: 'scale(1, )' }'50%': {
-                    transform: 'scale(1.05, )' }'100%': {
-                    transform: 'scale(1, )' },
-              }}}
+                '&:hover': { bgcolor: '#f57c00' },
+              }}
             >
-              <Badge badgeContent={totalUnread} color="error" max={99}>
+              <Badge badgeContent={summary.total.unread} color="error" max={99}>
                 <NotificationIcon fontSize="small" />
               </Badge>
             </Fab>
           </Tooltip>
         </Zoom>
-      )}
+      ) : null}
 
-      {/* Quick Notification Preview Menu */}
       <Menu
         anchorEl={notificationAnchor}
         open={Boolean(notificationAnchor)}
-        onClose={handleNotificationClose}
-        anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'left' }}
-        transformOrigin={{
-          vertical: 'bottom',
-          horizontal: 'right' }}
-        PaperProps={{
-          sx: { width: 30, maxWidth: '90vw' }
-      }}
+        onClose={() => setNotificationAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        PaperProps={{ sx: { width: 320, maxWidth: '95vw' } }}
       >
-        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-            Nylige varslinger
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {totalUnread} uleste meldinger
+        <Box sx={{ p: 1.5 }}>
+          <Typography variant="subtitle2">Recent Notifications</Typography>
+          <Typography variant="caption" color="text.secondary">
+            {summary.total.unread} unread messages
           </Typography>
         </Box>
-        
+
         {recentNotifications.length === 0 ? (
           <MenuItem disabled>
             <Typography variant="body2" color="text.secondary">
-              Ingen nye varslinger
+              No recent notifications
             </Typography>
           </MenuItem>
         ) : (
-          recentNotifications.slice(0, 5).map((notification: any, index: number) => (
-            <MenuItem 
-              key={notification.id || index}
+          recentNotifications.map((notification) => (
+            <MenuItem
+              key={notification.id}
               onClick={() => {
-                handleNotificationClose();
-                if (onChannelSelect) {
-                  onChannelSelect(notification.id'notification');
-              }
-                if (onOpenFull) onOpenFull();
-            }}
+                setNotificationAnchor(null);
+                onChannelSelect?.(notification.id, 'notification');
+                onOpenFull?.();
+              }}
             >
-              <ListItemIcon>
-                <Avatar sx={{ width:  32, height:  32, bgcolor: '#ff9800' }}>
-                  <NotificationIcon fontSize="small" />
-                </Avatar>
-              </ListItemIcon>
-              <ListItemText
-                primary={
-                  <Typography variant="body2" noWrap>
-                    {notification.name || 'Ny varsling'}
-                  </Typography>
-              }
-                secondary={
-                  <Box>
-                    <Typography variant="caption" color="text.secondary" noWrap>
-                      {notification.description || 'Kommunikasjonsvarsel'}
-                    </Typography>
-                    {notification.unreadCount > 0 && (
-                      <Chip 
-                        label={`${notification.unreadCount} nye`}
-                        size="small" 
-                        color="error" 
-                        variant="outlined"
-                        sx={{ ml: 1, height:  16, fontSize: '0.65rem' }}
-                      />
-                    )}
-                  </Box>
-              }
-              />
+              <Avatar sx={{ width: 28, height: 28, mr: 1, bgcolor: CHANNEL_COLORS.notification }}>
+                <NotificationIcon fontSize="small" />
+              </Avatar>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="body2" noWrap>
+                  {notification.name ?? 'Notification'}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {notification.description ?? 'Communication update'}
+                </Typography>
+              </Box>
             </MenuItem>
           ))
         )}
-        
-        <Divider />
-        <MenuItem 
+
+        <MenuItem
           onClick={() => {
-            handleNotificationClose();
-            if (onOpenFull) onOpenFull();
-        }}
+            setNotificationAnchor(null);
+            onOpenFull?.();
+          }}
           sx={{ justifyContent: 'center' }}
         >
-          <Typography variant="button" color="primary">
-            Se alle kommunikasjoner
+          <Typography variant="button" color="primary.main">
+            Open Communication Hub
           </Typography>
         </MenuItem>
       </Menu>

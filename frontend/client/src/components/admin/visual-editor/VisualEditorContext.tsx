@@ -6,7 +6,9 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useEffect } from 'react';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
 import { useDynamicProfessions } from '../../universal/hooks/useDynamicProfessions';
+import type { DynamicProfessionConfig } from '../../universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
+import type { ProfessionConfig as ApiProfessionConfig } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import getProfessionIcon from '@/utils/profession-icons';
 import { useTheming } from '@/utils/theming-helper';
@@ -568,9 +570,9 @@ const VisualEditorContext = createContext<{
   loadTemplate: (templateId: string) => void;
   updateSettings: (settings: Partial<VisualEditorState['settings']>) => void;
   // Profession system
-  professionIcon: string;
-  professionConfig: Record<string, unknown> | undefined;
-  enhancedProfessionConfig: Record<string, unknown> | undefined;
+  professionIcon: React.ReactNode;
+  professionConfig: DynamicProfessionConfig | undefined;
+  enhancedProfessionConfig: DynamicProfessionConfig | ApiProfessionConfig | undefined;
   professionColor: string;
   currentProfession: string;
   theming: ReturnType<typeof useTheming>;
@@ -797,6 +799,28 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
     dataFlow.syncData('visual-editor:settings', { ...state.settings, ...settings });
 }, [communication, dataFlow, state.settings]);
 
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+  const isEditorElementValue = (value: unknown): value is EditorElement =>
+    isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.type === 'string'
+    && typeof value.x === 'number'
+    && typeof value.y === 'number'
+    && typeof value.width === 'number'
+    && typeof value.height === 'number'
+    && isRecord(value.styles)
+    && isRecord(value.props);
+
+  const isProjectValue = (value: unknown): value is Project =>
+    isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && Array.isArray(value.elements)
+    && isRecord(value.settings)
+    && isRecord(value.metadata);
+
   // Auto-save functionality
   useEffect(() => {
     if (state.settings.autoSave && state.currentProject) {
@@ -818,25 +842,25 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
       switch (message.type) {
         case 'element:added':
           // Handle external element addition
-          if (message.data && message.data.element) {
+          if (isEditorElementValue(message.data.element)) {
             dispatch({ type: 'ADD_ELEMENT', payload: message.data.element });
           }
           break;
         case 'element:updated':
           // Handle external element updates
-          if (message.data && message.data.id && message.data.updates) {
+          if (typeof message.data.id === 'string' && isRecord(message.data.updates)) {
             dispatch({ type: 'UPDATE_ELEMENT', payload: { id: message.data.id, updates: message.data.updates } });
           }
           break;
         case 'element:deleted':
           // Handle external element deletion
-          if (message.data && message.data.id) {
+          if (typeof message.data.id === 'string') {
             dispatch({ type: 'DELETE_ELEMENT', payload: message.data.id });
           }
           break;
         case 'project:loaded':
           // Handle external project loading
-          if (message.data && message.data.project) {
+          if (isProjectValue(message.data.project)) {
             dispatch({ type: 'SET_CURRENT_PROJECT', payload: message.data.project });
           }
           break;
@@ -850,20 +874,27 @@ export function VisualEditorProvider({ children }: { children: React.ReactNode }
           break;
         case 'tab:changed':
           // Handle external tab changes
-          if (message.data && message.data.tab) {
+          if (typeof message.data.tab === 'string') {
             dispatch({ type: 'SET_ACTIVE_TAB', payload: message.data.tab });
           }
           break;
         case 'project:selected':
           // Handle project selection from other components
-          if (message.data && message.data.project) {
+          if (isProjectValue(message.data.project)) {
             dispatch({ type: 'SET_CURRENT_PROJECT', payload: message.data.project });
           }
           break;
         case 'client:selected':
           // Handle client selection from other components
-          if (message.data && message.data.client) {
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { type: 'info', title: 'Client Selected', message: `Selected client: ${(message.data.client as Record<string, unknown>).name ?? 'Unknown'}`, read: false } });
+          if (isRecord(message.data.client)) {
+            const clientName =
+              typeof message.data.client.name === 'string' ? message.data.client.name : 'Unknown';
+            addNotification({
+              type: 'info',
+              title: 'Client Selected',
+              message: `Selected client: ${clientName}`,
+              read: false,
+            });
           }
           break;
       }

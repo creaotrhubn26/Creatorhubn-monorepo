@@ -1,3 +1,4 @@
+/// <reference path="./react-beautiful-dnd.d.ts" />
 /**
  * 🧙 Profession Configuration Wizard
  * Easily add new professions and configure their features/plans
@@ -138,6 +139,256 @@ interface ProfessionConfigWizardProps {
   enableABTesting?: boolean;
   enableAnalytics?: boolean;
 }
+
+type LayoutTemplate = 'compact' | 'expanded' | 'visual_heavy';
+
+interface DashboardTemplate {
+  id: LayoutTemplate;
+  name: string;
+  description: string;
+  icon: string;
+  preview: string;
+  headerConfig?: Record<string, unknown>;
+  sidebarConfig?: Record<string, unknown>;
+  gridLayout?: Record<string, unknown>;
+}
+
+interface TabConfig {
+  tabId: string;
+  label: string;
+  icon: string;
+  sortOrder: number;
+  isEnabled: boolean;
+  isDefault: boolean;
+  requiredFeatures?: string[];
+}
+
+interface ProjectTypeConfig {
+  typeId: string;
+  displayName: string;
+  description?: string;
+  icon: string;
+  color: string;
+  isEnabled: boolean;
+  sortOrder: number;
+}
+
+interface StatConfig {
+  statId: string;
+  displayName: string;
+  description: string;
+  icon: string;
+  color: string;
+  dataSource: string;
+  format: string;
+  isEnabled: boolean;
+  sortOrder: number;
+  size: string;
+  trendEnabled: boolean;
+}
+
+interface WizardDraftData {
+  professionId: string;
+  displayName: string;
+  description: string;
+  icon: string;
+  color: string;
+  layoutTemplate: LayoutTemplate;
+  selectedFeatures: string[];
+  featurePlans: Record<string, 'basic' | 'pro' | 'enterprise'>;
+  selectedTabs: TabConfig[];
+  selectedProjectTypes: ProjectTypeConfig[];
+  selectedStats: StatConfig[];
+  activeStep?: number;
+}
+
+interface SavedDraft {
+  id: number;
+  professionId: string;
+  displayName: string;
+  timestamp: number;
+  activeStep: number;
+  data: WizardDraftData;
+}
+
+interface VersionEntry {
+  version: number;
+  timestamp: number;
+  data: WizardDraftData;
+  type: string;
+}
+
+interface TabAnalyticsData {
+  mostUsedTab?: string;
+  avgTabsPerSession?: number;
+  totalTabs?: number;
+  totalSessions?: number;
+  tabUsage?: Record<string, number>;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const toString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const toNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' ? value : fallback;
+
+const toBoolean = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
+const toLayoutTemplate = (value: unknown, fallback: LayoutTemplate = 'expanded'): LayoutTemplate =>
+  value === 'compact' || value === 'expanded' || value === 'visual_heavy' ? value : fallback;
+
+const toTabConfig = (value: unknown, fallbackOrder = 0): TabConfig | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const tabId = toString(value.tabId);
+  const label = toString(value.label);
+  if (!tabId || !label) {
+    return null;
+  }
+
+  return {
+    tabId,
+    label,
+    icon: toString(value.icon, 'Tab'),
+    sortOrder: toNumber(value.sortOrder, fallbackOrder),
+    isEnabled: toBoolean(value.isEnabled, true),
+    isDefault: toBoolean(value.isDefault, false),
+  };
+};
+
+const toProjectTypeConfig = (value: unknown, fallbackOrder = 0): ProjectTypeConfig | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const typeId = toString(value.typeId);
+  const displayName = toString(value.displayName);
+  if (!typeId || !displayName) {
+    return null;
+  }
+
+  return {
+    typeId,
+    displayName,
+    description: toString(value.description),
+    icon: toString(value.icon, 'Folder'),
+    color: toString(value.color, '#2196f3'),
+    isEnabled: toBoolean(value.isEnabled, true),
+    sortOrder: toNumber(value.sortOrder, fallbackOrder),
+  };
+};
+
+const toStatConfig = (value: unknown, fallbackOrder = 0): StatConfig | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const statId = toString(value.statId);
+  const displayName = toString(value.displayName);
+  if (!statId || !displayName) {
+    return null;
+  }
+
+  return {
+    statId,
+    displayName,
+    description: toString(value.description),
+    icon: toString(value.icon, 'BarChart'),
+    color: toString(value.color, '#2196f3'),
+    dataSource: toString(value.dataSource),
+    format: toString(value.format),
+    isEnabled: toBoolean(value.isEnabled, true),
+    sortOrder: toNumber(value.sortOrder, fallbackOrder),
+    size: toString(value.size, 'medium'),
+    trendEnabled: toBoolean(value.trendEnabled, false),
+  };
+};
+
+const toDashboardTemplate = (value: unknown): DashboardTemplate | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const id = toLayoutTemplate(value.id, 'expanded');
+  const name = toString(value.name);
+  if (!name) {
+    return null;
+  }
+  return {
+    id,
+    name,
+    description: toString(value.description),
+    icon: toString(value.icon, 'Dashboard'),
+    preview: toString(value.preview),
+  };
+};
+
+const toWizardDraftData = (value: unknown): WizardDraftData | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const selectedFeatures = Array.isArray(value.selectedFeatures)
+    ? value.selectedFeatures.filter((feature): feature is string => typeof feature === 'string')
+    : [];
+
+  const featurePlansEntries = isRecord(value.featurePlans)
+    ? Object.entries(value.featurePlans).filter((entry): entry is [string, 'basic' | 'pro' | 'enterprise'] => (
+      typeof entry[0] === 'string'
+      && (entry[1] === 'basic' || entry[1] === 'pro' || entry[1] === 'enterprise')
+    ))
+    : [];
+
+  const selectedTabs = Array.isArray(value.selectedTabs)
+    ? value.selectedTabs.map((tab, index) => toTabConfig(tab, index)).filter((tab): tab is TabConfig => tab !== null)
+    : [];
+
+  const selectedProjectTypes = Array.isArray(value.selectedProjectTypes)
+    ? value.selectedProjectTypes.map((type, index) => toProjectTypeConfig(type, index)).filter((type): type is ProjectTypeConfig => type !== null)
+    : [];
+
+  const selectedStats = Array.isArray(value.selectedStats)
+    ? value.selectedStats.map((stat, index) => toStatConfig(stat, index)).filter((stat): stat is StatConfig => stat !== null)
+    : [];
+
+  return {
+    professionId: toString(value.professionId),
+    displayName: toString(value.displayName),
+    description: toString(value.description),
+    icon: toString(value.icon, 'Work'),
+    color: toString(value.color, '#2196f3'),
+    layoutTemplate: toLayoutTemplate(value.layoutTemplate, 'expanded'),
+    selectedFeatures,
+    featurePlans: Object.fromEntries(featurePlansEntries),
+    selectedTabs,
+    selectedProjectTypes,
+    selectedStats,
+    activeStep: toNumber(value.activeStep, 0),
+  };
+};
+
+const toSavedDraft = (value: unknown): SavedDraft | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const data = toWizardDraftData(value.data);
+  if (!data) {
+    return null;
+  }
+
+  return {
+    id: toNumber(value.id, Date.now()),
+    professionId: toString(value.professionId, data.professionId),
+    displayName: toString(value.displayName, data.displayName),
+    timestamp: toNumber(value.timestamp, Date.now()),
+    activeStep: toNumber(value.activeStep, 0),
+    data,
+  };
+};
 
 export interface ProfessionConfiguration {
   professionId: string;
@@ -291,21 +542,21 @@ export default function ProfessionConfigWizard({
   const [showAnalyticsDialog, setShowAnalyticsDialog] = useState(false);
   const [importJson, setImportJson] = useState('');
   const [exportedJson, setExportedJson] = useState('');
-  const [availableProfessions, setAvailableProfessions] = useState<Record<string, unknown>[]>([]);
+  const [availableProfessions, setAvailableProfessions] = useState<ProfessionConfiguration[]>([]);
   const [selectedProfessionToClone, setSelectedProfessionToClone] = useState<string>('');
   const [abTestVariant, setAbTestVariant] = useState<'A' | 'B'>('A');
-  const [tabAnalytics, setTabAnalytics] = useState<Record<string, unknown> | null>(null);
+  const [tabAnalytics, setTabAnalytics] = useState<TabAnalyticsData | null>(null);
   
   // Draft & Version Management
   const [showDraftDialog, setShowDraftDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [savedDrafts, setSavedDrafts] = useState<Record<string, unknown>[]>([]);
-  const [versionHistory, setVersionHistory] = useState<Record<string, unknown>[]>([]);
+  const [savedDrafts, setSavedDrafts] = useState<SavedDraft[]>([]);
+  const [versionHistory, setVersionHistory] = useState<VersionEntry[]>([]);
   
   // Step 1: Basic Info
-  const [professionId, setProfessionId] = useState(existingProfession?.professionId || ',');
-  const [displayName, setDisplayName] = useState(existingProfession?.displayName || ', ');
-  const [description, setDescription] = useState(existingProfession?.description || ', ');
+  const [professionId, setProfessionId] = useState(existingProfession?.professionId || '');
+  const [displayName, setDisplayName] = useState(existingProfession?.displayName || '');
+  const [description, setDescription] = useState(existingProfession?.description || '');
   const [icon, setIcon] = useState(existingProfession?.icon || 'Work');
   const [color, setColor] = useState(existingProfession?.color || '#2196f3');
   const [showIconPicker, setShowIconPicker] = useState(false);
@@ -324,20 +575,24 @@ export default function ProfessionConfigWizard({
     currentVersion
   } = useAutoSave({
     config: {
-      enabled: true,
-      debounceMs: 2000, // Auto-save 2 seconds after last change
+      enableAutoSave: true,
+      debounceDelay: 2000, // Auto-save 2 seconds after last change
       maxQueueSize: 50,
-      conflictResolution: 'merge',
+      conflictResolution: 'manual',
       backupInterval: 60000, // Backup every minute
-      maxBackups: 10 },
+      maxVersions: 10 },
     onDataSaved: (data) => {
       console.log('✅ Wizard config auto-saved: ', data);
+      const savedData = toWizardDraftData(data.data);
+      if (!savedData) {
+        return;
+      }
       
       // Add to version history
       setVersionHistory(prev => [{
         version: currentVersion,
         timestamp: Date.now(),
-        data: data.data,
+        data: savedData,
         type: data.type
       }, ...prev.slice(0, 19)]); // Keep last 20 versions
       
@@ -380,20 +635,20 @@ export default function ProfessionConfigWizard({
   );
   
   // Step 4: Dashboard Layout Template
-  const [layoutTemplate, setLayoutTemplate] = useState<'compact' | 'expanded' | 'visual_heavy'>('expanded');
-  const [dashboardTemplates, setDashboardTemplates] = useState<Record<string, unknown>[]>([]);
+  const [layoutTemplate, setLayoutTemplate] = useState<LayoutTemplate>('expanded');
+  const [dashboardTemplates, setDashboardTemplates] = useState<DashboardTemplate[]>([]);
   
   // Step 5: Tab Configuration
-  const [selectedTabs, setSelectedTabs] = useState<Record<string, unknown>[]>([]);
-  const [tabPresets, setTabPresets] = useState<Record<string, unknown>>({});
+  const [selectedTabs, setSelectedTabs] = useState<TabConfig[]>([]);
+  const [tabPresets, setTabPresets] = useState<Record<string, TabConfig[]>>({});
   
   // Step 6: Project Types
-  const [selectedProjectTypes, setSelectedProjectTypes] = useState<Record<string, unknown>[]>([]);
-  const [projectTypePresets, setProjectTypePresets] = useState<Record<string, unknown>>({});
+  const [selectedProjectTypes, setSelectedProjectTypes] = useState<ProjectTypeConfig[]>([]);
+  const [projectTypePresets, setProjectTypePresets] = useState<Record<string, ProjectTypeConfig[]>>({});
   
   // Step 7: Dashboard Stats
-  const [selectedStats, setSelectedStats] = useState<Record<string, unknown>[]>([]);
-  const [statPresets, setStatPresets] = useState<Record<string, unknown>>({});
+  const [selectedStats, setSelectedStats] = useState<StatConfig[]>([]);
+  const [statPresets, setStatPresets] = useState<Record<string, StatConfig[]>>({});
   
   // Auto-save wizard state whenever it changes
   useEffect(() => {
@@ -450,17 +705,81 @@ export default function ProfessionConfigWizard({
         apiRequest('/api/professions/all', { headers })
       ]);
 
-      setDashboardTemplates(templates.templates || []);
-      setTabPresets(tabs.presets || {});
-      setProjectTypePresets(projectTypes.presets || {});
-      setStatPresets(stats.presets || {});
-      setAvailableProfessions(professions.professions || []);
+      const templatesRecord = isRecord(templates) ? templates : {};
+      const templatesList = Array.isArray(templatesRecord.templates)
+        ? templatesRecord.templates.map(toDashboardTemplate).filter((template): template is DashboardTemplate => template !== null)
+        : [];
+      setDashboardTemplates(templatesList);
+
+      const tabsRecord = isRecord(tabs) ? tabs : {};
+      const tabPresetsRaw = isRecord(tabsRecord.presets) ? tabsRecord.presets : {};
+      const nextTabPresets: Record<string, TabConfig[]> = Object.fromEntries(
+        Object.entries(tabPresetsRaw).map(([key, value]) => [
+          key,
+          Array.isArray(value)
+            ? value.map((item, index) => toTabConfig(item, index)).filter((item): item is TabConfig => item !== null)
+            : [],
+        ]),
+      );
+      setTabPresets(nextTabPresets);
+
+      const projectTypesRecord = isRecord(projectTypes) ? projectTypes : {};
+      const projectTypePresetsRaw = isRecord(projectTypesRecord.presets) ? projectTypesRecord.presets : {};
+      const nextProjectTypePresets: Record<string, ProjectTypeConfig[]> = Object.fromEntries(
+        Object.entries(projectTypePresetsRaw).map(([key, value]) => [
+          key,
+          Array.isArray(value)
+            ? value.map((item, index) => toProjectTypeConfig(item, index)).filter((item): item is ProjectTypeConfig => item !== null)
+            : [],
+        ]),
+      );
+      setProjectTypePresets(nextProjectTypePresets);
+
+      const statsRecord = isRecord(stats) ? stats : {};
+      const statPresetsRaw = isRecord(statsRecord.presets) ? statsRecord.presets : {};
+      const nextStatPresets: Record<string, StatConfig[]> = Object.fromEntries(
+        Object.entries(statPresetsRaw).map(([key, value]) => [
+          key,
+          Array.isArray(value)
+            ? value.map((item, index) => toStatConfig(item, index)).filter((item): item is StatConfig => item !== null)
+            : [],
+        ]),
+      );
+      setStatPresets(nextStatPresets);
+
+      const professionsRecord = isRecord(professions) ? professions : {};
+      const professionsList = Array.isArray(professionsRecord.professions)
+        ? professionsRecord.professions.filter((item): item is ProfessionConfiguration => (
+          isRecord(item)
+          && typeof item.professionId === 'string'
+          && typeof item.displayName === 'string'
+          && typeof item.description === 'string'
+          && typeof item.icon === 'string'
+          && typeof item.color === 'string'
+          && isRecord(item.features)
+        ))
+        : [];
+      setAvailableProfessions(professionsList);
 
       // Fetch tab analytics if enabled
       if (enableAnalytics) {
         try {
           const analytics = await apiRequest('/api/dashboard-analytics/tabs', { headers });
-          setTabAnalytics(analytics);
+          const analyticsRecord = isRecord(analytics) ? analytics : {};
+          const usage = isRecord(analyticsRecord.tabUsage)
+            ? Object.fromEntries(
+              Object.entries(analyticsRecord.tabUsage).filter((entry): entry is [string, number] => (
+                typeof entry[0] === 'string' && typeof entry[1] === 'number'
+              )),
+            )
+            : {};
+          setTabAnalytics({
+            mostUsedTab: toString(analyticsRecord.mostUsedTab, 'Overview'),
+            avgTabsPerSession: toNumber(analyticsRecord.avgTabsPerSession, 4),
+            totalTabs: toNumber(analyticsRecord.totalTabs, 0),
+            totalSessions: toNumber(analyticsRecord.totalSessions, 0),
+            tabUsage: usage,
+          });
         } catch (err) {
           console.warn('Analytics not available:', err);
         }
@@ -487,7 +806,7 @@ export default function ProfessionConfigWizard({
         
         // Clone tabs
         if (response.tabs) {
-          setSelectedTabs(response.tabs.map((tab: Record<string, unknown>, index: number) => ({
+          setSelectedTabs(response.tabs.map((tab: TabConfig, index: number) => ({
             tabId: tab.tabId,
             label: tab.label,
             icon: tab.icon,
@@ -499,7 +818,7 @@ export default function ProfessionConfigWizard({
         
         // Clone project types
         if (response.projectTypes) {
-          setSelectedProjectTypes(response.projectTypes.map((type: Record<string, unknown>, index: number) => ({
+          setSelectedProjectTypes(response.projectTypes.map((type: ProjectTypeConfig, index: number) => ({
             typeId: type.typeId,
             displayName: type.displayName,
             description: type.description,
@@ -512,7 +831,7 @@ export default function ProfessionConfigWizard({
         
         // Clone stats
         if (response.stats) {
-          setSelectedStats(response.stats.map((stat: Record<string, unknown>, index: number) => ({
+          setSelectedStats(response.stats.map((stat: StatConfig, index: number) => ({
             statId: stat.statId,
             displayName: stat.displayName,
             description: stat.description,
@@ -593,7 +912,7 @@ export default function ProfessionConfigWizard({
       setDescription(importedConfig.description || '');
       setIcon(importedConfig.icon || 'Work');
       setColor(importedConfig.color || '#2196f3');
-      setLayoutTemplate(importedConfig.layoutTemplate || 'expanded');
+      setLayoutTemplate(toLayoutTemplate(importedConfig.layoutTemplate, 'expanded'));
       
       if (importedConfig.selectedFeatures) {
         setSelectedFeatures(new Set(importedConfig.selectedFeatures));
@@ -616,7 +935,7 @@ export default function ProfessionConfigWizard({
       }
       
       setShowImportDialog(false);
-      setImportJson(', ');
+      setImportJson('');
       console.log(`✅ Imported profession: ${importedConfig.professionId}`);
       
       // Success toast
@@ -626,8 +945,9 @@ export default function ProfessionConfigWizard({
         duration: 3000 });
     } catch (error: unknown) {
       console.error('Import error:', error);
+      const message = error instanceof Error ? error.message : 'Ukjent feil';
       addToast({
-        message: `Import, feilet: ${error.message}`,
+        message: `Import, feilet: ${message}`,
         type: 'error',
         duration: 4000 });
     }
@@ -685,8 +1005,9 @@ export default function ProfessionConfigWizard({
         const j = r.ok ? await r.json().catch(() => null) : null;
         const v = j && typeof j === 'object' && 'value' in j ? j.value : j;
         if (Array.isArray(v)) {
-          setSavedDrafts(v);
-          if (v.length > 0) setShowDraftDialog(true);
+          const drafts = v.map(toSavedDraft).filter((draft): draft is SavedDraft => draft !== null);
+          setSavedDrafts(drafts);
+          if (drafts.length > 0) setShowDraftDialog(true);
           return;
         }
       } catch {}
@@ -694,8 +1015,11 @@ export default function ProfessionConfigWizard({
         const draftsJson = localStorage.getItem('profession_wizard_drafts');
         if (draftsJson) {
           const drafts = JSON.parse(draftsJson);
-          setSavedDrafts(Array.isArray(drafts) ? drafts : []);
-          if ((Array.isArray(drafts) ? drafts : []).length > 0) setShowDraftDialog(true);
+          const parsedDrafts = Array.isArray(drafts)
+            ? drafts.map(toSavedDraft).filter((draft): draft is SavedDraft => draft !== null)
+            : [];
+          setSavedDrafts(parsedDrafts);
+          if (parsedDrafts.length > 0) setShowDraftDialog(true);
         }
       } catch (error) {
         console.error('Error loading drafts:', error);
@@ -744,7 +1068,7 @@ export default function ProfessionConfigWizard({
   };
   
   // 9. Restore from Draft
-  const restoreDraft = (draft: Record<string, unknown>) => {
+  const restoreDraft = (draft: SavedDraft) => {
     const data = draft.data;
     
     setProfessionId(data.professionId);
@@ -788,7 +1112,7 @@ export default function ProfessionConfigWizard({
   };
   
   // 11. Restore from Version
-  const restoreVersion = (version: Record<string, unknown>) => {
+  const restoreVersion = (version: VersionEntry) => {
     const data = version.data;
     
     setProfessionId(data.professionId);
@@ -860,7 +1184,7 @@ export default function ProfessionConfigWizard({
       // Load default tabs based on profession or use 'default'
       const presetKey = tabPresets[professionId] ? professionId : 'default';
       const defaultTabs = tabPresets[presetKey] || [];
-      setSelectedTabs(defaultTabs.map((tab: Record<string, unknown>, index: number) => ({
+      setSelectedTabs(defaultTabs.map((tab, index: number) => ({
         ...tab,
         sortOrder: index,
         isEnabled: true
@@ -873,7 +1197,7 @@ export default function ProfessionConfigWizard({
     if (activeStep === 5 && selectedProjectTypes.length === 0 && professionId) {
       const presetKey = projectTypePresets[professionId] ? professionId : 'default';
       const defaultTypes = projectTypePresets[presetKey] || [];
-      setSelectedProjectTypes(defaultTypes.map((type: Record<string, unknown>, index: number) => ({
+      setSelectedProjectTypes(defaultTypes.map((type, index: number) => ({
         ...type,
         sortOrder: index,
         isEnabled: true
@@ -1553,7 +1877,7 @@ export default function ProfessionConfigWizard({
                 This determines the overall look and feel of the dashboard
               </Alert>
               
-              <RadioGroup value={layoutTemplate} onChange={(e) => setLayoutTemplate(e.target.value as string)}>
+              <RadioGroup value={layoutTemplate} onChange={(e) => setLayoutTemplate(toLayoutTemplate(e.target.value, layoutTemplate))}>
                 <Grid container spacing={2}>
                   {dashboardTemplates.map((template) => {
                     const TemplateIcon = template.icon === 'ViewCompact' ? ViewCompact :
@@ -2240,7 +2564,7 @@ export default function ProfessionConfigWizard({
                     sx={{
                       bgcolor: index === 0 ? color : 'transparent',
                       color: index === 0 ? 'white' : 'text.primary',
-                      fontWeight: ndex === 0 ? 600 : 400 }}
+                      fontWeight: index === 0 ? 600 : 400 }}
                   />
                 ))}
               </Box>
@@ -2353,7 +2677,7 @@ export default function ProfessionConfigWizard({
                   </Typography>
                   <List dense>
                     {Object.entries(tabAnalytics.tabUsage)
-                      .sort(([, a], [, b]) => (b as number) - (a as number))
+                      .sort(([, a], [, b]) => b - a)
                       .map(([tabId, count], index) => (
                         <ListItem key={tabId}>
                           <Chip 
@@ -2367,11 +2691,11 @@ export default function ProfessionConfigWizard({
                           />
                           <LinearProgress 
                             variant="determinate"
-                            value={Math.min(100, ((count as number) / (tabAnalytics.totalSessions || 1)) * 100)}
+                            value={Math.min(100, (count / (tabAnalytics.totalSessions || 1)) * 100)}
                             sx={{ width: 100, mr: 2 }}
                           />
                           <Typography variant="caption">
-                            {Math.round(((count as number) / (tabAnalytics.totalSessions || 1)) * 100)}%
+                            {Math.round((count / (tabAnalytics.totalSessions || 1)) * 100)}%
                           </Typography>
                         </ListItem>
                       ))}
@@ -2509,7 +2833,7 @@ export default function ProfessionConfigWizard({
                     }
                     secondary={
                       <Typography variant="caption">
-                        {new Date(version.timestamp).toLocaleString()} • Step {version.data.activeStep + 1}/8
+                        {new Date(version.timestamp).toLocaleString()} • Step {(version.data.activeStep ?? 0) + 1}/8
                       </Typography>
                     }
                   />
@@ -2546,4 +2870,3 @@ export default function ProfessionConfigWizard({
     </Dialog>
   );
 }
-

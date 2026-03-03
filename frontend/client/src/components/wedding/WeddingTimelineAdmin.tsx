@@ -748,7 +748,7 @@ export default function EvendiTimelineAdmin({
           headers: {
             "Content-Type" : "application/json"
       },
-          method: 'POS',
+          method: 'POST',
           body: eventData
     });
     }
@@ -2310,7 +2310,7 @@ export default function EvendiTimelineAdmin({
                           top: '20px',
                           width: '24px',
                           height: '24px',
-                          borderRadius: '50, %',
+                          borderRadius: '50%',
                           bgcolor: event.status === 'completed' ? '#4caf50' : 
                                    event.status === 'confirmed' ? '#f57c00' : 
                                    event.status === 'cancelled' ? '#f44336' : '#2196f0',
@@ -2337,7 +2337,7 @@ export default function EvendiTimelineAdmin({
                             top: '15px',
                             width: '32px',
                             height: '32px',
-                            borderRadius: '50, %',
+                            borderRadius: '50%',
                             bgcolor: '#9c27b0',
                             border: '3px solid white',
                             boxShadow: '0 2px 8px rgba(16, 39, 176, 0.4)',

@@ -1153,9 +1153,9 @@ export function findLightSpec(brand: string, model: string): LightSpec | null {
     
     const specModelNormalized = specModel.replace(/\s+/g, ', ').replace(/-/g, ', ');
     
-    return modelVariations.some(v => 
-      specModelNormalized.includes(v.replace(/\s+/g'').replace(/-/g',')) ||
-      v.replace(/\s+/g'').replace(/-/g',').includes(specModelNormalized)
+    return modelVariations.some((v) => 
+      specModelNormalized.includes(v.replace(/\s+/g, '').replace(/-/g, '')) ||
+      v.replace(/\s+/g, '').replace(/-/g, '').includes(specModelNormalized)
     );
   }) || null;
 }
@@ -1297,4 +1297,3 @@ export function lightSpecToNodeData(spec: LightSpec): {
 }
 
 export default ALL_LIGHT_SPECS;
-

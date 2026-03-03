@@ -96,8 +96,8 @@ export default function LandingBillingWorkflowOrchestrator({
         data: {
           event: event,
           timestamp: new Date().toISOString()
-    }
-    }'*');
+        }
+      }, '*');
   }
 };
 
@@ -112,8 +112,8 @@ export default function LandingBillingWorkflowOrchestrator({
         feature: event.featureName,
         enabled: event.enabled,
         timestamp: new Date().toISOString()
-  }
-  }'*');
+      }
+    }, '*');
 };
 
   // Enhanced children with unified workflow context
@@ -161,7 +161,6 @@ export default function LandingBillingWorkflowOrchestrator({
     </div>
   );
 }
-
 
 
 

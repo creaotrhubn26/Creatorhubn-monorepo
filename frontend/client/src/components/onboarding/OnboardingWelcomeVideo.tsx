@@ -74,7 +74,7 @@ const VIDEO_SEGMENTS: Record<string, VideoSegment[]> = {
       duration:  12,
       description: 'Vi forstår hvilke problemer du møter som fotograf',
       benefits: [
-        'Kunne ikke finne kunder systematisk','Tidkrevende kontrakter og tilbud','Komplisert fakturering og oppfølging''Manglende profesjonell presentasjon',
+        'Kunne ikke finne kunder systematisk','Tidkrevende kontrakter og tilbud','Komplisert fakturering og oppfølging','Manglende profesjonell presentasjon',
       ],
       icon: <Work />,
       color: '#E53E30',
@@ -85,7 +85,7 @@ const VIDEO_SEGMENTS: Record<string, VideoSegment[]> = {
       duration:  15,
       description: 'Se hvordan vi løser dine utfordringer',
       benefits: [
-        'Automatisert kundesøk og CR','Profesjonelle kontrakter på 2 minutter''Automatisk fakturering og påminnelser','Imponerende portefølje og gallerier',
+        'Automatisert kundesøk og CR','Profesjonelle kontrakter på 2 minutter','Automatisk fakturering og påminnelser','Imponerende portefølje og gallerier',
       ],
       icon: theming.getThemedIcon(''),
       color: '#38A160',
@@ -96,7 +96,7 @@ const VIDEO_SEGMENTS: Record<string, VideoSegment[]> = {
       duration:  18,
       description: 'Utforsk alle funksjonene som gjør deg mer effektiv',
       benefits: [
-        'AI-drevet bilderedigering','Automatisk galleri-generering''Integrert betalingssystem','Avansert kundeanalyse',
+        'AI-drevet bilderedigering','Automatisk galleri-generering','Integrert betalingssystem','Avansert kundeanalyse',
       ],
       icon: theming.getThemedIcon(''),
       color: '#3182C0',
@@ -149,7 +149,7 @@ const VIDEO_SEGMENTS: Record<string, VideoSegment[]> = {
       duration:  18,
       description: 'Utforsk alle funksjonene som gjør deg mer effektiv',
       benefits: [
-        'AI-drevet videoredigering','Automatisk thumbnail-generering''Integrert betalingssystem','Avansert kundeanalyse',
+        'AI-drevet videoredigering','Automatisk thumbnail-generering','Integrert betalingssystem','Avansert kundeanalyse',
       ],
       icon: theming.getThemedIcon(''),
       color: '#3182C0',
@@ -364,7 +364,7 @@ export default function OnboardingWelcomeVideo({
               left: '10%',
               width: 10,
               height: 10,
-              borderRadius: '50, %',
+              borderRadius: '50%',
               bgcolor: `${currentVideoSegment.color}30`,
               animation: 'float 6s ease-in-out infinite'}}
           />
@@ -375,7 +375,7 @@ export default function OnboardingWelcomeVideo({
               right: '15%',
               width: 10,
               height: 10,
-              borderRadius: '50, %',
+              borderRadius: '50%',
               bgcolor: `${currentVideoSegment.color}20`,
               animation: 'float 8s ease-in-out infinite reverse'}}
           />
@@ -386,7 +386,7 @@ export default function OnboardingWelcomeVideo({
               left: '20%',
               width:  80,
               height:  80,
-              borderRadius: '50, %',
+              borderRadius: '50%',
               bgcolor: `${currentVideoSegment.color}40`,
               animation: 'float 10s ease-in-out infinite'}}
           />
@@ -463,10 +463,12 @@ export default function OnboardingWelcomeVideo({
                   sx={{
                     height:  8,
                     borderRadius:  4,
-                    bgcolor: `${currentVideoSegment.color}20`'& .MuiLinearProgress-bar': {
+                    bgcolor: `${currentVideoSegment.color}20`,
+                    '& .MuiLinearProgress-bar': {
                       bgcolor: currentVideoSegment.color,
                       borderRadius:  4,
-                  }}}
+                    },
+                  }}
                 />
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mt:  1 }}>
                   <Typography variant="caption" color="text.secondary">
@@ -484,9 +486,12 @@ export default function OnboardingWelcomeVideo({
                   startIcon={isPlaying ? theming.getThemedIcon('pause') : theming.getThemedIcon('play')}
                   onClick={handlePlayPause}
                   sx={{
-                    bgcolor: currentVideoSegment.color'&:hover': { bgcolor: currentVideoSegment.color },
-                    px:  4}}
-                 sx={theming.getThemedButtonSx()}>
+                    bgcolor: currentVideoSegment.color,
+                    '&:hover': { bgcolor: currentVideoSegment.color },
+                    px: 4,
+                    ...theming.getThemedButtonSx(),
+                  }}
+                >
                   {isPlaying ? 'Pause' : 'Spill av'}
                 </Button>
                 <Button

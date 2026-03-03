@@ -1,333 +1,358 @@
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import { isProfessionFeatureAvailable } from '../../../shared/profession-feature-matrix';
-import React, { useState, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { apiRequest } from '@/lib/queryClient';
-import { trackButtonClick, trackTabChange, trackModalOpen } from '@/hooks/useActionTracker';
-import { useDemoMode } from '@/contexts/DemoModeContext';
-import AdminIndicator from '../admin/AdminIndicator';
-import { Card as MuiCard, CardContent as MuiCardContent, CardActions as MuiCardActions } from '@mui/material';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Container,
-  Typography,
-  Grid,
+  Alert,
   Avatar,
+  Box,
   Button,
-  Tabs as MuiTabs,
-  Tab,
-  Badge,
-  IconButton,
+  Card,
+  CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControlLabel,
+  Grid,
+  IconButton,
   List,
   ListItem,
-  ListItemText,
-  ListItemIcon,
   ListItemAvatar,
-  Divider,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Paper,
-  Tooltip,
-  Fab,
-  useTheme,
-  useMediaQuery,
+  ListItemButton,
+  ListItemText,
   Stack,
-  LinearProgress,
-  alpha,
-  Fade,
-  Collapse,
-  Skeleton,
   Switch,
-  FormControlLabel,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  PhotoCamera,
-  Videocam,
-  LibraryMusic,
-  Store,
-  Group,
-  Build,
-  Add,
-  CalendarToday,
-  Assessment,
-  Settings,
-  AttachMoney,
-  TrendingUp,
-  Event,
-  Key,
-  Visibility,
-  TrendingUp as TimelineIcon,
-  Business,
-  Email,
-  Notifications,
-  CloudDone,
-  Article,
-  FolderOpen,
-  AddCircle,
-  Storage,
-  Star,
-  Chat,
-  Person,
-  Phone,
-  MoreVert,
-  AccessTime,
-  LocationOn,
-  Payment,
-  Keyboard,
-  Schedule,
-  Palette,
-  CheckCircle,
-  HelpCenter,
-  Quiz,
-  PriorityHigh,
-  Delete,
-  Launch,
-  PhotoLibrary,
-  Edit,
-  Circle,
-  AccountCircle,
-  Collections,
-  Brightness1,
-  WbSunny,
-  Favorite as WeddingIcon,
-  WbCloudy,
-  Umbrella,
-  Remove,
-  NotificationsActive,
-  AutoFixHigh,
-  SmartToy,
-  ToggleOn as SwitchIcon,
-  MovieCreation,
-  Close as CloseIcon,
+  Add as AddIcon,
+  CalendarToday as CalendarTodayIcon,
+  Chat as ChatIcon,
+  CloudUpload as CloudUploadIcon,
+  Delete as DeleteIcon,
+  Download as DownloadIcon,
+  Edit as EditIcon,
+  Event as EventIcon,
+  FolderOpen as FolderOpenIcon,
+  Group as GroupIcon,
+  Notifications as NotificationsIcon,
+  Person as PersonIcon,
+  PhotoCamera as PhotoCameraIcon,
+  Settings as SettingsIcon,
+  Videocam as VideocamIcon,
+  Visibility as VisibilityIcon,
+  Work as WorkIcon,
 } from '@mui/icons-material';
+import { useQuery } from '@tanstack/react-query';
+import { Pie, PieChart, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, BarChart, XAxis, YAxis, CartesianGrid, Bar } from 'recharts';
+import { useAuth } from '../../hooks/useAuth';
+import { useDemoMode } from '../../contexts/DemoModeContext';
+import { apiRequest } from '../../lib/queryClient';
+import AdminIndicator from '../admin/AdminIndicator';
 
-// Import all the same components as the original
-import BRREGIntegration from './profession-specific/BRREGIntegration';
-import AdvancedClientManagement from './profession-specific/AdvancedClientManagement';
-import { useDynamicProfessions } from './hooks/useDynamicProfessions';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import EquipmentManagementDB from './profession-specific/EquipmentManagementDB';
-import ProfessionAdapter from './ProfessionAdapter';
-import SmartWorkflowBuilder from './SmartWorkflowBuilder';
-import FloatingActionButtons from './misc/FloatingActionButtons';
-import PriceAdministration from '../PriceAdministration';
-import BusinessBrandingSettings from '../BusinessBrandingSettings';
-import { TutorialFAQIntegration } from '../tutorial/TutorialFAQIntegration';
-import { InteractiveTutorialCreator } from '../tutorial/InteractiveTutorialCreator';
-import { CreatorHubBadgeSystem } from '../gamification/CreatorHubBadgeSystem';
-import { CompactBadgeDisplay } from '../gamification/CompactBadgeDisplay';
-import WeddingTimelineAdmin from '../wedding/WeddingTimelineAdmin';
-import UniversalSettingsPanel from './UniversalSettingsPanel';
-import AdministrationHub from './AdministrationHub';
-import GoogleDriveManager from '../google-drive/GoogleDriveManager';
-import GoogleDriveProjectSync from '../google-drive/GoogleDriveProjectSync';
-import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
-import ComprehensiveEquipmentDashboard from '@/components/universal/misc/ComprehensiveEquipmentDashboard';
-import CameraEquipmentManager from '@/components/universal/misc/CameraEquipmentManager';
-import MemoryCardManager from '@/components/universal/misc/MemoryCardManager';
-import { EnhancedGearTab } from '../dashboard/EnhancedGearTab';
-import PersonalizedNewsInterface from '../news/PersonalizedNewsInterface';
-import { QuickMeetingNotesModal } from '../meetings/QuickMeetingNotesModal';
-import SmartEmailCenter from '../email/SmartEmailCenter';
-import IntegratedEmailCenter from '../email/IntegratedEmailCenter';
-import CustomerInquiryCenter from '../email/CustomerInquiryCenter';
-import ProjectCreationWithMemoryCards from '../project/ProjectCreationWithMemoryCards';
-import VendorProductManager from '../vendor/VendorProductManager';
-import GoogleWorkspaceMeetingManager from '../meetings/GoogleWorkspaceMeetingManager';
-import FilesTab from './tabs/FilesTab';
-import SubmissionsOverview from './submissions/SubmissionsOverview';
-import UniversalKeyboardShortcuts from '../keyboard-shortcuts/UniversalKeyboardShortcuts';
-import SmartTimingPreferences from '../smart-timing/SmartTimingPreferences';
-import HelpdeskSystem from './HelpdeskSystem';
-import ProjectTimeline from '../project/ProjectTimeline';
-import { ProjectProvider } from '@/contexts/ProjectContext';
-import ProjectShowcase from '../project/ProjectShowcase';
-import { ChatWidget } from '../communication/ChatWidget';
-import UniversalChatWidget from '../chat/UniversalChatWidget';
-import UniversalPrototypeFeedback from '../prototype-testing/UniversalPrototypeFeedback';
-import CentralizedSalesHub from '../sales/CentralizedSalesHub';
-import TutorialLauncher from '../tutorials/TutorialLauncher';
-import VideoEditor from '../video-editing/VideoEditor';
-import StoryArcGenerator from '../StoryArcGenerator';
-import UniversalCommunication from '../communication/UniversalCommunication';
-import UniversalWorklog from '../worklog/UniversalWorklog';
-import PhotographerEmailCenter from '../email/PhotographerEmailCenter';
-import EmailProjectHistory from '../email/EmailProjectHistory';
-import ContextualPhotographyTipsOverlay from '../photography/ContextualPhotographyTipsOverlay';
-import ShowcaseAdmin from '../showcase/ShowcaseAdmin';
-import WeddingTimelineOverview from '../wedding/WeddingTimelineOverview';
-import WeddingTimelineClientAccess from '../wedding/WeddingTimelineClientAccess';
-import WeddingTimelineClientView from '../wedding/WeddingTimelineClientView';
-import WeddingTimelineChangesOverview from '../wedding/WeddingTimelineChangesOverview';
-import StoryArcStudio from '../StoryArcStudio';
-import UniversalOAuthIntegration from '../oauth/UniversalOAuthIntegration';
-import IntegratedToolsOverview from './IntegratedToolsOverview';
-import EmailDesigner from '../EmailDesigner/EmailDesigner';
-import UniversalCRMDashboard from '../crm/UniversalCRMDashboard';
-import { UniversalContractHub } from './contracts';
-import FotografOrchestrator from './FotografOrchestrator';
-import VideografOrchestrator from './VideografOrchestrator';
-import MusikkProdusentOrchestrator from './MusikkProdusentOrchestrator';
-import VendorOrchestrator from './VendorOrchestrator';
-import PhotoEnhancementSuite from '../enhancement/PhotoEnhancementSuite';
-import AudioEnhancementSuite from '../enhancement/AudioEnhancementSuite';
+type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
 
-// Exact same profession configurations as original (names will be overridden by dynamic profession data)
-const localProfessionConfigs = {
-  photographer: {
-    name: 'Fotograf', // Fallback - will be overridden by dynamic profession data
-    color: '#ff8c00',
-    icon: theming.getThemedIcon(''),
-    tabs: [
-      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
-      { id: 'projects', label: 'Prosjekter', icon: theming.getThemedIcon(',') },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
-      { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
-      { id: 'ai-enhancement', label: 'AI Forbedring', icon: theming.getThemedIcon(',') },
-      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
-      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
-      { id: 'clients', label: 'Kunder', icon: theming.getThemedIcon(',') },
-      { id: 'equipment', label: 'Utstyr', icon: theming.getThemedIcon(',') },
-      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
-      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
-      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
-      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
-      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
-    ],
-    projectTypes: ['bryllup','bedrift','portrett','produkt'],
-    stats: [
-      { key: 'projects', label: 'Aktive Prosjekter', icon: theming.getThemedIcon(',') },
-      { key: 'clients', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
-      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
-      { key: 'rating', label: 'Gjennomsnittsvurdering', icon: theming.getThemedIcon(',') }
-    ]
-},
-  videographer: {
-    name: 'Videograf', // Fallback - will be overridden by dynamic profession data
-    color: '#e91e63',
-    icon: theming.getThemedIcon('videocam'),
-    tabs: [
-      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
-      { id: 'projects', label: 'Videoer', icon: theming.getThemedIcon(',') },
-      { id: 'wedding-timeline', label: 'Bryllupstidslinje', icon: <Event />,},
-      { id: 'showcase-admin', label: 'Showcase Admin', icon: theming.getThemedIcon(',') },
-      { id: 'ai-enhancement', label: 'Video A', icon: theming.getThemedIcon(',') },
-      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
-      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
-      { id: 'clients', label: 'Kunder', icon: theming.getThemedIcon(',') },
-      { id: 'equipment', label: 'Utstyr', icon: theming.getThemedIcon(',') },
-      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
-      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
-      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
-      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
-      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
-    ],
-    projectTypes: ['bryllup','reklame','dokumentar','musikkvideo'],
-    stats: [
-      { key: 'projects', label: 'Aktive Prosjekter', icon: theming.getThemedIcon(',') },
-      { key: 'clients', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
-      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
-      { key: 'hours', label: 'Timer Redigert', icon: theming.getThemedIcon(',') }
-    ]
-},
-  music_producer: {
-    name: 'Musikkprodusent',
-    color: '#9c27b0',
-    icon: theming.getThemedIcon('music'),
-    tabs: [
-      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
-      { id: 'projects', label: 'Låter', icon: theming.getThemedIcon(',') },
-      { id: 'ai-enhancement', label: 'Audio A', icon: theming.getThemedIcon(',') },
-      { id: 'email-center', label: 'E-post', icon: theming.getThemedIcon(',') },
-      { id: 'worklog', label: 'Worklog', icon: theming.getThemedIcon(',') },
-      { id: 'clients', label: 'Artister', icon: theming.getThemedIcon(',') },
-      { id: 'equipment', label: 'Studio', icon: theming.getThemedIcon(',') },
-      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
-      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
-      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
-      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') },
-      { id: 'communication', label: 'Kommunikasjon', icon: theming.getThemedIcon(',') }
-    ],
-    projectTypes: ['album','singel','podcast','jingle'],
-    stats: [
-      { key: 'tracks', label: 'Aktive Spor', icon: theming.getThemedIcon(',') },
-      { key: 'artists', label: 'Nye Artister', icon: theming.getThemedIcon(',') },
-      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(',') },
-      { key: 'streams', label: 'Totale Streams', icon: theming.getThemedIcon(',') }
-    ]
-},
-  vendor: {
-    name: 'Leverandø',
-    color: '#27ae60',
-    icon: theming.getThemedIcon(''),
-    tabs: [
-      { id: 'overview', label: 'Oversikt', icon: theming.getThemedIcon(',') },
-      { id: 'projects', label: 'Produkter', icon: theming.getThemedIcon(',') },
-      { id: 'clients', label: 'Bestillinger', icon: theming.getThemedIcon(',') },
-      { id: 'equipment', label: 'Lager', icon: theming.getThemedIcon(',') },
-      { id: 'files', label: 'Filer', icon: theming.getThemedIcon(',') },
-      { id: 'support', label: 'Support', icon: theming.getThemedIcon(',') },
-      { id: 'settings', label: 'Innstillinger', icon: theming.getThemedIcon(',') },
-      { id: 'administration', label: 'Administrasjon', icon: theming.getThemedIcon('adminPanelSettings') }
-    ],
-    projectTypes: ['utleie','salg', 'service','konsultasjon'],
-    stats: [
-      { key: 'orders', label: 'Aktive Ordrer', icon: theming.getThemedIcon(',') },
-      { key: 'customers', label: 'Nye Kunder', icon: theming.getThemedIcon(',') },
-      { key: 'revenue', label: 'Månedens Inntekt', icon: theming.getThemedIcon(', ') },
-      { key: 'inventory', label: 'Lagerstatus', icon: theming.getThemedIcon(', ') }
-    ]
-}
-};
+type ProjectStatus = 'planning' | 'active' | 'completed' | 'archived';
+type ClientStatus = 'prospect' | 'active' | 'inactive';
+type NotificationType = 'info' | 'warning' | 'success';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
+interface DashboardProject {
+  id: string;
+  title: string;
+  clientName: string;
+  status: ProjectStatus;
+  progress: number;
+  budgetNok: number;
+  updatedAt: string;
+  description?: string;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`universal-tabpanel-${index}`}
-      aria-labelledby={`universal-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
-    </div>
-);
+interface DashboardClient {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  status: ClientStatus;
+  projectCount: number;
+  totalValueNok: number;
+  lastContactAt: string;
+}
+
+interface DashboardMeeting {
+  id: string;
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  attendeeCount: number;
+}
+
+interface DashboardWorklog {
+  id: string;
+  projectId: string;
+  title: string;
+  notes: string;
+  createdAt: string;
+}
+
+interface DashboardNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  createdAt: string;
+  read: boolean;
 }
 
 interface UniversalDashboardDesktopProps {
-  profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'admin' | 'enterprise';
-  // Integration props for unified workflow connectivity
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void
+  profession?: Profession;
+  onMeetingCreate?: (meeting: DashboardMeeting) => void;
+  onProjectUpdate?: (project: DashboardProject) => void;
+  onWorklogCreate?: (worklog: DashboardWorklog) => void;
+  onClientSelect?: (client: DashboardClient) => void;
+  onClientUpdate?: (client: DashboardClient) => void;
+  onShowcaseCreate?: (showcase: { projectId: string; title: string }) => void;
+  onFileUpload?: (file: { name: string; size: number; type: string }) => void;
+  onFileDownload?: (file: { name: string; source: string }) => void;
+  selectedProject?: DashboardProject | null;
+  onProjectSelect?: (project: DashboardProject) => void;
+  selectedClient?: DashboardClient | null;
+  onSettingsUpdate?: (settings: { compactMode: boolean; autoSync: boolean; quickActions: boolean }) => void;
+  onNotificationCreate?: (notification: DashboardNotification) => void;
 }
 
-export default function UniversalDashboardDesktop({ 
+interface DashboardData {
+  projects: DashboardProject[];
+  clients: DashboardClient[];
+  meetings: DashboardMeeting[];
+  notifications: DashboardNotification[];
+}
+
+const CHART_COLORS = ['#2563eb', '#0ea5e9', '#14b8a6', '#f59e0b', '#ef4444', '#8b5cf6'];
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const toStringValue = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const toNumberValue = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
+const normalizeProjectStatus = (value: unknown): ProjectStatus => {
+  if (value === 'planning' || value === 'active' || value === 'completed' || value === 'archived') {
+    return value;
+  }
+  return 'planning';
+};
+
+const normalizeClientStatus = (value: unknown): ClientStatus => {
+  if (value === 'prospect' || value === 'active' || value === 'inactive') return value;
+  return 'prospect';
+};
+
+const normalizeNotificationType = (value: unknown): NotificationType => {
+  if (value === 'info' || value === 'warning' || value === 'success') return value;
+  return 'info';
+};
+
+const normalizeProjects = (payload: unknown): DashboardProject[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      id: toStringValue(record.id, `project-${index}`),
+      title: toStringValue(record.title, toStringValue(record.name, `Prosjekt ${index + 1}`)),
+      clientName: toStringValue(record.clientName, 'Ukjent kunde'),
+      status: normalizeProjectStatus(record.status),
+      progress: Math.max(0, Math.min(100, toNumberValue(record.progress))),
+      budgetNok: Math.max(0, toNumberValue(record.budgetNok, toNumberValue(record.totalValue))),
+      updatedAt: toStringValue(record.updatedAt, toStringValue(record.lastModified, new Date().toISOString())),
+      description: toStringValue(record.description),
+    };
+  });
+};
+
+const normalizeClients = (payload: unknown): DashboardClient[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      id: toStringValue(record.id, `client-${index}`),
+      name: toStringValue(record.name, `Kunde ${index + 1}`),
+      email: toStringValue(record.email, 'unknown@local.dev'),
+      phone: toStringValue(record.phone),
+      status: normalizeClientStatus(record.status),
+      projectCount: Math.max(0, toNumberValue(record.projectCount, toNumberValue(record.projects))),
+      totalValueNok: Math.max(0, toNumberValue(record.totalValueNok, toNumberValue(record.totalValue))),
+      lastContactAt: toStringValue(record.lastContactAt, toStringValue(record.lastContact, new Date().toISOString())),
+    };
+  });
+};
+
+const normalizeMeetings = (payload: unknown): DashboardMeeting[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      id: toStringValue(record.id, `meeting-${index}`),
+      title: toStringValue(record.title, `Møte ${index + 1}`),
+      scheduledAt: toStringValue(record.scheduledAt, toStringValue(record.date, new Date().toISOString())),
+      durationMinutes: Math.max(15, toNumberValue(record.durationMinutes, toNumberValue(record.duration, 60))),
+      attendeeCount: Math.max(
+        1,
+        Array.isArray(record.attendees) ? record.attendees.length : toNumberValue(record.attendeeCount, 1),
+      ),
+    };
+  });
+};
+
+const normalizeNotifications = (payload: unknown): DashboardNotification[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      id: toStringValue(record.id, `notification-${index}`),
+      title: toStringValue(record.title, 'Varsel'),
+      message: toStringValue(record.message, 'Ingen melding tilgjengelig'),
+      type: normalizeNotificationType(record.type),
+      createdAt: toStringValue(record.createdAt, new Date().toISOString()),
+      read: Boolean(record.read ?? record.isRead),
+    };
+  });
+};
+
+const createFallbackData = (profession: Profession): DashboardData => {
+  const now = new Date();
+  const professionLabel = profession === 'photographer' ? 'Foto' : profession === 'videographer' ? 'Video' : 'Produksjon';
+
+  return {
+    projects: [
+      {
+        id: 'fallback-project-1',
+        title: `${professionLabel} kampanje Q1`,
+        clientName: 'Nordic Creative AS',
+        status: 'active',
+        progress: 63,
+        budgetNok: 95000,
+        updatedAt: now.toISOString(),
+        description: 'Produksjon med flere leveransefaser og godkjenningsrunder.',
+      },
+      {
+        id: 'fallback-project-2',
+        title: 'Brand-film launch',
+        clientName: 'Aurora Labs',
+        status: 'planning',
+        progress: 21,
+        budgetNok: 132000,
+        updatedAt: new Date(now.getTime() - 86400000).toISOString(),
+        description: 'Forproduksjon og storyboard-gjennomgang.',
+      },
+      {
+        id: 'fallback-project-3',
+        title: 'Event highlight',
+        clientName: 'Havn Konferanse',
+        status: 'completed',
+        progress: 100,
+        budgetNok: 68000,
+        updatedAt: new Date(now.getTime() - 3 * 86400000).toISOString(),
+      },
+    ],
+    clients: [
+      {
+        id: 'fallback-client-1',
+        name: 'Nordic Creative AS',
+        email: 'post@nordiccreative.no',
+        phone: '+47 900 00 001',
+        status: 'active',
+        projectCount: 4,
+        totalValueNok: 285000,
+        lastContactAt: now.toISOString(),
+      },
+      {
+        id: 'fallback-client-2',
+        name: 'Aurora Labs',
+        email: 'team@auroralabs.no',
+        phone: '+47 900 00 002',
+        status: 'prospect',
+        projectCount: 1,
+        totalValueNok: 132000,
+        lastContactAt: new Date(now.getTime() - 2 * 86400000).toISOString(),
+      },
+    ],
+    meetings: [
+      {
+        id: 'fallback-meeting-1',
+        title: 'Kickoff med Nordic Creative',
+        scheduledAt: new Date(now.getTime() + 2 * 3600000).toISOString(),
+        durationMinutes: 60,
+        attendeeCount: 4,
+      },
+      {
+        id: 'fallback-meeting-2',
+        title: 'Leveransegjennomgang',
+        scheduledAt: new Date(now.getTime() + 24 * 3600000).toISOString(),
+        durationMinutes: 45,
+        attendeeCount: 3,
+      },
+    ],
+    notifications: [
+      {
+        id: 'fallback-notification-1',
+        title: 'Ny filversjon mottatt',
+        message: 'Aurora Labs lastet opp ny storyboard-fil.',
+        type: 'info',
+        createdAt: now.toISOString(),
+        read: false,
+      },
+      {
+        id: 'fallback-notification-2',
+        title: 'Godkjenning klar',
+        message: 'Nordic Creative godkjente leveranse i prosjektet.',
+        type: 'success',
+        createdAt: new Date(now.getTime() - 3600000).toISOString(),
+        read: true,
+      },
+    ],
+  };
+};
+
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
+  if (value !== index) return null;
+  return <Box sx={{ pt: 2 }}>{children}</Box>;
+}
+
+const professionMeta: Record<Profession, { label: string; color: string; icon: React.ReactNode }> = {
+  photographer: { label: 'Fotograf', color: '#f59e0b', icon: <PhotoCameraIcon fontSize="small" /> },
+  videographer: { label: 'Videograf', color: '#ec4899', icon: <VideocamIcon fontSize="small" /> },
+  music_producer: { label: 'Musikkprodusent', color: '#8b5cf6', icon: <WorkIcon fontSize="small" /> },
+  vendor: { label: 'Leverandør', color: '#10b981', icon: <GroupIcon fontSize="small" /> },
+  admin: { label: 'Admin', color: '#2563eb', icon: <SettingsIcon fontSize="small" /> },
+  enterprise: { label: 'Enterprise', color: '#0ea5e9', icon: <FolderOpenIcon fontSize="small" /> },
+};
+
+const formatCurrency = (value: number): string =>
+  value.toLocaleString('nb-NO', {
+    style: 'currency',
+    currency: 'NOK',
+    maximumFractionDigits: 0,
+  });
+
+export default function UniversalDashboardDesktop({
   profession = 'photographer',
   onMeetingCreate,
   onProjectUpdate,
@@ -341,1487 +366,681 @@ export default function UniversalDashboardDesktop({
   onProjectSelect,
   selectedClient,
   onSettingsUpdate,
-  onNotificationCreate
+  onNotificationCreate,
 }: UniversalDashboardDesktopProps) {
-  // All the same state variables as the original
   const [tabValue, setTabValue] = useState(0);
-  const [settingsTabValue, setSettingsTabValue] = useState(0);
-  const [selectedTimelineTab, setSelectedTimelineTab] = useState(0);
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showQuickNotesModal, setShowQuickNotesModal] = useState(false);
-  const [showProjectCreation, setShowProjectCreation] = useState(false);
-  const [showVendorProductDialog, setShowVendorProductDialog] = useState(false);
-  const [showEmailCenter, setShowEmailCenter] = useState(false);
-  const [showEmailDesigner, setShowEmailDesigner] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [showPrototypeFeedback, setShowPrototypeFeedback] = useState(false);
-  const [showCrmDialog, setShowCrmDialog] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [emailProjectContext, setEmailProjectContext] = useState<any>(null);
-  const [proEditorMode, setProEditorMode] = useState(false);
-  const [showFAQDialog, setShowFAQDialog] = useState(false);
-  const [availableDashboards, setAvailableDashboards] = useState<string[]>([]);
-  const [selectedProject, setSelectedProject] = useState<any>(null);
-  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
-  const [showProjectDetailsModal, setShowProjectDetailsModal] = useState(false);
-  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
-  const [showDeleteProjectDialog, setShowDeleteProjectDialog] = useState(false);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [meetingDialogOpen, setMeetingDialogOpen] = useState(false);
+  const [worklogDialogOpen, setWorklogDialogOpen] = useState(false);
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const [activeProject, setActiveProject] = useState<DashboardProject | null>(selectedProject ?? null);
+  const [activeClient, setActiveClient] = useState<DashboardClient | null>(selectedClient ?? null);
+  const [compactMode, setCompactMode] = useState(false);
+  const [autoSync, setAutoSync] = useState(true);
+  const [quickActions, setQuickActions] = useState(true);
+  const [newMeetingTitle, setNewMeetingTitle] = useState('');
+  const [newMeetingDate, setNewMeetingDate] = useState('');
+  const [newWorklogTitle, setNewWorklogTitle] = useState('');
+  const [newWorklogNotes, setNewWorklogNotes] = useState('');
 
-  // Theme and Responsive
-  const theme = useTheme();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession === 'admin' ? 'photographer' : profession);
-  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const { user } = useAuth();
+  const { isDemoMode, toggleDemoMode } = useDemoMode();
 
-  // Universal Demo Mode Integration
-  const { isDemoMode, isLoading: demoModeLoading } = useDemoMode();
+  const fallbackData = useMemo(() => createFallbackData(profession), [profession]);
 
-  // Message handler for navigation from child components
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'navigate') {
-        const { tab, subTab } = event.data;
-        
-        if (tab === 'settings') {
-          const config = localProfessionConfigs[profession];
-          const settingsTabIndex = config.tabs.findIndex(t => t.id === 'settings');
-          if (settingsTabIndex !== -1) {
-            setTabValue(settingsTabIndex);
-            
-            if (subTab === 'pricing') {
-              setSettingsTabValue(2);
-        }
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DashboardData>({
+    queryKey: ['universal-dashboard-desktop', profession, isDemoMode],
+    queryFn: async () => {
+      if (isDemoMode) {
+        return fallbackData;
       }
-    }
-  }
-};
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-}, [profession]);
+      const [projectsPayload, clientsPayload, meetingsPayload, notificationsPayload] = await Promise.all([
+        apiRequest(`/api/projects?profession=${profession}`),
+        apiRequest(`/api/clients?profession=${profession}`),
+        apiRequest(`/api/meetings?profession=${profession}`),
+        apiRequest(`/api/notifications?profession=${profession}`),
+      ]);
 
-  // All the same functions as the original
-  const handleEditProject = (project: any) => {
-    setSelectedProject(project);
-    setShowEditProjectModal(true);
-};
-
-  const handleDeleteProject = (project: any) => {
-    setSelectedProject(project);
-    setShowDeleteProjectDialog(true);
-};
-
-  const handleViewProjectDetails = (project: any) => {
-    setSelectedProject(project);
-    setShowProjectDetailsModal(true);
-};
-
-  const confirmDeleteProject = async () => {
-    if (!selectedProject) return;
-    
-    try {
- return apiRequest(`/api/projects/${selectedProject.id}`, {
-   headers: {
-          "Content-Type" : "application/json"
-  },
-        headers: {
-  },
-        
-        method: 'DELET',
-  });
-      
-      window.location.reload();
-} catch (error) {
-      // Error handled
-} finally {
-      setShowDeleteProjectDialog(false);
-      setSelectedProject(null);
-}
-};
-
-  // Get profession configuration with branding override
-  // Get base config from local configs
-  const baseConfig = localProfessionConfigs[profession] || localProfessionConfigs.photographer;
-  
-  // Enhance with dynamic profession branding (auto-scalable)
-  const config = useMemo(() => {
-    const displayName = getProfessionDisplayName(profession);
-    const professionColor = getUserProfessionColor(profession);
-    const professionIcon = getProfessionIcon(profession);
-    
-    return {
-      ...baseConfig,
-      // Override with dynamic data if available (for auto-scalability)
-      name: displayName || baseConfig.name,
-      color: professionColor || baseConfig.color,
-      icon: professionIcon || baseConfig.icon,
-    };
-  }, [profession, baseConfig, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon]);
-
-  // All the same queries as the original
-  const { data: userSession } = useQuery({
-    queryKey: ['/api/auth/public-session'],
-    queryFn: () => apiRequest('/api/auth/public-session'),
-    retry: false
+      return {
+        projects: normalizeProjects(projectsPayload),
+        clients: normalizeClients(clientsPayload),
+        meetings: normalizeMeetings(meetingsPayload),
+        notifications: normalizeNotifications(notificationsPayload),
+      };
+    },
+    retry: 1,
+    staleTime: 20_000,
   });
 
-  const userId = userSession?.userId || 'guest';
-  const userEmail = userSession?.email;
+  const dashboardData = data ?? fallbackData;
 
-  const { data: adminPermissions } = useQuery({
-    queryKey: ['/api/admin/permissions', userEmail],
-    queryFn: () => apiRequest(`/api/admin/permissions?email=${userEmail}`),
-    enabled: !!userEmail && userEmail === 'current user'
-});
+  const projectStatusData = useMemo(() => {
+    const counts = dashboardData.projects.reduce(
+      (acc, project) => {
+        acc[project.status] += 1;
+        return acc;
+      },
+      { planning: 0, active: 0, completed: 0, archived: 0 },
+    );
 
-  const isAdmin = userEmail === 'current user' || adminPermissions?.fullAccess;
+    return [
+      { name: 'Planning', value: counts.planning },
+      { name: 'Active', value: counts.active },
+      { name: 'Completed', value: counts.completed },
+      { name: 'Archived', value: counts.archived },
+    ];
+  }, [dashboardData.projects]);
 
-  const stats = config?.stats || [];
-
-  const { data: onboardingProfile } = useQuery({
-    queryKey: ['/api/onboarding/profile', userId],
-    queryFn: () => apiRequest(`/api/onboarding/profile/${userId}`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  const { data: brandingData } = useQuery({
-    queryKey: ['/api/branding/business-info', userId],
-    queryFn: () => apiRequest(['/api/branding/business-info', userId], {
-      headers: {
-}
-}),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Admin Dashboard Switcher
-  const renderAdminDashboardSwitcher = () => {
-    if (!isAdmin) return null;
-    
-    return (
-      <Box sx={{ mb:  3 }}>
-        <MuiCard sx={{ 
-          background: `linear-gradient(135deg, ${getUserProfessionColor('photographer')} 0%, ${getUserProfessionColor('photographer')} 100%)`,
-          color: 'white',
-          p: 2 }}>
-          <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-            🔧 Admin Dashboard Tilgang
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap'}}>
-            {Object.entries(localProfessionConfigs).map(([key, baseConfig]) => {
-              // Get dynamic branding for this profession (auto-scalable)
-              const displayName = getProfessionDisplayName(key);
-              const professionColor = getUserProfessionColor(key);
-              const professionIcon = getProfessionIcon(key);
-              
-              // Merge base config with dynamic branding
-              const enhancedConfig = {
-                ...baseConfig,
-                name: displayName || baseConfig.name,
-                color: professionColor || baseConfig.color,
-                icon: professionIcon || baseConfig.icon,
-              };
-              
-              return (
-                <Button
-                  key={key}
-                  variant={profession === key ? "contained" : "outlined"}
-                  startIcon={enhancedConfig.icon}
-                  onClick={() => {
-                    trackButtonClick('profession_change', { 
-                      from_profession: profession, 
-                      to_profession: key,
-                      dashboard: 'universal', 
-                      component: 'profession_selector'
-              });
-                    window.location.href = `/?profession=${key}`;
-              }}
-                  sx={{
-                    bgcolor: profession === key ? 'rgba(25,255,255,0.9)' : 'transparent',
-                    color: profession === key ? enhancedConfig.color : 'white',
-                    borderColor: 'rgba(25,255,255,0.5)', '&:hover': {
-                      bgcolor: 'rgba(25,255,255,0.1)',
-                      borderColor: 'rgba(25,255,255,0.8)'
-                }
-              }}
-                >
-                  {enhancedConfig.name}
-                </Button>
-            );
-        })}
-          </Box>
-          <Typography variant="body2" sx={{ mt: 2, opacity: 0.9}}>
-            Som administrator har du tilgang til alle dashboards med samme mappestruktur og funksjonalitet.
-          </Typography>
-        </MuiCard>
-      </Box>
+  const clientValueData = useMemo(
+    () =>
+      dashboardData.clients.map((client) => ({
+        name: client.name.split(' ')[0],
+        value: client.totalValueNok,
+      })),
+    [dashboardData.clients],
   );
-};
-  
-  // Apply custom branding
-  const customBranding = useMemo(() => {
-    const brandingInfo = brandingData?.businessInfo || {};
-    const onboardingInfo = onboardingProfile || {};
-    
-    // Helper to ensure we always get a string (not an object)
-    const getStringValue = (value: unknown): string | null => {
-      if (typeof value === 'string' && value.trim()) return value;
-      return null;
-    };
-    
-    const businessNameRaw = getStringValue(brandingInfo.businessName) 
-      || getStringValue(onboardingInfo.businessName) 
-      || getStringValue(config?.name)
-      || 'CreatorHub';
-    
+
+  const unreadNotifications = useMemo(
+    () => dashboardData.notifications.filter((notification) => !notification.read),
+    [dashboardData.notifications],
+  );
+
+  const totals = useMemo(() => {
+    const totalBudget = dashboardData.projects.reduce((sum, project) => sum + project.budgetNok, 0);
+    const totalClientValue = dashboardData.clients.reduce((sum, client) => sum + client.totalValueNok, 0);
+    const avgProgress =
+      dashboardData.projects.length > 0
+        ? Math.round(dashboardData.projects.reduce((sum, project) => sum + project.progress, 0) / dashboardData.projects.length)
+        : 0;
+
     return {
-      color: brandingInfo.brandingColor || onboardingInfo.brandingColor || config?.color || '#ff8c00',
-      businessName: businessNameRaw,
-      tagline: brandingInfo.tagline || onboardingInfo.tagline || null,
-      profilePhoto: onboardingInfo.profilePhoto || null,
-      customLogo: brandingInfo.customLogo || onboardingInfo.customLogo || null
-};
-}, [onboardingProfile, brandingData, config]);
-
-  // Fetch dashboard data based on profession
-  const { data: dashboardData = {} } = useQuery({
-    queryKey: [`/api/dashboard/${profession}`, userId],
-    queryFn: () => apiRequest(`/api/dashboard/${profession}/${userId}`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Fetch real projects from database
-  const { data: projects = [, ],} = useQuery({
-    queryKey: ['/api/projects', { profession, userId }],
-    queryFn: () => apiRequest(`/api/projects?profession=${profession}&userId=${userId}`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Fetch real meeting notes stats
-  const { data: meetingStats } = useQuery({
-    queryKey: ['/api/smart-meeting-notes/stats', profession, userId],
-    queryFn: () => apiRequest(`/api/smart-meeting-notes/stats/${profession}/${userId}`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Fetch recent meeting notes
-  const { data: recentMeetingNotes = [, ],} = useQuery({
-    queryKey: ['/api/smart-meeting-notes/recent', userId],
-    queryFn: () => apiRequest(`/api/smart-meeting-notes/recent/${userId}?limit=3`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Fetch unread email count for email icon
-  const { data: unreadEmailData } = useQuery({
-    queryKey: ['/api/emails/unread-count', userId],
-    queryFn: () => apiRequest(`/api/emails/unread-count/${userId}`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  // Fetch recent notifications for notification center
-  const { data: recentNotifications = [, ],} = useQuery({
-    queryKey: ['/api/notifications/recent', userId],
-    queryFn: () => apiRequest(`/api/notifications/recent/${userId}?limit=10`),
-    enabled: !!userId && userId !== 'guest'
-});
-
-  const unreadEmailCount = unreadEmailData?.count || 0;
-
-  // Fetch upcoming projects data
-  const { data: upcomingProjects = [], isLoading: upcomingLoading } = useQuery({
-    queryKey: ['/api/dashboard/upcoming-projects', userId],
-    queryFn: () => apiRequest('/api/dashboard/upcoming-projects', ),
-    enabled: !!userId && userId !== 'guest',
-    staleTime: 3000,
-});
-
-  // Dynamic profession system
-  const { professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getUserProfessionColor, getProfessionIcon } = useDynamicProfessions();
-  const { adaptDashboardTitle, adaptTabLabels } = useProfessionAdapter();
-
-  /**
-   * Check if profession supports specific features
-   * Connected to profession-feature-matrix.ts for centralized feature management
-   */
-  const professionSupports = (feature: string) => {
-    const config = professionConfigs[profession];
-    if (!config) return false;
-    
-    // Check centralized feature matrix first
-    const matrixResult = isProfessionFeatureAvailable(profession, feature);
-    if (matrixResult) {
-      return true;
-    }
-    
-    // Fallback to local feature mapping for features not in matrix
-    const featureMap: Record<string, string[]> = {
-      wedding_timeline: ['photographer'],
-      camera_projects: ['photographer','videographer'], 
-      vendor_products: ['vendor'],
-      music_projects: ['music_producer']
+      totalBudget,
+      totalClientValue,
+      avgProgress,
     };
-    
-    return featureMap[feature]?.includes(profession) || false;
+  }, [dashboardData.clients, dashboardData.projects]);
+
+  const handleProjectOpen = (project: DashboardProject) => {
+    setActiveProject(project);
+    setProjectDialogOpen(true);
+    if (onProjectSelect) onProjectSelect(project);
   };
 
-  // Get dynamic project creation text
-  const getProjectCreationText = (isShort = false) => {
-    const config = professionConfigs[profession];
-    if (!config) return isShort ? 'Nytt' : 'Nytt Prosjekt';
-    
-    if (isShort) return 'Nytt';
-    
-    // Use dynamic profession display names for auto-scalability
-    const photographerName = getProfessionDisplayName('photographer');
-    const videographerName = getProfessionDisplayName('videographer');
-    const musicProducerName = getProfessionDisplayName('music_producer');
-    
-    const projectTypes: Record<string, string> = {
-      photographer: `Nytt ${photographerName}prosjekt`,
-      videographer: `Nytt ${videographerName}prosjekt`, 
-      music_producer: `Nytt ${musicProducerName}prosjekt`,
-      vendor: 'Nytt Produkt'
-};
-    
-    return projectTypes[profession] || 'Nytt Prosjekt';
-};
+  const handleProjectSave = () => {
+    if (!activeProject) return;
+    if (onProjectUpdate) {
+      onProjectUpdate(activeProject);
+    }
+    setProjectDialogOpen(false);
+  };
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-};
+  const handleProjectDelete = () => {
+    if (!activeProject) return;
+    const archivedProject: DashboardProject = {
+      ...activeProject,
+      status: 'archived',
+      updatedAt: new Date().toISOString(),
+    };
+    setActiveProject(archivedProject);
+    if (onProjectUpdate) onProjectUpdate(archivedProject);
+    setProjectDialogOpen(false);
+  };
+
+  const handleClientSelect = (client: DashboardClient) => {
+    setActiveClient(client);
+    if (onClientSelect) onClientSelect(client);
+  };
+
+  const handleClientSave = () => {
+    if (!activeClient) return;
+    if (onClientUpdate) onClientUpdate(activeClient);
+  };
+
+  const handleCreateMeeting = () => {
+    const title = newMeetingTitle.trim();
+    if (!title || !newMeetingDate) return;
+
+    const meeting: DashboardMeeting = {
+      id: `meeting-${Date.now()}`,
+      title,
+      scheduledAt: new Date(newMeetingDate).toISOString(),
+      durationMinutes: 60,
+      attendeeCount: activeClient ? 2 : 1,
+    };
+
+    if (onMeetingCreate) onMeetingCreate(meeting);
+    setMeetingDialogOpen(false);
+    setNewMeetingTitle('');
+    setNewMeetingDate('');
+  };
+
+  const handleCreateWorklog = () => {
+    if (!activeProject) return;
+
+    const title = newWorklogTitle.trim();
+    const notes = newWorklogNotes.trim();
+    if (!title || !notes) return;
+
+    const worklog: DashboardWorklog = {
+      id: `worklog-${Date.now()}`,
+      projectId: activeProject.id,
+      title,
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+
+    if (onWorklogCreate) onWorklogCreate(worklog);
+    setWorklogDialogOpen(false);
+    setNewWorklogTitle('');
+    setNewWorklogNotes('');
+  };
+
+  const handleSettingsSave = () => {
+    if (onSettingsUpdate) {
+      onSettingsUpdate({ compactMode, autoSync, quickActions });
+    }
+    setSettingsDialogOpen(false);
+  };
+
+  const handleUploadFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (onFileUpload) {
+      onFileUpload({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      });
+    }
+
+    event.target.value = '';
+  };
+
+  const handleDownloadProjectBrief = () => {
+    if (!activeProject || !onFileDownload) return;
+    onFileDownload({
+      name: `${activeProject.title.replace(/\s+/g, '-')}-brief.pdf`,
+      source: activeProject.id,
+    });
+  };
+
+  const handleCreateShowcase = () => {
+    if (!activeProject || !onShowcaseCreate) return;
+    onShowcaseCreate({
+      projectId: activeProject.id,
+      title: `${activeProject.title} Showcase`,
+    });
+  };
+
+  const handleMarkNotificationsRead = () => {
+    if (!onNotificationCreate) return;
+    unreadNotifications.forEach((notification) => {
+      onNotificationCreate({
+        ...notification,
+        read: true,
+      });
+    });
+  };
+
+  const currentProfessionMeta = professionMeta[profession];
 
   return (
-    <Box 
-      sx={{ 
-        minHeight: '100vh',
-        background: `
-          linear-gradient(135deg, #fff5e6 0%, #ffedd5 25%, #fed7aa 50%, #fdba74 75%, ${customBranding.color} 100%),
-          radial-gradient(circle at 20% 80%, ${customBranding.color}30 0%, transparent 50%),
-          radial-gradient(circle at 80% 20%, ${customBranding.color}25 0%, transparent 50%),
-          radial-gradient(circle at 40% 40%, ${customBranding.color}20 0%, transparent 50%)
-        `,
-        py: { xs: 2, sm:  3, md:  4 },
-        px: { xs: 1, sm:  2 },
-        // WCAG AA Compliance: Motion and contrast preferences
-        '@media (prefers-reduced-motion: reduce)': {
-          background: '#fff5e6'
-  }, '@media (prefers-contrast: high)': {
-          background: '#ffffff',
-          border: '2px solid #000000'
-  }
-  }}
-      component="div"
-      role="application"
-      aria-label="CreatorHub Norge Dashboard"
-    >
-      <Container 
-        maxWidth="xl"
-        sx={{
-          px: { xs: 1, sm: 2, md:  3 }
-    }}
-        component="main"
-        role="main"
-        aria-label="Dashboard hovedinnhold"
-      >
-        {/* Admin Indicator */}
-        {isAdmin && (
-          <AdminIndicator 
-            userEmail={userEmail}
-            profession={profession}
-            variant="full"
-          />
-        )}
-
-        {/* Admin Dashboard Switcher */}
-        {renderAdminDashboardSwitcher()}
-
-        {/* Header - Desktop Optimized */}
-        <Box 
-          sx={{ mb: { xs: 2, md:  4 } }}
-          component="header"
-          role="banner"
-          aria-label="Dashboard header"
-        >
-          <Box sx={{ textAlign: 'center', mb:  1 }}>
-            <img 
-              src="/creatorhub-logo-amber.svg"
-              alt="CreatorHub Norge Logo"
-              style={{
-                height: '150px',
-                width: 'auto',
-                maxWidth: '100%',
-                objectFit: 'contain'
-        }}
-              role="img"
-              aria-label="CreatorHub Norge hovedlogo"
-            />
-          </Box>
-          
-          {/* Welcome Card with Custom Branding - Desktop Layout */}
-          <MuiCard 
-            sx={{ 
-              mb: { xs: 2, md:  4 },
-              background: 'rgba(25, 255, 255, 0.95)',
-              backdropFilter: 'blur(10px)',
-              border: `2px solid ${customBranding.color}40`, '&:focus-within': {
-                outline: `3px solid ${customBranding.color}`,
-                outlineOffset: '2px'
-        }, '@media (prefers-contrast: high)': {
-                background: '#ffffff',
-                border: `3px solid ${customBranding.color}`
-          }
-        }}
-            component="section"
-            role="region"
-            aria-label="Velkomstsektor med brukerinformasjon"
-          >
-            <MuiCardContent sx={{ p: { xs: 2, sm:  3 } }}>
-              <Box sx={{ 
-                display: 'flex', 
-                flexDirection: { xs: 'column', sm: 'row',},
-                alignItems: { xs: 'center', sm: 'flex-start',},
-                gap: 2, mb: 2 }}>
-                <Avatar 
-                  src={customBranding.profilePhoto}
-                  sx={{ 
-                    bgcolor: customBranding.color, 
-                    width: { xs: 48, sm: 56,},
-                    height: { xs: 48, sm: 56,},
-                    border: `2px solid ${customBranding.color}`
-              }}
-                >
-                  {!customBranding.profilePhoto && config.icon}
-                </Avatar>
-                <Box sx={{ flexGrow: 1, textAlign: { xs: 'center', sm: 'left',} }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    flexDirection: { xs: 'column', sm: 'row',},
-                    alignItems: { xs: 'center', sm: 'flex-start',},
-                    gap: { xs: 1, sm:  2 },
-                    mb: 1 }}>
-                    <Typography variant="h3" 
-                      sx={{ 
-                        fontWeight: 600,
-                        color: customBranding.color,
-                        fontSize: { xs: '1.1rem', sm: '1.25rem',}
-                  }}
-                      component="h3"
-                      aria-label={`Velkommen tilbake, ${typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}`}
-                     sx={{ color: theming.colors.primary }}>
-                      Velkommen tilbake, {typeof customBranding.businessName === 'string' ? customBranding.businessName : 'bruker'}!
-                    </Typography>
-                    {customBranding.customLogo && (
-                      <img 
-                        src={customBranding.customLogo}
-                        alt="Logo" 
-                        style={{ 
-                          maxWidth:  60, 
-                          maxHeight:  30, 
-                          objectFit: 'contain' 
-                  }}
-                      />
-                    )}
-                  </Box>
-                  <Typography 
-                    variant="body2" 
-                    color="text.secondary"
-                    sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem',} }}
-                  >
-                    {customBranding.tagline || `Du har ${projects?.length || 0} aktive prosjekter og ${recentMeetingNotes?.length || 0} nye notater`}
-                  </Typography>
-                </Box>
-                <Box sx={{ 
-                  display: 'flex', 
-                  flexDirection: { xs: 'row', sm: 'row',},
-                  flexWrap: 'wrap',
-                  gap: 1, alignItems: 'center',
-                  justifyContent: { xs: 'center', sm: 'flex-end',}
-            }}>
-                  {/* Compact Admin Indicator in header */}
-                  {isAdmin && (
-                    <AdminIndicator 
-                      userEmail={userEmail}
-                      profession={profession}
-                      variant="compact"
-                    />
-                  )}
-                  <Button 
-                    variant="outlined" 
-                    size={isSmallScreen ? "small" : "medium"}
-                    startIcon={theming.getThemedIcon('article')}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowQuickNotesModal(true);
-                }}
-                    sx={{ 
-                      borderColor: customBranding.color,
-                      color: customBranding.color,
-                      fontSize: { xs: '0.75rem', sm: '0.875rem',},
-                      minHeight: { xs: 36, sm: 44,}, '&:hover': {
-                        bgcolor: customBranding.color + '1',
-                        borderColor: customBranding.color
-                }, '&:focus': {
-                        outline: `2px solid ${customBranding.color}`,
-                        outlineOffset: '2px'
-                }
-                }}
-                    aria-label={isSmallScreen ? 'Åpne notater' : 'Åpne møtenotater'}
-                    tabIndex={0}
-                  >
-                    {isSmallScreen ? 'Notater' : 'Møtenotater'}
-                  </Button>
-                  {professionSupports('camera_projects') ? (
-                    <Button variant="contained" 
-                      size={isSmallScreen ? "small" : "medium"}
-                      startIcon={theming.getThemedIcon('addCircle')}
-                      onClick={(e) = sx={theming.getThemedButtonSx()}> {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        trackButtonClick('ny_prosjekt_hovedkort', { 
-                          profession, 
-                          dashboard: 'universal', 
-                          tab: 'oversikt',
-                          component: 'hovedkort'
-                  });
-                        if (professionSupports('vendor_products')) {
-                          setShowVendorProductDialog(true);
-                    } else {
-                          setShowProjectCreation(true);
-                    }
-                  }}
-                      sx={{ 
-                        bgcolor: customBranding.color,
-                        fontSize: { xs: '0.75rem', sm: '0.875rem',},'&:hover': { bgcolor: customBranding.color + 'dd',}
-                  }}
-                    >
-                      {getProjectCreationText(isSmallScreen)}
-                    </Button>
-                  ) : (
-                    <Button variant="contained" 
-                      size={isSmallScreen ? "small" : "medium"}
-                      startIcon={theming.getThemedIcon('add')}
-                      onClick={(e) = sx={theming.getThemedButtonSx()}> {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setShowProjectModal(true);
-                  }}
-                      sx={{ 
-                        bgcolor: customBranding.color,
-                        fontSize: { xs: '0.75rem', sm: '0.875rem',},'&:hover': { bgcolor: customBranding.color + 'dd',}
-                  }}
-                    >
-                      {getProjectCreationText(isSmallScreen)}
-                    </Button>
-                  )}
-                  <IconButton 
-                    size={isSmallScreen ? "small" : "medium"}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowEmailCenter(true);
-                }}
-                    sx={{ 
-                      bgcolor: `${customBranding.color}10`,
-                      minHeight: { xs: 36, sm: 44,}, '&:hover': {
-                        bgcolor: customBranding.color + '20' 
-                }, '&:focus': {
-                        outline: `2px solid ${customBranding.color}`,
-                        outlineOffset: '2px'
-                }
-                }}
-                    aria-label={`E-post senter${unreadEmailCount > 0 ? ` - ${unreadEmailCount} uleste meldinger` : ', '}`}
-                    tabIndex={0}
-                  >
-                    <Badge badgeContent={unreadEmailCount} color="error">
-                      {theming.getThemedIcon('email')}
-                    </Badge>
-                  </IconButton>
-                </Box>
-              </Box>
-
-              {/* Quick Actions - Desktop Layout */}
-              <Box sx={{ 
-                display: 'flex', 
-                gap: { xs: 0, .sm:  1 },
-                flexWrap: 'wrap',
-                justifyContent: { xs: 'center', sm: 'flex-start',}
-          }}>
-                {config.tabs.slice(1, 5).map((tab, index) => {
-                  return (
-                    <Button 
-                      key={tab.id}
-                      size="small" 
-                      startIcon={tab.icon}
-                      variant={tabValue === index + 1 ? "contained" : "outlined"}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleTabChange(null, index + 1);
-                  }}
-                      sx={{ 
-                        fontSize: { xs: '0.7rem', sm: '0.75rem',},
-                        borderColor: tabValue === index + 1 ? customBranding.color : customBranding.color + '6',
-                        color: tabValue === index + 1 ? 'white' : customBranding.color,
-                        backgroundColor: tabValue === index + 1 ? customBranding.color : 'transparent',
-                        minHeight: { xs: 32, sm: 36,}, '&:hover': {
-                          borderColor: customBranding.color,
-                          backgroundColor: tabValue === index + 1 ? customBranding.color + 'dd' : customBranding.color + '10'
-                  }
-                  }}
-                    >
-                      {tab.label}
-                    </Button>
-                );
-            })}
-              </Box>
-            </MuiCardContent>
-          </MuiCard>
-        </Box>
-
-        {/* Desktop Tab Navigation */}
-        <Paper 
-          sx={{ 
-            mb:  3, 
-            background: 'rgba(25, 255, 255, 0.9)',
-            backdropFilter: 'blur(10px)',
-            border: `1px solid ${alpha(customBranding.color, 0.2)}`
-      }}
-         sx={theming.getThemedCardSx()}>
-          <MuiTabs 
-            value={tabValue}
-            onChange={handleTabChange}
-            variant="scrollable"
-            scrollButtons="auto"
-            sx={{
-              '& .MuiTab-root': {
-                fontWeight: 60
-                textTransform: 'none',
-                minHeight:  64,
-                fontSize: '0.9rem','&.Mui-selected': {
-                  color: customBranding.color
-          }
-          }, '& .MuiTabs-indicator': {
-                backgroundColor: customBranding.color,
-                height:  3,
-                borderRadius: 2 }
-        }}
-          >
-            {config.tabs.map((tab, index) => (
-              <Tab 
-                key={tab.id}
-                icon={tab.icon}
-                label={tab.label}
-                iconPosition="start"
-                sx={{
-                  '& .MuiTab-iconWrapper': {
-                    marginRight:  1,
-                    marginBottom: 0 }
-            }}
-              />
-            ))}
-          </MuiTabs>
-        </Paper>
-
-        {/* Tab Content - Desktop Layout */}
-        
-        {/* Overview Tab - Tab 0 */}
-        <TabPanel value={tabValue} index={0}>
+    <Box sx={{ p: 3 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 3 }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Avatar sx={{ bgcolor: `${currentProfessionMeta.color}22`, color: currentProfessionMeta.color }}>
+            {currentProfessionMeta.icon}
+          </Avatar>
           <Box>
-            {/* Desktop Stats Grid - Multi Column */}
-            <Grid container spacing={3} sx={{ mb:  4 }}>
-              {stats.map((stat, index) => (
-                <Grid size={{ xs: 12 }} sm={6} md={3} key={stat.key}>
-                  <MuiCard
-                    sx={{
-                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
-                      backdropFilter: 'blur(10px)',
-                      border: `1px solid ${alpha(customBranding.color, 0.2)}`,
-                      borderRadius: 3,
-                      transition: 'all 0.3s ease',
-                      cursor: 'pointer',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
-                        border: `1px solid ${alpha(customBranding.color, 0.4)}`
-                  }
-                }}
-                  >
-                    <MuiCardContent sx={{ p:  3, textAlign: 'center'}}>
-                      <Box sx={{ 
-                        mb: 2, color: customBranding.color, '& svg': { fontSize: '2rem',}
-                  }}>
-                        {stat.icon}
-                      </Box>
-                      <Typography variant="h4" 
-                        sx={{  
-                          fontWeight: 700, 
-                          color: '#333',
-                          mb: 1 }}>
-                        {dashboardData[stat.key] || '0'}
-                      </Typography>
-                      <Typography 
-                        variant="body1" 
-                        color="text.secondary"
-                        sx={{ fontWeight: 500 }}
-                      >
-                        {stat.label}
-                      </Typography>
-                    </MuiCardContent>
-                  </MuiCard>
-                </Grid>
-              ))}
-            </Grid>
-
-            {/* Desktop Projects Grid - 3 Column Layout */}
-            <Grid container spacing={3} sx={{ mb:  4 }}>
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ mb:  4 }}>
-                  <Typography variant="h5" 
-                    sx={{ 
-                      fontWeight: 700,
-                      fontSize: { xs: '1.25rem', sm: '1.5rem' },
-                      background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
-                      backgroundClip: 'text',
-                      WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap:  2,
-                      mb: 3 }}
-                   sx={{ color: theming.colors.primary }}>
-                    <PhotoCamera sx={{ color: customBranding.color }} />
-                    Kommende Prosjekter
-                  </Typography>
-
-                  {projects && projects.length > 0 ? (
-                    <Grid container spacing={2}>
-                      {projects.slice(0, 6).map((project: any, index: number) => {
-                        const currentDate = new Date();
-                        const projectDate = project.eventDate ? new Date(project.eventDate) : null;
-                        const daysUntil = projectDate ? Math.ceil((projectDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                        
-                        const isCompleted = project.status === 'Fullført' || project.status === 'Completed';
-                        const isActive = project.status === 'Aktiv' || project.status === 'Active';
-                        const isPending = project.status === 'Planlagt' || project.status === 'Pending';
-                        
-                        let statusColor = customBranding.color;
-                        if (isCompleted) statusColor = '#4CAF50';
-                        else if (isActive) statusColor = '#FF9800';
-                        else if (isPending) statusColor = '#2196F3';
-
-                        return (
-                          <Grid size={{ xs: 12 }} sm={6} lg={4} key={project.id || index}>
-                            <Fade in timeout={800 + index * 200}>
-                              <MuiCard
-                                sx={{
-                                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
-                                  backdropFilter: 'blur(10px)',
-                                  border: `1px solid ${alpha(statusColor, 0.2)}`,
-                                  borderRadius: 3,
-                                  transition: 'all 0.3s ease',
-                                  cursor: 'pointer',
-                                  position: 'relative',
-                                  overflow: 'visible',
-                                  '&:hover': {
-                                    transform: 'translateY(-6px)',
-                                    boxShadow: `0 25px 50px ${alpha(statusColor, 0.25)}`,
-                                    border: `1px solid ${alpha(statusColor, 0.4)}`,
-                                    '& .project-actions': {
-                                      opacity:  1,
-                                      transform: 'translateY(0)'
-                              }
-                              }, '&::before': {
-                                    content: '","',
-                                    position: 'absolute',
-                                    top:  0,
-                                    left:  0,
-                                    right:  0,
-                                    height: '4px',
-                                    background: `linear-gradient(90deg, ${statusColor}, ${alpha(statusColor, 0.7)})`,
-                                    borderRadius: '12px 12px 0 0'
-                            }
-                            }}
-                                onClick={() => handleViewProjectDetails(project)}
-                              >
-                                <MuiCardContent sx={{ p: 2.5}}>
-                                  {/* Project Header */}
-                                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
-                                    <Avatar 
-                                      sx={{ 
-                                        width:  40, 
-                                        height:  40,
-                                        backgroundColor: alpha(statusColor, 0.1),
-                                        color: statusColor,
-                                        fontSize: '0.9rem',
-                                        fontWeight: 600}}
-                                    >
-                                      {(project.clientName || project.title || project.name || 'P').charAt(0).toUpperCase()}
-                                    </Avatar>
-                                    
-                                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                                      <Typography variant="h6" 
-                                        sx={{  
-                                          fontSize: '1rem',
-                                          fontWeight: 600,
-                                          color: '#333',
-                                          lineHeight: 1.2,
-                                          mb: 0.5,
-                                          overflow: 'hidden',
-                                          textOverflow: 'ellipsis',
-                                          whiteSpace: 'nowrap'
-                                        }}>
-                                        {project.title || project.name}
-                                      </Typography>
-                                      
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                        <AccountCircle sx={{ fontSize: 14, color: '#666666' }} />
-                                        <Typography 
-                                          variant="body2" 
-                                          sx={{ 
-                                            color: '#666666',
-                                            fontSize: '0.8rem',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap'
-                                          }}
-                                        >
-                                          {project.clientName || 'Klient ikke angitt'}
-                                        </Typography>
-                                      </Box>
-                                    </Box>
-
-                                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5}}>
-                                      <Chip 
-                                        size="small"
-                                        label={isCompleted ? 'Fullført' : isActive ? 'Aktiv' : isPending ? 'Planlagt' : project.status}
-                                        sx={{
-                                          backgroundColor: alpha(statusColor, 0.1),
-                                          color: statusColor,
-                                          fontWeight: 60
-                                          fontSize: '0.7rem',
-                                          height: 20 }}
-                                      />
-                                      
-                                      {daysUntil >= 0 && daysUntil <= 30 && (
-                                        <Typography 
-                                          variant="caption" 
-                                          sx={{ 
-                                            color: statusColor,
-                                            fontWeight: 60
-                                            fontSize: '0.7rem'
-                                    }}
-                                        >
-                                          {daysUntil === 0 ? 'I dag' : daysUntil === 1 ? 'I morgen' : `${daysUntil} dager`}
-                                        </Typography>
-                                      )}
-                                    </Box>
-                                  </Box>
-
-                                  {/* Project Details */}
-                                  <Stack spacing={1}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                      <Event sx={{ fontSize: 16, color: statusColor }} />
-                                      <Typography variant="body2" sx={{ color: '#444444', fontWeight: 500 }}>
-                                        {project.eventDate || project.date ? 
-                                          new Date(project.eventDate || project.date).toLocaleDateString('no-NO', {
-                                            weekday: 'short',
-                                            day: '2-digit',
-                                            month: 'short',
-                                            year: 'numeric'
-                                          }) : 'Dato ikke satt'
-                                        }
-                                      </Typography>
-                                    </Box>
-                                    
-                                    {project.location && (
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                        <LocationOn sx={{ fontSize: 16, color: statusColor }} />
-                                        <Typography variant="body2" sx={{ color: '#444444', fontWeight: 500 }}>
-                                          {project.location}
-                                        </Typography>
-                                      </Box>
-                                    )}
-
-                                    {/* Progress Bar */}
-                                    {daysUntil >= 0 && daysUntil <= 30 && (
-                                      <Box sx={{ mt: 1 }}>
-                                        <LinearProgress 
-                                          variant="determinate" 
-                                          value={Math.max(0, Math.min(100, ((30 - daysUntil) / 30) * 100))}
-                                          sx={{
-                                            height: 4,
-                                            borderRadius: 2,
-                                            backgroundColor: alpha(statusColor, 0.15),
-                                            '& .MuiLinearProgress-bar': {
-                                              backgroundColor: statusColor,
-                                              borderRadius: 2
-                                            }
-                                          }}
-                                        />
-                                      </Box>
-                                    )}
-                                  </Stack>
-                                </MuiCardContent>
-
-                                <MuiCardActions sx={{ p: 2,pt: 0, justifyContent: 'space-between'}}>
-                                  <Button
-                                    size="small"
-                                    startIcon={theming.getThemedIcon('edit')}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleEditProject(project);
-                                }}
-                                    sx={{
-                                      color: statusColor, '&:hover': {
-                                        backgroundColor: alpha(statusColor, 0.1)
-                                  }
-                                }}
-                                  >
-                                    Rediger
-                                  </Button>
-                                  
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleViewProjectDetails(project);
-                                    }}
-                                    sx={{
-                                      color: '#666666',
-                                      '&:hover': {
-                                        backgroundColor: alpha(customBranding.color, 0.1),
-                                        color: customBranding.color
-                                      }
-                                    }}
-                                    title="Se større"
-                                  >
-                                    <Launch sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                  
-                                  <IconButton
-                                    size="small"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteProject(project);
-                                    }}
-                                    sx={{
-                                      color: '#666666',
-                                      '&:hover': {
-                                        backgroundColor: alpha('#f44336', 0.1),
-                                        color: '#f44336'
-                                      }
-                                    }}
-                                    title="Slett prosjekt"
-                                  >
-                                    <Delete sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </MuiCardActions>
-                              </MuiCard>
-                            </Fade>
-                          </Grid>
-                      );
-                  })}
-                    </Grid>
-                  ) : (
-                    <MuiCard sx={{
-                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
-                      backdropFilter: 'blur(10px)',
-                      border: `1px solid ${alpha(customBranding.color, 0.2)}`,
-                      borderRadius:  3,
-                      p:  6,
-                      textAlign: 'center'
-              }}>
-                      {customBranding.customLogo ? (
-                        <img 
-                          src={customBranding.customLogo}
-                          alt="Logo" 
-                          style={{ 
-                            width:  48, 
-                            height:  48, 
-                            objectFit: 'contain',
-                            marginBottom:  16,
-                            opacity: 0.5 }}
-                        />
-                      ) : (
-                        <PhotoCamera sx={{ 
-                          fontSize:  48, 
-                          color: alpha(customBranding.color, 0.5),
-                          mb: 2 }} />
-                      )}
-                      <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {profession === 'photographer' && `Ingen ${getProfessionDisplayName('photographer').toLowerCase()}prosjekter ennå`}
-                        {profession === 'videographer' && `Ingen ${getProfessionDisplayName('videographer').toLowerCase()}prosjekter ennå`}
-                        {profession === 'music_producer' && `Ingen ${getProfessionDisplayName('music_producer').toLowerCase()}prosjekter ennå`}
-                        {profession === 'vendor' && 'Ingen produkter ennå'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
-                        {professionSupports('camera_projects') && 'Opprett ditt første prosjekt for å komme i gang'}
-                        {profession === 'videographer' && 'Opprett ditt første videoprosjekt for å komme i gang'}
-                        {profession === 'music_producer' && 'Opprett ditt første musikkprosjekt for å komme i gang'}
-                        {profession === 'vendor' && 'Vent på din første bestilling'}
-                      </Typography>
-                      <Button variant="contained"
-                        startIcon={theming.getThemedIcon('addCircle')}
-                        onClick={() => {
-                          trackButtonClick('ny_prosjekt_knapp_dashboard', { 
-                            profession, 
-                            dashboard: 'universal', 
-                            tab: 'dashboard_main',
-                            component: 'project_button_dashboard'
-                    });
-                          if (professionSupports('vendor_products')) {
-                            setShowVendorProductDialog(true);
-                      } else {
-                            setShowProjectCreation(true);
-                      }
-                    }}
-                        sx={{
-                          backgroundColor: customBranding.color, '&:hover': { backgroundColor: alpha(customBranding.color, 0.8) }
-                    }}
-                      >
-                        {profession === 'photographer' && `Opprett ${getProfessionDisplayName('photographer')}prosjekt`}
-                        {profession === 'videographer' && `Opprett ${getProfessionDisplayName('videographer')}prosjekt`}
-                        {profession === 'music_producer' && `Opprett ${getProfessionDisplayName('music_producer')}prosjekt`}
-                        {profession === 'vendor' && 'Opprett Produkt'}
-                      </Button>
-                    </MuiCard>
-                  )}
-                </Box>
-              </Grid>
-
-              {/* Project Timeline Section - Desktop */}
-              <Grid size={{ xs: 12 }}>
-                <Box sx={{ mb:  4 }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    mb: 3 }}>
-                    <Typography variant="h6" 
-                      sx={{ 
-                        fontWeight: 700,
-                        fontSize: { xs: '1.1rem', sm: '1.25rem' },
-                        background: `linear-gradient(135deg, ${customBranding.color}, #FF8C00)`,
-                        backgroundClip: 'text',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1,
-                        color: theming.colors.primary
-                      }}>
-                      <TimelineIcon sx={{ color: customBranding.color }} />
-                      Prosjekt Tidslinje
-                    </Typography>
-                  </Box>
-
-                  <MuiCard sx={{
-                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.95) 100%)',
-                    backdropFilter: 'blur(10px)',
-                    border: `1px solid ${alpha(customBranding.color, 0.2)}`,
-                    borderRadius: 3,
-                    overflow: 'hidden',
-                    transition: 'all 0.3s ease',
-                    '&:hover': {
-                      transform: 'translateY(-2px)',
-                      boxShadow: `0 20px 40px ${alpha(customBranding.color, 0.15)}`,
-                      border: `1px solid ${alpha(customBranding.color, 0.3)}`
-                    }
-                  }}>
-                    <MuiCardContent sx={{ p: 3 }}>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 3, fontWeight: 500 }}>
-                        Administrer milepæler, frister, møter og viktige hendelser for dine prosjekter. Alt koblet sammen.
-                      </Typography>
-                    
-                      <MuiTabs 
-                        value={selectedTimelineTab}
-                        onChange={(_, newValue) => setSelectedTimelineTab(newValue)}
-                        sx={{ 
-                          mb: 3,
-                          '& .MuiTab-root': {
-                            fontWeight: 60
-                            textTransform: 'none',
-                            minHeight: 48'&.Mui-selected': { color: customBranding.color
-                      }
-                      }, '& .MuiTabs-indicator': {
-                            backgroundColor: customBranding.color,
-                            height:  3,
-                            borderRadius: 2 }
-                    }}
-                      >
-                        <Tab label="Timeline" />
-                        <Tab label="Google Møter" />
-                      </MuiTabs>
-
-                      {selectedTimelineTab === 0 && (
-                        <ProjectProvider>
-                          <ProjectTimeline 
-                            projectId={userId}
-                          />
-                        </ProjectProvider>
-                      )}
-                      
-                      {selectedTimelineTab === 1 && (
-                        <GoogleWorkspaceMeetingManager
-                          profession={profession}
-                          userId={userId}
-                        />
-                      )}
-                    </MuiCardContent>
-                  </MuiCard>
-                </Box>
-              </Grid>
-            </Grid>
+            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+              Universal Dashboard (Desktop)
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Chip label={currentProfessionMeta.label} size="small" sx={{ backgroundColor: `${currentProfessionMeta.color}22`, color: currentProfessionMeta.color }} />
+              <Chip label={user?.email ?? 'Uten bruker'} size="small" variant="outlined" />
+            </Stack>
           </Box>
-        </TabPanel>
+        </Stack>
 
-        {/* Projects Tab - Tab 1 */}
-        <TabPanel value={tabValue} index={1}>
-          <FotografOrchestrator profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* Universal Contract System - Tab 2 for ALL professions */}
-        <TabPanel value={tabValue} index={2}>
-          <UniversalContractHub 
-            profession={profession as 'photographer' | 'videographer' | 'music_producer'}
-            userId={userId}
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <FormControlLabel
+            control={<Switch checked={isDemoMode} onChange={() => void toggleDemoMode()} />}
+            label="Demo mode"
           />
-        </TabPanel>
+          <Button variant="outlined" onClick={() => void refetch()} disabled={isFetching}>
+            {isFetching ? 'Oppdaterer...' : 'Oppdater'}
+          </Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMeetingDialogOpen(true)}>
+            Nytt møte
+          </Button>
+          <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setSettingsDialogOpen(true)}>
+            Innstillinger
+          </Button>
+          {profession === 'admin' ? <AdminIndicator adminModeEnabled /> : null}
+        </Stack>
+      </Stack>
 
-        {/* Wedding Timeline - Tab 3 (Only for photographers) */}
-        {professionSupports('wedding_timeline') && (
-          <TabPanel value={tabValue} index={3}>
-            <WeddingTimelineAdmin profession={profession} userId={userId} />
+      {isError ? <Alert severity="warning" sx={{ mb: 2 }}>{(error as Error).message}</Alert> : null}
+      {isLoading && !data ? <Alert severity="info" sx={{ mb: 2 }}>Laster dashboard-data...</Alert> : null}
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Prosjekter</Typography>
+                  <FolderOpenIcon color="primary" />
+                </Stack>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{dashboardData.projects.length}</Typography>
+                <Typography variant="caption" color="text.secondary">Gj.snitt progress {totals.avgProgress}%</Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Kunder</Typography>
+                  <GroupIcon color="secondary" />
+                </Stack>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{dashboardData.clients.length}</Typography>
+                <Typography variant="caption" color="text.secondary">Verdi {formatCurrency(totals.totalClientValue)}</Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Budsjett</Typography>
+                  <WorkIcon color="warning" />
+                </Stack>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{formatCurrency(totals.totalBudget)}</Typography>
+                <Typography variant="caption" color="text.secondary">Aktive + planlagte prosjekter</Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Stack spacing={1}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="body2" color="text.secondary">Uleste varsler</Typography>
+                  <NotificationsIcon color="error" />
+                </Stack>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>{unreadNotifications.length}</Typography>
+                <Button size="small" variant="text" onClick={handleMarkNotificationsRead}>Marker som lest</Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      <Card>
+        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)} variant="scrollable" scrollButtons="auto">
+          <Tab label="Oversikt" icon={<FolderOpenIcon />} iconPosition="start" />
+          <Tab label="Prosjekter" icon={<EventIcon />} iconPosition="start" />
+          <Tab label="Kunder" icon={<PersonIcon />} iconPosition="start" />
+          <Tab label="Kommunikasjon" icon={<ChatIcon />} iconPosition="start" />
+          <Tab label="Filer" icon={<CloudUploadIcon />} iconPosition="start" />
+        </Tabs>
+        <Divider />
+
+        <CardContent>
+          <TabPanel value={tabValue} index={0}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>Prosjektstatus</Typography>
+                <Box sx={{ height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={projectStatusData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={90}>
+                        {projectStatusData.map((entry, index) => (
+                          <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Legend />
+                      <RechartsTooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>Kundeverdi</Typography>
+                <Box sx={{ height: 260 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={clientValueData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <RechartsTooltip formatter={(value: number) => formatCurrency(value)} />
+                      <Bar dataKey="value" fill="#2563eb" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </Box>
+              </Grid>
+            </Grid>
           </TabPanel>
-        )}
 
-        {/* Showcase Admin - Tab 4 */}
-        <TabPanel value={tabValue} index={4}>
-          <ShowcaseAdmin profession={profession} userId={userId} />
-        </TabPanel>
+          <TabPanel value={tabValue} index={1}>
+            <Stack spacing={1.5}>
+              {dashboardData.projects.map((project) => (
+                <Card key={project.id} variant="outlined">
+                  <CardContent>
+                    <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={1.5}>
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{project.title}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {project.clientName} · Oppdatert {new Date(project.updatedAt).toLocaleDateString('nb-NO')}
+                        </Typography>
+                        <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                          <Chip label={project.status} size="small" />
+                          <Chip label={`${project.progress}%`} size="small" variant="outlined" />
+                          <Chip label={formatCurrency(project.budgetNok)} size="small" variant="outlined" />
+                        </Stack>
+                      </Box>
+                      <Stack direction="row" spacing={0.5}>
+                        <Tooltip title="Vis detaljer">
+                          <IconButton onClick={() => handleProjectOpen(project)}>
+                            <VisibilityIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Åpne showcase">
+                          <IconButton onClick={() => {
+                            setActiveProject(project);
+                            handleCreateShowcase();
+                          }}>
+                            <PhotoCameraIcon />
+                          </IconButton>
+                        </Tooltip>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          </TabPanel>
 
-        {/* AI Enhancement - Tab 5 */}
-        <TabPanel value={tabValue} index={5}>
-          {profession === 'photographer' || profession === 'videographer' ? (
-            <PhotoEnhancementSuite profession={profession} userId={userId} />
-          ) : (
-            <AudioEnhancementSuite profession={profession} userId={userId} />
-          )}
-        </TabPanel>
+          <TabPanel value={tabValue} index={2}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={5}>
+                <List dense>
+                  {dashboardData.clients.map((client) => (
+                    <ListItem key={client.id} disablePadding>
+                      <ListItemButton selected={activeClient?.id === client.id} onClick={() => handleClientSelect(client)}>
+                        <ListItemAvatar>
+                          <Avatar>{client.name.charAt(0).toUpperCase()}</Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={client.name}
+                          secondary={`${client.email} · ${client.projectCount} prosjekter`}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                </List>
+              </Grid>
+              <Grid item xs={12} md={7}>
+                {activeClient ? (
+                  <Card variant="outlined">
+                    <CardContent>
+                      <Stack spacing={1.5}>
+                        <Typography variant="h6">{activeClient.name}</Typography>
+                        <TextField
+                          label="E-post"
+                          value={activeClient.email}
+                          onChange={(event) => setActiveClient({ ...activeClient, email: event.target.value })}
+                          fullWidth
+                          size="small"
+                        />
+                        <TextField
+                          label="Telefon"
+                          value={activeClient.phone ?? ''}
+                          onChange={(event) => setActiveClient({ ...activeClient, phone: event.target.value })}
+                          fullWidth
+                          size="small"
+                        />
+                        <Stack direction="row" spacing={1}>
+                          <Chip label={activeClient.status} size="small" />
+                          <Chip label={`${activeClient.projectCount} prosjekter`} size="small" variant="outlined" />
+                          <Chip label={formatCurrency(activeClient.totalValueNok)} size="small" variant="outlined" />
+                        </Stack>
+                        <Button variant="contained" startIcon={<EditIcon />} onClick={handleClientSave}>
+                          Lagre kundeoppdatering
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Alert severity="info">Velg en kunde for detaljer.</Alert>
+                )}
+              </Grid>
+            </Grid>
+          </TabPanel>
 
-        {/* Email Center - Tab 6 */}
-        <TabPanel value={tabValue} index={6}>
-          <IntegratedEmailCenter profession={profession} userId={userId} />
-        </TabPanel>
+          <TabPanel value={tabValue} index={3}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                      <Typography variant="subtitle1">Planlagte møter</Typography>
+                      <Button size="small" startIcon={<CalendarTodayIcon />} onClick={() => setMeetingDialogOpen(true)}>
+                        Nytt møte
+                      </Button>
+                    </Stack>
+                    <List dense>
+                      {dashboardData.meetings.map((meeting) => (
+                        <ListItem key={meeting.id}>
+                          <ListItemText
+                            primary={meeting.title}
+                            secondary={`${new Date(meeting.scheduledAt).toLocaleString('nb-NO')} · ${meeting.durationMinutes} min · ${meeting.attendeeCount} deltakere`}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </CardContent>
+                </Card>
+              </Grid>
 
-        {/* Worklog - Tab 7 */}
-        <TabPanel value={tabValue} index={7}>
-          <UniversalWorklog profession={profession} userId={userId} />
-        </TabPanel>
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined">
+                  <CardContent>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
+                      <Typography variant="subtitle1">Varsler</Typography>
+                      <BadgeAlertCount count={unreadNotifications.length} />
+                    </Stack>
+                    <List dense>
+                      {dashboardData.notifications.map((notification) => (
+                        <ListItem key={notification.id}>
+                          <ListItemText
+                            primary={notification.title}
+                            secondary={`${notification.message} · ${new Date(notification.createdAt).toLocaleString('nb-NO')}`}
+                          />
+                          <Chip
+                            label={notification.read ? 'Lest' : 'Ulest'}
+                            size="small"
+                            color={notification.read ? 'default' : 'primary'}
+                            variant={notification.read ? 'outlined' : 'filled'}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </TabPanel>
 
-        {/* Clients - Tab 8 */}
-        <TabPanel value={tabValue} index={8}>
-          <AdvancedClientManagement profession={profession} userId={userId} />
-        </TabPanel>
+          <TabPanel value={tabValue} index={4}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
+              <Button component="label" variant="contained" startIcon={<CloudUploadIcon />}>
+                Last opp fil
+                <input hidden type="file" onChange={handleUploadFile} />
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={handleDownloadProjectBrief}
+                disabled={!activeProject}
+              >
+                Last ned prosjekt-brief
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={() => setWorklogDialogOpen(true)}
+                disabled={!activeProject}
+              >
+                Loggfør arbeid
+              </Button>
+            </Stack>
+            {!activeProject ? <Alert severity="info" sx={{ mt: 2 }}>Velg et prosjekt i fanen Prosjekter for filoperasjoner.</Alert> : null}
+          </TabPanel>
+        </CardContent>
+      </Card>
 
-        {/* Equipment - Tab 9 */}
-        <TabPanel value={tabValue} index={9}>
-          <ComprehensiveEquipmentDashboard profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* Files - Tab 10 */}
-        <TabPanel value={tabValue} index={10}>
-          <FilesTab profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* Support - Tab 11 */}
-        <TabPanel value={tabValue} index={11}>
-          <HelpdeskSystem profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* Settings - Tab 12 */}
-        <TabPanel value={tabValue} index={12}>
-          <UniversalSettingsPanel profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* Administrasjon - Tab 13 */}
-        <TabPanel value={tabValue} index={13}>
-          <AdministrationHub
-            userId={userId}
-            profession={profession}
-            selectedClient={selectedClient}
-            onPricingUpdate={() => {
-              console.log('Pricing updated');
-            }}
-          />
-        </TabPanel>
-
-        {/* Communication - Tab 14 */}
-        <TabPanel value={tabValue} index={14}>
-          <UniversalCommunication profession={profession} userId={userId} />
-        </TabPanel>
-
-        {/* All the same dialogs and modals as the original */}
-        
-        {/* Quick Meeting Notes Modal */}
-        <QuickMeetingNotesModal 
-          open={showQuickNotesModal}
-          onClose={() => setShowQuickNotesModal(false)}
-          profession={profession}
-          userId={userId}
-        />
-
-        {/* Project Creation Modal */}
-        {showProjectCreation && (
-          <Dialog 
-            open={showProjectCreation}
-            onClose={() => setShowProjectCreation(false)}
-            maxWidth="lg"
-            fullWidth
-            PaperProps={{
-              sx: {
-                borderRadius: 3,
-                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
-                background: '#fafbfc',
-              }
-            }}
-          >
-            <DialogTitle sx={{ 
-              bgcolor: '#1565c0',
-              color: 'white',
-              fontSize: '1.5rem',
-              fontWeight: 700,
-              py: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.15)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <span>Opprett Nytt Prosjekt</span>
-              <IconButton 
-                size="small" 
-                onClick={() => setShowProjectCreation(false)}
-                sx={{ color: 'white', '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' } }}>
-                <CloseIcon />
-              </IconButton>
-            </DialogTitle>
-            <DialogContent sx={{ pt: 4, pb: 3 }}>
-              <ProjectCreationWithMemoryCards 
-                profession={profession}
-                userId={userId}
-                onProjectCreated={() => setShowProjectCreation(false)}
+      <Dialog open={projectDialogOpen} onClose={() => setProjectDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Prosjektdetaljer</DialogTitle>
+        <DialogContent dividers>
+          {activeProject ? (
+            <Stack spacing={1.5}>
+              <TextField
+                label="Tittel"
+                value={activeProject.title}
+                onChange={(event) => setActiveProject({ ...activeProject, title: event.target.value })}
+                fullWidth
+                size="small"
               />
-            </DialogContent>
-          </Dialog>
-        )}
-
-        {/* Vendor Product Dialog */}
-        {showVendorProductDialog && (
-          <Dialog 
-            open={showVendorProductDialog}
-            onClose={() => setShowVendorProductDialog(false)}
-            maxWidth="md"
-            fullWidth
-          >
-            <DialogTitle>Legg til Produkt</DialogTitle>
-            <DialogContent>
-              <VendorProductManager 
-                userId={userId}
-                onProductCreated={() => setShowVendorProductDialog(false)}
+              <TextField
+                label="Kunde"
+                value={activeProject.clientName}
+                onChange={(event) => setActiveProject({ ...activeProject, clientName: event.target.value })}
+                fullWidth
+                size="small"
               />
-            </DialogContent>
-          </Dialog>
-        )}
+              <TextField
+                label="Beskrivelse"
+                value={activeProject.description ?? ''}
+                onChange={(event) => setActiveProject({ ...activeProject, description: event.target.value })}
+                fullWidth
+                multiline
+                minRows={3}
+                size="small"
+              />
+            </Stack>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProjectDialogOpen(false)}>Lukk</Button>
+          <Button color="error" startIcon={<DeleteIcon />} onClick={handleProjectDelete}>Arkiver</Button>
+          <Button variant="contained" startIcon={<EditIcon />} onClick={handleProjectSave}>Lagre</Button>
+        </DialogActions>
+      </Dialog>
 
-        {/* Email Center Modal */}
-        {showEmailCenter && (
-          <Dialog 
-            open={showEmailCenter}
-            onClose={() => setShowEmailCenter(false)}
-            maxWidth="xl"
-            fullWidth
-            sx={{ '& .MuiDialog-paper': { height: '90vh',} }}
-          >
-            <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>E-post Senter</Typography>
-              <IconButton onClick={() => setShowEmailCenter(false)}>
-                {theming.getThemedIcon('close')}
-              </IconButton>
-            </DialogTitle>
-            <DialogContent sx={{ p:  0 }}>
-              <IntegratedEmailCenter profession={profession} userId={userId} />
-            </DialogContent>
-          </Dialog>
-        )}
+      <Dialog open={meetingDialogOpen} onClose={() => setMeetingDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Opprett møte</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <TextField
+              label="Møtetittel"
+              value={newMeetingTitle}
+              onChange={(event) => setNewMeetingTitle(event.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Dato og tid"
+              type="datetime-local"
+              value={newMeetingDate}
+              onChange={(event) => setNewMeetingDate(event.target.value)}
+              fullWidth
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMeetingDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleCreateMeeting}>Opprett</Button>
+        </DialogActions>
+      </Dialog>
 
-        {/* All project management dialogs - same as original */}
-        
-        {/* Project Details Modal */}
-        <Dialog 
-          open={showProjectDetailsModal}
-          onClose={() => setShowProjectDetailsModal(false)}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>
-            <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-              <PhotoCamera sx={{ color: customBranding.color }} />
-              {selectedProject?.title || selectedProject?.name}
-            </Typography>
-          </DialogTitle>
-          <DialogContent>
-            {selectedProject && (
-              <Box sx={{ p:  2 }}>
-                <Grid container spacing={2}>
-                  <Grid size={{ xs: 12 }} sm={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Klient</Typography>
-                    <Typography variant="body1">{selectedProject.clientName || 'Ikke angitt'}</Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12 }} sm={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Status</Typography>
-                    <Chip 
-                      label={selectedProject.status}
-                      color={selectedProject.status === 'Fullført' ? 'success' : selectedProject.status === 'Aktiv' ? 'primary' : 'default'}
-                      size="small"
-                    />
-                  </Grid>
-                  <Grid size={{ xs: 12 }} sm={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Dato</Typography>
-                    <Typography variant="body1">
-                      {selectedProject.eventDate || selectedProject.date ? 
-                        new Date(selectedProject.eventDate || selectedProject.date).toLocaleDateString('no-NO', {
-                          weekday: 'long',
-                          day: '2-digit',
-                          month: 'long',
-                          year: 'numeric'
-                  }) : 'Ikke satt'
-                  }
-                    </Typography>
-                  </Grid>
-                  <Grid size={{ xs: 12 }} sm={6}>
-                    <Typography variant="subtitle2" color="text.secondary">Lokasjon</Typography>
-                    <Typography variant="body1" sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                      <LocationOn sx={{ fontSize:  16, color: 'text.secondary'}} />
-                      {selectedProject.location || 'Ikke angitt'}
-                    </Typography>
-                  </Grid>
-                  {selectedProject.description && (
-                    <Grid size={{ xs: 12 }}>
-                      <Typography variant="subtitle2" color="text.secondary">Beskrivelse</Typography>
-                      <Typography variant="body1">{selectedProject.description}</Typography>
-                    </Grid>
-                  )}
-                </Grid>
-              </Box>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowProjectDetailsModal(false)}>
-              Lukk
-            </Button>
-            <Button variant="contained"
-              startIcon={theming.getThemedIcon('edit')}
-              onClick={() => {
-                setShowProjectDetailsModal(false);
-                handleEditProject(selectedProject);
-          }}
-              sx={{ backgroundColor: customBranding.color }}
-            >
-              Rediger Prosjekt
-            </Button>
-          </DialogActions>
-        </Dialog>
+      <Dialog open={worklogDialogOpen} onClose={() => setWorklogDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nytt worklog-innslag</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5}>
+            <TextField
+              label="Tittel"
+              value={newWorklogTitle}
+              onChange={(event) => setNewWorklogTitle(event.target.value)}
+              fullWidth
+              size="small"
+            />
+            <TextField
+              label="Notater"
+              value={newWorklogNotes}
+              onChange={(event) => setNewWorklogNotes(event.target.value)}
+              fullWidth
+              multiline
+              minRows={4}
+              size="small"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWorklogDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleCreateWorklog}>Lagre</Button>
+        </DialogActions>
+      </Dialog>
 
-        {/* Edit Project Modal */}
-        <Dialog 
-          open={showEditProjectModal}
-          onClose={() => setShowEditProjectModal(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-            <Edit sx={{ color: customBranding.color }} />
-            Rediger Prosjekt
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-              Prosjektredigering vil bli implementert i neste versjon.
-            </Typography>
-            {selectedProject && (
-              <Typography variant="body1">
-                <strong>Prosjekt: </strong> {selectedProject.title || selectedProject.name}
-              </Typography>
-            )}
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setShowEditProjectModal(false)}>
-              Lukk
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Delete Project Confirmation Dialog */}
-        <Dialog 
-          open={showDeleteProjectDialog}
-          onClose={() => setShowDeleteProjectDialog(false)}
-          maxWidth="sm"
-        >
-          <DialogTitle>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-              <Delete sx={{ color: '#f44336'}} />
-              <Typography variant="h6" sx={{  color: theming.colors.primary }}>
-                Slett Prosjekt
-              </Typography>
-            </Box>
-          </DialogTitle>
-          <DialogContent>
-            <Typography variant="body1" sx={{ mb:  2 }}>
-              Er du sikker på at du vil slette prosjektet?
-            </Typography>
-            {selectedProject && (
-              <Box sx={{ 
-                p: 2, bgcolor: 'rgba(24, 67, 54, 0.1)', 
-                borderRadius:  2,
-                border: '1px solid rgba(24, 67, 54, 0.3)'
-          }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600}>
-                  📸 {selectedProject.title || selectedProject.name}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Klient: {selectedProject.clientName ||'Ikke angitt'}
-                </Typography>
-              </Box>
-            )}
-            <Typography variant="body2" color="error" sx={{ mt: 2, fontWeight: 600}>
-              ⚠️ Dette kan ikke angres!
-            </Typography>
-          </DialogContent>
-          <DialogActions>
-            <Button 
-              onClick={() => setShowDeleteProjectDialog(false)}
-              variant="outlined"
-            >
-              Avbryt
-            </Button>
-            <Button variant="contained"
-              color="error"
-              startIcon={theming.getThemedIcon('delete')}
-              onClick={confirmDeleteProject}
-             sx={theming.getThemedButtonSx()}>
-              Ja, Slett Prosjekt
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* FAQ Dialog */}
-        <TutorialFAQIntegration 
-          open={showFAQDialog}
-          onClose={() => setShowFAQDialog(false)}
-          profession={profession}
-        />
-      </Container>
+      <Dialog open={settingsDialogOpen} onClose={() => setSettingsDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Dashboard-innstillinger</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1}>
+            <FormControlLabel
+              control={<Switch checked={compactMode} onChange={(event) => setCompactMode(event.target.checked)} />}
+              label="Compact mode"
+            />
+            <FormControlLabel
+              control={<Switch checked={autoSync} onChange={(event) => setAutoSync(event.target.checked)} />}
+              label="Auto sync"
+            />
+            <FormControlLabel
+              control={<Switch checked={quickActions} onChange={(event) => setQuickActions(event.target.checked)} />}
+              label="Quick actions"
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleSettingsSave}>Lagre</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
-);
+  );
+}
+
+function BadgeAlertCount(props: { count: number }) {
+  const { count } = props;
+  return (
+    <Chip
+      size="small"
+      label={count > 0 ? `${count} ulest` : 'Ingen uleste'}
+      color={count > 0 ? 'primary' : 'default'}
+      icon={<NotificationsIcon fontSize="small" />}
+      variant={count > 0 ? 'filled' : 'outlined'}
+    />
+  );
 }

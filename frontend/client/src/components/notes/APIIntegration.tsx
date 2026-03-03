@@ -1,62 +1,25 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
-  CardHeader,
+  Chip,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
-  Chip,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Paper,
   Stack,
-  Divider,
-  Tooltip,
-  Badge,
-  Avatar,
-  Tabs,
   Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Alert,
-  AlertTitle,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  Switch,
-  FormControlLabel,
-  Slider,
-  LinearProgress,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Checkbox,
-  Radio,
-  RadioGroup,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
+  Tabs,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import Grid from '@mui/material/Grid2';
+import { Api, CheckCircle, PlayArrow, Warning } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
-// Types
 interface APIEndpoint {
   id: string;
   name: string;
@@ -79,11 +42,14 @@ interface APITest {
   method: string;
   url: string;
   headers: Record<string, string>;
-  body?: any;
+  body?: unknown;
   expectedStatus: number;
-  expectedResponse?: any;
+  expectedResponse?: unknown;
   status: 'pending' | 'running' | 'passed' | 'failed';
-  result?: any;
+  result?: {
+    status: number;
+    responseSummary: string;
+  };
   duration?: number;
   createdAt: Date;
   lastRun?: Date;
@@ -93,862 +59,274 @@ interface APIIntegrationProps {
   className?: string;
   onEndpointChange?: (endpoint: APIEndpoint) => void;
   onTestChange?: (test: APITest) => void;
-  onIntegrationExport?: (data: { endpoints: APIEndpoint[];, tests: APITest[] }) => void;
+  onIntegrationExport?: (data: { endpoints: APIEndpoint[]; tests: APITest[] }) => void;
 }
 
-// Mock data
-const defaultEndpoints: APIEndpoint[] = [
+const ENDPOINTS: APIEndpoint[] = [
   {
     id: 'auth-login',
     name: 'User Login',
-    description: 'Authenticate user with email and password',
+    description: 'Authenticate user with email and password.',
     url: '/api/auth/login',
     method: 'POST',
     category: 'authentication',
     status: 'active',
-    responseTime: 100,
+    responseTime: 120,
     successRate: 99.5,
-    lastUsed: new Date('2024-01-15'),
-    version: 'v1.0',
-    documentation: 'https://docs.example.com/auth/login'
+    lastUsed: new Date('2026-02-28T10:00:00Z'),
+    version: 'v1',
   },
   {
-    id: 'data-documents',
+    id: 'documents-list',
     name: 'Get Documents',
-    description: 'Retrieve user documents with pagination',
-    url: '/api/documents',
+    description: 'Fetch user documents with pagination.',
+    url: '/api/documents?page=1&limit=20',
     method: 'GET',
     category: 'data',
     status: 'active',
-    responseTime: 200,
-    successRate: 98.2,
-    lastUsed: new Date('2024-01-14,'),
-    version: 'v1.2'
+    responseTime: 170,
+    successRate: 98.1,
+    lastUsed: new Date('2026-02-28T11:00:00Z'),
+    version: 'v2',
   },
   {
-    id: 'analytics-events',
+    id: 'analytics-track',
     name: 'Track Event',
-    description: 'Send analytics event data',
+    description: 'Persist analytics telemetry event.',
     url: '/api/analytics/events',
     method: 'POST',
     category: 'analytics',
-    status: 'active',
-    responseTime: 100,
-    successRate: 99.8,
-    lastUsed: new Date('2024-01-15,'),
-    version: 'v2.0'
-  },
-  {
-    id: 'webhook-notify',
-    name: 'Webhook Notification',
-    description: 'Send webhook notifications',
-    url: '/api/webhooks/notify',
-    method: 'POST',
-    category: 'webhook',
     status: 'testing',
-    responseTime: 300,
-    successRate: 95.0,
-    lastUsed: new Date('2024-01-13'),
-    version: 'v1.1'
-  }
+    responseTime: 220,
+    successRate: 96.4,
+    lastUsed: new Date('2026-02-27T09:30:00Z'),
+    version: 'v2',
+  },
 ];
 
-const defaultTests: APITest[] = [
+const TESTS: APITest[] = [
   {
-    id: 'test',
-    name: 'Login Test',
+    id: 'test-login',
+    name: 'Login returns token',
     endpointId: 'auth-login',
     method: 'POST',
     url: '/api/auth/login',
-    headers: { 'Content-Type' : 'application/json' },
-    body: { email: 'test@example.com', password: 'password123' },
+    headers: { 'content-type': 'application/json' },
+    body: { email: 'test@example.com', password: 'password' },
     expectedStatus: 200,
-    expectedResponse: { token: 'string', user: 'object' },
-    status: 'passed',
-    result: { status: 200, response: { token: 'abc123', user: { id: 1 } } },
-    duration: 100,
-    createdAt: new Date('2024-01-10'),
-    lastRun: new Date('2024-01-15')
+    status: 'pending',
+    createdAt: new Date('2026-02-26T08:00:00Z'),
   },
   {
-    id: 'test',
-    name: 'Documents Test',
-    endpointId: 'data-documents',
+    id: 'test-documents',
+    name: 'Documents endpoint returns array',
+    endpointId: 'documents-list',
     method: 'GET',
-    url: '/api/documents?page=1&limit=10',
+    url: '/api/documents?page=1&limit=20',
     headers: {},
     expectedStatus: 200,
-    expectedResponse: { documents: 'array', total: 'number' },
-    status: 'failed',
-    result: { status: 500, error: 'Internal server error' },
-    duration: 5000,
-    createdAt: new Date('2024-01-11'),
-    lastRun: new Date('2024-01-14')
-  }
+    status: 'pending',
+    createdAt: new Date('2026-02-26T09:00:00Z'),
+  },
 ];
 
-const APIIntegration: React.FC<APIIntegrationProps> = ({
-  className = ', ',
+export default function APIIntegration({
+  className,
   onEndpointChange,
   onTestChange,
-  onIntegrationExport
-}) => {
-  // State
-  const [activeTab, setActiveTab] = useState(0);
-  
-  // Theming system
+  onIntegrationExport,
+}: APIIntegrationProps): React.ReactElement {
   const theming = useTheming('photographer');
-  const [selectedEndpoint, setSelectedEndpoint] = useState<APIEndpoint | null>(null);
-  const [selectedTest, setSelectedTest] = useState<APITest | null>(null);
-  const [showEndpointEditor, setShowEndpointEditor] = useState(false);
-  const [showTestEditor, setShowTestEditor] = useState(false);
-  const [endpoints, setEndpoints] = useState<APIEndpoint[]>(defaultEndpoints);
-  const [tests, setTests] = useState<APITest[]>(defaultTests);
-  const [isRunningTests, setIsRunningTests] = useState(false);
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState(0);
+  const [endpoints, setEndpoints] = useState<APIEndpoint[]>(ENDPOINTS);
+  const [tests, setTests] = useState<APITest[]>(TESTS);
+  const [runningTestId, setRunningTestId] = useState<string | null>(null);
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(null);
 
-  // Handlers
-  const handleEndpointSelect = useCallback((endpoint: APIEndpoint) => {
-    setSelectedEndpoint(endpoint);
-    onEndpointChange?.(endpoint);
-}, [onEndpointChange]);
+  const selectedEndpoint = useMemo(
+    () => endpoints.find((endpoint) => endpoint.id === selectedEndpointId) ?? null,
+    [endpoints, selectedEndpointId],
+  );
 
-  const handleTestSelect = useCallback((test: APITest) => {
-    setSelectedTest(test);
-    onTestChange?.(test);
-}, [onTestChange]);
+  const runTest = (testId: string): void => {
+    setRunningTestId(testId);
 
-  const handleEndpointEdit = useCallback((endpoint: APIEndpoint) => {
-    setSelectedEndpoint(endpoint);
-    setShowEndpointEditor(true);
-}, []);
+    setTests((previous) =>
+      previous.map((test) => (test.id === testId ? { ...test, status: 'running' } : test)),
+    );
 
-  const handleTestEdit = useCallback((test: APITest) => {
-    setSelectedTest(test);
-    setShowTestEditor(true);
-}, []);
+    window.setTimeout(() => {
+      const pass = Math.random() > 0.15;
+      setTests((previous) =>
+        previous.map((test) => {
+          if (test.id !== testId) {
+            return test;
+          }
+          const updated: APITest = {
+            ...test,
+            duration: 90 + Math.floor(Math.random() * 200),
+            lastRun: new Date(),
+            result: {
+              status: pass ? test.expectedStatus : 500,
+              responseSummary: pass ? 'Response schema matched.' : 'Unexpected response body.',
+            },
+            status: pass ? 'passed' : 'failed',
+          };
+          onTestChange?.(updated);
+          return updated;
+        }),
+      );
+      setRunningTestId(null);
+    }, 800);
+  };
 
-  const handleEndpointSave = useCallback(() => {
-    if (selectedEndpoint) {
-      const existingIndex = endpoints.findIndex(e => e.id === selectedEndpoint.id);
-      if (existingIndex >= 0) {
-        setEndpoints(prev => prev.map((e, i) => i === existingIndex ? selectedEndpoint : e));
-    } else {
-        setEndpoints(prev => [...prev, selectedEndpoint]);
-    }
-      setShowEndpointEditor(false);
-  }
-}, [selectedEndpoint, endpoints]);
-
-  const handleTestSave = useCallback(() => {
-    if (selectedTest) {
-      const existingIndex = tests.findIndex(t => t.id === selectedTest.id);
-      if (existingIndex >= 0) {
-        setTests(prev => prev.map((t, i) => i === existingIndex ? selectedTest : t));
-    } else {
-        setTests(prev => [...prev, selectedTest]);
-    }
-      setShowTestEditor(false);
-  }
-}, [selectedTest, tests]);
-
-  const handleRunTests = useCallback(async () => {
-    setIsRunningTests(true);
-    setTestResults([]);
-    
-    // Simulate running tests
-    for (const test of tests) {
-      const result = await new Promise(resolve => {
-        setTimeout(() => {
-          const success = Math.random() > 0.3; // 70% success rate
-          resolve({
-            id: test.d,
-            status: success ? 'passed' : 'failed',
-            duration: Math.random() * 1000 + 10,
-            result: success ? { status: test.expectedStatus } : { status: 50, error: 'Test failed',}
-        });
-      }, Math.random() * 2000 + 500);
-    });
-      
-      setTestResults(prev => [...prev, result]);
-  }
-    
-    setIsRunningTests(false);
-}, [tests]);
-
-  const handleIntegrationExport = useCallback(() => {
-    onIntegrationExport?.({ endpoints, tests });
-}, [endpoints, tests, onIntegrationExport]);
-
-  const getMethodColor = useCallback((method: string) => {
-    switch (method) {
-      case 'GET': return 'success';
-      case 'POST': return 'primary';
-      case 'PUT': return 'warning';
-      case 'DELETE': return 'error';
-      case 'PATCH': return 'info';
-      default: return 'default';
-}
-}, []);
-
-  const getStatusIcon = useCallback((status: string) => {
-    switch (status) {
-      case 'active': return <CREATOR_HUB_ICONS.checkCircle />;
-      case 'inactive': return <CREATOR_HUB_ICONS.pause />;
-      case 'deprecated': return <CREATOR_HUB_ICONS.warning />;
-      case 'testing': return <CREATOR_HUB_ICONS.science />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  const getStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'active': return 'success';
-      case 'inactive': return 'warning';
-      case 'deprecated': return 'error';
-      case 'testing': return 'info';
-      default: return 'default';
-}
-}, []);
-
-  const getTestStatusIcon = useCallback((status: string) => {
-    switch (status) {
-      case 'pending': return <CREATOR_HUB_ICONS.schedule />;
-      case 'running': return <CREATOR_HUB_ICONS.refresh />;
-      case 'passed': return <CREATOR_HUB_ICONS.checkCircle />;
-      case 'failed': return <CREATOR_HUB_ICONS.error />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  const getTestStatusColor = useCallback((status: string) => {
-    switch (status) {
-      case 'pending': return 'warning';
-      case 'running': return 'info';
-      case 'passed': return 'success';
-      case 'failed': return 'error';
-      default: return 'default';
-}
-}, []);
-
-  const getCategoryIcon = useCallback((category: string) => {
-    switch (category) {
-      case 'authentication': return <CREATOR_HUB_ICONS.security />;
-      case 'data': return <CREATOR_HUB_ICONS.database />;
-      case 'analytics': return <CREATOR_HUB_ICONS.analytics />;
-      case 'integration': return <CREATOR_HUB_ICONS.integration />;
-      case 'webhook': return <CREATOR_HUB_ICONS.webhook />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  // Memoized data
-  const apiStats = useMemo(() => {
-    const totalEndpoints = endpoints.length;
-    const activeEndpoints = endpoints.filter(e => e.status === 'active').length;
-    const totalTests = tests.length;
-    const passedTests = tests.filter(t => t.status === 'passed').length;
-    const avgResponseTime = endpoints.reduce((sum, e) => sum + e.responseTime, 0) / endpoints.length;
-    const avgSuccessRate = endpoints.reduce((sum, e) => sum + e.successRate, 0) / endpoints.length;
-    
-    return { totalEndpoints, activeEndpoints, totalTests, passedTests, avgResponseTime, avgSuccessRate };
-}, [endpoints, tests]);
-
-  const recentActivity = useMemo(() => {
-    return [
-      { id: 1, action: 'API endpoint created', endpoint: 'User Login', timestamp: new Date(), type: 'endpoint',},
-      { id: 2, action: 'Test executed', test: 'Login Test', timestamp: new Date(), type: 'test',},
-      { id:  3, action: 'Integration updated', endpoint: 'Get Documents', timestamp: new Date(), type: 'integration',},
-    ];
-}, []);
+  const toggleEndpointStatus = (endpointId: string): void => {
+    setEndpoints((previous) =>
+      previous.map((endpoint) => {
+        if (endpoint.id !== endpointId) {
+          return endpoint;
+        }
+        const updated: APIEndpoint = {
+          ...endpoint,
+          status: endpoint.status === 'active' ? 'inactive' : 'active',
+          lastUsed: new Date(),
+        };
+        onEndpointChange?.(updated);
+        return updated;
+      }),
+    );
+  };
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.api sx={{ fontSize:  32, color: 'primary.main'}} />
+    <Box className={className} sx={{ width: '100%' }}>
+      <Paper sx={{ ...theming.getThemedCardSx(), mb: 2, p: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Api color="primary" />
             <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>API Integration</Typography>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                API Integration
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                API endpoints, testing, and integration management
+                Manage endpoints, execute integration tests, and export API diagnostics.
               </Typography>
             </Box>
           </Stack>
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.add />}
-              onClick={() => {
-                setSelectedEndpoint({
-                  id: `endpoint-${Date.now()}`,
-                  name: 'New Endpoint',
-                  description: 'Custom API endpoint',
-                  url: '/api/endpoint',
-                  method: 'GE',
-                  category: 'data',
-                  status: 'active',
-                  responseTime:  0,
-                  successRate:  0,
-                  lastUsed: new Date(),
-                  version: 'v1.0'
-            });
-                setShowEndpointEditor(true);
-            }}
-            >
-              New Endpoint
-            </Button>
-            <Button variant="contained"
-              startIcon={<CREATOR_HUB_ICONS.playArrow sx={theming.getThemedButtonSx()} />}
-              onClick={handleRunTests}
-              disabled={isRunningTests}
-            >
-              {isRunningTests ? 'Running...' : 'Run Tests'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.download />}
-              onClick={handleIntegrationExport}
-            >
-              Export
-            </Button>
-          </Stack>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onIntegrationExport?.({ endpoints, tests })}
+          >
+            Export
+          </Button>
         </Stack>
       </Paper>
 
-      {/* Stats Cards */}
-      <Grid container spacing={2} sx={{ mb:  3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.api sx={{ fontSize:  40, color: 'primary.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{apiStats.totalEndpoints}</Typography>
-                  <Typography variant="body2" color="text.secondary">Total Endpoints</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.checkCircle sx={{ fontSize:  40, color: 'success.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{apiStats.activeEndpoints}</Typography>
-                  <Typography variant="body2" color="text.secondary">Active Endpoints</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.science sx={{ fontSize:  40, color: 'info.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{apiStats.totalTests}</Typography>
-                  <Typography variant="body2" color="text.secondary">Total Tests</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <CREATOR_HUB_ICONS.timeline sx={{ fontSize:  40, color: 'warning.main'}} />
-                <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{Math.round(apiStats.avgResponseTime)}ms</Typography>
-                  <Typography variant="body2" color="text.secondary">Avg Response Time</Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <Paper sx={{ p: 1, mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_event, value) => setActiveTab(value)}>
+          <Tab label="Endpoints" />
+          <Tab label="Tests" />
+        </Tabs>
+      </Paper>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
-        <Tab label="Endpoints" icon={<CREATOR_HUB_ICONS.api />} />
-        <Tab label="Tests" icon={<CREATOR_HUB_ICONS.science />} />
-        <Tab label="Results" icon={<CREATOR_HUB_ICONS.assessment />} />
-        <Tab label="Activity" icon={<CREATOR_HUB_ICONS.history />} />
-      </Tabs>
-
-      {/* Endpoints Tab */}
-      {activeTab === 0 && (
+      {activeTab === 0 ? (
         <Grid container spacing={2}>
-          {endpoints.map((endpoint) => (
-            <Grid item xs={12} sm={6} md={4} key={endpoint.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2',
-                  border: selectedEndpoint?.id === endpoint.id ? 2 : 0,
-                  borderColor: selectedEndpoint?.id === endpoint.id ? 'primary.main' : 'transparent'
-            }}
-                onClick={() => handleEndpointSelect(endpoint)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getCategoryIcon(endpoint.category)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {endpoint.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {endpoint.description}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip 
-                          label={endpoint.method}
-                          size="small" 
-                          color={getMethodColor(endpoint.method) as any}
-                        />
-                        <Chip 
-                          label={endpoint.category}
-                          size="small" 
-                          variant="outlined"
-                        />
-                        <Chip 
-                          icon={getStatusIcon(endpoint.status)}
-                          label={endpoint.status}
-                          size="small" 
-                          color={getStatusColor(endpoint.status) as any}
-                        />
-                      </Stack>
-                      
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        {endpoint.url}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={2} sx={{ mb:  2 }}>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Response Time
-                          </Typography>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {endpoint.responseTime}ms
-                          </Typography>
-                        </Box>
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            Success Rate
-                          </Typography>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {endpoint.successRate}%
-                          </Typography>
-                        </Box>
-                      </Stack>
-                      
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.edit />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEndpointEdit(endpoint);
-                        }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.playArrow />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle test endpoint
-                        }}
-                        >
-                          Test
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Tests Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={2}>
-          {tests.map((test) => (
-            <Grid item xs={12} sm={6} md={4} key={test.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2',
-                  border: selectedTest?.id === test.id ? 2 : 0,
-                  borderColor: selectedTest?.id === test.id ? 'primary.main' : 'transparent'
-            }}
-                onClick={() => handleTestSelect(test)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getTestStatusIcon(test.status)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {test.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {test.method} {test.url}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip 
-                          label={test.method}
-                          size="small" 
-                          color={getMethodColor(test.method) as any}
-                        />
-                        <Chip 
-                          icon={getTestStatusIcon(test.status)}
-                          label={test.status}
-                          size="small" 
-                          color={getTestStatusColor(test.status) as any}
-                        />
-                        {test.duration && (
-                          <Chip 
-                            label={`${test.duration}ms`}
-                            size="small" 
-                            variant="outlined"
-                          />
-                        )}
-                      </Stack>
-                      
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                        Expected: {test.expectedStatus} • Last run: {test.lastRun?.toLocaleDateString() || 'Never'}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.edit />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTestEdit(test);
-                        }}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.playArrow />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Handle run test
-                        }}
-                        >
-                          Run
-                        </Button>
-                      </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Results Tab */}
-      {activeTab === 2 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Test Results
-          </Typography>
-          {testResults.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Test</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Duration</TableCell>
-                    <TableCell>Result</TableCell>
-                    <TableCell>Timestamp</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {testResults.map((result) => (
-                    <TableRow key={result.id}>
-                      <TableCell>
-                        <Typography variant="subtitle2">
-                          {tests.find(t => t.id === result.id)?.name || 'Unknown'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Chip
-                          icon={getTestStatusIcon(result.status)}
-                          label={result.status}
-                          color={getTestStatusColor(result.status) as any}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {result.duration}ms
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {JSON.stringify(result.result).substring(0, 50)}...
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2">
-                          {new Date().toLocaleString()}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardContent>
+                <List>
+                  {endpoints.map((endpoint) => (
+                    <ListItem
+                      key={endpoint.id}
+                      onClick={() => setSelectedEndpointId(endpoint.id)}
+                      sx={{ cursor: 'pointer' }}
+                    >
+                      <ListItemText
+                        primary={`${endpoint.method} ${endpoint.name}`}
+                        secondary={`${endpoint.url} • ${endpoint.responseTime}ms • ${endpoint.successRate.toFixed(1)}%`}
+                      />
+                      <Chip size="small" label={endpoint.status} />
+                    </ListItem>
                   ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <Paper elevation={1} sx={{ p: 3, textAlign: 'center', ...theming.getThemedCardSx() }}>
-              <Typography variant="body1" color="text.secondary">
-                No test results available. Run tests to see results.
-              </Typography>
-            </Paper>
-          )}
-        </Box>
-      )}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
 
-      {/* Activity Tab */}
-      {activeTab === 3 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            API Activity
-          </Typography>
-          <List>
-            {recentActivity.map((activity) => (
-              <ListItem key={activity.id}>
-                <ListItemIcon>
-                  <CREATOR_HUB_ICONS.history />
-                </ListItemIcon>
-                <ListItemText
-                  primary={activity.action}
-                  secondary={`${activity.endpoint || activity.test} • ${activity.timestamp.toLocaleString()}`}
-                />
-                <Chip 
-                  label={activity.type}
-                  size="small" 
-                  color="primary"
-                />
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      )}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardContent>
+                {selectedEndpoint ? (
+                  <Stack spacing={1}>
+                    <Typography variant="subtitle1">{selectedEndpoint.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedEndpoint.description}
+                    </Typography>
+                    <Typography variant="body2">Version: {selectedEndpoint.version}</Typography>
+                    <Typography variant="body2">
+                      Last used: {selectedEndpoint.lastUsed.toLocaleString()}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => toggleEndpointStatus(selectedEndpoint.id)}
+                    >
+                      Toggle Active State
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Alert severity="info">Select an endpoint for details.</Alert>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      ) : null}
 
-      {/* Endpoint Editor Dialog */}
-      <Dialog open={showEndpointEditor} onClose={() => setShowEndpointEditor(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.api />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedEndpoint?.id.startsWith('endpoint-') ? 'Create Endpoint' : 'Edit Endpoint'}
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedEndpoint && (
-            <Stack spacing={3} sx={{ mt: 2 }}>
-              <TextField
-                label="Endpoint Name"
-                value={selectedEndpoint.name}
-                onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, name: e.target.value } : null)}
-                fullWidth
-              />
-              <TextField
-                label="Description"
-                value={selectedEndpoint.description}
-                onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, description: e.target.value } : null)}
-                fullWidth
-                multiline
-                rows={2}
-              />
-              <TextField
-                label="URL"
-                value={selectedEndpoint.url}
-                onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, url: e.target.value } : null)}
-                fullWidth
-              />
-              <Stack direction="row" spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Method</InputLabel>
-                  <Select
-                    value={selectedEndpoint.method}
-                    onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, method: e.target.value as any } : null)}
-                  >
-                    <MenuItem value="GET">GET</MenuItem>
-                    <MenuItem value="POST">POST</MenuItem>
-                    <MenuItem value="PUT">PUT</MenuItem>
-                    <MenuItem value="DELETE">DELETE</MenuItem>
-                    <MenuItem value="PATCH">PATCH</MenuItem>
-                  </Select>
-                </FormControl>
-                <FormControl fullWidth>
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={selectedEndpoint.category}
-                    onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, category: e.target.value as any } : null)}
-                  >
-                    <MenuItem value="authentication">Authentication</MenuItem>
-                    <MenuItem value="data">Data</MenuItem>
-                    <MenuItem value="analytics">Analytics</MenuItem>
-                    <MenuItem value="integration">Integration</MenuItem>
-                    <MenuItem value="webhook">Webhook</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-              <Stack direction="row" spacing={2}>
-                <TextField
-                  label="Version"
-                  value={selectedEndpoint.version}
-                  onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, version: e.target.value } : null)}
-                  fullWidth
-                />
-                <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    value={selectedEndpoint.status}
-                    onChange={(e) => setSelectedEndpoint(prev => prev ? { ...prev, status: e.target.value as any } : null)}
-                  >
-                    <MenuItem value="active">Active</MenuItem>
-                    <MenuItem value="inactive">Inactive</MenuItem>
-                    <MenuItem value="deprecated">Deprecated</MenuItem>
-                    <MenuItem value="testing">Testing</MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
+      {activeTab === 1 ? (
+        <Card>
+          <CardContent>
+            <Stack spacing={1}>
+              {runningTestId ? <LinearProgress /> : null}
+              {tests.map((test) => (
+                <Paper key={test.id} variant="outlined" sx={{ p: 1 }}>
+                  <Stack spacing={1}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="subtitle2">{test.name}</Typography>
+                      <Chip
+                        size="small"
+                        label={test.status}
+                        color={test.status === 'passed' ? 'success' : test.status === 'failed' ? 'error' : 'default'}
+                      />
+                    </Stack>
+                    <Typography variant="caption" color="text.secondary">
+                      {test.method} {test.url}
+                    </Typography>
+                    {test.result ? (
+                      <Alert severity={test.status === 'passed' ? 'success' : 'warning'}>
+                        {test.result.responseSummary}
+                      </Alert>
+                    ) : null}
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        startIcon={<PlayArrow />}
+                        disabled={runningTestId !== null}
+                        onClick={() => runTest(test.id)}
+                      >
+                        Run
+                      </Button>
+                      {test.status === 'passed' ? <CheckCircle color="success" fontSize="small" /> : null}
+                      {test.status === 'failed' ? <Warning color="warning" fontSize="small" /> : null}
+                    </Stack>
+                  </Stack>
+                </Paper>
+              ))}
             </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowEndpointEditor(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleEndpointSave}
-            sx={theming.getThemedButtonSx()}
-          >
-            {selectedEndpoint?.id.startsWith('endpoint-') ? 'Create' : 'Update'} Endpoint
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Test Editor Dialog */}
-      <Dialog open={showTestEditor} onClose={() => setShowTestEditor(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.science />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedTest?.id.startsWith('test-') ? 'Create Test' : 'Edit Test'}
-            </Typography>
-          </Stack>
-        </DialogTitle>
-        <DialogContent>
-          {selectedTest && (
-            <Stack spacing={3} sx={{ mt: 2 }}>
-              <TextField
-                label="Test Name"
-                value={selectedTest.name}
-                onChange={(e) => setSelectedTest(prev => prev ? { ...prev, name: e.target.value } : null)}
-                fullWidth
-              />
-              <TextField
-                label="URL"
-                value={selectedTest.url}
-                onChange={(e) => setSelectedTest(prev => prev ? { ...prev, url: e.target.value } : null)}
-                fullWidth
-              />
-              <Stack direction="row" spacing={2}>
-                <FormControl fullWidth>
-                  <InputLabel>Method</InputLabel>
-                  <Select
-                    value={selectedTest.method}
-                    onChange={(e) => setSelectedTest(prev => prev ? { ...prev, method: e.target.value } : null)}
-                  >
-                    <MenuItem value="GET">GET</MenuItem>
-                    <MenuItem value="POST">POST</MenuItem>
-                    <MenuItem value="PUT">PUT</MenuItem>
-                    <MenuItem value="DELETE">DELETE</MenuItem>
-                    <MenuItem value="PATCH">PATCH</MenuItem>
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Expected Status"
-                  type="number"
-                  value={selectedTest.expectedStatus}
-                  onChange={(e) => setSelectedTest(prev => prev ? { ...prev, expectedStatus: parseInt(e.target.value, 10) } : null)}
-                  fullWidth
-                />
-              </Stack>
-              <TextField
-                label="Headers (JSON)"
-                value={JSON.stringify(selectedTest.headers, null, 2)}
-                onChange={(e) => {
-                  try {
-                    const headers = JSON.parse(e.target.value);
-                    setSelectedTest(prev => prev ? { ...prev, headers } : null);
-                  } catch (error) {
-                    // Invalid JSON, ignore
-                  }
-                }}
-                fullWidth
-                multiline
-                rows={3}
-              />
-              <TextField
-                label="Body (JSON)"
-                value={selectedTest.body ? JSON.stringify(selectedTest.body, null, 2) : ', '}
-                onChange={(e) => {
-                  try {
-                    const body = e.target.value ? JSON.parse(e.target.value) : undefined;
-                    setSelectedTest(prev => prev ? { ...prev, body } : null);
-                  } catch (error) {
-                    // Invalid JSON, ignore
-                  }
-                }}
-                fullWidth
-                multiline
-                rows={3}
-              />
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowTestEditor(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleTestSave}
-            sx={theming.getThemedButtonSx()}
-          >
-            {selectedTest?.id.startsWith('test-') ? 'Create' : 'Update'} Test
-          </Button>
-        </DialogActions>
-      </Dialog>
+          </CardContent>
+        </Card>
+      ) : null}
     </Box>
   );
-};
-
-export default APIIntegration;
-
+}

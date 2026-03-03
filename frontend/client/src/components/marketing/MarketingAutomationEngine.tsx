@@ -350,7 +350,7 @@ const AdvancedMarketingAutomationEngine: React.FC<AdvancedMarketingAutomationEng
     setLoading(true);
     try {
       const response = await fetch('/api/marketing-automation/workflows', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify(workflowData),
     });
@@ -1180,10 +1180,10 @@ const AdvancedMarketingAutomationEngine: React.FC<AdvancedMarketingAutomationEng
             position: {
               x: Math.random() * (rect.width - 15),
               y: Math.random() * (rect.height - 8),
-          },
-            parameters:  , {},
-            connections:  [],
-        };
+            },
+            parameters: {},
+            connections: [],
+          };
 
           setWorkflowNodes((prev) => [...prev, newNode]);
       }
@@ -1338,7 +1338,7 @@ const AdvancedMarketingAutomationEngine: React.FC<AdvancedMarketingAutomationEng
         <Tab icon={<FlowSheetOutlined />} label="Visual Builder" />
         <Tab icon={<RuleOutlined />} label="Automation Regler" />
         <Tab icon={<PeopleAlt />} label="Segmenter" />
-        <Tab icon={theming.getThemedIcon('email')}} label="Email Kampanjer" />
+        <Tab icon={theming.getThemedIcon('email')} label="Email Kampanjer" />
       </Tabs>
 
       {loading && <LinearProgress sx={{ mb:  2 }} />}

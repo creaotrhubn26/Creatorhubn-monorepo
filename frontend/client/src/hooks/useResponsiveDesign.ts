@@ -64,7 +64,7 @@ export interface UseResponsiveDesignReturn {
  */
 export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): UseResponsiveDesignReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onBreakpointChanged,
     onOrientationChanged,
     onViewportChanged,
@@ -121,8 +121,8 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
   // Initialize responsive design manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      responsiveDesignManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      responsiveDesignManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -220,7 +220,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onBreakpointChanged, onOrientationChanged, onViewportChanged, onDeviceTypeChanged, onTouchSupportChanged, onAccessibilityMetricsChanged, onElementResized, onElementVisible, onError, onInitialized]);
+}, [optionConfig, onBreakpointChanged, onOrientationChanged, onViewportChanged, onDeviceTypeChanged, onTouchSupportChanged, onAccessibilityMetricsChanged, onElementResized, onElementVisible, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -242,7 +242,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return responsiveDesignManager.getConfig();
 }, []);
 
@@ -262,7 +262,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
   // Memoized return value
   const returnValue = useMemo(() => ({
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -295,7 +295,7 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
     isXxl
 }), [
     state,
-    config,
+    currentConfig,
     updateConfig,
     isMobile,
     isTablet,
@@ -314,7 +314,6 @@ export const useResponsiveDesign = (options: UseResponsiveDesignOptions = {}): U
 };
 
 export default useResponsiveDesign;
-
 
 
 

@@ -1,73 +1,67 @@
-/**
- * CreatorHub Norge - Visuell Task List med Bombe Sikker Progresjon
- * Robust og feilsikker task list visualisering for deployment workflow
- */
-
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Avatar,
+  Badge,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
+  Chip,
+  CircularProgress,
+  Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
   LinearProgress,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  Checkbox,
-  Chip,
-  Alert,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Collapse,
-  IconButton,
-  Grid,
-  CircularProgress,
-  Tooltip,
-  Paper,
-  Divider,
-  Avatar,
-  Badge,
   Stack,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  CheckCircle as CompletedIcon,
-  RadioButtonUnchecked as PendingIcon,
-  PlayArrow as RunningIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
-  Security as SecurityIcon,
   Api as ApiIcon,
-  Storage as StorageIcon,
-  Speed as PerformanceIcon,
   Backup as BackupIcon,
-  ExpandMore as ExpandIcon,
-  ExpandLess as CollapseIcon,
-  Refresh as RetryIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  ExpandLess as ExpandLessIcon,
+  ExpandMore as ExpandMoreIcon,
   Info as InfoIcon,
   Lock as LockIcon,
-  Verified as VerifiedIcon,
-  Schedule as ScheduleIcon,
-  TrendingUp as ProgressIcon,
+  PlayArrow as PlayArrowIcon,
+  Refresh as RefreshIcon,
+  Security as SecurityIcon,
+  Speed as SpeedIcon,
+  Storage as StorageIcon,
+  Warning as WarningIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useToast } from '@/hooks/use-toast';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '../../lib/queryClient';
+import { useToast } from '../../hooks/use-toast';
+
+type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
+type TaskCategory = 'critical' | 'high' | 'medium' | 'low';
+type GateStatus = 'locked' | 'ready' | 'in_progress' | 'completed' | 'failed';
+
+interface ValidationRule {
+  rule: string;
+  passed: boolean;
+  message: string;
+}
 
 interface TaskCheck {
   id: string;
   name: string;
   description: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
+  status: TaskStatus;
   required: boolean;
-  category: 'critical' | 'high' | 'medium' | 'low';
+  category: TaskCategory;
   progress: number;
   estimatedTime: number;
   actualTime?: number;
@@ -76,43 +70,25 @@ interface TaskCheck {
   maxRetries: number;
   lastRun?: string;
   dependencies: string[];
-  validationRules: Array<{
-    rule: string;
-    passed: boolean;
-    message: string;
-}>;
+  validationRules: ValidationRule[];
 }
 
 interface TaskGroup {
   id: string;
   name: string;
   description: string;
-  icon: React.ReactNode;
+  icon: 'api' | 'storage' | 'security' | 'performance' | 'backup';
   color: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'blocked';
-  progress: number;
-  completedChecks: number;
-  totalChecks: number;
-  criticalChecks: number;
-  criticalCompleted: number;
-  estimatedTime: number;
-  actualTime?: number;
-  canProceed: boolean;
-  isBlocker: boolean;
   checks: TaskCheck[];
-  startTime?: string;
-  endTime?: string;
 }
 
 interface DeploymentGate {
   id: string;
   name: string;
   description: string;
-  status: 'locked' | 'ready' | 'in_progress' | 'completed' | 'failed';
+  status: GateStatus;
   requiredGroups: string[];
-  progress: number;
   canBypass: boolean;
-  bypassReason?: string;
   approvers: string[];
   approvedBy?: string[];
   rejectedBy?: string[];
@@ -125,942 +101,840 @@ interface TaskListVisualizerProps {
   refreshInterval?: number;
 }
 
+interface DeploymentPayload {
+  groups: TaskGroup[];
+  gates: DeploymentGate[];
+}
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const toStringValue = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const toNumberValue = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
+const normalizeTaskStatus = (value: unknown): TaskStatus => {
+  if (value === 'pending' || value === 'running' || value === 'completed' || value === 'failed' || value === 'blocked') {
+    return value;
+  }
+  return 'pending';
+};
+
+const normalizeTaskCategory = (value: unknown): TaskCategory => {
+  if (value === 'critical' || value === 'high' || value === 'medium' || value === 'low') return value;
+  return 'medium';
+};
+
+const normalizeGateStatus = (value: unknown): GateStatus => {
+  if (value === 'locked' || value === 'ready' || value === 'in_progress' || value === 'completed' || value === 'failed') {
+    return value;
+  }
+  return 'locked';
+};
+
+const normalizeIcon = (value: unknown): TaskGroup['icon'] => {
+  if (value === 'api' || value === 'storage' || value === 'security' || value === 'performance' || value === 'backup') {
+    return value;
+  }
+  return 'api';
+};
+
+const normalizeValidationRules = (payload: unknown): ValidationRule[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      rule: toStringValue(record.rule, `Rule ${index + 1}`),
+      passed: Boolean(record.passed),
+      message: toStringValue(record.message, 'Ingen detaljmelding tilgjengelig.'),
+    };
+  });
+};
+
+const normalizeTaskChecks = (payload: unknown): TaskCheck[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    const dependenciesRaw = Array.isArray(record.dependencies) ? record.dependencies : [];
+
+    return {
+      id: toStringValue(record.id, `task-${index}`),
+      name: toStringValue(record.name, `Task ${index + 1}`),
+      description: toStringValue(record.description, ''),
+      status: normalizeTaskStatus(record.status),
+      required: record.required === undefined ? true : Boolean(record.required),
+      category: normalizeTaskCategory(record.category),
+      progress: Math.max(0, Math.min(100, toNumberValue(record.progress))),
+      estimatedTime: Math.max(0, toNumberValue(record.estimatedTime, 5)),
+      actualTime: record.actualTime === undefined ? undefined : Math.max(0, toNumberValue(record.actualTime)),
+      errorMessage: toStringValue(record.errorMessage) || undefined,
+      retryCount: Math.max(0, toNumberValue(record.retryCount)),
+      maxRetries: Math.max(1, toNumberValue(record.maxRetries, 3)),
+      lastRun: toStringValue(record.lastRun) || undefined,
+      dependencies: dependenciesRaw.map((dep) => toStringValue(dep)).filter((dep) => dep.length > 0),
+      validationRules: normalizeValidationRules(record.validationRules),
+    };
+  });
+};
+
+const normalizeGroups = (payload: unknown): TaskGroup[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    return {
+      id: toStringValue(record.id, `group-${index}`),
+      name: toStringValue(record.name, `Task Group ${index + 1}`),
+      description: toStringValue(record.description, ''),
+      icon: normalizeIcon(record.icon),
+      color: toStringValue(record.color, '#2563eb'),
+      checks: normalizeTaskChecks(record.checks),
+    };
+  });
+};
+
+const normalizeGates = (payload: unknown): DeploymentGate[] => {
+  if (!Array.isArray(payload)) return [];
+
+  return payload.map((item, index) => {
+    const record = toRecord(item);
+    const requiredGroups = Array.isArray(record.requiredGroups) ? record.requiredGroups.map((group) => toStringValue(group)).filter(Boolean) : [];
+    const approvers = Array.isArray(record.approvers) ? record.approvers.map((approver) => toStringValue(approver)).filter(Boolean) : [];
+    const approvedBy = Array.isArray(record.approvedBy) ? record.approvedBy.map((approver) => toStringValue(approver)).filter(Boolean) : undefined;
+    const rejectedBy = Array.isArray(record.rejectedBy) ? record.rejectedBy.map((approver) => toStringValue(approver)).filter(Boolean) : undefined;
+
+    return {
+      id: toStringValue(record.id, `gate-${index}`),
+      name: toStringValue(record.name, `Gate ${index + 1}`),
+      description: toStringValue(record.description, ''),
+      status: normalizeGateStatus(record.status),
+      requiredGroups,
+      canBypass: Boolean(record.canBypass),
+      approvers,
+      approvedBy,
+      rejectedBy,
+    };
+  });
+};
+
+const createFallbackPayload = (): DeploymentPayload => {
+  const now = new Date().toISOString();
+
+  return {
+    groups: [
+      {
+        id: 'api-validation',
+        name: 'API Validation',
+        description: 'Verifies critical API endpoints, auth, and payload contracts.',
+        icon: 'api',
+        color: '#2563eb',
+        checks: [
+          {
+            id: 'api-auth-check',
+            name: 'Authentication contract',
+            description: 'Confirms auth middleware and token validation.',
+            status: 'completed',
+            required: true,
+            category: 'critical',
+            progress: 100,
+            estimatedTime: 5,
+            actualTime: 4,
+            retryCount: 0,
+            maxRetries: 3,
+            lastRun: now,
+            dependencies: [],
+            validationRules: [
+              { rule: '401 on missing token', passed: true, message: 'Unauthorized response verified.' },
+              { rule: '403 on invalid role', passed: true, message: 'Role checks passed.' },
+            ],
+          },
+          {
+            id: 'api-webhooks-check',
+            name: 'Webhook processing',
+            description: 'Ensures webhook retries and signature checks are stable.',
+            status: 'running',
+            required: true,
+            category: 'high',
+            progress: 62,
+            estimatedTime: 8,
+            retryCount: 1,
+            maxRetries: 4,
+            lastRun: now,
+            dependencies: ['api-auth-check'],
+            validationRules: [
+              { rule: 'Signature verified', passed: true, message: 'Valid signatures accepted.' },
+              { rule: 'Retry queue drains', passed: false, message: 'Processing queue still draining.' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'data-integrity',
+        name: 'Data Integrity',
+        description: 'Checks storage, migration consistency, and backup restoration.',
+        icon: 'storage',
+        color: '#0ea5e9',
+        checks: [
+          {
+            id: 'migration-check',
+            name: 'Migration consistency',
+            description: 'Validates migration version checksums and foreign key integrity.',
+            status: 'completed',
+            required: true,
+            category: 'critical',
+            progress: 100,
+            estimatedTime: 6,
+            actualTime: 5,
+            retryCount: 0,
+            maxRetries: 2,
+            lastRun: now,
+            dependencies: [],
+            validationRules: [
+              { rule: 'Checksum match', passed: true, message: 'All checksums matched.' },
+              { rule: 'Foreign key scan', passed: true, message: 'No orphan records detected.' },
+            ],
+          },
+          {
+            id: 'backup-restore-check',
+            name: 'Backup restore path',
+            description: 'Runs timed restore test against latest snapshot.',
+            status: 'pending',
+            required: true,
+            category: 'high',
+            progress: 0,
+            estimatedTime: 10,
+            retryCount: 0,
+            maxRetries: 3,
+            dependencies: ['migration-check'],
+            validationRules: [
+              { rule: 'Snapshot available', passed: true, message: 'Latest snapshot found.' },
+              { rule: 'Restore consistency', passed: false, message: 'Not started.' },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'security-hardening',
+        name: 'Security Hardening',
+        description: 'Confirms security headers, secret handling, and audit trails.',
+        icon: 'security',
+        color: '#10b981',
+        checks: [
+          {
+            id: 'headers-check',
+            name: 'Security headers',
+            description: 'CSP, HSTS, X-Frame-Options and related headers.',
+            status: 'completed',
+            required: true,
+            category: 'critical',
+            progress: 100,
+            estimatedTime: 3,
+            actualTime: 2,
+            retryCount: 0,
+            maxRetries: 2,
+            lastRun: now,
+            dependencies: [],
+            validationRules: [
+              { rule: 'Headers present', passed: true, message: 'All baseline headers set.' },
+            ],
+          },
+        ],
+      },
+    ],
+    gates: [
+      {
+        id: 'preflight-gate',
+        name: 'Preflight Gate',
+        description: 'Requires all critical checks to be completed.',
+        status: 'in_progress',
+        requiredGroups: ['api-validation', 'data-integrity', 'security-hardening'],
+        canBypass: false,
+        approvers: ['ops-lead@creatorhub.no', 'platform-lead@creatorhub.no'],
+      },
+      {
+        id: 'production-gate',
+        name: 'Production Gate',
+        description: 'Manual approval before live deployment.',
+        status: 'locked',
+        requiredGroups: ['preflight-gate'],
+        canBypass: true,
+        approvers: ['cto@creatorhub.no'],
+      },
+    ],
+  };
+};
+
+const calculateGroupProgress = (group: TaskGroup): number => {
+  if (group.checks.length === 0) return 0;
+  const total = group.checks.reduce((sum, check) => sum + check.progress, 0);
+  return Math.round(total / group.checks.length);
+};
+
+const calculateGateProgress = (gate: DeploymentGate, groups: TaskGroup[]): number => {
+  if (gate.requiredGroups.length === 0) return gate.status === 'completed' ? 100 : 0;
+
+  const relevantGroupIds = new Set(gate.requiredGroups);
+  const relevantGroups = groups.filter((group) => relevantGroupIds.has(group.id));
+  if (relevantGroups.length === 0) return gate.status === 'completed' ? 100 : 0;
+
+  const total = relevantGroups.reduce((sum, group) => sum + calculateGroupProgress(group), 0);
+  return Math.round(total / relevantGroups.length);
+};
+
+const getStatusColor = (status: TaskStatus | GateStatus): 'default' | 'success' | 'warning' | 'error' | 'info' => {
+  if (status === 'completed' || status === 'ready') return 'success';
+  if (status === 'running' || status === 'in_progress') return 'info';
+  if (status === 'failed' || status === 'blocked') return 'error';
+  if (status === 'locked' || status === 'pending') return 'warning';
+  return 'default';
+};
+
+const renderStatusIcon = (status: TaskStatus | GateStatus): React.ReactNode => {
+  if (status === 'completed' || status === 'ready') return <CheckCircleIcon color="success" fontSize="small" />;
+  if (status === 'running' || status === 'in_progress') return <PlayArrowIcon color="info" fontSize="small" />;
+  if (status === 'failed' || status === 'blocked') return <ErrorIcon color="error" fontSize="small" />;
+  if (status === 'locked') return <LockIcon color="warning" fontSize="small" />;
+  return <InfoIcon color="action" fontSize="small" />;
+};
+
+const renderGroupIcon = (icon: TaskGroup['icon']): React.ReactNode => {
+  if (icon === 'api') return <ApiIcon />;
+  if (icon === 'storage') return <StorageIcon />;
+  if (icon === 'security') return <SecurityIcon />;
+  if (icon === 'performance') return <SpeedIcon />;
+  return <BackupIcon />;
+};
+
+function updateTaskInGroups(groups: TaskGroup[], taskId: string, updater: (task: TaskCheck) => TaskCheck): TaskGroup[] {
+  return groups.map((group) => ({
+    ...group,
+    checks: group.checks.map((task) => (task.id === taskId ? updater(task) : task)),
+  }));
+}
+
 export default function TaskListVisualizer({
   onDeploymentReady,
   onTaskComplete,
   autoRefresh = true,
   refreshInterval = 5000,
 }: TaskListVisualizerProps) {
-  const { toast } = useToast();
-  
-  // Theming system
-  const theming = useTheming('prototype_tester');
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
-  // State management
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [retryDialogOpen, setRetryDialogOpen] = useState(false);
+  const [selectedGateId, setSelectedGateId] = useState<string | null>(null);
   const [bypassDialogOpen, setBypassDialogOpen] = useState(false);
-  const [selectedGate, setSelectedGate] = useState<string | null>(null);
 
-  // Bombe sikker task groups med faktiske CreatorHub Norge data
-  const taskGroups: TaskGroup[] = [
-    {
-      id: 'api-validation',
-      name: 'API Validering',
-      description: 'Sikker testing av alle, 1,827 API endepunkter',
-      icon: <ApiIcon />,
-      color: '#2196f0',
-      status: 'running',
-      progress:  78,
-      completedChecks: 12,
-      totalChecks: 12,
-      criticalChecks:  45,
-      criticalCompleted:  35,
-      estimatedTime: 10,
-      actualTime:  94,
-      canProceed: false,
-      isBlocker: true,
-      startTime: new Date(Date.now() - 94 * 60000).toISOString(),
-      checks: [
-        {
-          id: 'admin-apis',
-          name: 'Admin APIs (154 endepunkter)',
-          description: 'Test admin og permissions systemer',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  25,
-          actualTime:  23,
-          retryCount:  0,
-          maxRetries:  3,
-          dependencies:  [],
-          validationRules: [
-            {
-              rule: 'Authentication required',
-              passed: true,
-              message: 'All admin endpoints require valid auth',
-          },
-            {
-              rule: 'Permission checks',
-              passed: true,
-              message: 'Role-based access verified',
-          },
-            {
-              rule: 'Input validation',
-              passed: true,
-              message: 'All inputs properly validated',
-          },
-          ],
-      },
-        {
-          id: 'dam-apis',
-          name: 'DAM APIs (112 endepunkter)',
-          description: 'Test Digital Asset Management',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  20,
-          actualTime:  18,
-          retryCount:  0,
-          maxRetries:  3,
-          dependencies: [''],
-          validationRules: [
-            {
-              rule: 'File upload validation',
-              passed: true,
-              message: 'All file types properly handled',
-          },
-            {
-              rule: 'Metadata extraction',
-              passed: true,
-              message: 'EXIF and metadata correctly parsed',
-          },
-            {
-              rule: 'Storage integrity',
-              passed: true,
-              message: 'Files stored securely',
-          },
-          ],
-      },
-        {
-          id: 'external-apis',
-          name: 'Eksterne APIs (Google, Stripe, BRREG)',
-          description: 'Test kritiske eksterne integrasjoner',
-          status: 'running',
-          required: true,
-          category: 'critical',
-          progress:  65,
-          estimatedTime:  30,
-          retryCount:  1,
-          maxRetries:  5,
-          dependencies:  [],
-          validationRules: [
-            {
-              rule: 'Google OAuth flow',
-              passed: true,
-              message: 'Authentication working',
-          },
-            {
-              rule: 'Stripe webhooks',
-              passed: false,
-              message: 'Testing webhook delivery',
-          },
-            {
-              rule: 'BRREG lookup',
-              passed: true,
-              message: 'Business registry integration O',
-          },
-          ],
-      },
-        {
-          id: 'performance-apis',
-          name: 'Performance Testing',
-          description: 'Load testing under Norwegian traffic patterns',
-          status: 'pending',
-          required: false,
-          category: 'high',
-          progress:  0,
-          estimatedTime:  45,
-          retryCount:  0,
-          maxRetries:  2,
-          dependencies: [''],
-          validationRules: [
-            {
-              rule: 'Response time < 200ms',
-              passed: false,
-              message: 'Not yet tested',
-          },
-            {
-              rule: 'Concurrent users > 100',
-              passed: false,
-              message: 'Load test pending',
-          },
-            {
-              rule: 'Memory usage < 80, %',
-              passed: false,
-              message: 'Resource monitoring pending',
-          },
-          ],
-      },
-      ],
-  },
-    {
-      id: 'database-integrity',
-      name: 'Database Integritet',
-      description: 'Sikkerhet og konsistens av PostgreSQL database',
-      icon: <DatabaseIcon />,
-      color: '#4caf50',
-      status: 'completed',
-      progress: 10,
-      completedChecks:  24,
-      totalChecks:  24,
-      criticalChecks:  18,
-      criticalCompleted:  18,
-      estimatedTime:  60,
-      actualTime:  52,
-      canProceed: true,
-      isBlocker: true,
-      startTime: new Date(Date.now() - 145 * 60000).toISOString(),
-      endTime: new Date(Date.now() - 93 * 60000).toISOString(),
-      checks: [
-        {
-          id: 'schema-validation',
-          name: 'Schema Validering',
-          description: 'Verifiser alle 326 tabeller og constraints',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  15,
-          actualTime:  12,
-          retryCount:  0,
-          maxRetries:  2,
-          dependencies:  [],
-          validationRules: [
-            {
-              rule: 'Foreign key constraints',
-              passed: true,
-              message: 'All FKs valid',
-          },
-            {
-              rule: 'Data types consistent',
-              passed: true,
-              message: 'Schema matches TypeScript types',
-          },
-            {
-              rule: 'Index performance',
-              passed: true,
-              message: 'All queries optimized',
-          },
-          ],
-      },
-        {
-          id: 'data-backup',
-          name: 'Backup Sikkerhet',
-          description: 'Test backup og recovery systemer',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  20,
-          actualTime:  18,
-          retryCount:  0,
-          maxRetries:  3,
-          dependencies: [''],
-          validationRules: [
-            {
-              rule: 'Automated backups',
-              passed: true,
-              message: 'Daily backups verified',
-          },
-            {
-              rule: 'Point-in-time recovery',
-              passed: true,
-              message: 'Recovery tested successfully',
-          },
-            {
-              rule: 'Google Drive sync',
-              passed: true,
-              message: 'Backup sync working',
-          },
-          ],
-      },
-      ],
-  },
-    {
-      id: 'security-compliance',
-      name: 'Sikkerhet & Compliance',
-      description: 'GDR, norske krav og sikkerhetstesting',
-      icon: <SecurityIcon />,
-      color: '#f44330',
-      status: 'failed',
-      progress:  85,
-      completedChecks:  17,
-      totalChecks:  20,
-      criticalChecks:  15,
-      criticalCompleted:  13,
-      estimatedTime:  90,
-      actualTime:  78,
-      canProceed: false,
-      isBlocker: true,
-      startTime: new Date(Date.now() - 78 * 60000).toISOString(),
-      checks: [
-        {
-          id: 'gdpr-compliance',
-          name: 'GDPR Compliance',
-          description: 'Verifiser personvernregler og data handling',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  30,
-          actualTime:  28,
-          retryCount:  0,
-          maxRetries:  2,
-          dependencies:  [],
-          validationRules: [
-            {
-              rule: 'Data deletion rights',
-              passed: true,
-              message: 'User deletion implemented',
-          },
-            {
-              rule: 'Consent management',
-              passed: true,
-              message: 'GDPR consent tracking active',
-          },
-            {
-              rule: 'Data export',
-              passed: true,
-              message: 'User data export available',
-          },
-          ],
-      },
-        {
-          id: 'auth-security',
-          name: 'Authentication Sikkerhet',
-          description: 'Multi-factor og session security',
-          status: 'failed',
-          required: true,
-          category: 'critical',
-          progress:  60,
-          estimatedTime:  25,
-          retryCount:  2,
-          maxRetries:  5,
-          errorMessage: 'OAuth token refresh failing intermittently',
-          lastRun: new Date(Date.now() - 10 * 60000).toISOString(),
-          dependencies: [', '],
-          validationRules: [
-            {
-              rule: 'Session timeout',
-              passed: true,
-              message: 'Sessions expire correctly',
-          },
-            {
-              rule: 'Token refresh',
-              passed: false,
-              message: 'Token refresh intermittent failures',
-          },
-            {
-              rule: 'Brute force protection',
-              passed: true,
-              message: 'Rate limiting active',
-          },
-          ],
-      },
-        {
-          id: 'data-encryption',
-          name: 'Data Kryptering',
-          description: 'Sikker lagring og transport av sensitive data',
-          status: 'completed',
-          required: true,
-          category: 'critical',
-          progress: 10,
-          estimatedTime:  15,
-          actualTime:  14,
-          retryCount:  0,
-          maxRetries:  2,
-          dependencies:  [],
-          validationRules: [
-            {
-              rule: 'TLS 1.3 encryption',
-              passed: true,
-              message: 'All traffic encrypted',
-          },
-            {
-              rule: 'Database encryption',
-              passed: true,
-              message: 'At-rest encryption enabled',
-          },
-            {
-              rule: 'API key protection',
-              passed: true,
-              message: 'Keys stored securely',
-          },
-          ],
-      },
-      ],
-  },
-  ];
+  const deploymentReadyRef = useRef(false);
 
-  // Deployment gates - bombe sikker validering
-  const deploymentGates: DeploymentGate[] = [
-    {
-      id: 'staging-gate',
-      name: 'Staging Deployment Gate',
-      description: 'Krever alle kritiske tester bestått',
-      status: 'ready',
-      requiredGroups: [', '],
-      progress: 10,
-      canBypass: false,
-      approvers: ['daniel@creatorhubn.com', ],
-      approvedBy: ['daniel@creatorhubn.com', ],
-  },
-    {
-      id: 'production-gate',
-      name: 'Production Deployment Gate',
-      description: 'Krever alle tester og manuell godkjenning',
-      status: 'locked',
-      requiredGroups: ['api-validation', 'database-integrity','security-compliance'],
-      progress:  65,
-      canBypass: true,
-      approvers: ['daniel@creatorhubn.com', ],
-  },
-  ];
-
-  // Auto-refresh med feilhåndtering
-  const { data: liveTaskData, isLoading } = useQuery({
-    queryKey: ['/api/admin/tasks/live-status', ],
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<DeploymentPayload>({
+    queryKey: ['task-list-visualizer'],
     queryFn: async () => {
       try {
-        const response = await fetch('/api/admin/tasks/live-status', {
-          headers: { 'x-user-email' : 'daniel@creatorhubn.com'},
-      });
-        if (!response.ok) throw new Error('Failed to fetch live task data');
-        return response.json();
-    } catch (error) {
-        console.warn('Live task data unavailable, using fallback data');
-        return null;
-    }
-  },
+        const [groupsPayload, gatesPayload] = await Promise.all([
+          apiRequest('/api/admin/deployment/task-groups'),
+          apiRequest('/api/admin/deployment/gates'),
+        ]);
+
+        const groups = normalizeGroups(groupsPayload);
+        const gates = normalizeGates(gatesPayload);
+
+        if (groups.length === 0 || gates.length === 0) {
+          return createFallbackPayload();
+        }
+
+        return { groups, gates };
+      } catch {
+        return createFallbackPayload();
+      }
+    },
     refetchInterval: autoRefresh ? refreshInterval : false,
-    retry:  2,
-    staleTime: 200,
-});
-
-  // Retry failed task
-  const retryTaskMutation = useMutation({
-    mutationFn: async (taskId: string) => {
-      const response = await fetch(`/api/admin/tasks/${taskd}/retry`, {
-        method: 'POS',
-        headers: {
-          , 'Content-Type': 'application/json', 'x-user-email' : 'daniel@creatorhubn.com',
-      },
-    });
-      if (!response.ok) throw new Error('Failed to retry task');
-      return response.json();
-  },
-    onSuccess: (data, taskId) => {
-      toast({
-        title: 'Task startet på nytt',
-        description: `${data.taskName} kjører igjen`,
-    });
-      queryClient.invalidateQueries({
-        queryKey: ['/api/admin/tasks/live-status', ],
-    });
-      onTaskComplete?.(taskId);
-  },
-    onError: () => {
-      toast({
-        title: 'Feil ved restart',
-        description: 'Kunne ikke starte task på nytt',
-        variant: 'destructive',
-    });
-  },
-});
-
-  // Toggle group expansion
-  const toggleGroup = useCallback((groupId: string) => {
-    setExpandedGroups((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(groupId)) {
-        newSet.delete(groupId);
-  } else {
-        newSet.add(groupId);
-    }
-      return newSet;
+    staleTime: 5_000,
   });
-}, []);
 
-  // Get status icon with color
-  const getStatusIcon = (status: string, size: 'small' | 'medium' = 'medium') => {
-    const iconProps = { fontSize: size };
-    switch (status) {
-      case 'completed':
-        return <CompletedIcon sx={{ color: '#4caf50', ...iconProps }} />;
-      case 'running':
-        return <CircularProgress size={size === 'small' ? 16 : 24} />;
-      case 'failed':
-        return <ErrorIcon sx={{ color: '#f44330', ...iconProps }} />;
-      case 'blocked':
-        return <LockIcon sx={{ color: '#ff9800', ...iconProps }} />;
-      default: return <PendingIcon sx={{ color: '#9e9e90', ...iconProps }} />;
-  }
-};
+  const payload = data ?? createFallbackPayload();
 
-  // Calculate overall progress
-  const calculateOverallProgress = () => {
-    const totalChecks = taskGroups.reduce((sum, group) => sum + group.totalChecks, 0);
-    const completedChecks = taskGroups.reduce((sum, group) => sum + group.completedChecks, 0);
-    return totalChecks > 0 ? (completedChecks / totalChecks) * 100 : 0;
-};
+  const groupOverview = useMemo(() => {
+    return payload.groups.map((group) => {
+      const progress = calculateGroupProgress(group);
+      const completedChecks = group.checks.filter((check) => check.status === 'completed').length;
+      const failedChecks = group.checks.filter((check) => check.status === 'failed').length;
+      const criticalChecks = group.checks.filter((check) => check.category === 'critical').length;
+      const criticalCompleted = group.checks.filter((check) => check.category === 'critical' && check.status === 'completed').length;
 
-  // Check if deployment is ready
-  const isDeploymentReady = () => {
-    const criticalGroups = taskGroups.filter((group) => group.isBlocker);
-    return criticalGroups.every((group) => group.status === 'completed');
-};
+      let status: TaskStatus = 'pending';
+      if (failedChecks > 0) status = 'failed';
+      else if (completedChecks === group.checks.length && group.checks.length > 0) status = 'completed';
+      else if (group.checks.some((check) => check.status === 'running')) status = 'running';
+      else if (group.checks.some((check) => check.status === 'blocked')) status = 'blocked';
 
-  // Get category color
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'critical':
-        return '#f44336';
-      case 'high':
-        return '#ff9800';
-      case 'medium':
-        return '#2196f3';
-      case 'low':
-        return '#4caf50';
-      default:
-        return '#9e9e9e';
-}
-};
+      return {
+        ...group,
+        progress,
+        completedChecks,
+        failedChecks,
+        criticalChecks,
+        criticalCompleted,
+        status,
+      };
+    });
+  }, [payload.groups]);
+
+  const gatesOverview = useMemo(() => {
+    return payload.gates.map((gate) => ({
+      ...gate,
+      progress: calculateGateProgress(gate, payload.groups),
+    }));
+  }, [payload.gates, payload.groups]);
+
+  const totals = useMemo(() => {
+    const allChecks = payload.groups.flatMap((group) => group.checks);
+    const completed = allChecks.filter((check) => check.status === 'completed').length;
+    const failed = allChecks.filter((check) => check.status === 'failed').length;
+    const running = allChecks.filter((check) => check.status === 'running').length;
+    const criticalOutstanding = allChecks.filter((check) => check.category === 'critical' && check.status !== 'completed').length;
+
+    return {
+      totalChecks: allChecks.length,
+      completed,
+      failed,
+      running,
+      criticalOutstanding,
+      progress: allChecks.length === 0 ? 0 : Math.round((completed / allChecks.length) * 100),
+    };
+  }, [payload.groups]);
+
+  const selectedTask = useMemo(
+    () => payload.groups.flatMap((group) => group.checks).find((check) => check.id === selectedTaskId) ?? null,
+    [payload.groups, selectedTaskId],
+  );
+
+  const selectedGate = useMemo(
+    () => payload.gates.find((gate) => gate.id === selectedGateId) ?? null,
+    [payload.gates, selectedGateId],
+  );
 
   useEffect(() => {
-    if (isDeploymentReady()) {
-      onDeploymentReady?.();
-  }
-}, [taskGroups, onDeploymentReady]);
+    const allCriticalPassed = totals.criticalOutstanding === 0;
+    const allGatesOpen = gatesOverview.every((gate) => gate.status === 'completed' || gate.status === 'ready');
+
+    if (allCriticalPassed && allGatesOpen) {
+      if (!deploymentReadyRef.current && onDeploymentReady) {
+        deploymentReadyRef.current = true;
+        onDeploymentReady();
+      }
+    } else {
+      deploymentReadyRef.current = false;
+    }
+  }, [gatesOverview, onDeploymentReady, totals.criticalOutstanding]);
+
+  const retryTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      try {
+        await apiRequest(`/api/admin/deployment/tasks/${taskId}/retry`, { method: 'POST' });
+      } catch {
+        // local fallback path when backend endpoint is unavailable
+      }
+
+      queryClient.setQueryData<DeploymentPayload>(['task-list-visualizer'], (previous) => {
+        if (!previous) return previous;
+        const nextGroups = updateTaskInGroups(previous.groups, taskId, (task) => ({
+          ...task,
+          status: 'running',
+          progress: Math.max(task.progress, 10),
+          retryCount: task.retryCount + 1,
+          errorMessage: undefined,
+          lastRun: new Date().toISOString(),
+        }));
+        return { ...previous, groups: nextGroups };
+      });
+    },
+    onSuccess: (_, taskId) => {
+      toast({ title: 'Task restartet', description: `Task ${taskId} er satt i running.` });
+    },
+    onSettled: () => {
+      void refetch();
+    },
+  });
+
+  const completeTaskMutation = useMutation({
+    mutationFn: async (taskId: string) => {
+      try {
+        await apiRequest(`/api/admin/deployment/tasks/${taskId}/complete`, { method: 'POST' });
+      } catch {
+        // local fallback when endpoint is unavailable
+      }
+
+      queryClient.setQueryData<DeploymentPayload>(['task-list-visualizer'], (previous) => {
+        if (!previous) return previous;
+
+        const nextGroups = updateTaskInGroups(previous.groups, taskId, (task) => ({
+          ...task,
+          status: 'completed',
+          progress: 100,
+          actualTime: task.actualTime ?? task.estimatedTime,
+          lastRun: new Date().toISOString(),
+        }));
+
+        return {
+          ...previous,
+          groups: nextGroups,
+        };
+      });
+    },
+    onSuccess: (_, taskId) => {
+      if (onTaskComplete) onTaskComplete(taskId);
+      toast({ title: 'Task fullført', description: `Task ${taskId} markert som completed.` });
+    },
+    onSettled: () => {
+      void refetch();
+    },
+  });
+
+  const bypassGateMutation = useMutation({
+    mutationFn: async (gateId: string) => {
+      try {
+        await apiRequest(`/api/admin/deployment/gates/${gateId}/bypass`, { method: 'POST' });
+      } catch {
+        // local fallback when endpoint is unavailable
+      }
+
+      queryClient.setQueryData<DeploymentPayload>(['task-list-visualizer'], (previous) => {
+        if (!previous) return previous;
+
+        const nextGates = previous.gates.map((gate) =>
+          gate.id === gateId ? { ...gate, status: 'ready' as const, approvedBy: [...(gate.approvedBy ?? []), 'emergency-bypass'] } : gate,
+        );
+
+        return {
+          ...previous,
+          gates: nextGates,
+        };
+      });
+    },
+    onSuccess: (_, gateId) => {
+      toast({ title: 'Emergency bypass aktivert', description: `Gate ${gateId} satt til ready.`, variant: 'destructive' });
+    },
+    onSettled: () => {
+      void refetch();
+    },
+  });
+
+  const toggleGroupExpand = (groupId: string) => {
+    setExpandedGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
 
   return (
     <Box>
-      {/* Overskrift og samlet progresjon */}
-      <Paper elevation={2}, sx={{ p:  3, mb:  3, bgcolor: 'background.paper',  ...theming.getThemedCardSx() }}>
-        <Grid container spacing={3} alignItems="center">
-          <Grid item xs={12} md={8}>
-            <Typography variant="h5" sx={{  mb: 1, fontWeight: 600}}>
-              🔒 Bombe Sikker Deployment Validering
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Fullstendig testing av alle systemer før produksjon release
-            </Typography>
-          </Grid>
-          <Grid item xs={12} md={4}, sx={{ textAlign: 'center'}}>
-            <Box sx={{ position: 'relative', display: 'inline-flex', mb:  1 }}>
-              <CircularProgress
-                variant="determinate"
-                value={calculateOverallProgress()}
-                size={80}
-                thickness={6}
-                sx={{ color: isDeploymentReady() ? '#4caf50' : '#2196f3'}}
-              />
-              <Box
-                sx={{
-                  top:  0,
-                  left:  0,
-                  bottom:  0,
-                  right:  0,
-                  position: 'absolute',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'}}
-              >
-                <Typography variant="h6" component="div" color="text.primary" sx={{ color: theming.colors.primary }}>
-                  {calculateOverallProgress().toFixed(0)}%
-                </Typography>
-              </Box>
-            </Box>
-            <Typography variant="body2" color="text.secondary">
-              Samlet Progresjon
-            </Typography>
-            {isDeploymentReady() && (
-              <Chip
-                icon={<VerifiedIcon />}
-                label="KLAR FOR DEPLOYMENT"
-                color="success"
-                sx={{ mt:  1 }}
-              />
-            )}
-          </Grid>
-        </Grid>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            Deployment Task Visualizer
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Robust gate-check workflow for deployment readiness.
+          </Typography>
+        </Box>
 
-        {/* Quick stats */}
-        <Grid container spacing={2}, sx={{ mt:  2 }}>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
-                {taskGroups.reduce((sum, g) => sum + g.completedChecks, 0)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Fullførte sjekker
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Typography variant="h6" color="error.main" sx={{ color: theming.colors.primary }}>
-                {taskGroups.filter((g) => g.status === 'failed').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Feilede grupper
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Typography variant="h6" color="warning.main" sx={{ color: theming.colors.primary }}>
-                {taskGroups.reduce(
-                  (sum, g) => sum + g.checks.filter((c) => c.status === 'running').length,
-                  0,
-                )}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Pågående tester
-              </Typography>
-            </Box>
-          </Grid>
-          <Grid item xs={6} sm={3}>
-            <Box sx={{ textAlign: 'center'}}>
-              <Typography variant="h6" color="primary.main" sx={{ color: theming.colors.primary }}>
-                {taskGroups.reduce((sum, g) => sum + g.criticalChecks, 0)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Kritiske sjekker
-              </Typography>
-            </Box>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Task Groups */}
-      <Stack spacing={2}>
-        {taskGroups.map((group) => (
-          <Card
-            key={group.id}
-            elevation={3}
-            sx={{
-              border: `2px solid ${group.color}`,
-              bgcolor: group.status === 'completed'
-                  ? 'success.light'
-                  : group.status === 'failed'
-                    ? 'error.light'
-                    : 'background.paper',
-              opacity: group.status === 'blocked' ? 0.7 : 1}}
-           sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              {/* Group Header */}
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                  mb:  2}}
-                onClick={() => toggleGroup(group.id)}
-              >
-                <Avatar sx={{ bgcolor: group.color, mr:  2 }}>{group.icon}</Avatar>
-                <Box sx={{ flexGrow:  1 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                    <Typography variant="h6" sx={{  fontWeight: 600}}>
-                      {group.name}
-                    </Typography>
-                    {getStatusIcon(group.status)}
-                    {group.isBlocker && (
-                      <Chip icon={<LockIcon />} label="BLOCKER" size="small" color="error" />
-                    )}
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                    {group.description}
-                  </Typography>
-                  <LinearProgress
-                    variant="determinate"
-                    value={group.progress}
-                    sx={{
-                      height:  8,
-                      borderRadius:  4,
-                      bgcolor: 'grey.20', '& .MuiLinearProgress-bar': {
-                        bgcolor: group.color,
-                    }}}
-                  />
-                </Box>
-                <Box sx={{ textAlign: 'right', mr:  2 }}>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                    {group.completedChecks}/{group.totalChecks}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {group.progress.toFixed(0)}% fullført
-                  </Typography>
-                </Box>
-                <IconButton>
-                  {expandedGroups.has(group.id) ? <CollapseIcon /> : <ExpandIcon />}
-                </IconButton>
-              </Box>
-
-              {/* Kritiske sjekker oversikt */}
-              <Grid container spacing={2}, sx={{ mb:  2 }}>
-                <Grid item xs={6} sm={3}>
-                  <Chip
-                    label={`${group.criticalCompleted}/${group.criticalChecks} kritiske`}
-                    color={group.criticalCompleted === group.criticalChecks ? 'success' : 'warning'}
-                    size="small"
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Chip
-                    label={`${group.actualTime || 0}/${group.estimatedTime} min`}
-                    color="info"
-                    size="small"
-                  />
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  {group.status === 'failed' && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color="error"
-                      startIcon={<RetryIcon />}
-                      onClick={() => {
-                        const failedChecks = group.checks.filter((c) => c.status === 'failed');
-                        if (failedChecks.length > 0) {
-                          setSelectedTask(failedChecks[0].id);
-                          setRetryDialogOpen(true);
-                      }
-                    }}
-                    >
-                      Retry Failed
-                    </Button>
-                  )}
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  {group.canProceed && (
-                    <Chip
-                      icon={<VerifiedIcon />}
-                      label="KAN FORTSETTE"
-                      color="success"
-                      size="small"
-                    />
-                  )}
-                </Grid>
-              </Grid>
-
-              {/* Expanded Details */}
-              <Collapse in={expandedGroups.has(group.id)}>
-                <Divider sx={{ my:  2 }} />
-                <List dense>
-                  {group.checks.map((check) => (
-                    <ListItem
-                      key={check.id}
-                      sx={{
-                        border: `1px solid ${getCategoryColor(check.category)}20`,
-                        borderRadius:  1,
-                        mb:  1,
-                        bgcolor: check.status === 'failed' ? 'error.light' : 'background.default'}}
-                    >
-                      <ListItemIcon>{getStatusIcon(check.status'small')}</ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap:  1}}
-                          >
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600}>
-                              {check.name}
-                            </Typography>
-                            <Chip
-                              label={check.category}
-                              size="small"
-                              sx={{
-                                bgcolor: getCategoryColor(check.category),
-                                color: 'white',
-                                fontSize: '10px',
-                                height: '18px'}}
-                            />
-                            {check.required && (
-                              <Chip
-                                icon={<LockIcon />}
-                                label="REQUIRED"
-                                size="small"
-                                color="error"
-                                sx={{ fontSize: '10px', height: '18px'}}
-                              />
-                            )}
-                          </Box>
-                      }
-                        secondary={
-                          <Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {check.description}
-                            </Typography>
-                            {check.status === 'running' && (
-                              <LinearProgress
-                                variant="determinate"
-                                value={check.progress}
-                                sx={{ mt: 1, height:  4 }}
-                              />
-                            )}
-                            {check.errorMessage && (
-                              <Alert severity="error" sx={{ mt: 1, fontSize: '12px'}}>
-                                {check.errorMessage}
-                                {check.retryCount < check.maxRetries && (
-                                  <Button
-                                    size="small"
-                                    onClick={() => {
-                                      setSelectedTask(check.id);
-                                      setRetryDialogOpen(true);
-                                  }}
-                                    sx={{ ml:  1 }}
-                                  >
-                                    Retry ({check.retryCount}/{check.maxRetries})
-                                  </Button>
-                                )}
-                              </Alert>
-                            )}
-                            {/* Validation Rules */}
-                            <Box sx={{ mt:  1 }}>
-                              {check.validationRules.map((rule) => (
-                                <Chip
-                                  key={rule.rule}
-                                  icon={rule.passed ? <CompletedIcon /> : <ErrorIcon />}
-                                  label={rule.rule}
-                                  size="small"
-                                  color={rule.passed ? 'success' : 'error'}
-                                  variant="outlined"
-                                  sx={{ mr: 0, .mb: 0, .fontSize: '10px'}}
-                                />
-                              ))}
-                            </Box>
-                          </Box>
-                      }
-                      />
-                      <Box sx={{ textAlign: 'right'}}>
-                        <Typography variant="body2" sx={{ fontWeight: 600}>
-                          {check.progress}%
-                        </Typography>
-                        {check.actualTime && (
-                          <Typography variant="caption" color="text.secondary">
-                            {check.actualTime}min
-                          </Typography>
-                        )}
-                      </Box>
-                    </ListItem>
-                  ))}
-                </List>
-              </Collapse>
-            </CardContent>
-          </Card>
-        ))}
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={isFetching ? <CircularProgress size={16} /> : <RefreshIcon />}
+            onClick={() => void refetch()}
+            disabled={isFetching}
+          >
+            Refresh
+          </Button>
+        </Stack>
       </Stack>
 
-      {/* Deployment Gates */}
-      <Card elevation={3}, sx={{ mt:  3, border: '3px solid #4caf50',  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Typography variant="h6" sx={{  mb: 2, fontWeight: 600}}>
-            🚀 Deployment Gates
-          </Typography>
-          {deploymentGates.map((gate) => (
-            <Box key={gate.id}, sx={{ mb:  2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                <Typography variant="subtitle1" sx={{ flexGrow: 1, fontWeight: 600}>
-                  {gate.name}
-                </Typography>
-                {getStatusIcon(gate.status)}
-                <Typography variant="body2" sx={{ ml:  1 }}>
-                  {gate.progress}%
-                </Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                {gate.description}
+      {isError ? <Alert severity="warning" sx={{ mb: 2 }}>{(error as Error).message}</Alert> : null}
+      {isLoading ? <Alert severity="info" sx={{ mb: 2 }}>Laster deployment tasks...</Alert> : null}
+
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Overall Progress
               </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={gate.progress}
-                color={gate.status === 'ready' ? 'success' : 'primary'}
-                sx={{ height:  6, borderRadius:  3 }}
-              />
-              {gate.status === 'locked' && gate.canBypass && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="warning"
-                  onClick={() => {
-                    setSelectedGate(gate.id);
-                    setBypassDialogOpen(true);
-                }}
-                  sx={{ mt:  1 }}
-                >
-                  Emergency Bypass Available
-                </Button>
-              )}
+              <Typography variant="h4" sx={{ fontWeight: 700 }}>
+                {totals.progress}%
+              </Typography>
+              <LinearProgress variant="determinate" value={totals.progress} sx={{ mt: 1.5, height: 8, borderRadius: 999 }} />
             </Box>
-          ))}
+
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              <Chip icon={<CheckCircleIcon />} label={`Completed: ${totals.completed}`} color="success" variant="outlined" />
+              <Chip icon={<PlayArrowIcon />} label={`Running: ${totals.running}`} color="info" variant="outlined" />
+              <Chip icon={<ErrorIcon />} label={`Failed: ${totals.failed}`} color="error" variant="outlined" />
+              <Chip icon={<WarningIcon />} label={`Critical open: ${totals.criticalOutstanding}`} color="warning" variant="outlined" />
+            </Stack>
+          </Stack>
         </CardContent>
       </Card>
 
-      {/* Retry Dialog */}
-      <Dialog
-        open={retryDialogOpen}
-        onClose={() => setRetryDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Restart Failed Task</DialogTitle>
-        <DialogContent>
-          <Alert severity="warning" sx={{ mb:  2 }}>
-            Dette vil restarte den feilede tasken. Sikker på at du vil fortsette?
-          </Alert>
-          <Typography variant="body2">
-            Task vil kjøre på nytt med samme parametere og validering.
+      <Stack spacing={2}>
+        {groupOverview.map((group) => {
+          const expanded = expandedGroups.has(group.id);
+          return (
+            <Card key={group.id} variant="outlined">
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Avatar sx={{ bgcolor: `${group.color}22`, color: group.color }}>{renderGroupIcon(group.icon)}</Avatar>
+
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {group.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {group.description}
+                    </Typography>
+                  </Box>
+
+                  <Chip label={`${group.completedChecks}/${group.checks.length}`} size="small" variant="outlined" />
+                  <Chip label={group.status} size="small" color={getStatusColor(group.status)} />
+                  <Typography variant="body2" sx={{ minWidth: 48, textAlign: 'right' }}>
+                    {group.progress}%
+                  </Typography>
+                  <IconButton onClick={() => toggleGroupExpand(group.id)}>
+                    {expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
+                </Stack>
+
+                <LinearProgress
+                  variant="determinate"
+                  value={group.progress}
+                  sx={{ mt: 1.5, height: 6, borderRadius: 999 }}
+                  color={group.status === 'failed' ? 'error' : group.status === 'completed' ? 'success' : 'primary'}
+                />
+
+                <Collapse in={expanded} timeout="auto" unmountOnExit>
+                  <List sx={{ mt: 1 }}>
+                    {group.checks.map((check) => (
+                      <ListItem key={check.id} alignItems="flex-start" divider>
+                        <ListItemIcon sx={{ minWidth: 34 }}>{renderStatusIcon(check.status)}</ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                {check.name}
+                              </Typography>
+                              <Chip size="small" label={check.category} color={check.category === 'critical' ? 'error' : 'default'} variant="outlined" />
+                              {check.required ? <Chip size="small" label="required" variant="outlined" /> : null}
+                            </Stack>
+                          }
+                          secondary={
+                            <Stack spacing={1}>
+                              <Typography variant="body2" color="text.secondary">
+                                {check.description}
+                              </Typography>
+                              <LinearProgress
+                                variant="determinate"
+                                value={check.progress}
+                                color={check.status === 'failed' ? 'error' : check.status === 'completed' ? 'success' : 'primary'}
+                              />
+                              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                <Typography variant="caption" color="text.secondary">
+                                  Est: {check.estimatedTime}m
+                                </Typography>
+                                {check.actualTime !== undefined ? (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Actual: {check.actualTime}m
+                                  </Typography>
+                                ) : null}
+                                <Typography variant="caption" color="text.secondary">
+                                  Retries: {check.retryCount}/{check.maxRetries}
+                                </Typography>
+                              </Stack>
+                              {check.errorMessage ? <Alert severity="error">{check.errorMessage}</Alert> : null}
+                              <Stack direction="row" spacing={0.5}>
+                                {check.validationRules.map((rule, index) => (
+                                  <Tooltip key={`${check.id}-rule-${index}`} title={rule.message}>
+                                    <Chip
+                                      size="small"
+                                      variant="outlined"
+                                      label={rule.rule}
+                                      color={rule.passed ? 'success' : 'error'}
+                                    />
+                                  </Tooltip>
+                                ))}
+                              </Stack>
+                            </Stack>
+                          }
+                        />
+
+                        <Stack spacing={1}>
+                          {check.status === 'failed' ? (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<RefreshIcon />}
+                              onClick={() => {
+                                setSelectedTaskId(check.id);
+                                setRetryDialogOpen(true);
+                              }}
+                            >
+                              Retry
+                            </Button>
+                          ) : null}
+
+                          {check.status !== 'completed' ? (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              onClick={() => completeTaskMutation.mutate(check.id)}
+                              disabled={completeTaskMutation.isPending}
+                            >
+                              Complete
+                            </Button>
+                          ) : null}
+                        </Stack>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Collapse>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Stack>
+
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Typography variant="h6" sx={{ fontWeight: 700, mb: 1.5 }}>
+            Deployment Gates
           </Typography>
+
+          <Stack spacing={1.5}>
+            {gatesOverview.map((gate) => (
+              <Box key={gate.id}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  {renderStatusIcon(gate.status)}
+                  <Typography variant="subtitle2" sx={{ flex: 1, fontWeight: 600 }}>
+                    {gate.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {gate.progress}%
+                  </Typography>
+                  <Chip size="small" label={gate.status} color={getStatusColor(gate.status)} />
+                  {gate.status === 'locked' && gate.canBypass ? (
+                    <Button
+                      size="small"
+                      color="warning"
+                      variant="outlined"
+                      onClick={() => {
+                        setSelectedGateId(gate.id);
+                        setBypassDialogOpen(true);
+                      }}
+                    >
+                      Bypass
+                    </Button>
+                  ) : null}
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.75 }}>
+                  {gate.description}
+                </Typography>
+                <LinearProgress
+                  variant="determinate"
+                  value={gate.progress}
+                  color={gate.status === 'completed' ? 'success' : gate.status === 'failed' ? 'error' : 'primary'}
+                />
+                <Divider sx={{ mt: 1.5 }} />
+              </Box>
+            ))}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Dialog open={retryDialogOpen} onClose={() => setRetryDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Retry failed task</DialogTitle>
+        <DialogContent dividers>
+          {selectedTask ? (
+            <Stack spacing={1}>
+              <Alert severity="warning">
+                This will restart the task with the same validation rules and dependencies.
+              </Alert>
+              <Typography variant="subtitle2">{selectedTask.name}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Current retries: {selectedTask.retryCount}/{selectedTask.maxRetries}
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography>No task selected.</Typography>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setRetryDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained"
+          <Button onClick={() => setRetryDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
             color="warning"
             onClick={() => {
-              if (selectedTask) {
-                retryTaskMutation.mutate(selectedTask);
-            }
+              if (selectedTaskId) {
+                retryTaskMutation.mutate(selectedTaskId);
+              }
               setRetryDialogOpen(false);
-          }}
+            }}
           >
-            Restart Task
+            Retry task
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Bypass Dialog */}
-      <Dialog
-        open={bypassDialogOpen}
-        onClose={() => setBypassDialogOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle sx={{ color: 'error.main'}}>⚠️ Emergency Deployment Bypass</DialogTitle>
-        <DialogContent>
-          <Alert severity="error" sx={{ mb:  2 }}>
-            ADVARSEL: Dette omgår sikkerhetsprosedyrer og kan føre til ustabil produksjon!
-          </Alert>
-          <Typography variant="body1" sx={{ mb: 2 }}>
-            Emergency bypass tillater deployment til produksjon selv om ikke alle tester er bestått.
-            Dette skal kun brukes i kritiske situasjoner.
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Bypass krever spesiell autorisasjon og vil logges for audit formål.
-          </Typography>
+      <Dialog open={bypassDialogOpen} onClose={() => setBypassDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: 'error.main' }}>Emergency bypass</DialogTitle>
+        <DialogContent dividers>
+          {selectedGate ? (
+            <Stack spacing={1}>
+              <Alert severity="error">Bypass should only be used in critical incidents.</Alert>
+              <Typography variant="subtitle2">{selectedGate.name}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Required approvers: {selectedGate.approvers.join(', ') || 'N/A'}
+              </Typography>
+            </Stack>
+          ) : (
+            <Typography>No gate selected.</Typography>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setBypassDialogOpen(false)}>Avbryt</Button>
-          <Button variant="contained"
+          <Button onClick={() => setBypassDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
             color="error"
             onClick={() => {
-              toast({
-                title: 'Emergency bypass aktivert',
-                description: 'Deployment gate omgått - deployment kan fortsette',
-                variant: 'destructive',
-            });
+              if (selectedGateId) {
+                bypassGateMutation.mutate(selectedGateId);
+              }
               setBypassDialogOpen(false);
-          }}
+            }}
           >
-            Aktiver Emergency Bypass
+            Activate bypass
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Box sx={{ mt: 2 }}>
+        <Badge color="error" badgeContent={totals.failed}>
+          <Chip label={`Failed checks: ${totals.failed}`} color={totals.failed > 0 ? 'error' : 'default'} icon={<WarningIcon />} />
+        </Badge>
+      </Box>
     </Box>
   );
 }

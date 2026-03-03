@@ -1,175 +1,190 @@
 /**
- * CreatorHub Norge - Google Contacts Re-authorization Component
- * Handles OAuth scope upgrades for Google People API access
+ * Google Contacts Re-authorization
+ * Upgrades OAuth scope to include Google People API access.
  */
 
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  Typography,
-  Box,
   Alert,
-  LinearProgress,
+  Box,
+  Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  LinearProgress,
   Stack,
+  Typography,
 } from '@mui/material';
 import {
-  ContactPage,
-  Security,
   CheckCircle,
-  Warning,
+  ContactPage,
   Launch,
+  Security,
+  Warning,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider';
-import { useTheming } from '../../utils/theming-helper';";
+import { useTheming } from '../../utils/theming-helper';
 
 interface GoogleContactsReauthProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void
+  onSuccess: () => void;
 }
 
-export default function GoogleContactsReauth({ open, onClose, onSuccess }: GoogleContactsReauthProps) {
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
+interface ScopeStatus {
+  hasContactsAccess: boolean;
+  needsReauth: boolean;
+  missingScopes: string[];
+}
 
-  // Master Integration Provider
-  const { integration, communication, dataFlow, componentRegistry } = useEnhancedMasterIntegration();
-  
-  // Theming system
+interface ReauthData {
+  authUrl: string | null;
+  newFeatures: string[];
+}
+
+interface TestPeopleApiResponse {
+  success: boolean;
+}
+
+function toScopeStatus(payload: unknown): ScopeStatus {
+  const fallback: ScopeStatus = {
+    hasContactsAccess: false,
+    needsReauth: true,
+    missingScopes: [],
+  };
+
+  if (typeof payload !== 'object' || payload === null) {
+    return fallback;
+  }
+
+  const candidate = payload as {
+    hasContactsAccess?: unknown;
+    needsReauth?: unknown;
+    missingScopes?: unknown;
+  };
+
+  return {
+    hasContactsAccess: candidate.hasContactsAccess === true,
+    needsReauth: candidate.needsReauth !== false,
+    missingScopes: Array.isArray(candidate.missingScopes)
+      ? candidate.missingScopes.filter((scope): scope is string => typeof scope === 'string')
+      : [],
+  };
+}
+
+function toReauthData(payload: unknown): ReauthData {
+  if (typeof payload !== 'object' || payload === null) {
+    return { authUrl: null, newFeatures: [] };
+  }
+
+  const candidate = payload as { authUrl?: unknown; newFeatures?: unknown };
+  return {
+    authUrl: typeof candidate.authUrl === 'string' ? candidate.authUrl : null,
+    newFeatures: Array.isArray(candidate.newFeatures)
+      ? candidate.newFeatures.filter((feature): feature is string => typeof feature === 'string')
+      : [],
+  };
+}
+
+export default function GoogleContactsReauth({
+  open,
+  onClose,
+  onSuccess,
+}: GoogleContactsReauthProps) {
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
   const theming = useTheming('photographer');
 
-  // Register component with MasterIntegrationProvider
-  React.useEffect(() => {
-    componentRegistry.registerComponent('GoogleContactsReauth', {
-      type: 'google-service',
-      capabilities: ['contacts-reauth', 'oauth-scope-upgrade','people-api-access'],
-      dataFlow: {
-        sources: ['scope-status', 'reauth-data','auth-status'],
-        destinations: ['admin-dashboard','user-interface'],
-        processors: ['oauth-processing','scope-processing']
-    }
-  });
-
-    // Set up data flow nodes
-    dataFlow.registerNode('scope-status', {
-      type: 'source',
-      data: scopeStatus,
-      metadata: { component: 'GoogleContactsReauth', type: 'scope-status',}
-  });
-
-    dataFlow.registerNode('reauth-data', {
-      type: 'source',
-      data: reauthData,
-      metadata: { component: 'GoogleContactsReauth', type: 'reauth-data',}
-  });
-
-    dataFlow.registerNode('auth-status', {
-      type: 'source',
-      data: { isAuthorizing, open },
-      metadata: { component: 'GoogleContactsReauth', type: 'auth-status',}
-  });
-
-    // Listen for contacts reauth events
-    communication.subscribe('google-contacts: reauth-required', () => {
-      // Component is already open, just ensure it's visible
-  });
-
-    communication.subscribe('google-contacts: scope-upgrade', (data) => {
-      if (data.scopes) {
-        // Handle scope upgrade request
-        handleAuthorize();
-    }
-  });
-
-    return () => {
-      componentRegistry.unregisterComponent('GoogleContactsReauth');
-      dataFlow.unregisterNode('scope-status');
-      dataFlow.unregisterNode('reauth-data');
-      dataFlow.unregisterNode('auth-status');
-  };
-}, [scopeStatus, reauthData, isAuthorizing, open, componentRegistry, dataFlow, communication]);
-
-  // Check current OAuth scope status
-  const { data: scopeStatus, isLoading: loadingStatus } = useQuery({
-    queryKey: ['/api/oauth/scope-status', ],
+  const { data: scopeStatus, isLoading: loadingStatus, refetch: refetchScopeStatus } = useQuery({
+    queryKey: ['/api/oauth/scope-status'],
+    queryFn: async () => {
+      const payload = await apiRequest('/api/oauth/scope-status');
+      return toScopeStatus(payload);
+    },
     enabled: open,
-    queryFn: async () => {
-      return apiRequest('/api/oauth/scope-status', {
-        headers: auth
+    retry: false,
   });
-  },
-    retry: false
-});
 
-  // Get re-authorization URL
   const { data: reauthData, isLoading: loadingReauth } = useQuery({
-    queryKey: ['/api/oauth/reauth-url', ],
-    enabled: open && scopeStatus?.needsReauth,
+    queryKey: ['/api/oauth/reauth-url'],
     queryFn: async () => {
-      return apiRequest('/api/oauth/reauth-url', {
-        headers: auth
+      const payload = await apiRequest('/api/oauth/reauth-url');
+      return toReauthData(payload);
+    },
+    enabled: open && Boolean(scopeStatus?.needsReauth),
+    retry: false,
   });
-  },
-    retry: false
-});
 
-  // Test People API access
   const testPeopleApiMutation = useMutation({
-    mutationFn: async () => {
-      return await apiRequest('/api/oauth/test-people-api');
-}
-});
-
-  const handleAuthorize = () => {
-    if (reauthData?.authUrl) {
-      setIsAuthorizing(true);
-      // Open authorization URL in new window
-      window.open(reauthData.authUrl'_blank', 'width=600,height=700');
-      
-      // Poll for success (simplified - in production use postMessage)
-      const pollInterval = setInterval(() => {
-        testPeopleApiMutation.mutate(undefined, {
-          onSuccess: (result) => {
-            if (result.success) {
-              clearInterval(pollInterval);
-              setIsAuthorizing(false);
-              onSuccess();
-              onClose();
-        }
-        },
-          onError: () => {
-            // Continue polling on error
+    mutationFn: async (): Promise<TestPeopleApiResponse> => {
+      const payload = await apiRequest('/api/oauth/test-people-api');
+      if (typeof payload === 'object' && payload !== null && 'success' in payload) {
+        return { success: (payload as { success?: unknown }).success === true };
       }
-      });
-    }, 2000);
+      return { success: false };
+    },
+  });
 
-      // Stop polling after 2 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
+  const canStartAuthorize = useMemo(() => {
+    return Boolean(reauthData?.authUrl) && !isAuthorizing;
+  }, [isAuthorizing, reauthData?.authUrl]);
+
+  const handleAuthorize = async () => {
+    if (!reauthData?.authUrl) {
+      return;
+    }
+
+    setIsAuthorizing(true);
+    window.open(reauthData.authUrl, '_blank', 'width=640,height=780');
+
+    const startedAt = Date.now();
+    const timeoutMs = 2 * 60 * 1000;
+
+    const poll = async () => {
+      const result = await testPeopleApiMutation.mutateAsync();
+      if (result.success) {
+        await refetchScopeStatus();
         setIsAuthorizing(false);
-    }, 120000);
-  }
-};
+        onSuccess();
+        onClose();
+        return true;
+      }
+      return false;
+    };
+
+    const timerId = window.setInterval(() => {
+      void (async () => {
+        const done = await poll();
+        const timedOut = Date.now() - startedAt > timeoutMs;
+        if (done || timedOut) {
+          window.clearInterval(timerId);
+          setIsAuthorizing(false);
+        }
+      })();
+    }, 2000);
+  };
+
+  const handleContinue = () => {
+    onSuccess();
+    onClose();
+  };
 
   if (loadingStatus || loadingReauth) {
     return (
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogContent>
-          <Box sx={{ py:  4, textAlign: 'center'}}>
-            <LinearProgress sx={{ mb:  2 }} />
+          <Box sx={{ py: 4, textAlign: 'center' }}>
+            <LinearProgress sx={{ mb: 2 }} />
             <Typography>Sjekker Google tilgangsstatus...</Typography>
           </Box>
         </DialogContent>
       </Dialog>
     );
-}
+  }
+
+  const hasAccess = scopeStatus?.hasContactsAccess === true;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -181,109 +196,82 @@ export default function GoogleContactsReauth({ open, onClose, onSuccess }: Googl
               Google Kontakter Tilgang
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Gi tilgang til Google kontakter for samarbeidspartnere
+              Gi tilgang til Google People API for kontaktsynk.
             </Typography>
           </Box>
         </Box>
       </DialogTitle>
 
       <DialogContent>
-        {scopeStatus?.hasContactsAccess ? (
-          <Alert severity="success" sx={{ mb:  2 }}>
-            <Box display="flex" alignItems="center" gap={1}>
-              {theming.getThemedIcon('checkCircle')}
-              <Typography>
-                Google kontakter er allerede tilgjengelig!
-              </Typography>
-            </Box>
+        {hasAccess ? (
+          <Alert severity="success" sx={{ mb: 2 }} icon={<CheckCircle />}>
+            Google kontakter er allerede tilgjengelig.
           </Alert>
         ) : (
-          <Alert severity="warning" sx={{ mb:  2 }}>
-            <Box display="flex" alignItems="center" gap={1}>
-              {theming.getThemedIcon('warning')}
-              <Typography>
-                Google kontakter krever utvidet tilgang
-              </Typography>
-            </Box>
+          <Alert severity="warning" sx={{ mb: 2 }} icon={<Warning />}>
+            Google kontakter krever utvidet OAuth-tilgang.
           </Alert>
         )}
 
-        <Typography variant="subtitle1" gutterBottom sx={{ mt:  2 }}>
-          Hva får du tilgang til: </Typography>
+        <Typography variant="subtitle1" gutterBottom sx={{ mt: 2 }}>
+          Hva blir aktivert:
+        </Typography>
 
-        <Stack spacing={1} sx={{ mb:  3 }}>
-          <Chip 
-            icon={<ContactPage />}
-            label="Søk i dine Google kontakter"
-            variant="outlined"
-            color="primary"
-          />
-          <Chip 
-            icon={<ContactPage />}
-            label="Lagre nye samarbeidspartnere automatisk"
-            variant="outlined"
-            color="primary"
-          />
-          <Chip 
-            icon={theming.getThemedIcon('security')}}
-            label="Sikker OAuth 2.0 integrasjon"
-            variant="outlined"
-            color="primary"
-          />
+        <Stack spacing={1} sx={{ mb: 3 }}>
+          <Chip icon={<ContactPage />} label="Sok i dine Google kontakter" variant="outlined" />
+          <Chip icon={<ContactPage />} label="Opprett kontakter for samarbeidspartnere" variant="outlined" />
+          <Chip icon={<Security />} label="Sikker OAuth 2.0-scope oppgradering" variant="outlined" />
         </Stack>
 
-        {reauthData?.newFeatures && (
-          <Box sx={{ mb:  2 }}>
+        {reauthData?.newFeatures.length ? (
+          <Box sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
-              Nye funksjoner som blir tilgjengelige: </Typography>
+              Nye funksjoner:
+            </Typography>
             <ul>
-              {reauthData.newFeatures.map((feature: string, index: number) => (
-                <li key={index}>
+              {reauthData.newFeatures.map((feature) => (
+                <li key={feature}>
                   <Typography variant="body2">{feature}</Typography>
                 </li>
               ))}
             </ul>
           </Box>
-        )}
+        ) : null}
+
+        {scopeStatus?.missingScopes.length ? (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Manglende scope: {scopeStatus.missingScopes.join(', ')}
+          </Alert>
+        ) : null}
 
         <Alert severity="info">
-          <Typography variant="body2">
-            📱 Du blir sendt til Google for å bekrefte tilgangene. 
-            Dette er helt trygt og du kan tilbakekalle tilgang når som helst.
-          </Typography>
+          Du sendes til Google for godkjenning i nytt vindu. Etter godkjenning oppdateres status
+          automatisk her.
         </Alert>
 
-        {isAuthorizing && (
-          <Box sx={{ mt:  2 }}>
+        {isAuthorizing ? (
+          <Box sx={{ mt: 2 }}>
             <LinearProgress />
-            <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
-              Venter på autorisering... Du kan lukke Google-vinduet når du er ferdig.
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Venter pa autorisering...
             </Typography>
           </Box>
-        )}
+        ) : null}
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>
-          Avbryt
-        </Button>
-        {!scopeStatus?.hasContactsAccess && (
-          <Button variant="contained"
-            onClick={handleAuthorize}
-            disabled={!reauthData?.authUrl || isAuthorizing}
-            startIcon={theming.getThemedIcon('launch')}
-           sx={theming.getThemedButtonSx()}>
+        <Button onClick={onClose}>Avbryt</Button>
+        {!hasAccess ? (
+          <Button
+            variant="contained"
+            startIcon={<Launch />}
+            onClick={() => void handleAuthorize()}
+            disabled={!canStartAuthorize}
+          >
             {isAuthorizing ? 'Autoriserer...' : 'Gi tilgang til Google kontakter'}
           </Button>
-        )}
-        {scopeStatus?.hasContactsAccess && (
-          <Button variant="contained"
-            onClick={() => {
-              onSuccess();
-              onClose();
-          }}
-            startIcon={theming.getThemedIcon('checkCircle')}
-          >
+        ) : (
+          <Button variant="contained" startIcon={<CheckCircle />} onClick={handleContinue}>
             Fortsett
           </Button>
         )}
@@ -291,3 +279,4 @@ export default function GoogleContactsReauth({ open, onClose, onSuccess }: Googl
     </Dialog>
   );
 }
+

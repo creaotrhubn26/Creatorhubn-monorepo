@@ -191,7 +191,7 @@ class DragDropManager {
       this.setupEventListeners();
       this.state.isEnabled = true;
       this.state.isInitialized = true;
-      this.emit('initialized, ');
+      this.emit('initialized');
 } catch (error) {
       this.state.hasError = true;
       this.state.error = error instanceof Error ? error.message : 'Unknown error';
@@ -365,7 +365,7 @@ class DragDropManager {
     if (!this.state.isEnabled) throw new Error('Drag drop is not enabled');
 
     const item = this.state.dragItems.get(itemId);
-    if (!item) throw new Error(`Drag item not found: ${itemd}`);
+    if (!item) throw new Error(`Drag item not found: ${itemId}`);
 
     try {
       const startTime = Date.now();
@@ -443,7 +443,7 @@ class DragDropManager {
     const item = this.findDragItemByElement(target);
     if (!item) return;
 
-    this.startDrag(item, event);
+    this.startDrag(item.id, event);
 }
 
   /**
@@ -554,7 +554,7 @@ class DragDropManager {
     const item = this.findDragItemByElement(target);
     if (!item) return;
 
-    this.startDrag(item, event);
+    this.startDrag(item.id, event);
 }
 
   /**
@@ -591,9 +591,14 @@ class DragDropManager {
 
     // Handle keyboard shortcuts for drag drop
     if (event.key === 'Escape' && this.state.isDragging) {
-      this.endDrag(event);
+      const previousItem = this.state.dragItem;
+      this.state.isDragging = false;
+      this.state.dragItem = null;
+      this.state.dropZone = null;
+      this.state.lastUpdate = Date.now();
+      this.emit('drag_cancelled', { event, item: previousItem });
 }
-}
+  }
 
   /**
    * Handle key up
@@ -792,4 +797,3 @@ class DragDropManager {
 export const dragDropManager = new DragDropManager();
 
 export default dragDropManager;
-

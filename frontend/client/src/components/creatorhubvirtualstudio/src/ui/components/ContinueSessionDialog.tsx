@@ -726,10 +726,10 @@ export function ContinueSessionDialog({
                           
                           <Stack direction="row" justifyContent="space-between" alignItems="center">
                             <Typography variant="caption" color="text.secondary">
-                              {format(new Date(project.updatedAt)'MMM d, yyyy')}
+                              {format(new Date(project.updatedAt), 'MMM d, yyyy')}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {project.sceneCount} scene{project.sceneCount !== 1 ? 's' : ', '}
+                              {project.sceneCount} scene{project.sceneCount !== 1 ? 's' : ''}
                             </Typography>
                           </Stack>
                         </CardContent>

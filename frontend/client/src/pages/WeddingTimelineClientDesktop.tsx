@@ -176,7 +176,7 @@ function DesktopAccessCodeInput({ onSubmit }: { onSubmit: (code: string) => void
                           justifyContent: 'center',
                           width:  40,
                           height:  40,
-                          borderRadius: '50, %',
+                          borderRadius: '50%',
                           bgcolor: 'rgba(25, 1240.1)',
                           border: '2px solid rgba(25, 1240.2)',
                       }}

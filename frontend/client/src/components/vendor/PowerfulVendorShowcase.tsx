@@ -99,7 +99,7 @@ export default function PowerfulVendorShowcase({
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(productData)
   });
   },

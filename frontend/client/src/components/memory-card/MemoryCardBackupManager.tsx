@@ -1,62 +1,57 @@
 /**
  * CreatorHub Norge - Memory Card Backup Manager
- * Komplett løsning for minnekort backup med Google Drive integration
- * Implementerer post-produksjon backup prosess med progresjon
+ * Komplett løsning for minnekort-backup med Google Drive-integrasjon.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Card as MuiCard,
-  CardContent,
-  Typography,
-  Button,
-  Grid,
-  LinearProgress,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  Grid,
+  InputLabel,
+  LinearProgress,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
-  Chip,
-  Stack,
-  Divider,
-  IconButton,
+  ListItemText,
+  MenuItem,
   Paper,
+  Select,
+  Stack,
+  Step,
+  StepContent,
+  StepLabel,
+  Stepper,
+  TextField,
+  Typography,
+  type ChipProps,
 } from '@mui/material';
 import {
-  Memory,
+  CheckCircle,
   CloudUpload,
-  Check,
-  Warning,
-  PhotoCamera as PhotoCameraAlt,
   Folder,
+  Memory,
+  PhotoCamera,
+  PlayArrow,
+  Refresh,
   Storage,
   Upload,
-  PlayArrow as PlayArrowArrow,
-  Pause,
-  Stop,
-  Refresh,
-  Info,
-  CheckCircle,
-  Error as ErrorIcon,
-  Delete,
+  Warning,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
 interface MemoryCard {
   id: string;
@@ -66,9 +61,8 @@ interface MemoryCard {
   fileCount: number;
   totalSize: number;
   backupStatus: 'pending' | 'uploading' | 'completed' | 'failed';
-  backupProgress?: number;
+  backupProgress: number;
   backupLocation?: string;
-  estimatedPhotos?: number
 }
 
 interface BackupSession {
@@ -78,503 +72,418 @@ interface BackupSession {
   currentCardIndex: number;
   totalCards: number;
   equipment: string;
-  profession: string
+  profession: string;
 }
 
 interface MemoryCardBackupManagerProps {
   projectId: string;
   profession: 'photographer' | 'videographer';
   isOpen: boolean;
-  onClose: () => void
+  onClose: () => void;
 }
 
-// Canon R5 capacity estimations
-const CANON_R5_ESTIMATES = {
-  '128GB': { raw: 260, craw: 5200,} '256GB': { raw: 520, craw: 10400,}, '512GB': { raw: 1040, craw: 20800,}, '1TB': { raw: 2080, craw: 41600,}, '2TB': { raw: 4160, craw: 83200,},
+interface SessionForm {
+  equipment: string;
+  shootDate: string;
+}
+
+const initialSessionForm: SessionForm = {
+  equipment: '',
+  shootDate: '',
 };
+
+const CAPACITY_ESTIMATES: Record<string, { raw: number; craw: number }> = {
+  '128GB': { raw: 260, craw: 5200 },
+  '256GB': { raw: 520, craw: 10400 },
+  '512GB': { raw: 1040, craw: 20800 },
+  '1TB': { raw: 2080, craw: 41600 },
+};
+
+function safeArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function backupStatusColor(status: MemoryCard['backupStatus']): ChipProps['color'] {
+  switch (status) {
+    case 'completed':
+      return 'success';
+    case 'uploading':
+      return 'info';
+    case 'failed':
+      return 'error';
+    case 'pending':
+    default:
+      return 'default';
+  }
+}
+
+function formatSize(sizeMb: number): string {
+  if (sizeMb >= 1024) {
+    return `${(sizeMb / 1024).toFixed(2)} GB`;
+  }
+  return `${sizeMb.toFixed(0)} MB`;
+}
+
+function estimatePhotos(capacity: string): string {
+  const estimate = CAPACITY_ESTIMATES[capacity];
+  if (!estimate) {
+    return 'Ukjent';
+  }
+  return `${estimate.raw} RAW / ${estimate.craw} C-RAW`;
+}
 
 export default function MemoryCardBackupManager({
   projectId,
   profession,
   isOpen,
   onClose,
-}: MemoryCardBackupManagerProps) {
-  const [activeStep, setActiveStep] = useState(0);
-  const [selectedCards, setSelectedCards] = useState<MemoryCard[]>([]);
-  const [backupInProgress, setBackupInProgress] = useState(false);
-  const [currentBackupCard, setCurrentBackupCard] = useState<string | null>(null);
+}: MemoryCardBackupManagerProps): JSX.Element {
   const queryClient = useQueryClient();
-  
-  // Theming system
-  const theming = useTheming('photographer,');
-  
-  // Dynamic profession system
+  const theming = useTheming(profession);
   const { getProfessionDisplayName } = useDynamicProfessions();
 
-  // Fetch active backup session
-  const { data: backupSession, isLoading: sessionLoading } = useQuery({
+  const [activeStep, setActiveStep] = useState(0);
+  const [sessionForm, setSessionForm] = useState<SessionForm>(initialSessionForm);
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+
+  const sessionQuery = useQuery({
     queryKey: ['/api/memory-card/session', projectId],
-    queryFn: () => apiRequest(`/api/memory-card/session/${projectId}`),
-    enabled: isOpen && !!projectd,
-});
-
-  // Fetch memory cards for session
-  const { data: memoryCards, isLoading: cardsLoading } = useQuery({
-    queryKey: ['/api/memory-card/cards', backupSession?.sessionId],
-    queryFn: () => apiRequest(`/api/memory-card/cards/${backupSession.sessiond}`),
-    enabled: !!backupSession?.sessiond,
-});
-
-  // Initialize backup session mutation
-  const initializeSession = useMutation({
-    mutationFn: (data: any) =>
-      apiRequest('/api/memory-card/activate', {
-        method: 'POS',
-        body: JSON.stringify(data),
-    }),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/session', ],});
-      setActiveStep(1);
-  },
-});
-
-  // Register memory card mutation
-  const registerCard = useMutation({
-    mutationFn: (cardData: any) =>
-      apiRequest('/api/memory-card/register', {
-        method: 'POS',
-        body: JSON.stringify(cardData),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', ],});
-  },
-});
-
-  // Start backup process mutation
-  const startBackup = useMutation({
-    mutationFn: async (cardId: string) => {
-      // Simulate file upload to Google Drive
-      const card = selectedCards.find((c) => c.id === cardId);
-      if (!card) throw new Error('Card not found');
-
-      // Create Google Drive folder structure
-      const driveFolder = `uploads/raw/${card.cardLabel}_${card.capacity}`;
-
-      // Simulate upload progress
-      for (let progress = 0; progress <= 100; progress += 10) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        // Update progress in UI
-        setSelectedCards((prev) =>
-          prev.map((c) =>
-            c.id === cardId
-              ? {
-                  ...c,
-                  backupProgress: progress,
-                  backupStatus: 'uploading' as const,
-              }
-              : c,
-          ),
-        );
-    }
-
-      // Mark as completed
-      return apiRequest('/api/memory-card/backup-complete', {
-        method: 'POS',
-        body: JSON.stringify({
-          cardd,
-          backupLocation: driveFolder,
-          fileCount: card.fileCount,
-          totalSize: card.totalSize,
-      }),
-    });
-  },
-    onSuccess: (data, cardId) => {
-      setSelectedCards((prev) =>
-        prev.map((c) =>
-          c.id === cardId ? { ...c, backupStatus: 'completed' as const, backupProgress: 100,} : c,
-        ),
-      );
-
-      // Move to next card
-      const currentIndex = selectedCards.findIndex((c) => c.id === cardId);
-      if (currentIndex < selectedCards.length - 1) {
-        const nextCard = selectedCards[currentIndex + 1];
-        setCurrentBackupCard(nextCard.id);
-        startBackup.mutate(nextCard.id);
-    } else {
-        setBackupInProgress(false);
-        setActiveStep(3); // Completion step
-    }
-  },
-});
-
-  // Initialize backup process
-  const handleInitializeBackup = () => {
-    initializeSession.mutate({
-      projectId,
-      profession,
-      eventType: 'single_day',
-      totalDays:  1,
-      executionDate: new Date().toISOString(),
+    queryFn: async (): Promise<BackupSession | null> => {
+      const data = await apiRequest(`/api/memory-card/session/${projectId}`);
+      return data ? (data as BackupSession) : null;
+    },
+    enabled: isOpen && Boolean(projectId),
   });
-};
 
-  // Add memory card to backup list
-  const handleAddCard = (cardType: string, capacity: string) => {
-    const cardNumber = selectedCards.length + 1;
-    const cardLabel = `Minnekort ${String.fromCharCode(64 + cardNumber)}`;
-    const estimates = CANON_R5_ESTIMATES[capacity as keyof typeof CANON_R5_ESTIMATES];
+  const cardsQuery = useQuery({
+    queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId],
+    queryFn: async (): Promise<MemoryCard[]> => {
+      const sessionId = sessionQuery.data?.sessionId;
+      if (!sessionId) {
+        return [];
+      }
+      const data = await apiRequest(`/api/memory-card/cards/${sessionId}`);
+      return safeArray<MemoryCard>(data).map((card) => ({
+        ...card,
+        backupProgress: typeof card.backupProgress === 'number' ? card.backupProgress : 0,
+      }));
+    },
+    enabled: isOpen && Boolean(sessionQuery.data?.sessionId),
+  });
 
-    const newCard: MemoryCard = {
-      id: `card-${Date.now()}`,
-      cardLabel,
-      cardType,
-      capacity,
-      fileCount: estimates?.raw || 0,
-      totalSize: parseInt(capacity.replace('G', ', ')) * 1024 * 1024 * 1024,
-      backupStatus: 'pending',
-      backupProgress:  0,
-      estimatedPhotos: estimates?.raw || 0,
+  const initializeSession = useMutation({
+    mutationFn: async (): Promise<void> => {
+      await apiRequest('/api/memory-card/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          projectId,
+          profession,
+          equipment: sessionForm.equipment,
+          shootDate: sessionForm.shootDate,
+        }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/session', projectId] });
+      setActiveStep(1);
+    },
+  });
+
+  const registerCard = useMutation({
+    mutationFn: async (card: {
+      cardLabel: string;
+      cardType: string;
+      capacity: string;
+      fileCount: number;
+      totalSize: number;
+    }): Promise<void> => {
+      await apiRequest('/api/memory-card/cards', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: sessionQuery.data?.sessionId,
+          ...card,
+        }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId] });
+    },
+  });
+
+  const runBackup = useMutation({
+    mutationFn: async (cardId: string): Promise<void> => {
+      await apiRequest(`/api/memory-card/backup/${cardId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({ projectId }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId] });
+    },
+  });
+
+  const cards = cardsQuery.data ?? [];
+  const selectedCards = cards.filter((card) => selectedCardIds.has(card.id));
+
+  const totalSizeSelected = useMemo(
+    () => selectedCards.reduce((sum, card) => sum + card.totalSize, 0),
+    [selectedCards],
+  );
+
+  const completedCount = useMemo(
+    () => cards.filter((card) => card.backupStatus === 'completed').length,
+    [cards],
+  );
+
+  const allCompleted = cards.length > 0 && completedCount === cards.length;
+
+  const loading =
+    sessionQuery.isLoading ||
+    cardsQuery.isLoading ||
+    initializeSession.isPending ||
+    registerCard.isPending ||
+    runBackup.isPending;
+
+  const handleToggleCard = (cardId: string): void => {
+    setSelectedCardIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
   };
 
-    setSelectedCards((prev) => [...prev, newCard]);
+  const handleStartSession = (): void => {
+    if (!sessionForm.equipment || !sessionForm.shootDate) {
+      return;
+    }
+    initializeSession.mutate();
+  };
 
-    // Register with backend
-    if (backupSession?.sessionId) {
-      registerCard.mutate({
-        sessionId: backupSession.sessiond,
-        cardLabel: newCard.cardLabel,
-        cardType: newCard.cardType,
-        capacity: newCard.capacity,
-        fileCount: newCard.fileCount,
-        totalSize: newCard.totalSize,
+  const handleRegisterSampleCards = (): void => {
+    const samples = [
+      { cardLabel: 'A-CAM-1', cardType: 'CFexpress', capacity: '256GB', fileCount: 740, totalSize: 93000 },
+      { cardLabel: 'B-CAM-1', cardType: 'SD UHS-II', capacity: '128GB', fileCount: 420, totalSize: 47000 },
+    ];
+
+    samples.forEach((sample) => {
+      registerCard.mutate(sample);
     });
-  }
-};
+  };
 
-  // Start backup process for all cards
-  const handleStartBackup = () => {
-    if (selectedCards.length === 0) return;
+  const handleRunBackup = (): void => {
+    selectedCards.forEach((card) => {
+      runBackup.mutate(card.id);
+    });
 
-    setBackupInProgress(true);
     setActiveStep(2);
-    const firstCard = selectedCards[0];
-    setCurrentBackupCard(firstCard.id);
-    startBackup.mutate(firstCard.id);
-};
+  };
 
-  // Reset and start over
-  const handleReset = () => {
-    setActiveStep(0);
-    setSelectedCards([]);
-    setBackupInProgress(false);
-    setCurrentBackupCard(null);
-};
-
-  const steps = ['Initialiser Backup Session', 'Velg Minnekort', 'Backup Prosess','Fullført'];
+  const steps = ['Opprett session', 'Velg minnekort', 'Backup status'];
 
   return (
-    <Dialog
-      open={isOpen}
-      onClose={onClose}
-      maxWidth="lg"
-      fullWidth
-      PaperProps={{ sx: { minHeight: '70vh',} }}
-    >
-      <DialogTitle
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap:  2,
-          background: 'linear-gradient(135deg, #ff8c00 0%, #ff6b35 100%)',
-          color: 'white'}}
-      >
-        <Memory />
-        <Typography variant="h6" sx={{  fontWeight: 600}}>
-          Minnekort Backup Manager - {getProfessionDisplayName(profession)}
-        </Typography>
+    <Dialog open={isOpen} onClose={onClose} maxWidth="lg" fullWidth>
+      <DialogTitle>
+        <Box display="flex" alignItems="center" gap={1}>
+          <Memory color="primary" />
+          Memory Card Backup Manager
+          <Chip label={getProfessionDisplayName(profession)} size="small" variant="outlined" />
+        </Box>
       </DialogTitle>
 
-      <DialogContent sx={{ p:  3 }}>
+      <DialogContent>
+        {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Sikrer råmateriale direkte til strukturert prosjektbackup i sky.
+        </Alert>
+
         <Stepper activeStep={activeStep} orientation="vertical">
-          {/* Step 1: Initialize Session , *, /}
           <Step>
-            <StepLabel>Initialiser Backup Session</StepLabel>
+            <StepLabel>{steps[0]}</StepLabel>
             <StepContent>
-              <Alert severity="info" sx={{ mb:  2 }}>
-                <Typography variant="body2">
-                  Basert på registrert utstyr (Canon R5) foreslår vi minnekort størrelser
-                  optimalisert for ditt arbeid.
-                </Typography>
-              </Alert>
-
-              <MuiCard sx={{ mb:  2 }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap:  2,
-                      mb:  2}}
-                  >
-                    <PhotoCamera color="primary" />
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>Canon R5 Optimalisering</Typography>
-                  </Box>
-
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    Systemet har registrert at du bruker Canon R5. Her er anbefalte minnekort
-                    størrelser: </Typography>
-
-                  <Grid container spacing={2}>
-                    {Object.entries(CANON_R5_ESTIMATES).map(([capacity, estimates]) => (
-                      <Grid item xs={12} sm={6} md={4} key={capacity}>
-                        <Paper sx={{ p: 2, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-                          <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
-                            {capacity}
-                          </Typography>
-                          <Typography variant="body2">
-                            ~{estimates.raw.toLocaleString()} RAW bilder
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            ~{estimates.craw.toLocaleString()} C-RAW bilder
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </CardContent>
-              </MuiCard>
-
-              <Button variant="contained"
-                onClick={handleInitializeBackup}
-                disabled={initializeSession.isPending}
-                startIcon={theming.getThemedIcon('play')}
-                sx={{ mt:  2 }}
-               sx={theming.getThemedButtonSx()}>
-                {initializeSession.isPending ? 'Initialiserer...' : 'Start Backup Session'}
-              </Button>
-            </StepContent>
-          </Step>
-
-          {/* Step 2: Select Memory Cards , *, /}
-          <Step>
-            <StepLabel>Velg Minnekort for Backup</StepLabel>
-            <StepContent>
-              <Typography variant="body1" sx={{ mb:  2 }}>
-                Legg til minnekortene du brukte under fotograferingen: </Typography>
-
-              <Stack direction="row" spacing={2} sx={{ mb:  3, flexWrap: 'wrap', gap:  1 }}>
-                {['128GB', '256GB','512GB', '1TB', '2TB'].map((capacity) => (
-                  <Button
-                    key={capacity}
-                    variant="outlined"
-                    onClick={() => handleAddCard('CFexpress Type B', capacity)}
-                    startIcon={theming.getThemedIcon('storage')}
-                  >
-                    Legg til {capacity}
-                  </Button>
-                ))}
-              </Stack>
-
-              {selectedCards.length > 0 && (
-                <MuiCard sx={{ mb:  2 }}>
-                  <CardContent sx={theming.getThemedCardSx()}>
-                    <Typography variant="h6" sx={{  mb:  2  }}>
-                      Valgte Minnekort ({selectedCards.length})
-                    </Typography>
-
-                    <List dense>
-                      {selectedCards.map((card, index) => (
-                        <ListItem key={card.id}>
-                          <ListItemIcon>
-                            <Memory color="primary" />
-                          </ListItemIcon>
-                          <ListItemText
-                            primary={`${card.cardLabel} - ${card.capacity}`}
-                            secondary={`~${card.estimatedPhotos?.toLocaleString()} RAW bilder estimert`}
-                          />
-                          <Chip
-                            label={card.backupStatus}
-                            color={
-                              card.backupStatus === 'completed'
-                                ? 'success'
-                                : card.backupStatus === 'failed'
-                                  ? 'error'
-                                  : 'default'
-                          }
-                            size="small"
-                          />
-                          <IconButton
-                            size="small"
-                            onClick={() =>
-                              setSelectedCards((prev) => prev.filter((c) => c.id !== card.id))
-                          }
-                          >
-                            {theming.getThemedIcon('delete')}
-                          </IconButton>
-                        </ListItem>
-                      ))}
-                    </List>
-                  </CardContent>
-                </MuiCard>
-              )}
-
-              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                <Button variant="contained"
-                  onClick={handleStartBackup}
-                  disabled={selectedCards.length === 0}
-                  startIcon={theming.getThemedIcon('cloudUpload')}
-                 sx={theming.getThemedButtonSx()}>
-                  Start Backup Prosess
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Utstyr"
+                    value={sessionForm.equipment}
+                    onChange={(event) =>
+                      setSessionForm((prev) => ({ ...prev, equipment: event.target.value }))
+                    }
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Shoot-dato"
+                    InputLabelProps={{ shrink: true }}
+                    value={sessionForm.shootDate}
+                    onChange={(event) =>
+                      setSessionForm((prev) => ({ ...prev, shootDate: event.target.value }))
+                    }
+                  />
+                </Grid>
+              </Grid>
+              <Box mt={2} display="flex" gap={1}>
+                <Button variant="contained" startIcon={<PlayArrow />} onClick={handleStartSession} disabled={initializeSession.isPending}>
+                  Start session
                 </Button>
-                <Button onClick={() => setActiveStep(0)}>Tilbake</Button>
+                <Button variant="outlined" startIcon={<Refresh />} onClick={() => sessionQuery.refetch()}>
+                  Oppdater
+                </Button>
               </Box>
             </StepContent>
           </Step>
 
-          {/* Step 3: Backup Process , *, /}
           <Step>
-            <StepLabel>Backup Prosess</StepLabel>
+            <StepLabel>{steps[1]}</StepLabel>
             <StepContent>
-              <Alert severity="warning" sx={{ mb:  2 }}>
-                <Typography variant="body2">
-                  Ikke fjern minnekortene under backup prosessen. Systemet vil laste opp til
-                  strukturerte Google Drive mapper.
-                </Typography>
-              </Alert>
+              <Stack spacing={1}>
+                <Button variant="outlined" startIcon={<PhotoCamera />} onClick={handleRegisterSampleCards}>
+                  Registrer demo-kort
+                </Button>
 
-              {selectedCards.map((card, index) => {
-                const isCurrentCard = currentBackupCard === card.id;
-                const isCompleted = card.backupStatus === 'completed';
-                const isUploading = card.backupStatus === 'uploading';
+                {cards.map((card) => {
+                  const selected = selectedCardIds.has(card.id);
 
-                return (
-                  <MuiCard
-                    key={card.id}
-                    sx={{
-                      mb:  2,
-                      bgcolor: isCurrentCard ? 'primary.50' : 'background.paper',
-                      border: isCurrentCard ? 2 : 1,
-                      borderColor: isCurrentCard ? 'primary.main' : 'divider'}}
-                  >
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap:  2,
-                          mb:  2}}
-                      >
-                        <Memory
-                          color={isCompleted ? 'success' : isCurrentCard ? 'primary' : 'action'}
-                        />
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{card.cardLabel}</Typography>
-                        <Chip label={card.capacity} size="small" color="primary" />
-                        {isCompleted && <CheckCircle color="success" />}
-                        {isUploading && <CloudUpload color="primary" />}
-                      </Box>
-
-                      <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
-                        Mål: uploads/raw/{card.cardLabel}_{card.capacity}/
-                      </Typography>
-
-                      {isUploading && (
-                        <Box sx={{ mb:  2 }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={card.backupProgress || 0}
-                            sx={{ height:  8, borderRadius:  1 }}
-                          />
-                          <Typography variant="body2" sx={{ mt:  1 }}>
-                            {card.backupProgress || 0}% fullført
+                  return (
+                    <Paper key={card.id} variant="outlined" sx={{ p: 1.5, ...theming.getThemedCardSx() }}>
+                      <Box display="flex" justifyContent="space-between" alignItems="center">
+                        <Box>
+                          <Typography variant="subtitle1">{card.cardLabel}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {card.cardType} • {card.capacity} • {card.fileCount.toLocaleString('no-NO')} filer
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatSize(card.totalSize)} • Estimat: {estimatePhotos(card.capacity)}
                           </Typography>
                         </Box>
-                      )}
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Chip size="small" label={card.backupStatus} color={backupStatusColor(card.backupStatus)} />
+                          <Button variant={selected ? 'contained' : 'outlined'} onClick={() => handleToggleCard(card.id)}>
+                            {selected ? 'Valgt' : 'Velg'}
+                          </Button>
+                        </Box>
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Stack>
 
-                      {isCompleted && (
-                        <Alert severity="success" sx={{ mt:  1 }}>
-                          <Typography variant="body2">
-                            ✅ Backup fullført til Google Drive: {card.backupLocation}
-                          </Typography>
-                        </Alert>
-                      )}
-                    </CardContent>
-                  </MuiCard>
-                );
-            })}
+              <Box mt={2}>
+                <Typography variant="body2" color="text.secondary">
+                  Valgt størrelse: {formatSize(totalSizeSelected)}
+                </Typography>
+              </Box>
 
-              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                <Button onClick={() => setActiveStep(1)} disabled={backupInProgress}>
-                  Tilbake
+              <Box mt={2}>
+                <Button
+                  variant="contained"
+                  startIcon={<CloudUpload />}
+                  onClick={handleRunBackup}
+                  disabled={selectedCards.length === 0 || runBackup.isPending}
+                >
+                  Kjør backup
                 </Button>
               </Box>
             </StepContent>
           </Step>
 
-          {/* Step 4: Completion , *, /}
           <Step>
-            <StepLabel>Backup Fullført</StepLabel>
+            <StepLabel>{steps[2]}</StepLabel>
             <StepContent>
-              <Alert severity="success" sx={{ mb:  2 }}>
-                <Typography variant="h6" sx={{  mb:  1  }}>
-                  🎉 Minnekort Backup Fullført!
-                </Typography>
-                <Typography variant="body2">
-                  Alle {selectedCards.length} minnekort er trygt sikkerhetskopiert til Google Drive.
-                </Typography>
-              </Alert>
-
-              <MuiCard sx={{ mb:  2 }}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" sx={{  mb:  2  }}>
-                    Backup Sammendrag
-                  </Typography>
-
+              <Card variant="outlined" sx={theming.getThemedCardSx()}>
+                <CardContent>
                   <Grid container spacing={2}>
-                    <Grid item xs={6} >
-                      <Typography variant="body2" color="text.secondary">
-                        Totalt minnekort: </Typography>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>{selectedCards.length}</Typography>
+                    <Grid item xs={12} md={4}>
+                      <StatCard icon={<Storage color="primary" />} label="Kort" value={cards.length.toString()} />
                     </Grid>
-                    <Grid item xs={6} >
-                      <Typography variant="body2" color="text.secondary">
-                        Estimerte bilder: </Typography>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                        {selectedCards
-                          .reduce((sum, card) => sum + (card.estimatedPhotos || 0), 0)
-                          .toLocaleString()}
-                      </Typography>
+                    <Grid item xs={12} md={4}>
+                      <StatCard icon={<CheckCircle color="success" />} label="Ferdig" value={completedCount.toString()} />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <StatCard
+                        icon={allCompleted ? <CheckCircle color="success" /> : <Warning color="warning" />}
+                        label="Status"
+                        value={allCompleted ? 'Klar' : 'Pågår'}
+                      />
                     </Grid>
                   </Grid>
 
-                  <Divider sx={{ my:  2 }} />
+                  <Divider sx={{ my: 2 }} />
 
-                  <Typography variant="body2" color="text.secondary">
-                    Filer er organisert i Google Drive under: </Typography>
-                  {selectedCards.map((card) => (
-                    <Typography
-                      key={card.d}
-                      variant="body2"
-                      sx={{ fontFamily: 'monospace', mt:  1 }}
-                    >
-                      📁 uploads/raw/{card.cardLabel}_{card.capacity}/
-                    </Typography>
-                  ))}
+                  <List>
+                    {cards.map((card) => (
+                      <ListItem key={card.id}>
+                        <ListItemIcon>
+                          {card.backupStatus === 'completed' ? <CheckCircle color="success" /> : <Upload color="action" />}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={card.cardLabel}
+                          secondary={
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">
+                                {card.backupLocation ?? 'Ingen backup-lokasjon ennå'}
+                              </Typography>
+                              <LinearProgress
+                                variant="determinate"
+                                value={card.backupProgress}
+                                sx={{ mt: 0.5 }}
+                              />
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
                 </CardContent>
-              </MuiCard>
-
-              <Box sx={{ display: 'flex', gap:  2 }}>
-                <Button variant="contained" onClick={onClose} sx={theming.getThemedButtonSx()}>
-                  Lukk
-                </Button>
-                <Button variant="outlined" onClick={handleReset}>
-                  Start Ny Backup
-                </Button>
-              </Box>
+              </Card>
             </StepContent>
           </Step>
         </Stepper>
       </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Lukk</Button>
+        <Button
+          variant="outlined"
+          startIcon={<Folder />}
+          onClick={() => {
+            void queryClient.invalidateQueries({ queryKey: ['/api/memory-card/cards', sessionQuery.data?.sessionId] });
+          }}
+        >
+          Oppdater status
+        </Button>
+      </DialogActions>
     </Dialog>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}): JSX.Element {
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5 }}>
+      <Box display="flex" alignItems="center" gap={1}>
+        {icon}
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            {label}
+          </Typography>
+          <Typography variant="h6">{value}</Typography>
+        </Box>
+      </Box>
+    </Paper>
   );
 }

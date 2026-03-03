@@ -38,9 +38,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  List,
-  ListItemButton,
-  ListItemText,
   Tabs,
   Tab,
   Skeleton,
@@ -76,7 +73,7 @@ import {
   HelpOutline as HelpIcon,
   ViewTimeline as TimelineViewIcon,
   ViewKanban as PipelineViewIcon,
-  KeyboardCommandKey as CommandIcon,
+  Keyboard as KeyboardIcon,
   WarningAmber as WarningIcon,
   Share as ShareIcon,
   CompareArrows as CompareIcon,
@@ -123,6 +120,30 @@ const focusVisibleStyles = {
     outlineOffset: 2,
   },
 };
+
+const AUDITION_SHORTCUTS: Array<{
+  keys: string;
+  action: string;
+  scope: 'Alle visninger' | 'Pro view';
+}> = [
+  { keys: 'G', action: 'Åpne guide', scope: 'Alle visninger' },
+  { keys: '/', action: 'Fokuser søkefeltet', scope: 'Alle visninger' },
+  { keys: 'Ctrl/Cmd + N', action: 'Ny audition', scope: 'Alle visninger' },
+  { keys: 'Ctrl/Cmd + E', action: 'Eksporter filtrert CSV', scope: 'Alle visninger' },
+  { keys: 'Ctrl/Cmd + D', action: 'Dupliser fokusert rad', scope: 'Alle visninger' },
+  { keys: '↑ / ↓', action: 'Naviger mellom rader', scope: 'Alle visninger' },
+  { keys: 'Enter', action: 'Åpne detaljer for fokusert rad', scope: 'Alle visninger' },
+  { keys: 'Esc', action: 'Lukk drawer / fjern valg', scope: 'Alle visninger' },
+  { keys: '?', action: 'Åpne denne snarvei-dialogen', scope: 'Alle visninger' },
+  { keys: 'J / K', action: 'Naviger mellom auditions', scope: 'Pro view' },
+  { keys: 'E', action: 'Rediger valgt audition', scope: 'Pro view' },
+  { keys: 'F', action: 'Favoritt på/av for valgt audition', scope: 'Pro view' },
+  { keys: 'B', action: 'Sett status til Bekreftet', scope: 'Pro view' },
+  { keys: 'V', action: 'Sett status til Callback', scope: 'Pro view' },
+  { keys: 'A', action: 'Sett status til Planlagt', scope: 'Pro view' },
+  { keys: 'X', action: 'Sett status til Avbryt', scope: 'Pro view' },
+  { keys: 'Cmd/Ctrl + Enter', action: 'Sett status til Fullført', scope: 'Pro view' },
+];
 
 type SortField = ReducerSortField;
 type SortDirection = 'asc' | 'desc';
@@ -246,8 +267,6 @@ function AuditionSchedulePanelInner({
   const [proTimelineDate, setProTimelineDate] = useState<string>('');
   const [statusOverrides, setStatusOverrides] = useState<Record<string, Schedule['status']>>({});
   const [dragOverStatus, setDragOverStatus] = useState<Schedule['status'] | null>(null);
-  const [proCommandOpen, setProCommandOpen] = useState(false);
-  const [proCommandQuery, setProCommandQuery] = useState('');
   const [proCompareIds, setProCompareIds] = useState<Set<string>>(new Set());
   const [proSavedViews, setProSavedViews] = useState<ProSavedView[]>([]);
   const [selectedProViewId, setSelectedProViewId] = useState<string>('none');
@@ -263,6 +282,7 @@ function AuditionSchedulePanelInner({
   const [poolLoading, setPoolLoading] = useState(false);
   const [rowMenuAnchor, setRowMenuAnchor] = useState<{ el: HTMLElement; schedule: Schedule } | null>(null);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const { showSuccess, showError, showInfo } = useToast();
   const containerPadding = { xs: 1.5, sm: 2, md: 1.75, lg: 2, xl: 3 };
@@ -282,6 +302,21 @@ function AuditionSchedulePanelInner({
       : 'Planlegg auditions, callbacks og oppfølging';
   const proViewsStorageKey = `roleRoom:auditionProViews:${projectId}`;
   const proActivityStorageKey = `roleRoom:auditionProActivity:${projectId}`;
+
+  const blurActiveElement = useCallback(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  }, []);
+
+  const openGuideDialog = useCallback(() => {
+    blurActiveElement();
+    setGuideOpen(true);
+  }, [blurActiveElement]);
+
+  const openShortcutsDialog = useCallback(() => {
+    blurActiveElement();
+    setShortcutsOpen(true);
+  }, [blurActiveElement]);
 
   // Stable ref so the keyboard effect never becomes stale without re-subscribing
   const handleExportCSVRef = useRef<() => void>(() => {});
@@ -341,6 +376,18 @@ function AuditionSchedulePanelInner({
       if (isTyping) return;
 
       // Non-typing shortcuts
+      if (e.key === '?') {
+        e.preventDefault();
+        openShortcutsDialog();
+        return;
+      }
+
+      if (e.key === 'g' || e.key === 'G') {
+        e.preventDefault();
+        openGuideDialog();
+        return;
+      }
+
       if (e.key === '/') {
         e.preventDefault();
         searchInputRef.current?.focus();
@@ -396,7 +443,7 @@ function AuditionSchedulePanelInner({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onCreateSchedule, selectedIds.size]);
+  }, [onCreateSchedule, openGuideDialog, openShortcutsDialog, selectedIds.size]);
 
   // ── O(1) lookup maps — rebuilt only when the source arrays change ──────────
   const candidateById = useMemo(
@@ -1089,91 +1136,6 @@ function AuditionSchedulePanelInner({
     }
   }, [appendProActivity, bulkPlanDate, bulkPlanStart, getBulkPlanTimeSuggestions, onSchedulesChange, selectedIds, showError, showInfo, showSuccess, todayIsoDate, updateMutation]);
 
-  const proCommandActions = useMemo(() => {
-    const schedule = selectedProSchedule;
-    return [
-      {
-        id: 'new-schedule',
-        label: 'Ny avtale',
-        description: 'Opprett ny audition-avtale',
-        run: () => onCreateSchedule(),
-      },
-      {
-        id: 'status-confirmed',
-        label: 'Sett status: Bekreftet',
-        description: 'Marker valgt audition som bekreftet',
-        run: () => schedule ? void handleStatusChange(schedule.id, 'confirmed') : undefined,
-      },
-      {
-        id: 'status-callback',
-        label: 'Sett status: Callback',
-        description: 'Marker valgt audition for callback',
-        run: () => schedule ? void handleStatusChange(schedule.id, 'awaiting_callback') : undefined,
-      },
-      {
-        id: 'status-completed',
-        label: 'Sett status: Fullført',
-        description: 'Marker valgt audition som fullført',
-        run: () => schedule ? void handleStatusChange(schedule.id, 'completed') : undefined,
-      },
-      {
-        id: 'edit-selected',
-        label: 'Rediger valgt audition',
-        description: 'Åpne redigering for valgt audition',
-        run: () => schedule ? onEditSchedule(schedule) : undefined,
-      },
-      {
-        id: 'toggle-timeline',
-        label: proViewMode === 'pipeline' ? 'Bytt til timeline' : 'Bytt til pipeline',
-        description: 'Skift pro-view modus',
-        run: () => setProViewMode((prev) => (prev === 'pipeline' ? 'timeline' : 'pipeline')),
-      },
-      {
-        id: 'save-view',
-        label: 'Lagre pro-visning',
-        description: 'Lagrer nåværende sortering/filter',
-        run: () => handleSaveCurrentProView(),
-      },
-      {
-        id: 'share-view',
-        label: 'Kopier visningskode',
-        description: 'Del konfigurasjonen med teamet',
-        run: () => void handleShareCurrentView(),
-      },
-      {
-        id: 'import-view',
-        label: 'Importer visningskode',
-        description: 'Lim inn delt kode',
-        run: () => handleImportSharedView(),
-      },
-      {
-        id: 'bulk-plan',
-        label: 'Bulk-planlegg valgte',
-        description: 'Flytt alle valgte auditions',
-        run: () => void handleApplyBulkPlanning(),
-      },
-    ];
-  }, [
-    handleApplyBulkPlanning,
-    handleImportSharedView,
-    handleSaveCurrentProView,
-    handleShareCurrentView,
-    handleStatusChange,
-    onCreateSchedule,
-    onEditSchedule,
-    proViewMode,
-    selectedProSchedule,
-  ]);
-
-  const filteredProCommandActions = useMemo(() => {
-    const query = proCommandQuery.trim().toLowerCase();
-    if (!query) return proCommandActions;
-    return proCommandActions.filter((action) => (
-      action.label.toLowerCase().includes(query)
-      || action.description.toLowerCase().includes(query)
-    ));
-  }, [proCommandActions, proCommandQuery]);
-
   useEffect(() => {
     if (workspaceView !== 'pro') return;
     if (proSchedules.length === 0) {
@@ -1198,22 +1160,12 @@ function AuditionSchedulePanelInner({
     if (workspaceView !== 'pro') return;
 
     const handleProKeyboard = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setProCommandOpen((prev) => !prev);
-        return;
-      }
       const target = event.target as HTMLElement | null;
       const isTextInput = !!target && (
         target.tagName === 'INPUT'
         || target.tagName === 'TEXTAREA'
         || target.getAttribute('contenteditable') === 'true'
       );
-      if (event.key === 'Escape' && proCommandOpen) {
-        event.preventDefault();
-        setProCommandOpen(false);
-        return;
-      }
       if (isTextInput || proSchedules.length === 0) return;
 
       const currentIndex = proSchedules.findIndex((schedule) => schedule.id === selectedProSchedule?.id);
@@ -1269,7 +1221,7 @@ function AuditionSchedulePanelInner({
 
     window.addEventListener('keydown', handleProKeyboard);
     return () => window.removeEventListener('keydown', handleProKeyboard);
-  }, [handleStatusChange, onEditSchedule, proCommandOpen, proSchedules, selectedProSchedule, toggleFavorite, workspaceView]);
+  }, [handleStatusChange, onEditSchedule, proSchedules, selectedProSchedule, toggleFavorite, workspaceView]);
 
   const handleDeleteWithUndo = async (schedule: Schedule) => {
     setLastDeleted(schedule);
@@ -1762,14 +1714,32 @@ function AuditionSchedulePanelInner({
           </Box>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Tooltip title="Åpne guide">
-            <IconButton
-              onClick={() => setGuideOpen(true)}
+          <Tooltip title="Åpne guide (G)">
+            <Button
+              variant="outlined"
               size="small"
-              sx={{ color: roleTextMuted, '&:hover': { color: roleTabAccent } }}
+              startIcon={<HelpIcon sx={{ fontSize: 16 }} />}
+              onClick={openGuideDialog}
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                borderColor: roleBorder,
+                color: roleText,
+                '&:hover': { borderColor: roleTabAccent, bgcolor: roleTabAccentSoft },
+                ...focusVisibleStyles,
+              }}
               aria-label="Åpne audition-guide"
             >
-              <HelpIcon />
+              Guide
+            </Button>
+          </Tooltip>
+          <Tooltip title="Tastatursnarveier (?)">
+            <IconButton
+              onClick={openShortcutsDialog}
+              size="small"
+              sx={{ color: roleTextMuted, '&:hover': { color: roleTabAccent } }}
+              aria-label="Åpne audition-snarveier"
+            >
+              <KeyboardIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title="Eksporter (Ctrl+E)">
@@ -2044,16 +2014,6 @@ function AuditionSchedulePanelInner({
             }}
           />
           <Chip
-            label="J/K naviger • E rediger • F favoritt • B bekreft • V callback • A planlagt • X avbryt • Cmd+Enter fullført"
-            sx={{
-              color: roleTextMuted,
-              bgcolor: 'rgba(255,255,255,0.04)',
-              border: `1px solid ${roleBorder}`,
-              maxWidth: '100%',
-              fontWeight: 500,
-            }}
-          />
-          <Chip
             label={`Konflikter: ${conflictMetrics.total}${conflictMetrics.critical > 0 ? ` (${conflictMetrics.critical} kritiske)` : ''}`}
             sx={{
               color: conflictMetrics.critical > 0 ? '#ffb4b4' : roleTextMuted,
@@ -2141,15 +2101,6 @@ function AuditionSchedulePanelInner({
             }}
           >
             Timeline
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            onClick={() => setProCommandOpen(true)}
-            startIcon={<CommandIcon sx={{ fontSize: 16 }} />}
-            sx={{ minHeight: 38, color: roleText, borderColor: roleBorder }}
-          >
-            Kommando
           </Button>
           <FormControl size="small" sx={{ minWidth: 165 }}>
             <Select
@@ -2597,9 +2548,9 @@ function AuditionSchedulePanelInner({
                   Notater
                 </Typography>
                 {selectedProSchedule.notes ? (
-                  <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
+                  <Box sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
                     {renderFormattedNotes(selectedProSchedule.notes)}
-                  </Typography>
+                  </Box>
                 ) : (
                   <Typography sx={{ color: roleTextMuted, fontSize: '0.82rem' }}>
                     Ingen notater lagt inn.
@@ -4051,10 +4002,10 @@ function AuditionSchedulePanelInner({
       />
 
       <Dialog
-        open={proCommandOpen}
-        onClose={() => setProCommandOpen(false)}
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
         fullWidth
-        maxWidth="sm"
+        maxWidth="md"
         PaperProps={{
           sx: {
             bgcolor: roleSurface,
@@ -4064,60 +4015,62 @@ function AuditionSchedulePanelInner({
         }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CommandIcon sx={{ color: roleTabAccent }} />
-          Kommandoer
+          <KeyboardIcon sx={{ color: roleTabAccent }} />
+          Audition-snarveier
         </DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
-          <TextField
-            autoFocus
-            fullWidth
-            size="small"
-            placeholder="Søk kommando..."
-            value={proCommandQuery}
-            onChange={(event) => setProCommandQuery(event.target.value)}
-            sx={{
-              mb: 1.25,
-              '& .MuiOutlinedInput-root': {
-                color: roleText,
-                bgcolor: roleSurfaceMuted,
-                '& fieldset': { borderColor: roleBorder },
-                '&:hover fieldset': { borderColor: roleTabAccentSoft },
-                '&.Mui-focused fieldset': { borderColor: roleTabAccent },
-              },
-            }}
-          />
-          <List dense sx={{ maxHeight: 360, overflowY: 'auto' }}>
-            {filteredProCommandActions.map((action) => (
-              <ListItemButton
-                key={action.id}
-                onClick={() => {
-                  action.run();
-                  setProCommandOpen(false);
-                  setProCommandQuery('');
-                }}
+          <Typography sx={{ color: roleTextMuted, fontSize: '0.86rem', mb: 1.25 }}>
+            Alle snarveier i audition-panelet. J/K/E/F/B/V/A/X + Cmd/Ctrl+Enter gjelder i Pro view.
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            {AUDITION_SHORTCUTS.map((shortcut) => (
+              <Box
+                key={`${shortcut.scope}-${shortcut.keys}`}
                 sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: '220px 1fr 120px' },
+                  gap: 0.75,
+                  alignItems: 'center',
+                  p: 0.75,
                   borderRadius: 1,
-                  mb: 0.5,
                   border: `1px solid ${roleBorder}`,
                   bgcolor: roleSurfaceMuted,
-                  '&:hover': { borderColor: roleTabAccentSoft, bgcolor: 'rgba(184,107,255,0.1)' },
                 }}
               >
-                <ListItemText
-                  primary={action.label}
-                  secondary={action.description}
-                  primaryTypographyProps={{ sx: { color: roleText, fontWeight: 700, fontSize: '0.86rem' } }}
-                  secondaryTypographyProps={{ sx: { color: roleTextMuted, fontSize: '0.76rem' } }}
+                <Chip
+                  size="small"
+                  label={shortcut.keys}
+                  sx={{
+                    justifySelf: { xs: 'start', md: 'stretch' },
+                    color: '#ffffff',
+                    bgcolor: 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${roleBorder}`,
+                    fontWeight: 700,
+                    '& .MuiChip-label': { px: 1 },
+                  }}
                 />
-              </ListItemButton>
+                <Typography sx={{ color: roleText, fontSize: '0.84rem' }}>
+                  {shortcut.action}
+                </Typography>
+                <Chip
+                  size="small"
+                  label={shortcut.scope}
+                  sx={{
+                    justifySelf: { xs: 'start', md: 'end' },
+                    color: shortcut.scope === 'Pro view' ? roleTabAccent : roleTextMuted,
+                    bgcolor: shortcut.scope === 'Pro view' ? roleTabAccentSoft : 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${roleBorder}`,
+                    fontWeight: 600,
+                  }}
+                />
+              </Box>
             ))}
-            {filteredProCommandActions.length === 0 && (
-              <Typography sx={{ color: roleTextMuted, p: 1 }}>Ingen treff.</Typography>
-            )}
-          </List>
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setProCommandOpen(false)} sx={{ color: roleTextMuted }}>Lukk</Button>
+          <Button onClick={() => setShortcutsOpen(false)} sx={{ color: roleTextMuted }}>
+            Lukk
+          </Button>
         </DialogActions>
       </Dialog>
 

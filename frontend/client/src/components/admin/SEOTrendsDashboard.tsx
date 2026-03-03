@@ -5,9 +5,6 @@
 
 import { useTheming } from '../../utils/theming-helper';
 import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import {
   Box,
   Card,
@@ -16,7 +13,6 @@ import {
   Button,
   Grid,
   Chip,
-  LinearProgress,
   Alert,
   Snackbar,
   Tabs,
@@ -25,10 +21,6 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  IconButton,
-  Tooltip,
-  Badge,
-  Divider,
   Paper,
   Stack,
   CircularProgress,
@@ -38,19 +30,14 @@ import {
   Search,
   AutoFixHigh,
   CheckCircle,
-  Warning,
-  Info,
-  Refresh,
-  Analytics,
-  Timeline,
   LocationOn,
   Schedule,
-  Star,
+  Refresh,
   TrendingDown,
   TrendingFlat,
 } from '@mui/icons-material';
 import { creatorHubSEOFixService, CreatorHubSEOSuggestion } from '@/services/CreatorHubSEOFixService';
-import { googleTrendsService, GoogleTrendsData, TrendsInsight } from '@/services/GoogleTrendsService';
+import { googleTrendsService, TrendsInsight } from '@/services/GoogleTrendsService';
 import { googleAnalyticsService } from '@/services/GoogleAnalyticsService';
 
 interface TabPanelProps {
@@ -79,7 +66,6 @@ export default function SEOTrendsDashboard() {
 
   // Theming system
   const theming = useTheming('prototype_tester');
-  const { auth } = useEnhancedMasterIntegration();
   const [profession, setProfession] = useState<'photographer' | 'videographer' | 'music-producer' | 'vendor'>('photographer');
   const [region, setRegion] = useState<'norway' | 'oslo' | 'bergen' | 'trondheim' | 'stavanger'>('norway');
   const [suggestions, setSuggestions] = useState<CreatorHubSEOSuggestion[]>([]);
@@ -98,7 +84,7 @@ export default function SEOTrendsDashboard() {
     setIsLoading(true);
     try {
       // Track trends dashboard view
-      googleAnalyticsService.trackEvent('seo_trends_dashboard_viewed,', {
+      googleAnalyticsService.trackEvent('seo_trends_dashboard_viewed', {
         profession,
         region,
         timestamp: new Date().toISOString(),
@@ -210,7 +196,7 @@ export default function SEOTrendsDashboard() {
                     onClick={() => setRegion(reg)}
                     color={region === reg ? 'secondary' : 'default'}
                     variant={region === reg ? 'filled' : 'outlined'}
-                    icon={theming.getThemedIcon('location')}}
+                    icon={<LocationOn fontSize="small" />}
                   />
                 ))}
               </Stack>
@@ -221,11 +207,11 @@ export default function SEOTrendsDashboard() {
 
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="Trending Keywords" icon={theming.getThemedIcon('trendingUp')}} />
-          <Tab label="SEO Suggestions" icon={theming.getThemedIcon('autoFixHigh')}} />
-          <Tab label="Regional Insights" icon={theming.getThemedIcon('location')}} />
-          <Tab label="Seasonal Opportunities" icon={theming.getThemedIcon('schedule')}} />
+        <Tabs value={activeTab} onChange={(_event, newValue) => setActiveTab(newValue)}>
+          <Tab label="Trending Keywords" icon={<TrendingUp />} />
+          <Tab label="SEO Suggestions" icon={<AutoFixHigh />} />
+          <Tab label="Regional Insights" icon={<LocationOn />} />
+          <Tab label="Seasonal Opportunities" icon={<Schedule />} />
         </Tabs>
       </Box>
 
@@ -255,7 +241,7 @@ export default function SEOTrendsDashboard() {
                       <Chip
                         label={`${keyword.searchVolume} searches`}
                         size="small"
-                        icon={theming.getThemedIcon('search')}}
+                        icon={<Search fontSize="small" />}
                       />
                       <Chip
                         label={keyword.opportunity}
@@ -269,7 +255,7 @@ export default function SEOTrendsDashboard() {
                       />
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                      Related: {keyword.relatedKeywords.join('')}
+                      Related: {keyword.relatedKeywords.join(', ')}
                     </Typography>
                     {keyword.seasonality.peakMonths.length > 0 && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
@@ -299,7 +285,7 @@ export default function SEOTrendsDashboard() {
                 🎯 SEO Suggestions with Google Trends Data
               </Typography>
               <Button variant="contained"
-                startIcon={theming.getThemedIcon('autoFixHigh')}
+                startIcon={<AutoFixHigh />}
                 onClick={handleApplyAllFixes}
                 disabled={isApplyingFixes}
                 color="success"
@@ -309,7 +295,7 @@ export default function SEOTrendsDashboard() {
             </Box>
 
             {suggestions.map((suggestion, index) => (
-              <Card key={index}, sx={{ mb:  2 ,  ...theming.getThemedCardSx() }}>
+              <Card key={index} sx={{ mb:  2 ,  ...theming.getThemedCardSx() }}>
                 <CardContent sx={theming.getThemedCardSx()}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb:  2 }}>
                     <Box>
@@ -337,7 +323,7 @@ export default function SEOTrendsDashboard() {
                         <Chip
                           label={`${suggestion.trendsInsights.searchVolume} total searches`}
                           size="small"
-                          icon={theming.getThemedIcon('search')}}
+                          icon={<Search fontSize="small" />}
                         />
                         <Chip
                           label={`Trend: ${suggestion.trendsInsights.trend}`}
@@ -352,7 +338,7 @@ export default function SEOTrendsDashboard() {
                         <Chip
                           label={suggestion.trendsInsights.seasonality}
                           size="small"
-                          icon={theming.getThemedIcon('schedule')}}
+                          icon={<Schedule fontSize="small" />}
                         />
                       </Box>
                     </Paper>
@@ -479,7 +465,7 @@ export default function SEOTrendsDashboard() {
             Last updated: {lastUpdate.toLocaleString()}
           </Typography>
           <Button
-            startIcon={theming.getThemedIcon('refresh')}
+            startIcon={<Refresh />}
             onClick={loadTrendsData}
             disabled={isLoading}
             size="small"

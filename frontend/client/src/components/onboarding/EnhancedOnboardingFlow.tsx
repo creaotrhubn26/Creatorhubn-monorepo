@@ -1,44 +1,32 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Typography,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Button,
-  Paper,
-  Grid,
   Alert,
+  Box,
+  Button,
   Chip,
-  Divider,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Card as MuiCard,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  Paper,
+  Step,
+  StepContent,
+  StepLabel,
+  Stepper,
+  Typography,
 } from '@mui/material';
 import {
-  PersonAdd,
-  PhotoCamera as PhotoCameraAlt,
-  Edit,
-  CheckCircle,
   CameraAlt,
-  Videocam as Videocamcam,
-  Memory,
+  CheckCircle,
+  Edit,
   Keyboard,
-  Launch,
+  Memory,
+  Videocam,
 } from '@mui/icons-material';
 import { CameraSelectionStep } from './CameraSelectionStep';
-import { KeyboardShortcutsInterface } from '../keyboard-shortcuts/KeyboardShortcutsInterface';
 import type { CameraSearchResult } from '@shared/camera-database-schema';
-
-// Import dynamic profession system
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
 interface OnboardingData {
   profession: string;
@@ -49,17 +37,24 @@ interface OnboardingData {
     name?: string;
     businessName?: string;
     email?: string;
-};
+  };
 }
 
 interface EnhancedOnboardingFlowProps {
   profession: string;
-  onComplete: (data: OnboardingData) => void
+  onComplete: (data: OnboardingData) => void;
 }
 
-// Dynamic editing software options based on profession type
-function getEditingSoftwareOptions(profession: string) {
-  const baseOptions = [{ id: 'other', name: 'Annet', popular: false }];
+type EditingSoftwareOption = {
+  id: string;
+  name: string;
+  popular: boolean;
+};
+
+const STEP_LABELS = ['Kameraoppsett', 'Redigeringsprogram', 'Oppsummering'];
+
+function getEditingSoftwareOptions(profession: string): EditingSoftwareOption[] {
+  const baseOptions: EditingSoftwareOption[] = [{ id: 'other', name: 'Annet', popular: false }];
 
   switch (profession) {
     case 'photographer':
@@ -68,12 +63,9 @@ function getEditingSoftwareOptions(profession: string) {
         { id: 'lightroom', name: 'Adobe Lightroom', popular: true },
         { id: 'capture-one', name: 'Capture One', popular: true },
         { id: 'photoshop', name: 'Adobe Photoshop', popular: false },
-        { id: 'luminar', name: 'Luminar Intelligent/Neo', popular: false },
-        { id: 'on', name: 'ON1 Photo RA', popular: false },
-        { id: 'skylum', name: 'Skylum', popular: false },
+        { id: 'luminar', name: 'Luminar Neo', popular: false },
         ...baseOptions,
       ];
-
     case 'videographer':
     case 'videograf':
       return [
@@ -81,146 +73,149 @@ function getEditingSoftwareOptions(profession: string) {
         { id: 'premiere', name: 'Adobe Premiere Pro', popular: true },
         { id: 'final-cut', name: 'Final Cut Pro', popular: true },
         { id: 'avid', name: 'Avid Media Composer', popular: false },
-        { id: 'kdenlive', name: 'Kdenlive', popular: false },
-        { id: 'filmora', name: 'Wondershare Filmora', popular: false },
         ...baseOptions,
       ];
-
     case 'music_producer':
     case 'musikkprodusent':
       return [
         { id: 'logic-pro', name: 'Logic Pro', popular: true },
         { id: 'pro-tools', name: 'Pro Tools', popular: true },
-        { id: 'cubase', name: 'Cubase', popular: true },
         { id: 'ableton', name: 'Ableton Live', popular: true },
-        { id: 'studio-one', name: 'Studio One', popular: false },
-        { id: 'reaper', name: 'REAPE', popular: false },
+        { id: 'cubase', name: 'Cubase', popular: false },
         ...baseOptions,
       ];
-
     case 'vendor':
     case 'leverandør':
       return [
-        {
-          id: 'inventory-management',
-          name: 'Lagerstyringssystem',
-          popular: true,
-      },
-        { id: 'accounting-software', name: 'Regnskapsprogram', popular: true },
+        { id: 'inventory-management', name: 'Lagerstyring', popular: true },
+        { id: 'accounting-software', name: 'Regnskapssystem', popular: true },
         { id: 'crm-system', name: 'CRM-system', popular: false },
         ...baseOptions,
       ];
-
-    case 'enterprise':
-      return [
-        { id: 'lightroom', name: 'Adobe Lightroom', popular: true },
-        { id: 'capture-one', name: 'Capture One', popular: true },
-        { id: 'davinci', name: 'DaVinci Resolve', popular: true },
-        { id: 'premiere', name: 'Adobe Premiere Pro', popular: true },
-        { id: 'final-cut', name: 'Final Cut Pro', popular: false },
-        { id: 'photoshop', name: 'Adobe Photoshop', popular: false },
-        { id: 'after-effects', name: 'Adobe After Effects', popular: false },
-        ...baseOptions,
-      ];
-
-    default: return baseOptions;
-}
+    default:
+      return baseOptions;
+  }
 }
 
-export function EnhancedOnboardingFlow({ profession, onComplete }: EnhancedOnboardingFlowProps) {
-  const [activeStep, setActiveStep] = useState(false);
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession);
+function professionDisplayName(profession: string): string {
+  switch (profession) {
+    case 'photographer':
+    case 'fotograf':
+      return 'Fotograf';
+    case 'videographer':
+    case 'videograf':
+      return 'Videograf';
+    case 'music_producer':
+    case 'musikkprodusent':
+      return 'Musikkprodusent';
+    case 'vendor':
+    case 'leverandør':
+      return 'Leverandør';
+    default:
+      return profession;
+  }
+}
 
-  // Use dynamic profession system
-  const {
-    professionConfigs,
-    isLoading: professionsLoading,
-    error: professionsError,
-    getProfessionDisplayName,
-  } = useDynamicProfessions();
+function shortcutExamples(softwareId: string): string[] {
+  if (softwareId === 'davinci') {
+    return ['I/O: Mark In/Out', 'B: Blade tool', 'Shift+Z: Fit timeline'];
+  }
+  if (softwareId === 'premiere') {
+    return ['I/O: Mark In/Out', 'C: Razor', 'V: Selection'];
+  }
+  if (softwareId === 'final-cut') {
+    return ['I/O: Mark In/Out', 'B: Blade', 'P: Position tool'];
+  }
+  if (softwareId === 'lightroom') {
+    return ['D: Develop', 'R: Crop', 'G: Grid'];
+  }
+  return ['I/O: Mark In/Out', 'Cmd/Ctrl+S: Save', 'Space: Play/Pause'];
+}
+
+export function EnhancedOnboardingFlow({
+  profession,
+  onComplete,
+}: EnhancedOnboardingFlowProps) {
+  const [activeStep, setActiveStep] = useState(0);
+  const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
+
   const [onboardingData, setOnboardingData] = useState<OnboardingData>({
     profession,
-    selectedCameras:  [],
+    selectedCameras: [],
     editingSoftware: '',
     editingSoftwareId: '',
-    userInfo:  , {},
-});
+    userInfo: {},
+  });
 
-  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const softwareOptions = useMemo(() => getEditingSoftwareOptions(profession), [profession]);
 
-  // Mock data removed - using database connection
+  const popularSoftware = useMemo(
+    () => softwareOptions.filter((option) => option.popular),
+    [softwareOptions],
+  );
 
-  const handleCamerasSelected = (cameras: CameraSearchResult[]) => {
-    setOnboardingData((prev) => ({
-      ...prev,
-      selectedCameras: cameras,
-  }));
-};
+  const otherSoftware = useMemo(
+    () => softwareOptions.filter((option) => !option.popular),
+    [softwareOptions],
+  );
 
-  const handleEditingSoftwareSelect = (softwareId: string) => {
-    const softwareOptions = getEditingSoftwareOptions(profession);
-    const software = softwareOptions.find((s) => s.id === softwareId);
-    setOnboardingData((prev) => ({
-      ...prev,
-      editingSoftware: software?.name || softwared,
-      editingSoftwareId: softwared,
-  }));
-};
+  const canProceedFromStep = (step: number): boolean => {
+    if (step === 0) {
+      return onboardingData.selectedCameras.length > 0;
+    }
 
-  const handleComplete = () => {
+    if (step === 1) {
+      return onboardingData.editingSoftwareId.length > 0;
+    }
+
+    return true;
+  };
+
+  const handleSoftwareSelect = (softwareId: string) => {
+    const option = softwareOptions.find((candidate) => candidate.id === softwareId);
+    if (!option) {
+      return;
+    }
+
+    setOnboardingData((previous) => ({
+      ...previous,
+      editingSoftware: option.name,
+      editingSoftwareId: option.id,
+    }));
+  };
+
+  const handleFinish = () => {
     onComplete(onboardingData);
-};
+  };
 
-  const canProceedFromStep = (stepIndex: number) => {
-    switch (stepIndex) {
-      case 0:
-        return onboardingData.selectedCameras.length > 0;
-      case 1:
-        return onboardingData.editingSoftware !== '';
-      case 2:
-        return true;
-      default:
-        return false;
-}
-};
+  const shortcuts = shortcutExamples(onboardingData.editingSoftwareId);
 
   return (
-    <Box sx={{ maxWidth: 80, mx: 'auto', p:  3 }}>
-      <Typography variant="h4" gutterBottom sx={{  textAlign: 'center', mb:  4  }}>
-        Tilpass CreatorHub for {getProfessionDisplayName(profession).toLowerCase()} tjenester
+    <Box sx={{ maxWidth: 980, mx: 'auto', p: 3 }}>
+      <Typography variant="h4" gutterBottom sx={{ textAlign: 'center', mb: 1.5 }}>
+        Onboarding for {professionDisplayName(profession)}
+      </Typography>
+      <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mb: 4 }}>
+        Sett opp kameraer, verktøy og arbeidsflyt før første prosjekt.
       </Typography>
 
       <Stepper activeStep={activeStep} orientation="vertical">
-        {/* Step 1: Camera Selection , *, /}
         <Step>
-          <StepLabel
-            icon={steps[0].icon}
-            sx={{
-              '& .MuiStepLabel-label': {
-                fontWeight: ctiveStep === 0 ? 'bold' : 'normal',
-                fontSize: '1.1rem',
-            }}}
-          >
-            {steps[0].label}
-          </StepLabel>
+          <StepLabel icon={<CameraAlt color="primary" />}>{STEP_LABELS[0]}</StepLabel>
           <StepContent>
-            <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-              {steps[0].description}
-            </Typography>
-
             <CameraSelectionStep
               profession={profession}
               selectedCameras={onboardingData.selectedCameras}
-              onCamerasSelected={handleCamerasSelected}
+              onCamerasSelected={(selectedCameras) =>
+                setOnboardingData((previous) => ({ ...previous, selectedCameras }))
+              }
             />
 
-            <Box sx={{ mt:  3 }}>
-              <Button variant="contained"
+            <Box sx={{ mt: 2.5 }}>
+              <Button
+                variant="contained"
                 onClick={() => setActiveStep(1)}
                 disabled={!canProceedFromStep(0)}
-                sx={{ mr:  1 }}
               >
                 Neste: Redigeringsprogram
               </Button>
@@ -228,329 +223,130 @@ export function EnhancedOnboardingFlow({ profession, onComplete }: EnhancedOnboa
           </StepContent>
         </Step>
 
-        {/* Step 2: Editing Software , *, /}
         <Step>
-          <StepLabel
-            icon={steps[1].icon}
-            sx={{
-              '& .MuiStepLabel-label': {
-                fontWeight: ctiveStep === 1 ? 'bold' : 'normal',
-                fontSize: '1.1rem',
-            }}}
-          >
-            {steps[1].label}
-          </StepLabel>
+          <StepLabel icon={<Edit color="primary" />}>{STEP_LABELS[1]}</StepLabel>
           <StepContent>
-            <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-              {steps[1].description}
-            </Typography>
-
-            <Paper sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Populære valg for {profession === 'photographer' ? 'fotografer' : 'videografer'}:
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+                Anbefalte valg
               </Typography>
+              <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                {popularSoftware.map((option) => {
+                  const isSelected = onboardingData.editingSoftwareId === option.id;
 
-              <Grid container spacing={2} sx={{ mb:  3 }}>
-                {getEditingSoftwareOptions(profession)
-                  .filter((software) => software.popular)
-                  .map((software) => (
-                    <Grid item xs={12} sm={6} md={4} key={software.id}>
-                      <Paper
-                        sx={{
-                          p:  2,
-                          cursor: 'pointer',
-                          textAlign: 'center',
-                          transition: 'all 0.2s ease',
-                          backgroundColor: onboardingData.editingSoftware === software.name
-                              ? 'primary.light'
-                              : 'background.paper',
-                          color: onboardingData.editingSoftware === software.name
-                              ? 'primary.contrastText'
-                              : 'text.primary','&:hover': {
-                            transform: 'translateY(-2px)',
-                            boxShadow:  4,
-                        }}}
-                        onClick={() => handleEditingSoftwareSelect(software.id)}
+                  return (
+                    <Grid item xs={12} md={6} key={option.id}>
+                      <Button
+                        fullWidth
+                        variant={isSelected ? 'contained' : 'outlined'}
+                        onClick={() => handleSoftwareSelect(option.id)}
                       >
-                        <Typography variant="h6" sx={{  fontWeight: 'bold' }}>
-                          {software.name}
-                        </Typography>
-                        <Chip label="Populær" size="small" color="success" sx={{ mt:  1 }} />
-                      </Paper>
+                        {option.name}
+                      </Button>
                     </Grid>
-                  ))}
+                  );
+                })}
               </Grid>
 
-              <Divider sx={{ my:  2 }} />
+              <Divider sx={{ my: 2 }} />
 
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Andre alternativer: </Typography>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                Andre alternativer
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {otherSoftware.map((option) => {
+                  const isSelected = onboardingData.editingSoftwareId === option.id;
 
-              <Grid container spacing={1}>
-                {getEditingSoftwareOptions(profession)
-                  .filter((software) => !software.popular)
-                  .map((software) => (
-                    <Grid item key={software.id}>
-                      <Chip
-                        label={software.name}
-                        variant={
-                          onboardingData.editingSoftware === software.name ? 'filled' : 'outlined'
-                      }
-                        color={
-                          onboardingData.editingSoftware === software.name ? 'primary' : 'default'
-                      }
-                        onClick={() => handleEditingSoftwareSelect(software.id)}
-                        sx={{ cursor: 'pointer'}}
-                      />
-                    </Grid>
-                  ))}
-              </Grid>
+                  return (
+                    <Chip
+                      key={option.id}
+                      label={option.name}
+                      color={isSelected ? 'primary' : 'default'}
+                      variant={isSelected ? 'filled' : 'outlined'}
+                      onClick={() => handleSoftwareSelect(option.id)}
+                      clickable
+                    />
+                  );
+                })}
+              </Box>
 
-              {/* Keyboard Shortcuts Preview */}
               {onboardingData.editingSoftwareId && (
-                <Paper sx={{ p:  3, mt:  3, bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      mb:  2}}
-                  >
-                    <Typography variant="h6" sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-                      <Keyboard color="primary" />
-                      Hurtigtaster for {onboardingData.editingSoftware}
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      onClick={() => setShowKeyboardShortcuts(true)}
-                      startIcon={theming.getThemedIcon('launch')}
-                    >
-                      Se alle hurtigtaster
-                    </Button>
-                  </Box>
-
-                  <Alert severity="info" sx={{ mb:  2 }}>
-                    <Typography variant="body2">
-                      <strong>Produktivitetsforbedring: </strong> CreatorHub Norge inkluderer et
-                      intelligent hurtigtast-system som automatisk oppdateres fra programvarens
-                      offisielle dokumentasjon. Lett søkbar med tydelig Mac/PC-skille.
-                    </Typography>
-                  </Alert>
-
-                  <Grid container spacing={2}>
-                    {/* Sample essential shortcuts preview */}
-                    <Grid item xs={12} sm={6} md={4}>
-                      <MuiCard variant="outlined" sx={{ textAlign: 'center', p:  2 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Eksempel hurtigtast: </Typography>
-                        <Chip
-                          label="⌘ / Ctrl + E"
-                          variant="outlined"
-                          sx={{
-                            fontFamily: 'monospace',
-                            fontWeight: 'bold',
-                            mb:  1}}
-                        />
-                        <Typography variant="caption" display="block">
-                          Eksporter {profession === 'photographer' ? 'bilder' : profession === 'videographer' ? 'video' : 'innhold'}
-                        </Typography>
-                      </MuiCard>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={4}>
-                      <MuiCard variant="outlined" sx={{ textAlign: 'center', p:  2 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Auto-oppdatering: </Typography>
-                        <Chip label="✓ Aktivert" color="success" size="small" sx={{ mb: 1 }} />
-                        <Typography variant="caption" display="block">
-                          Fra offisiell dokumentasjon
-                        </Typography>
-                      </MuiCard>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={4}>
-                      <MuiCard variant="outlined" sx={{ textAlign: 'center', p:  2 }}>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          Platform-tilpasset: </Typography>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            gap:  1,
-                            justifyContent: 'center',
-                            mb:  1}}
-                        >
-                          <Chip label="Mac" size="small" variant="outlined" />
-                          <Chip label="PC" size="small" variant="outlined" />
-                        </Box>
-                        <Typography variant="caption" display="block">
-                          Automatisk deteksjon
-                        </Typography>
-                      </MuiCard>
-                    </Grid>
-                  </Grid>
-                </Paper>
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Hurtigtastprofil for <strong>{onboardingData.editingSoftware}</strong> er aktivert.
+                </Alert>
               )}
             </Paper>
 
-            <Box sx={{ mt:  3 }}>
-              <Button variant="contained"
+            <Box sx={{ mt: 2.5, display: 'flex', gap: 1 }}>
+              <Button
+                variant="contained"
                 onClick={() => setActiveStep(2)}
                 disabled={!canProceedFromStep(1)}
-                sx={{ mr:  1 }}
               >
-                Neste: Fullfør oppsett
+                Neste: Oppsummering
               </Button>
-              <Button onClick={() => setActiveStep()}>Tilbake</Button>
+              <Button onClick={() => setActiveStep(0)}>Tilbake</Button>
+              <Button
+                variant="outlined"
+                startIcon={<Keyboard />}
+                onClick={() => setShowShortcutsDialog(true)}
+                disabled={!onboardingData.editingSoftwareId}
+              >
+                Vis hurtigtaster
+              </Button>
             </Box>
           </StepContent>
         </Step>
 
-        {/* Step 3: Complete Setup , *, /}
         <Step>
-          <StepLabel
-            icon={steps[2].icon}
-            sx={{
-              '& .MuiStepLabel-label': {
-                fontWeight: ctiveStep === 2 ? 'bold' : 'normal',
-                fontSize: '1.1rem',
-            }}}
-          >
-            {steps[2].label}
-          </StepLabel>
+          <StepLabel icon={<CheckCircle color="success" />}>{STEP_LABELS[2]}</StepLabel>
           <StepContent>
-            <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-              {steps[2].description}
-            </Typography>
+            <Paper variant="outlined" sx={{ p: 2.5 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Oppsummering
+              </Typography>
 
-            <Paper sx={{ p:  3, bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Ditt oppsett: </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Videocam fontSize="small" color="primary" />
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  {onboardingData.selectedCameras.length} kamera valgt
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2.5 }}>
+                {onboardingData.selectedCameras.map((camera) => (
+                  <Chip key={camera.id} label={camera.fullName} variant="outlined" />
+                ))}
+              </Box>
 
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="h6"
-                    sx={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap:  1,
-                      mb:  2 }}>
-                    {profession === 'photographer' ? (
-                      <CameraAlt color="primary" />
-                    ) : (
-                      <Videocam color="primary" />
-                    )}
-                    Kameraer ({onboardingData.selectedCameras.length})
-                  </Typography>
-                  {onboardingData.selectedCameras.map((camera) => (
-                    <Box key={camera.id} sx={{ mb:  2 }}>
-                      <Typography variant="body1" sx={{ fontWeight: 'bold'}}>
-                        {camera.fullName}
-                      </Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                        {camera.supportedMemoryCardTypes.map((cardType) => (
-                          <Chip
-                            key={cardType}
-                            label={cardType}
-                            size="small"
-                            icon={<Memory />}
-                            variant="outlined"
-                          />
-                        ))}
-                      </Box>
-                    </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Edit fontSize="small" color="primary" />
+                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                  {onboardingData.editingSoftware || 'Ikke valgt'}
+                </Typography>
+              </Box>
+
+              {onboardingData.selectedCameras.length > 0 && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2.5 }}>
+                  {onboardingData.selectedCameras[0].supportedMemoryCardTypes.map((cardType) => (
+                    <Chip
+                      key={cardType}
+                      icon={<Memory fontSize="small" />}
+                      label={cardType}
+                      size="small"
+                      variant="outlined"
+                    />
                   ))}
-                </Grid>
+                </Box>
+              )}
 
-                <Grid item xs={12} md={6}>
-                  <Typography variant="h6"
-                    sx={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap:  1,
-                      mb:  2 }}>
-                    <Edit color="primary" />
-                    Redigeringsprogram
-                  </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 'bold'}}>
-                    {onboardingData.editingSoftware}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt:  1 }}>
-                    Projektmapper vil automatisk inkludere mapper for{', '}
-                    {onboardingData.editingSoftware}
-                  </Typography>
-                </Grid>
-              </Grid>
-
-              <Alert severity="success" sx={{ mt:  3 }}>
-                <Typography variant="body2">
-                  <strong>Klart for oppstart!</strong>
-                  <br />
-                  Minnekort-ikonene og projektmapper vil automatisk tilpasses dine valgte kameraer
-                  og redigeringsprogram.
-                </Typography>
+              <Alert severity="success">
+                Oppsettet ditt er klart. CreatorHub kan nå bruke riktig workflow, presets og snarveier.
               </Alert>
-
-              {/* Clear instructions for finding keyboard shortcuts */}
-              <Paper
-                sx={{
-                  p:  3,
-                  mt:  3,
-                  bgcolor: 'primary.5',
-                  border: '2px solid',
-                  borderColor: 'primary.20'}}
-               sx={theming.getThemedCardSx()}>
-                <Typography variant="h6"
-                  sx={{  display: 'flex', alignItems: 'center', gap: 1, mb: 2  }}>
-                  <Keyboard color="primary" />
-                  Hvor finner du hurtigtastene etter onboarding?
-                </Typography>
-
-                <Box sx={{ mb:  2 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 'bold', mb:  1 }}>
-                    📱 I dashboardet ditt: </Typography>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    • Gå til <strong>"Innstillinger"</strong>-fanen (øverst til høyre)
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    • Klikk på <strong>"Intelligente Hurtigtaster"</strong>
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Her finner du alle hurtigtastene for {onboardingData.editingSoftware} og andre
-                    programmer
-                  </Typography>
-                </Box>
-
-                <Box sx={{ mb:  2 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 'bold', mb:  1 }}>
-                    🔍 Funksjoner du får: </Typography>
-                  <Typography variant="body2" sx={{ mb: 1 }}>
-                    • Automatisk Mac/PC-tilpassing basert på din enhet
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    • Søk etter spesifikke funksjoner eller kategorier
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb:  1 }}>
-                    • Kun essensielle hurtigtaster-filter for rask læring
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    • Oppdateres automatisk fra offisielle kilder
-                  </Typography>
-                </Box>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={theming.getThemedIcon('launch')}
-                  onClick={() => setShowKeyboardShortcuts(true)}
-                  sx={{ mt:  1 }}
-                >
-                  Forhåndsvis hurtigtaster nå
-                </Button>
-              </Paper>
             </Paper>
 
-            <Box sx={{ mt:  3 }}>
-              <Button variant="contained" size="large" onClick={handleComplete} sx={{ mr:  1 ,  ...theming.getThemedButtonSx() }}>
-                Fullfør onboarding og start arbeid
+            <Box sx={{ mt: 2.5, display: 'flex', gap: 1 }}>
+              <Button variant="contained" size="large" onClick={handleFinish}>
+                Fullfør onboarding
               </Button>
               <Button onClick={() => setActiveStep(1)}>Tilbake</Button>
             </Box>
@@ -558,29 +354,27 @@ export function EnhancedOnboardingFlow({ profession, onComplete }: EnhancedOnboa
         </Step>
       </Stepper>
 
-      {/* Keyboard Shortcuts Modal */}
       <Dialog
-        open={showKeyboardShortcuts}
-        onClose={() => setShowKeyboardShortcuts(false)}
-        maxWidth="lg"
+        open={showShortcutsDialog}
+        onClose={() => setShowShortcutsDialog(false)}
+        maxWidth="sm"
         fullWidth
-        PaperProps={{
-          sx: { height: '80vh',}}}
       >
-        <DialogTitle>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Hurtigtaster for {onboardingData.editingSoftware}</Typography>
-        </DialogTitle>
-        <DialogContent sx={{ p:  0 }}>
-          {onboardingData.editingSoftwareId && (
-            <KeyboardShortcutsInterface
-              softwareId={onboardingData.editingSoftwareId}
-              softwareName={onboardingData.editingSoftware}
-              onClose={() => setShowKeyboardShortcuts(false)}
-            />
-          )}
+        <DialogTitle>Hurtigtaster: {onboardingData.editingSoftware || 'Standard'}</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Dette er nøkkel-shortcuts som brukes i onboarding-profilen.
+          </Typography>
+          <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+            {shortcuts.map((shortcut) => (
+              <li key={shortcut}>
+                <Typography variant="body2">{shortcut}</Typography>
+              </li>
+            ))}
+          </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowKeyboardShortcuts(false)}>Lukk</Button>
+          <Button onClick={() => setShowShortcutsDialog(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -49,7 +49,7 @@ import {
 import {
   Publish,
   Visibility,
-  AccountTree,
+  AccountTree as GitBranch,
   Merge,
   Schedule,
   Save,
@@ -147,7 +147,7 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
   const [deploymentProgress, setDeploymentProgress] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
   
-  const [gitSettings, setGitSettings] = useState({
+  const [gitSettings] = useState({
     repository: 'https://github.com/company/project',
     mainBranch: 'main',
     autoCreatePR: true,
@@ -157,16 +157,25 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
 
   // Component registration
   useEffect(() => {
-    lifecycle.registerComponent('publishing-workflow', {
-      capabilities: [
-        'version:create', 'version:deploy', 'git:branch', 'git:pr', 'git:merge', 'deploy:trigger', 'deploy:monitor'
-      ],
-      metadata: {
-        version: '1.0.0',
-        environments: environments.map(e => e.id),
-        gitRepository: gitSettings.repository
-  }
-  });
+    lifecycle.registerComponent({
+      id: 'publishing-workflow',
+      type: 'workflow',
+      version: '1.0.0',
+      capabilities: {
+        data: ['version:read', 'version:write', 'environment:read'],
+        events: ['version:created', 'git:branch-created', 'git:pr-created', 'deployment:completed'],
+        actions: ['version:create', 'git:branch', 'git:pr', 'deploy:trigger'],
+        ui: ['version-history', 'environment-cards', 'workflow-stepper'],
+        system: ['analytics:track', 'performance:track'],
+      },
+      dependencies: ['versioning', 'deployment', 'git-integration'],
+      lastActive: Date.now(),
+      performance: {
+        renderCount: 0,
+        avgRenderTime: 0,
+        memoryUsage: 0
+      }
+    });
 
     analytics.trackEvent('publishing_workflow_mounted', {
       projectId: project.id,
@@ -178,7 +187,7 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
     return () => {
       lifecycle.unregisterComponent('publishing-workflow');
       analytics.trackEvent('publishing_workflow_unmounted', {
-        projectId: project.d,
+        projectId: project.id,
         timestamp: Date.now()
   });
   };
@@ -233,10 +242,10 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
     const changes: VersionChange[] = [];
     
     // Analyze project changes
-    Object.values(project.elements).forEach((element, index) => {
+    project.elements.forEach((element) => {
       changes.push({
         type: 'added',
-        path: `elements/${element.d}`,
+        path: `elements/${element.id}`,
         description: `Added ${element.type} element`
     });
   });
@@ -475,7 +484,7 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
             <Card sx={theming.getThemedCardSx()}>
               <CardContent sx={theming.getThemedCardSx()}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                  <Avatar sx={{ mr: 1, bgcolor: getEnvironmentColor(env.type, )}}>
+                  <Avatar sx={{ mr: 1, bgcolor: getEnvironmentColor(env.type) }}>
                     {getEnvironmentIcon(env.type)}
                   </Avatar>
                   <Typography variant="subtitle2">
@@ -701,4 +710,3 @@ export const PublishingWorkflow: React.FC<PublishingWorkflowProps> = ({
 };
 
 export default PublishingWorkflow;
-

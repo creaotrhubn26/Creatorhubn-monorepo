@@ -1,13 +1,9 @@
 /**
  * AI Learning Analytics Dashboard
- *
- * Shows how the AI is learning over time with: * - Performance charts
- * - Category-specific metrics
- * - Learning trends
- * - Model improvements
+ * Tracks model learning quality over time and per domain category.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ModelVersionComparison from './ModelVersionComparison';
 
 interface LearningData {
@@ -26,136 +22,213 @@ interface CategoryMetrics {
   topPapers: number;
 }
 
+interface ServiceTimePoint {
+  date: string;
+  accuracy: number;
+  followRate: number;
+  quality: number;
+  total: number;
+}
+
+interface ServiceAnalytics {
+  service: string;
+  accuracy: number;
+  totalSamples: number;
+  timeSeriesData: ServiceTimePoint[];
+}
+
+interface LearningAnalyticsResponse {
+  success?: boolean;
+  analytics?: {
+    services?: Record<string, ServiceAnalytics>;
+  };
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const asNumber = (value: unknown, fallback = 0): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+
+const asString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' ? value : fallback;
+
+const normalizeTimePoint = (value: unknown): ServiceTimePoint | null => {
+  if (!isObject(value)) return null;
+  const date = asString(value.date);
+  if (!date) return null;
+
+  return {
+    date,
+    accuracy: asNumber(value.accuracy),
+    followRate: asNumber(value.followRate),
+    quality: asNumber(value.quality),
+    total: asNumber(value.total),
+  };
+};
+
+const normalizeServiceAnalytics = (value: unknown): ServiceAnalytics | null => {
+  if (!isObject(value)) return null;
+
+  const timeSeriesDataRaw = Array.isArray(value.timeSeriesData) ? value.timeSeriesData : [];
+  const timeSeriesData = timeSeriesDataRaw
+    .map(normalizeTimePoint)
+    .filter((point): point is ServiceTimePoint => point !== null);
+
+  const service = asString(value.service);
+  if (!service) return null;
+
+  return {
+    service,
+    accuracy: asNumber(value.accuracy),
+    totalSamples: asNumber(value.totalSamples),
+    timeSeriesData,
+  };
+};
+
+const mockCategories: CategoryMetrics[] = [
+  { category: 'composition', accuracy: 0.87, samples: 1247, improvement: 0.23, topPapers: 2579 },
+  { category: 'lighting', accuracy: 0.82, samples: 893, improvement: 0.19, topPapers: 1615 },
+  { category: 'exposure', accuracy: 0.91, samples: 1534, improvement: 0.31, topPapers: 2684 },
+  { category: 'focus', accuracy: 0.79, samples: 672, improvement: 0.15, topPapers: 1892 },
+  { category: 'color', accuracy: 0.85, samples: 1103, improvement: 0.21, topPapers: 2452 },
+  { category: 'quality', accuracy: 0.88, samples: 1421, improvement: 0.27, topPapers: 2125 },
+];
+
+const generateMockLearningData = (timeRange: string): LearningData[] => {
+  const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+  const data: LearningData[] = [];
+
+  for (let i = days; i >= 0; i -= 1) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+
+    const progress = (days - i) / Math.max(days, 1);
+    data.push({
+      date: date.toISOString().split('T')[0],
+      accuracy: 0.5 + progress * 0.4,
+      followRate: 0.4 + progress * 0.45,
+      avgQuality: 0.55 + progress * 0.35,
+      interactions: Math.floor(50 + progress * 200),
+    });
+  }
+
+  return data;
+};
+
+const aggregateServices = (services: Record<string, ServiceAnalytics>) => {
+  const chartMap = new Map<string, LearningData>();
+  const categoryMetrics: CategoryMetrics[] = [];
+
+  Object.values(services).forEach((service) => {
+    service.timeSeriesData.forEach((point) => {
+      const existing = chartMap.get(point.date);
+      if (!existing) {
+        chartMap.set(point.date, {
+          date: point.date,
+          accuracy: point.accuracy,
+          followRate: point.followRate,
+          avgQuality: point.quality,
+          interactions: point.total,
+        });
+        return;
+      }
+
+      existing.accuracy = (existing.accuracy + point.accuracy) / 2;
+      existing.followRate = (existing.followRate + point.followRate) / 2;
+      existing.avgQuality = (existing.avgQuality + point.quality) / 2;
+      existing.interactions += point.total;
+    });
+
+    categoryMetrics.push({
+      category: service.service,
+      accuracy: service.accuracy,
+      samples: service.totalSamples,
+      improvement: service.accuracy > 0 ? service.accuracy - 0.5 : 0,
+      topPapers: 2000,
+    });
+  });
+
+  const chartData = Array.from(chartMap.values()).sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+
+  return { chartData, categoryMetrics };
+};
+
 export const AILearningAnalytics: React.FC = () => {
   const [learningData, setLearningData] = useState<LearningData[]>([]);
   const [categories, setCategories] = useState<CategoryMetrics[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [timeRange, setTimeRange] = useState('30d, ');
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<'analytics' | 'versions'>('analytics');
 
   useEffect(() => {
-    loadAnalytics();
-    const interval = setInterval(loadAnalytics, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, [timeRange, selectedCategory]);
+    const loadAnalytics = async () => {
+      try {
+        setLoading(true);
+        const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+        const response = await fetch(`/api/ai/research/learning/analytics?days=${days}`);
+        const raw = (await response.json()) as LearningAnalyticsResponse;
 
-  const loadAnalytics = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch real analytics data from API
-      const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
-      const response = await fetch(`/api/ai/research/learning/analytics?days=${days}`);
-      const data = await response.json();
-
-      if (data.success && data.analytics) {
-        // Transform service metrics into chart data
-        const chartData: LearningData[] = [];
-        const categoryMetrics: CategoryMetrics[] = [];
-
-        // Aggregate time series data from all services
-        Object.values(data.analytics.services).forEach((service: unknown) => {
-          if (service.timeSeriesData && service.timeSeriesData.length > 0) {
-            service.timeSeriesData.forEach((point: unknown) => {
-              const existingPoint = chartData.find((d) => d.date === point.date);
-              if (existingPoint) {
-                // Average across services
-                existingPoint.accuracy = (existingPoint.accuracy + point.accuracy) / 2;
-                existingPoint.followRate = (existingPoint.followRate + point.followRate) / 2;
-                existingPoint.avgQuality = (existingPoint.avgQuality + point.quality) / 2;
-                existingPoint.interactions += point.total;
-              } else {
-                chartData.push({
-                  date: point.date,
-                  accuracy: point.accuracy,
-                  followRate: point.followRate,
-                  avgQuality: point.quality,
-                  interactions: point.total,
-                });
-              }
-            });
-          }
-
-          // Create category metrics
-          categoryMetrics.push({
-            category: service.service,
-            accuracy: service.accuracy || 0,
-            samples: service.totalSamples || 0,
-            improvement: service.accuracy > 0 ? service.accuracy - 0.5 : 0,
-            topPapers: 2000, // Static for now
+        const servicesRaw = raw.analytics?.services;
+        if (raw.success && servicesRaw && isObject(servicesRaw)) {
+          const normalizedServices: Record<string, ServiceAnalytics> = {};
+          Object.entries(servicesRaw).forEach(([key, value]) => {
+            const service = normalizeServiceAnalytics(value);
+            if (service) {
+              normalizedServices[key] = service;
+            }
           });
-        });
 
-        // Sort chart data by date
-        chartData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-        setLearningData(chartData.length > 0 ? chartData : generateMockLearningData());
-        setCategories(categoryMetrics.length > 0 ? categoryMetrics : getMockCategories());
-      } else {
-        // Fallback to mock data
-        setLearningData(generateMockLearningData());
-        setCategories(getMockCategories());
+          const { chartData, categoryMetrics } = aggregateServices(normalizedServices);
+          setLearningData(chartData.length > 0 ? chartData : generateMockLearningData(timeRange));
+          setCategories(categoryMetrics.length > 0 ? categoryMetrics : mockCategories);
+        } else {
+          setLearningData(generateMockLearningData(timeRange));
+          setCategories(mockCategories);
+        }
+      } catch (error) {
+        console.error('Failed to load analytics:', error);
+        setLearningData(generateMockLearningData(timeRange));
+        setCategories(mockCategories);
+      } finally {
+        setLoading(false);
       }
+    };
 
-      setLoading(false);
-    } catch (error) {
-      console.error('Failed to load analytics: ', error);
-      // Fallback to mock data on error
-      setLearningData(generateMockLearningData());
-      setCategories(getMockCategories());
-      setLoading(false);
-    }
-  };
+    void loadAnalytics();
+    const interval = window.setInterval(() => {
+      void loadAnalytics();
+    }, 60_000);
 
-  const getMockCategories = (): CategoryMetrics[] => [
-    { category: 'composition', accuracy: 0.87, samples: 1247, improvement: 0.23, topPapers: 2579 },
-    { category: 'lighting', accuracy: 0.82, samples: 893, improvement: 0.19, topPapers: 1615 },
-    { category: 'exposure', accuracy: 0.91, samples: 1534, improvement: 0.31, topPapers: 2684 },
-    { category: 'focus', accuracy: 0.79, samples: 672, improvement: 0.15 topPapers: 1892 },
-    { category: 'color', accuracy: 0.85, samples: 1103, improvement: 0.21 topPapers: 2452 },
-    { category: 'quality', accuracy: 0.88, samples: 1421, improvement: 0.27 topPapers: 2125 },
-  ];
+    return () => window.clearInterval(interval);
+  }, [timeRange]);
 
-  const generateMockLearningData = (): LearningData[] => {
-    const data: LearningData[] = [];
-    const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
+  const visibleCategories = useMemo(() => {
+    if (selectedCategory === 'all') return categories;
+    return categories.filter((category) => category.category === selectedCategory);
+  }, [categories, selectedCategory]);
 
-    for (let i = days; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
+  const availableCategories = useMemo(
+    () => ['all', ...new Set(categories.map((category) => category.category))],
+    [categories],
+  );
 
-      // Simulate improving AI performance over time
-      const progress = (days - i) / days;
-      data.push({
-        date: date.toISOString().split('T')[0],
-        accuracy: 0.5 + progress * 0.4 // Improves from 50% to 90%,
-
-        followRate: 0.4 + progress * 0.45 // Improves from 40% to 85%,
-
-        avgQuality: 0.55 + progress * 0.35 // Improves from 55% to 90%,
-
-        interactions: Math.floor(50 + progress * 200), // Increases usage
-      });
-    }
-
-    return data;
-  };
+  const latest = learningData[learningData.length - 1];
+  const first = learningData[0];
 
   const renderLineChart = () => {
     if (learningData.length === 0) return null;
 
-    const maxAccuracy = Math.max(...learningData.map((d) => d.accuracy));
-    const maxFollowRate = Math.max(...learningData.map((d) => d.followRate));
-
     return (
       <div style={styles.chartContainer}>
-        <h3 style={styles.chartTitle}>📈 Learning Progress Over Time</h3>
+        <h3 style={styles.chartTitle}>Learning Progress Over Time</h3>
         <div style={styles.chart}>
           <svg width="100%" height="300" viewBox="0 0 800 300">
-            {/* Grid lines */}
-            {[0, 0.25 0.5 0.75 1].map((y, i) => (
-              <g key={i}>
+            {[0, 0.25, 0.5, 0.75, 1].map((y) => (
+              <g key={y}>
                 <line
                   x1="50"
                   y1={250 - y * 200}
@@ -171,147 +244,51 @@ export const AILearningAnalytics: React.FC = () => {
               </g>
             ))}
 
-            {/* Accuracy line */}
-            <polyline
-              points={learningData
-                .map((d, i) => {
-                  const x = 50 + (i / (learningData.length - 1)) * 700;
-                  const y = 250 - d.accuracy * 200;
-                  return `${x},${y}`;
-                })
-                .join(', ')}
-              fill="none"
-              stroke="#00ff00"
-              strokeWidth="3"
-            />
-
-            {/* Follow Rate line */}
-            <polyline
-              points={learningData
-                .map((d, i) => {
-                  const x = 50 + (i / (learningData.length - 1)) * 700;
-                  const y = 250 - d.followRate * 200;
-                  return `${x},${y}`;
-                })
-                .join(', ')}
-              fill="none"
-              stroke="#00aaff"
-              strokeWidth="3"
-            />
-
-            {/* Quality line */}
-            <polyline
-              points={learningData
-                .map((d, i) => {
-                  const x = 50 + (i / (learningData.length - 1)) * 700;
-                  const y = 250 - d.avgQuality * 200;
-                  return `${x},${y}`;
-                })
-                .join(', ')}
-              fill="none"
-              stroke="#ff8c00"
-              strokeWidth="3"
-            />
-
-            {/* Legend */}
-            <g transform="translate(600, 20)">
-              <circle cx="0" cy="0" r="5" fill="#00ff00" />
-              <text x="15" y="5" fill="#fff" fontSize="12">
-                Accuracy
-              </text>
-
-              <circle cx="0" cy="20" r="5" fill="#00aaff" />
-              <text x="15" y="25" fill="#fff" fontSize="12">
-                Follow Rate
-              </text>
-
-              <circle cx="0" cy="40" r="5" fill="#ff8c00" />
-              <text x="15" y="45" fill="#fff" fontSize="12">
-                Quality
-              </text>
-            </g>
+            {[
+              { key: 'accuracy', color: '#00ff00' },
+              { key: 'followRate', color: '#00aaff' },
+              { key: 'avgQuality', color: '#ff8c00' },
+            ].map((series) => (
+              <polyline
+                key={series.key}
+                points={learningData
+                  .map((point, index) => {
+                    const x = 50 + (index / Math.max(learningData.length - 1, 1)) * 700;
+                    const value = point[series.key as keyof LearningData] as number;
+                    const y = 250 - value * 200;
+                    return `${x},${y}`;
+                  })
+                  .join(' ')}
+                fill="none"
+                stroke={series.color}
+                strokeWidth="3"
+              />
+            ))}
           </svg>
         </div>
 
-        <div style={styles.chartStats}>
-          <div style={styles.statItem}>
-            <span style={styles.statLabel}>Latest Accuracy:</span>
-            <span style={{ ...styles.statValue, color: '#00ff00' }}>
-              {(learningData[learningData.length - 1]?.accuracy * 100).toFixed(1)}%
-            </span>
-          </div>
-          <div style={styles.statItem}>
-            <span style={styles.statLabel}>Improvement:</span>
-            <span style={{ ...styles.statValue, color: '#00aaff' }}>
-              +
-              {(
-                (learningData[learningData.length - 1]?.accuracy - learningData[0]?.accuracy) *
-                100
-              ).toFixed(1)}
-              %
-            </span>
-          </div>
-          <div style={styles.statItem}>
-            <span style={styles.statLabel}>Total Interactions:</span>
-            <span style={{ ...styles.statValue, color: '#ff8c00' }}>
-              {learningData.reduce((sum, d) => sum + d.interactions, 0).toLocaleString()}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderCategoryMetrics = () => {
-    return (
-      <div style={styles.categoriesContainer}>
-        <h3 style={styles.sectionTitle}>🎯 Category-Specific Learning</h3>
-        <div style={styles.categoriesGrid}>
-          {categories.map((cat, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.categoryCard,
-                borderColor: cat.accuracy > 0.85 ? '#00ff00' : cat.accuracy > 0.75 ? '#ffaa00' : '#ff6600'}}>
-              <div style={styles.categoryHeader}>
-                <span style={styles.categoryName}>{cat.category.toUpperCase()}</span>
-                <span
-                  style={{
-                    ...styles.categoryAccuracy,
-                    color: cat.accuracy > 0.85 ? '#00ff00' : cat.accuracy > 0.75 ? '#ffaa00' : '#ff6600'}}>
-                  {(cat.accuracy * 100).toFixed(1)}%
-                </span>
-              </div>
-
-              <div style={styles.progressBar}>
-                <div
-                  style={{
-                    ...styles.progressFill,
-                    width: `${cat.accuracy * 100}%`,
-                    backgroundColor: cat.accuracy > 0.85 ? '#00ff00' : cat.accuracy > 0.75 ? '#ffaa00' : '#ff6600',
-                  }
-                />
-              </div>
-
-              <div style={styles.categoryStats}>
-                <div style={styles.categoryStatItem}>
-                  <span style={styles.categoryStatLabel}>Samples:</span>
-                  <span style={styles.categoryStatValue}>{cat.samples.toLocaleString()}</span>
-                </div>
-                <div style={styles.categoryStatItem}>
-                  <span style={styles.categoryStatLabel}>Papers:</span>
-                  <span style={styles.categoryStatValue}>{cat.topPapers.toLocaleString()}</span>
-                </div>
-                <div style={styles.categoryStatItem}>
-                  <span style={styles.categoryStatLabel}>Improvement:</span>
-                  <span style={{ ...styles.categoryStatValue, color: '#00ff00' }}>
-                    +{(cat.improvement * 100).toFixed(0)}%
-                  </span>
-                </div>
-              </div>
+        {latest && first && (
+          <div style={styles.chartStats}>
+            <div style={styles.statItem}>
+              <span style={styles.statLabel}>Latest Accuracy</span>
+              <span style={{ ...styles.statValue, color: '#00ff00' }}>
+                {(latest.accuracy * 100).toFixed(1)}%
+              </span>
             </div>
-          ))}
-        </div>
+            <div style={styles.statItem}>
+              <span style={styles.statLabel}>Improvement</span>
+              <span style={{ ...styles.statValue, color: '#00aaff' }}>
+                +{((latest.accuracy - first.accuracy) * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div style={styles.statItem}>
+              <span style={styles.statLabel}>Total Interactions</span>
+              <span style={{ ...styles.statValue, color: '#ff8c00' }}>
+                {learningData.reduce((sum, point) => sum + point.interactions, 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -326,40 +303,53 @@ export const AILearningAnalytics: React.FC = () => {
 
   return (
     <div style={styles.container}>
-      {/* Header */}
       <div style={styles.header}>
-        <h1 style={styles.title}>🧠 AI Learning Analytics</h1>
+        <h1 style={styles.title}>AI Learning Analytics</h1>
         <div style={styles.controls}>
           <div style={styles.viewToggle}>
             <button
               style={{
                 ...styles.viewButton,
                 ...(activeView === 'analytics' ? styles.viewButtonActive : {}),
-              }
+              }}
               onClick={() => setActiveView('analytics')}
             >
-              📊 Performance
+              Performance
             </button>
             <button
               style={{
                 ...styles.viewButton,
-                ...(activeView === 'versions' ? styles.viewButtonActive : {})}}
+                ...(activeView === 'versions' ? styles.viewButtonActive : {}),
+              }}
               onClick={() => setActiveView('versions')}
             >
-              🔬 A/B Testing
+              A/B Testing
             </button>
           </div>
 
           {activeView === 'analytics' && (
-            <select
-              style={styles.select}
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-            >
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-            </select>
+            <>
+              <select
+                style={styles.select}
+                value={selectedCategory}
+                onChange={(event) => setSelectedCategory(event.target.value)}
+              >
+                {availableCategories.map((category) => (
+                  <option key={category} value={category}>
+                    {category === 'all' ? 'All categories' : category}
+                  </option>
+                ))}
+              </select>
+              <select
+                style={styles.select}
+                value={timeRange}
+                onChange={(event) => setTimeRange(event.target.value as '7d' | '30d' | '90d')}
+              >
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+                <option value="90d">Last 90 Days</option>
+              </select>
+            </>
           )}
         </div>
       </div>
@@ -368,49 +358,87 @@ export const AILearningAnalytics: React.FC = () => {
         <ModelVersionComparison />
       ) : (
         <>
-          {/* Performance Chart */}
           {renderLineChart()}
 
-          {/* Category Metrics */}
-          {renderCategoryMetrics()}
+          <div style={styles.categoriesContainer}>
+            <h3 style={styles.sectionTitle}>Category-Specific Learning</h3>
+            <div style={styles.categoriesGrid}>
+              {visibleCategories.map((category) => {
+                const cardColor =
+                  category.accuracy > 0.85 ? '#00ff00' : category.accuracy > 0.75 ? '#ffaa00' : '#ff6600';
 
-          {/* Learning Insights */}
+                return (
+                  <div key={category.category} style={{ ...styles.categoryCard, borderColor: cardColor }}>
+                    <div style={styles.categoryHeader}>
+                      <span style={styles.categoryName}>{category.category.toUpperCase()}</span>
+                      <span style={{ ...styles.categoryAccuracy, color: cardColor }}>
+                        {(category.accuracy * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div style={styles.progressBar}>
+                      <div
+                        style={{
+                          ...styles.progressFill,
+                          width: `${category.accuracy * 100}%`,
+                          backgroundColor: cardColor,
+                        }}
+                      />
+                    </div>
+                    <div style={styles.categoryStats}>
+                      <div style={styles.categoryStatItem}>
+                        <span style={styles.categoryStatLabel}>Samples</span>
+                        <span style={styles.categoryStatValue}>{category.samples.toLocaleString()}</span>
+                      </div>
+                      <div style={styles.categoryStatItem}>
+                        <span style={styles.categoryStatLabel}>Papers</span>
+                        <span style={styles.categoryStatValue}>{category.topPapers.toLocaleString()}</span>
+                      </div>
+                      <div style={styles.categoryStatItem}>
+                        <span style={styles.categoryStatLabel}>Improvement</span>
+                        <span style={{ ...styles.categoryStatValue, color: '#00ff00' }}>
+                          +{(category.improvement * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={styles.insightsContainer}>
-            <h3 style={styles.sectionTitle}>💡 Key Insights</h3>
+            <h3 style={styles.sectionTitle}>Key Insights</h3>
             <div style={styles.insightsGrid}>
               <div style={styles.insightCard}>
                 <div style={styles.insightIcon}>🚀</div>
                 <div style={styles.insightTitle}>Fastest Improving</div>
                 <div style={styles.insightValue}>Exposure (+31%)</div>
                 <div style={styles.insightDescription}>
-                  AI exposure suggestions are improving rapidly thanks to 2,684 research papers
+                  Exposure guidance improves fastest with the broadest paper support.
                 </div>
               </div>
-
               <div style={styles.insightCard}>
                 <div style={styles.insightIcon}>⭐</div>
                 <div style={styles.insightTitle}>Highest Accuracy</div>
                 <div style={styles.insightValue}>Exposure (91%)</div>
                 <div style={styles.insightDescription}>
-                  Most accurate AI predictions - users follow 91% of exposure suggestions
+                  Exposure recommendations currently have the highest user acceptance rate.
                 </div>
               </div>
-
               <div style={styles.insightCard}>
                 <div style={styles.insightIcon}>📚</div>
                 <div style={styles.insightTitle}>Most Research-Backed</div>
                 <div style={styles.insightValue}>Exposure (2,684 papers)</div>
                 <div style={styles.insightDescription}>
-                  Largest knowledge base - comprehensive research coverage
+                  Largest knowledge base with broad paper coverage across shooting scenarios.
                 </div>
               </div>
-
               <div style={styles.insightCard}>
                 <div style={styles.insightIcon}>🔥</div>
                 <div style={styles.insightTitle}>Most Used</div>
                 <div style={styles.insightValue}>Quality (1,421 samples)</div>
                 <div style={styles.insightDescription}>
-                  Users rely on quality suggestions most frequently
+                  Quality guidance is used most frequently in production sessions.
                 </div>
               </div>
             </div>
@@ -421,7 +449,6 @@ export const AILearningAnalytics: React.FC = () => {
   );
 };
 
-// Styles
 const styles: Record<string, React.CSSProperties> = {
   container: {
     padding: '24px',
@@ -435,6 +462,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '32px',
+    gap: '12px',
   },
   title: {
     fontSize: '32px',
@@ -534,7 +562,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   categoriesGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
     gap: '16px',
   },
   categoryCard: {
@@ -598,7 +626,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   insightsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
     gap: '16px',
   },
   insightCard: {
@@ -627,7 +655,8 @@ const styles: Record<string, React.CSSProperties> = {
   insightDescription: {
     fontSize: '13px',
     color: '#aaa',
-    lineHeight: 1.5 },
+    lineHeight: 1.5,
+  },
 };
 
 export default AILearningAnalytics;

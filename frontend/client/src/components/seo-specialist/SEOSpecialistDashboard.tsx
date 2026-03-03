@@ -1,100 +1,51 @@
-/**
- * SEO Specialist Dashboard
- * Dedicated dashboard for SEO specialists to manage their clients and campaigns
- */
-
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState, useEffect } from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import { useMemo, useState } from 'react';
 import {
+  Alert,
+  Avatar,
+  Badge,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Grid,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Alert,
-  CircularProgress,
-  Divider,
-  Paper,
-  Stack,
-  IconButton,
-  Tooltip,
-  Tabs,
-  Tab,
-  Badge,
-  Avatar,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  InputLabel,
   LinearProgress,
+  MenuItem,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
   Table,
   TableBody,
   TableCell,
-  TableContainer,
   TableHead,
   TableRow,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
+  Typography,
 } from '@mui/material';
+import Grid from '@mui/material/Grid';
 import {
-  TrendingUp,
-  Search,
-  AutoFixHigh,
-  CheckCircle,
-  Refresh,
-  Analytics,
-  LocationOn,
-  Schedule,
-  Star,
-  People,
-  Campaign,
-  Assessment,
   Add,
-  Edit,
-  Delete,
-  Visibility,
-  Speed as Speed,
-  Psychology,
-  Business as DirectionsBusiness,
-  CameraAlt as CameraAltAlt,
-  Videocam as Videocamcam,
-  MusicNote as MusicNoteNote,
-  Store,
+  AutoFixHigh,
+  Campaign,
+  CheckCircle,
   Email,
-  Phone,
-  Web,
-  CalendarToday as CalendarTodayToday,
   MonetizationOn,
-  Timeline,
-  BarChart as BoxChart,
-  BarChart as BoxChart,
+  Phone,
+  Refresh,
+  Search,
   ShowChart,
+  Speed,
+  Timeline,
+  Web,
 } from '@mui/icons-material';
-import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
-import { googleTrendsService, GoogleTrendsData } from '../../services/GoogleTrendsService';
-import { creatorHubSEOFixService } from '../../services/CreatorHubSEOFixService';
-import { googleAnalyticsService } from '../../services/GoogleAnalyticsService';
-import { seoSpecialistService } from '../../services/SEOSpecialistService';
-import { useDemoMode, useDemoModeQuery } from '../../contexts/DemoModeContext';
-import CustomerJourneyBuilder from '../admin/CustomerJourneyBuilder';
-import IntegratedEmailMarketingCenter from '../admin/IntegratedEmailMarketingCenter';
-import AdminEmailCenter from '../admin/AdminEmailCenter';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface SEOClient {
   id: string;
@@ -108,9 +59,6 @@ interface SEOClient {
   startDate: string;
   lastActivity: string;
   keywords: string[];
-  currentRankings: { keyword: string; position: number; change: number }[];
-  monthlyReports: number;
-  nextReport: string
 }
 
 interface SEOCampaign {
@@ -120,1152 +68,765 @@ interface SEOCampaign {
   status: 'active' | 'paused' | 'completed';
   budget: number;
   spent: number;
-  keywords: string[];
   startDate: string;
   endDate?: string;
-  performance: {
-    impressions: number;
-    clicks: number;
-    ctr: number;
-    conversions: number;
-    cost: number;
-};
+  impressions: number;
+  clicks: number;
+  conversions: number;
+}
+
+interface SEONotification {
+  id: string;
+  severity: 'info' | 'warning' | 'success';
+  message: string;
+  createdAt: string;
+}
+
+interface TrendPoint {
+  id: string;
+  keyword: string;
+  currentPosition: number;
+  previousPosition: number;
+  volume: number;
+}
+
+interface DashboardStats {
+  activeClients: number;
+  activeCampaigns: number;
+  monthlyBudget: number;
+  avgCtr: number;
+  avgConversionRate: number;
 }
 
 interface SEOSpecialistDashboardProps {
   specialistId?: string;
 }
 
-// Advanced SEO Interfaces
-interface SEOCrawlResult {
-  totalPages: number;
-  crawledPages: any[];
-  issues: SEOIssue[];
-  siteArchitecture: SiteArchitecture;
-  performance: SitePerformance;
-  contentAnalysis: ContentAnalysis;
-  technicalSEO: TechnicalSEOAnalysis;
-  lastCrawled: string
+interface NewClientForm {
+  name: string;
+  profession: string;
+  email: string;
+  phone: string;
+  website: string;
+  monthlyBudget: string;
+  keywords: string;
 }
 
-interface SEOIssue {
-  id: string;
-  type: 'error' | 'warning' | 'info';
-  category: 'technical' | 'content' | 'performance' | 'accessibility' | 'structured-data';
-  title: string;
-  description: string;
-  affectedPages: string[];
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  fixable: boolean;
-  fixSuggestion?: string
+interface NewCampaignForm {
+  clientId: string;
+  name: string;
+  budget: string;
+  startDate: string;
 }
 
-interface SiteArchitecture {
-  depth: number;
-  orphanPages: string[];
-  redirectChains: { from: string; to: string; chain: string[, ],}[];
-  brokenLinks: { url: string; sourcePages: string[]; statusCode: number }[];
-  internalLinking: { page: string; incomingLinks: number; outgoingLinks: number }[];
-  sitemapIssues: { missing: string[]; orphan: string[];, invalid: string[, ],};
-}
+const fallbackClients: SEOClient[] = [
+  {
+    id: 'client-1',
+    name: 'Nordic Wedding Films',
+    profession: 'videographer',
+    email: 'hello@nordicwedding.no',
+    phone: '+47 900 10 010',
+    website: 'https://nordicwedding.no',
+    status: 'active',
+    monthlyBudget: 12000,
+    startDate: '2026-01-10',
+    lastActivity: '2026-02-26',
+    keywords: ['wedding video norway', 'cinematic wedding film'],
+  },
+  {
+    id: 'client-2',
+    name: 'Oslo Portrait Studio',
+    profession: 'photographer',
+    email: 'studio@osloportrait.no',
+    phone: '+47 901 22 123',
+    website: 'https://osloportrait.no',
+    status: 'pending',
+    monthlyBudget: 8000,
+    startDate: '2026-02-02',
+    lastActivity: '2026-02-25',
+    keywords: ['portrait photographer oslo', 'headshot oslo'],
+  },
+];
 
-interface SitePerformance {
-  averageLoadTime: number;
-  slowPages: { url: string; loadTime: number }[];
-  coreWebVitals: {
-    lcp: { value: number; status: 'good' | 'needs-improvement' | 'poor',};
-    fid: { value: number; status: 'good' | 'needs-improvement' | 'poor',};
-    cls: { value: number; status: 'good' | 'needs-improvement' | 'poor',};
-};
-  mobileUsability: { issues: string[];, score: number };
-}
+const fallbackCampaigns: SEOCampaign[] = [
+  {
+    id: 'campaign-1',
+    clientId: 'client-1',
+    name: 'Local SEO + Service Pages',
+    status: 'active',
+    budget: 10000,
+    spent: 5300,
+    startDate: '2026-01-12',
+    endDate: '2026-04-12',
+    impressions: 128000,
+    clicks: 5640,
+    conversions: 129,
+  },
+  {
+    id: 'campaign-2',
+    clientId: 'client-2',
+    name: 'Keyword Cluster Expansion',
+    status: 'paused',
+    budget: 6000,
+    spent: 2200,
+    startDate: '2026-02-01',
+    endDate: '2026-05-01',
+    impressions: 62000,
+    clicks: 2100,
+    conversions: 41,
+  },
+];
 
-interface ContentAnalysis {
-  duplicateContent: { urls: string[];, similarity: number }[];
-  titleIssues: { url: string; issue: string; current: string; suggested?: string }[];
-  metaDescriptionIssues: { url: string; issue: string; current: string; suggested?: string }[];
-  headingStructure: { url: string; issues: string[, ],}[];
-  contentQuality: { url: string; score: number; issues: string[, ],}[];
-  keywordDensity: { url: string; keywords: { word: string; density: number; count: number }[] }[];
-}
+const fallbackNotifications: SEONotification[] = [
+  {
+    id: 'note-1',
+    severity: 'warning',
+    message: '2 tracked keywords dropped more than 3 positions this week.',
+    createdAt: '2026-02-27T08:30:00Z',
+  },
+  {
+    id: 'note-2',
+    severity: 'success',
+    message: 'Core Web Vitals score improved on 4 landing pages.',
+    createdAt: '2026-02-26T10:00:00Z',
+  },
+];
 
-interface TechnicalSEOAnalysis {
-  robotsTxt: { valid: boolean; issues: string[];, directives: string[, ],};
-  sitemaps: { found: string[]; valid: string[];, issues: string[, ],};
-  canonicalIssues: { url: string; issue: string }[];
-  hreflangIssues: { url: string; issue: string }[];
-  schemaValidation: { valid: number; invalid: number; errors: string[, ],};
-  mobileUsability: { issues: string[];, score: number };
-  security: { https: boolean; issues: string[, ],};
-}
+const fallbackTrends: TrendPoint[] = [
+  {
+    id: 'trend-1',
+    keyword: 'wedding video oslo',
+    currentPosition: 4,
+    previousPosition: 7,
+    volume: 3400,
+  },
+  {
+    id: 'trend-2',
+    keyword: 'bryllupsfilm norge',
+    currentPosition: 9,
+    previousPosition: 6,
+    volume: 1800,
+  },
+  {
+    id: 'trend-3',
+    keyword: 'portrait photographer oslo',
+    currentPosition: 3,
+    previousPosition: 5,
+    volume: 2100,
+  },
+];
 
-interface JSONLDSchema {
-  id: string;
-  type: string;
-  schema: any;
-  validation: {
-    valid: boolean;
-    errors: string[];
-    warnings: string[];
-};
-  pageUrl: string;
-  lastValidated: string
-}
-
-interface CompetitorData {
-  domain: string;
-  authority: number;
-  organicTraffic: number;
-  keywords: number;
-  backlinks: number;
-  topPages: { url: string; title: string; traffic: number }[];
-  topKeywords: { keyword: string; position: number; volume: number }[];
-}
-
-export default function SEOSpecialistDashboard({ specialistId =  'demo-specialist' }: SEOSpecialistDashboardProps) {
-  const {
-    profession,
-    getProfessionSpecificKeywords,
-    getProfessionSEOTips,
-    trackProfessionActivity,
-    getProfessionAnalytics,
-} = useProfessionAdapter();
-
-  const { isDemoMode } = useDemoMode();
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [activeTab, setActiveTab] = useState(0);
-  const [showAddClient, setShowAddClient] = useState(false);
-  const [showAddCampaign, setShowAddCampaign] = useState(false);
-  
-  // Advanced SEO state
-  const [seoCrawlResult, setSeoCrawlResult] = useState<SEOCrawlResult | null>(null);
-  const [isCrawling, setIsCrawling] = useState(false);
-  const [crawlProgress, setCrawlProgress] = useState(0);
-  const [crawlUrl, setCrawlUrl] = useState('');
-  const [competitors, setCompetitors] = useState<CompetitorData[]>([]);
-  const [jsonLDSchemas, setJsonLDSchemas] = useState<JSONLDSchema[]>([]);
-  const [showAdvancedSEO, setShowAdvancedSEO] = useState(false);
-
-  // Real data queries with demo mode support
-  const {
-    data: clients = [],
-    isLoading: clientsLoading,
-    error: clientsError,
-    refetch: refetchClients,
-} = useDemoModeQuery(
-    ['seo-clients', specialistId],
-    () => seoSpecialistService.getClients(specialistId),
-    {
-      enabled: !!specialistd,
+async function safeApiRequest<T>(url: string, fallback: T): Promise<T> {
+  try {
+    const response = await apiRequest(url);
+    return response as T;
+  } catch {
+    return fallback;
   }
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(
+    value,
   );
+}
 
-  const {
-    data: campaigns = [],
-    isLoading: campaignsLoading,
-    error: campaignsError,
-    refetch: refetchCampaigns,
-} = useDemoModeQuery(
-    ['seo-campaigns', specialistId],
-    () => seoSpecialistService.getCampaigns(specialistId),
-    {
-      enabled: !!specialistd,
-  }
-  );
-
-  const {
-    data: dashboardStats,
-    isLoading: statsLoading,
-    error: statsError,
-} = useDemoModeQuery(
-    ['seo-dashboard-stats', specialistId],
-    () => seoSpecialistService.getDashboardStats(specialistId),
-    {
-      enabled: !!specialistd,
-  }
-  );
-
-  const {
-    data: trendsData,
-    isLoading: trendsLoading,
-    error: trendsError,
-    refetch: refetchTrends,
-} = useDemoModeQuery(
-    ['seo-trends', specialistId, profession],
-    () => seoSpecialistService.getTrends(specialistId, profession'norway'),
-    {
-      enabled: !!specialistd,
-  }
-  );
-
-  const {
-    data: notifications = [],
-    isLoading: notificationsLoading,
-    error: notificationsError,
-} = useDemoModeQuery(
-    ['seo-notifications', specialistId],
-    () => seoSpecialistService.getNotifications(specialistId, true),
-    {
-      enabled: !!specialistd,
-  }
-  );
-
-  const loadMockData = () => {
-    setClients([
-      {
-        id: '',
-        name: 'Oslo Fotograf A',
-        profession: 'photographer',
-        email: 'kontakt@oslofotograf.no',
-        phone: '+47 123 45 67',
-        website: 'https://oslofotograf.no',
-        status: 'active',
-        monthlyBudget: 1500,
-        startDate: '2024-01-1',
-        lastActivity: '2024-01-2',
-        keywords: ['bryllup oslo','portrettfoto','bedriftsfoto'],
-        currentRankings: [
-          { keyword: 'bryllup oslo', position:  3, change:  2 },
-          { keyword: 'portrettfoto', position:  7, change: -, 1,},
-          { keyword: 'bedriftsfoto', position:  12, change:  5 },
-        ],
-        monthlyReports:  3,
-        nextReport: '2024-02-1' },
-      {
-        id: '',
-        name: 'Bergen Video Studio',
-        profession: 'videographer',
-        email: 'info@bergenvideo.no',
-        phone: '+47 987 65 43',
-        website: 'https://bergenvideo.no',
-        status: 'active',
-        monthlyBudget: 2000,
-        startDate: '2024-01-1',
-        lastActivity: '2024-01-1',
-        keywords: ['bryllupsvideo bergen','bedriftsvideo','drone video'],
-        currentRankings: [
-          { keyword: 'bryllupsvideo bergen', position:  5, change:  3 },
-          { keyword: 'bedriftsvideo', position:  8, change:  1 },
-          { keyword: 'drone video', position:  15, change: -, 2,},
-        ],
-        monthlyReports:  2,
-        nextReport: '2024-02-1' },
-      {
-        id: '',
-        name: 'Trondheim Musikkproduksjon',
-        profession: 'music_producer',
-        email: 'studio@trondheimmusikk.no',
-        phone: '+47 555 12 3',
-        website: 'https://trondheimmusikk.no',
-        status: 'pending',
-        monthlyBudget: 1000,
-        startDate: '2024-01-2',
-        lastActivity: '2024-01-2',
-        keywords: ['musikkproduksjon trondheim','studio opptak','mixing mastering'],
-        currentRankings:  [],
-        monthlyReports:  0,
-        nextReport: '2024-02-2' },
-    ]);
-
-    setCampaigns([
-      {
-        id: '',
-        clientId: '',
-        name: 'Bryllup Oslo 202',
-        status: 'active',
-        budget: 500,
-        spent: 320,
-        keywords: ['bryllup oslo','bryllupsfotograf oslo','bryllup 2024'],
-        startDate: '2024-01-1',
-        performance: {
-          impressions: 12500,
-          clicks: 320,
-          ctr: 2.6,
-          conversions:  45,
-          cost: 320,
-      },
-    },
-      {
-        id: '',
-        clientId: '',
-        name: 'Bedriftsvideo Bergen',
-        status: 'active',
-        budget: 800,
-        spent: 450,
-        keywords: ['bedriftsvideo bergen','bedriftsvideo produksjon','video markedsføring'],
-        startDate: '2024-01-1',
-        performance: {
-          impressions: 8900,
-          clicks: 210,
-          ctr: 2.6,
-          conversions:  28,
-          cost: 450,
-      },
-    },
-    ]);
-};
-
-  const loadTrendsData = async () => {
-    setIsLoading(true);
-    try {
-      const keywords = await googleTrendsService.getTrendingKeywords('photographer', 'norway');
-      setTrendingKeywords(keywords);
-      
-      const analytics = await getProfessionAnalytics();
-      setAnalyticsData(analytics);
-  } catch (error) {
-      console.error('Error loading trends data: ', error);
-  } finally {
-      setIsLoading(false);
-  }
-};
-
-  const getProfessionIcon = (prof: string) => {
-    const icons = {
-      photographer: <CameraAlt />,
-      videographer: theming.getThemedIcon(''),
-      music_producer: <MusicNote />,
-      vendor: theming.getThemedIcon(', '),
+function tabA11yProps(index: number) {
+  return {
+    id: `seo-dashboard-tab-${index}`,
+    'aria-controls': `seo-dashboard-tabpanel-${index}`,
   };
-    return icons[prof as keyof typeof icons] || theming.getThemedIcon('business');
-};
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'pending':
-        return 'warning';
-      case 'inactive':
-        return 'error';
-      default:
-        return 'default';
 }
-};
 
-  const getRankingChangeIcon = (change: number) => {
-    if (change > 0) return <TrendingUp color="success" />;
-    if (change < 0) return <TrendingUp color="error" sx={{ transform: 'rotate(180deg)' }} />;
-    return <TrendingUp color="info" />;
-};
+function TabPanel(props: { value: number; index: number; children: React.ReactNode }) {
+  const { value, index, children } = props;
+  return (
+    <Box
+      role="tabpanel"
+      hidden={value !== index}
+      id={`seo-dashboard-tabpanel-${index}`}
+      aria-labelledby={`seo-dashboard-tab-${index}`}
+      sx={{ pt: 2 }}
+    >
+      {value === index ? children : null}
+    </Box>
+  );
+}
 
-  const handleAddClient = () => {
-    setShowAddClient(true);
-};
+export default function SEOSpecialistDashboard({ specialistId = 'demo-specialist' }: SEOSpecialistDashboardProps) {
+  const queryClient = useQueryClient();
+  const [tabValue, setTabValue] = useState(0);
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
+  const [newClient, setNewClient] = useState<NewClientForm>({
+    name: '',
+    profession: 'photographer',
+    email: '',
+    phone: '',
+    website: '',
+    monthlyBudget: '0',
+    keywords: '',
+  });
+  const [newCampaign, setNewCampaign] = useState<NewCampaignForm>({
+    clientId: '',
+    name: '',
+    budget: '0',
+    startDate: '',
+  });
 
-  const handleAddCampaign = () => {
-    setShowAddCampaign(true);
-};
+  const clientsQuery = useQuery({
+    queryKey: ['/api/seo/clients', specialistId],
+    queryFn: async () =>
+      safeApiRequest<SEOClient[]>(`/api/seo/clients?specialistId=${encodeURIComponent(specialistId)}`, fallbackClients),
+  });
 
-  const handleTrackActivity = async (activity: string, metadata?: any) => {
-    await trackProfessionActivity(activity, { ...metadata, specialist: true });
-};
+  const campaignsQuery = useQuery({
+    queryKey: ['/api/seo/campaigns', specialistId],
+    queryFn: async () =>
+      safeApiRequest<SEOCampaign[]>(
+        `/api/seo/campaigns?specialistId=${encodeURIComponent(specialistId)}`,
+        fallbackCampaigns,
+      ),
+  });
 
-  // Advanced SEO Functions
-  const handleCrawlWebsite = async () => {
-    if (!crawlUrl) return;
-    
-    setIsCrawling(true);
-    setCrawlProgress(0);
-    
-    // Simulate crawl progress
-    const interval = setInterval(() => {
-      setCrawlProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsCrawling(false);
-          
-          // Mock crawl result
-          setSeoCrawlResult({
-            totalPages: 10,
-            crawledPages:  [],
-            issues: [
-              {
-                id: 'issue',
-                type: 'error',
-                category: 'technical',
-                title: 'Missing Meta Description',
-                description: '25 pages are missing meta descriptions',
-                affectedPages: ['/page', '/page2','/page3'],
-                severity: 'high',
-                fixable: true,
-                fixSuggestion: 'Add unique meta descriptions for each page'
-          }
-            ],
-            siteArchitecture: {
-              depth: 4,
-              orphanPages: ['/orphan', '/orphan2'],
-              redirectChains:  [],
-              brokenLinks: [{ url: '/broken', sourcePages: ['/page1']statusCode: 404,}],
-              internalLinking:  [],
-              sitemapIssues: { missing: [], orphan:  [], invalid: [],}
-          },
-            performance: {
-              averageLoadTime: 2.3,
-              slowPages: [{ url: '/slow-page', loadTime: 4.2,}],
-              coreWebVitals: {
-                lcp: { value: 2, .status: 'good' },
-                fid: { value: 45, status: 'good' },
-                cls: { value: 0.5, status: 'good' }
-            },
-              mobileUsability: { issues: [], score: 95,}
-          },
-            contentAnalysis: {
-              duplicateContent: [],
-              titleIssues:  [],
-              metaDescriptionIssues:  [],
-              headingStructure:  [],
-              contentQuality:  [],
-              keywordDensity: []
-        },
-            technicalSEO: {
-              robotsTxt: { valid: true, issues:  [], directives: ['User-agent: , *', 'Allow: /', ],},
-              sitemaps: { found: ['/sitemap.xml']valid: ['/sitemap.xml']issues: [],},
-              canonicalIssues:  [],
-              hreflangIssues:  [],
-              schemaValidation: { valid: 8, invalid: 2, errors: [],},
-              mobileUsability: { issues: [], score: 95,},
-              security: { https: true, issues: [],}
-          },
-            lastCrawled: new Date().toISOString()
+  const notificationsQuery = useQuery({
+    queryKey: ['/api/seo/notifications', specialistId],
+    queryFn: async () =>
+      safeApiRequest<SEONotification[]>(
+        `/api/seo/notifications?specialistId=${encodeURIComponent(specialistId)}`,
+        fallbackNotifications,
+      ),
+  });
+
+  const trendsQuery = useQuery({
+    queryKey: ['/api/seo/trends', specialistId],
+    queryFn: async () =>
+      safeApiRequest<TrendPoint[]>(`/api/seo/trends?specialistId=${encodeURIComponent(specialistId)}`, fallbackTrends),
+  });
+
+  const clients = clientsQuery.data ?? fallbackClients;
+  const campaigns = campaignsQuery.data ?? fallbackCampaigns;
+  const notifications = notificationsQuery.data ?? fallbackNotifications;
+  const trends = trendsQuery.data ?? fallbackTrends;
+
+  const stats = useMemo<DashboardStats>(() => {
+    const activeClients = clients.filter((client) => client.status === 'active').length;
+    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'active').length;
+    const monthlyBudget = clients.reduce((sum, client) => sum + client.monthlyBudget, 0);
+
+    const totals = campaigns.reduce(
+      (acc, campaign) => {
+        const ctr = campaign.impressions > 0 ? (campaign.clicks / campaign.impressions) * 100 : 0;
+        const conversionRate = campaign.clicks > 0 ? (campaign.conversions / campaign.clicks) * 100 : 0;
+        return {
+          ctr: acc.ctr + ctr,
+          conversionRate: acc.conversionRate + conversionRate,
+          count: acc.count + 1,
+        };
+      },
+      { ctr: 0, conversionRate: 0, count: 0 },
+    );
+
+    return {
+      activeClients,
+      activeCampaigns,
+      monthlyBudget,
+      avgCtr: totals.count > 0 ? totals.ctr / totals.count : 0,
+      avgConversionRate: totals.count > 0 ? totals.conversionRate / totals.count : 0,
+    };
+  }, [clients, campaigns]);
+
+  const isLoading = clientsQuery.isLoading || campaignsQuery.isLoading || notificationsQuery.isLoading || trendsQuery.isLoading;
+
+  const createClientMutation = useMutation({
+    mutationFn: async (form: NewClientForm) => {
+      const payload = {
+        specialistId,
+        name: form.name.trim(),
+        profession: form.profession,
+        email: form.email.trim(),
+        phone: form.phone.trim(),
+        website: form.website.trim(),
+        monthlyBudget: Number(form.monthlyBudget) || 0,
+        keywords: form.keywords
+          .split(',')
+          .map((keyword) => keyword.trim())
+          .filter((keyword) => keyword.length > 0),
+      };
+      await apiRequest('/api/seo/clients', { method: 'POST', body: payload });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/seo/clients', specialistId] });
+      setClientDialogOpen(false);
+      setNewClient({
+        name: '',
+        profession: 'photographer',
+        email: '',
+        phone: '',
+        website: '',
+        monthlyBudget: '0',
+        keywords: '',
       });
-          
-          return 100;
-      }
-        return prev + 10;
-    });
-  }, 500);
-};
-
-  const handleCompetitorAnalysis = async (domain: string) => {
-    // Mock competitor analysis
-    setCompetitors([
-      {
-        domain,
-        authority:  85,
-        organicTraffic: 45000,
-        keywords: 12500,
-        backlinks: 1500,
-        topPages: [
-          { url: '/services', title: 'Our Services', traffic: 45000,},
-          { url: '/about', title: 'About U', traffic: 32000,}
-        ],
-        topKeywords: [
-          { keyword: 'web design', position: 2, volume: 12000,},
-          { keyword: 'digital marketing', position:  5, volume: 8500,}
-        ]
-    }
-    ]);
-};
-
-  const handleSchemaValidation = async (url: string) => {
-    // Mock schema validation
-    setJsonLDSchemas([
-      {
-        id: 'schema',
-        type: 'Organization',
-        schema: {
-          '@type' : 'Organization',
-          name: 'CreatorHub Norge',
-          url: 'https://creatorhub.no'
     },
-        validation: {
-          valid: true,
-          errors:  [],
-          warnings: []
+  });
+
+  const createCampaignMutation = useMutation({
+    mutationFn: async (form: NewCampaignForm) => {
+      const payload = {
+        specialistId,
+        clientId: form.clientId,
+        name: form.name.trim(),
+        budget: Number(form.budget) || 0,
+        startDate: form.startDate,
+      };
+      await apiRequest('/api/seo/campaigns', { method: 'POST', body: payload });
     },
-        pageUrl: url,
-        lastValidated: new Date().toISOString()
-  }
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/seo/campaigns', specialistId] });
+      setCampaignDialogOpen(false);
+      setNewCampaign({ clientId: '', name: '', budget: '0', startDate: '' });
+    },
+  });
+
+  const applyAutoFixMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest('/api/admin/apply-seo-fixes', {
+        method: 'POST',
+        body: { specialistId, scope: 'dashboard' },
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/seo/clients', specialistId] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/seo/campaigns', specialistId] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/seo/trends', specialistId] }),
+      ]);
+    },
+  });
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      clientsQuery.refetch(),
+      campaignsQuery.refetch(),
+      notificationsQuery.refetch(),
+      trendsQuery.refetch(),
     ]);
-};
+  };
+
+  const openClientDialog = () => {
+    setClientDialogOpen(true);
+  };
+
+  const openCampaignDialog = () => {
+    const preferredClientId = clients.length > 0 ? clients[0].id : '';
+    setNewCampaign((current) => ({ ...current, clientId: current.clientId || preferredClientId }));
+    setCampaignDialogOpen(true);
+  };
 
   return (
-    <Box sx={{ width: '100%' }}>
-      {/* Header */}
-      <Box sx={{ mb:  3 }}>
-        <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-          🎯 SEO Specialist Dashboard
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Manage your clients, campaigns, and SEO performance
-        </Typography>
-      </Box>
+    <Box sx={{ p: 2 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
+        <Box>
+          <Typography variant="h5" fontWeight={700}>
+            SEO Specialist Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Specialist: {specialistId}
+          </Typography>
+        </Box>
 
-      {/* Advanced SEO Section */}
-      <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              🚀 Advanced SEO Tools
-            </Typography>
-            <Button variant="contained"
-              onClick={() => setShowAdvancedSEO(!showAdvancedSEO)}
-              startIcon={<SearchIcon />}
-            >
-              {showAdvancedSEO ? 'Hide' : 'Show'} Advanced Tools
-            </Button>
-          </Box>
-          
-          {showAdvancedSEO && (
-            <Box>
-              <Grid container spacing={3}>
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      🕷️ Website Crawl
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                      <TextField
-                        label="Website URL"
-                        value={crawlUrl}
-                        onChange={(e) => setCrawlUrl(e.target.value)}
-                        placeholder="https: //example.com"
-                        fullWidth
-                        variant="outlined"
-                        size="small"
-                      />
-                      <Button variant="contained"
-                        onClick={handleCrawlWebsite}
-                        disabled={!crawlUrl || isCrawling}
-                        size="small"
-                       sx={theming.getThemedButtonSx()}>
-                        {isCrawling ? 'Crawling...' : 'Crawl'}
-                      </Button>
-                    </Box>
-                    
-                    {isCrawling && (
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="body2" gutterBottom>
-                          Crawling... {crawlProgress}%
-                        </Typography>
-                        <LinearProgress variant="determinate" value={crawlProgress} />
-                      </Box>
-                    )}
-                    
-                    {seoCrawlResult && (
-                      <Box>
-                        <Typography variant="body2" color="primary">
-                          ✅ Crawled {seoCrawlResult.totalPages} pages
-                        </Typography>
-                        <Typography variant="body2" color="error">
-                          ⚠️ Found {seoCrawlResult.issues.length} issues
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      🏆 Competitor Analysis
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                      <TextField
-                        label="Competitor Domain"
-                        placeholder="competitor.com"
-                        fullWidth
-                        variant="outlined"
-                        size="small"
-                      />
-                      <Button variant="contained"
-                        onClick={() => handleCompetitorAnalysis('competitor.com')}
-                        size="small"
-                      >
-                        Analyze
-                      </Button>
-                    </Box>
-                    
-                    {competitors.length > 0 && (
-                      <Box>
-                        <Typography variant="body2" color="primary">
-                          ✅ Analyzed {competitors.length} competitor(s)
-                        </Typography>
-                        <Typography variant="body2">
-                          Top competitor: {competitors[0]?.domain} (Authority: {competitors[0]?.authority})
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      📋 Schema.org Validation
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                      <TextField
-                        label="Page URL"
-                        placeholder="https: //example.com/page"
-                        fullWidth
-                        variant="outlined"
-                        size="small"
-                      />
-                      <Button variant="contained"
-                        onClick={() => handleSchemaValidation('https://example.com')}
-                        size="small"
-                      >
-                        Validate
-                      </Button>
-                    </Box>
-                    
-                    {jsonLDSchemas.length > 0 && (
-                      <Box>
-                        <Typography variant="body2" color="primary">
-                          ✅ Validated {jsonLDSchemas.length} schema(s)
-                        </Typography>
-                        <Typography variant="body2">
-                          Valid: {jsonLDSchemas.filter(s => s.validation.valid).length} | 
-                          Invalid: {jsonLDSchemas.filter(s => !s.validation.valid).length}
-                        </Typography>
-                      </Box>
-                    )}
-                  </Paper>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Paper sx={{ p:  2 ,  ...theming.getThemedCardSx() }}>
-                    <Typography variant="subtitle1" gutterBottom>
-                      📊 SEO Reports
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      <Button variant="outlined" size="small">
-                        Generate Report
-                      </Button>
-                      <Button variant="outlined" size="small">
-                        Export Data
-                      </Button>
-                      <Button variant="outlined" size="small">
-                        Schedule Report
-                      </Button>
-                    </Stack>
-                  </Paper>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+        <Stack direction="row" gap={1}>
+          <Button startIcon={<Refresh />} variant="outlined" onClick={handleRefresh}>
+            Refresh
+          </Button>
+          <Button startIcon={<Add />} variant="outlined" onClick={openClientDialog}>
+            Add Client
+          </Button>
+          <Button startIcon={<Campaign />} variant="contained" onClick={openCampaignDialog}>
+            Add Campaign
+          </Button>
+        </Stack>
+      </Stack>
 
-      {/* Quick Stats */}
-      <Grid container spacing={3} sx={{ mb:  3 }}>
-        <Grid size={{"xs":"12","md" : "3"}}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {isLoading ? <LinearProgress sx={{ mt: 2 }} /> : null}
+
+      <Grid container spacing={2} sx={{ mt: 1 }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{clients.length}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Active Clients
                   </Typography>
+                  <Typography variant="h5" fontWeight={700}>
+                    {stats.activeClients}
+                  </Typography>
                 </Box>
-                <People color="primary" sx={{ fontSize: 40}} />
-              </Box>
+                <Avatar>
+                  <CheckCircle />
+                </Avatar>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{"xs":"12","md" : "3"}}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>{campaigns.length}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Active Campaigns
                   </Typography>
+                  <Typography variant="h5" fontWeight={700}>
+                    {stats.activeCampaigns}
+                  </Typography>
                 </Box>
-                <Campaign color="secondary" sx={{ fontSize: 40}} />
-              </Box>
+                <Avatar>
+                  <Campaign />
+                </Avatar>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{"xs":"12","md" : "3"}}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
-                    {campaigns.reduce((sum, c) => sum + c.performance.conversions, 0)}
-                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Total Conversions
+                    Monthly Budget
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {formatCurrency(stats.monthlyBudget)}
                   </Typography>
                 </Box>
-                <MonetizationOn color="success" sx={{ fontSize: 40}} />
-              </Box>
+                <Avatar>
+                  <MonetizationOn />
+                </Avatar>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
-        <Grid size={{"xs":"12","md" : "3"}}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Box>
-                  <Typography variant="h4" sx={{ color: theming.colors.primary }}>
-                    {clients.reduce((sum, c) => sum + c.monthlyBudget, 0).toLocaleString()} NOK
-                  </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Monthly Revenue
+                    Avg CTR / CVR
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700}>
+                    {stats.avgCtr.toFixed(2)}% / {stats.avgConversionRate.toFixed(2)}%
                   </Typography>
                 </Box>
-                <BarChart color="info" sx={{ fontSize: 40}} />
-              </Box>
+                <Avatar>
+                  <Speed />
+                </Avatar>
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Main Content Tabs */}
-      <Card sx={theming.getThemedCardSx()}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
-            <Tab label="Clients" icon={theming.getThemedIcon('people')}} />
-            <Tab label="Campaigns" icon={<Campaign />} />
-            <Tab label="Analytics" icon={theming.getThemedIcon('analytics')}} />
-            <Tab label="Trends" icon={theming.getThemedIcon('trendingUp')}} />
-            <Tab label="Customer Journeys" icon={theming.getThemedIcon('timeline')}} />
-            <Tab label="Email Center" icon={theming.getThemedIcon('email')}} />
-            <Tab label="Email Marketing" icon={<Campaign />} />
-            <Tab label="Reports" icon={theming.getThemedIcon('assessment')}} />
-          </Tabs>
-        </Box>
+      <Box sx={{ mt: 3 }}>
+        <Tabs value={tabValue} onChange={(_, value) => setTabValue(value)} variant="scrollable" allowScrollButtonsMobile>
+          <Tab label="Overview" icon={<Timeline />} iconPosition="start" {...tabA11yProps(0)} />
+          <Tab label="Clients" icon={<Search />} iconPosition="start" {...tabA11yProps(1)} />
+          <Tab label="Campaigns" icon={<Campaign />} iconPosition="start" {...tabA11yProps(2)} />
+          <Tab label="Trends" icon={<ShowChart />} iconPosition="start" {...tabA11yProps(3)} />
+          <Tab
+            label={
+              <Badge color="warning" badgeContent={notifications.length} max={9}>
+                Alerts
+              </Badge>
+            }
+            {...tabA11yProps(4)}
+          />
+        </Tabs>
 
-        {/* Clients Tab */}
-        {activeTab === 0 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Client Management</Typography>
-              <Button variant="contained"
-                startIcon={theming.getThemedIcon('add')}
-                onClick={handleAddClient}
-               sx={theming.getThemedButtonSx()}>
-                Add Client
-              </Button>
-            </Box>
+        <TabPanel value={tabValue} index={0}>
+          <Card>
+            <CardContent>
+              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} gap={2}>
+                <Box>
+                  <Typography variant="h6">SEO Automation</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Run automatic technical and content SEO fixes for connected projects.
+                  </Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<AutoFixHigh />}
+                  onClick={() => applyAutoFixMutation.mutate()}
+                  disabled={applyAutoFixMutation.isPending}
+                >
+                  {applyAutoFixMutation.isPending ? 'Applying…' : 'Apply SEO Fixes'}
+                </Button>
+              </Stack>
+              {applyAutoFixMutation.isError ? (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  Could not run SEO auto-fix. Check backend endpoint and permissions.
+                </Alert>
+              ) : null}
+              {applyAutoFixMutation.isSuccess ? (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  SEO fix pipeline completed and data has been refreshed.
+                </Alert>
+              ) : null}
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-            <Grid container spacing={3}>
-              {clients.map((client) => (
-                <Grid size={{"xs":"12","md":"6","lg" : "4"}} key={client.id}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb:  2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main', mr:  2 }}>
-                          {getProfessionIcon(client.profession)}
-                        </Avatar>
-                        <Box sx={{ flexGrow:  1 }}>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>{client.name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {client.profession} • {client.website}
-                          </Typography>
-                        </Box>
-                        <Chip
-                          label={client.status}
-                          color={getStatusColor(client.status) as any}
-                          size="small"
-                        />
-                      </Box>
-
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          Monthly Budget: {client.monthlyBudget.toLocaleString()} NOK
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Last Activity: {client.lastActivity}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Next Report: {client.nextReport}
-                        </Typography>
-                      </Box>
-
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Top Keywords
-                        </Typography>
-                        <Stack direction="row" spacing={1} flexWrap="wrap">
-                          {client.keywords.slice(0, 3).map((keyword) => (
-                            <Chip key={keyword} label={keyword} size="small" />
-                          ))}
-                        </Stack>
-                      </Box>
-
-                      <Box sx={{ mb:  2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Current Rankings
-                        </Typography>
-                        {client.currentRankings.map((ranking) => (
-                          <Box key={ranking.keyword} sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                            <Typography variant="body2" sx={{ flexGrow:  1 }}>
-                              {ranking.keyword}
-                            </Typography>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-                              <Typography variant="body2">#{ranking.position}</Typography>
-                              {getRankingChangeIcon(ranking.change)}
-                            </Box>
-                          </Box>
-                        ))}
-                      </Box>
-
-                      <Box sx={{ display: 'flex', gap:  1 }}>
-                        <Button size="small" startIcon={theming.getThemedIcon('visibility')}>
-                          View
-                        </Button>
-                        <Button size="small" startIcon={theming.getThemedIcon('edit')}>
-                          Edit
-                        </Button>
-                        <Button size="small" startIcon={theming.getThemedIcon('assessment')}>
-                          Report
-                        </Button>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        )}
-
-        {/* Campaigns Tab */}
-        {activeTab === 1 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  3 }}>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Campaign Management</Typography>
-              <Button variant="contained"
-                startIcon={theming.getThemedIcon('add')}
-                onClick={handleAddCampaign}
-               sx={theming.getThemedButtonSx()}>
-                Add Campaign
-              </Button>
-            </Box>
-
-            <TableContainer>
-              <Table>
+        <TabPanel value={tabValue} index={1}>
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Campaign</TableCell>
-                    <TableCell>Client</TableCell>
+                    <TableCell>Name</TableCell>
                     <TableCell>Status</TableCell>
+                    <TableCell>Profession</TableCell>
                     <TableCell>Budget</TableCell>
-                    <TableCell>Spent</TableCell>
-                    <TableCell>Performance</TableCell>
-                    <TableCell>Actions</TableCell>
+                    <TableCell>Contact</TableCell>
+                    <TableCell>Last Activity</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {campaigns.map((campaign) => {
-                    const client = clients.find(c => c.id === campaign.clientId);
-                    return (
-                      <TableRow key={campaign.id}>
-                        <TableCell>
-                          <Typography variant="subtitle2">{campaign.name}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {campaign.keywords.length} keywords
-                          </Typography>
-                        </TableCell>
-                        <TableCell>{client?.name}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={campaign.status}
-                            color={getStatusColor(campaign.status) as any}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>{campaign.budget.toLocaleString()} NOK</TableCell>
-                        <TableCell>{campaign.spent.toLocaleString()} NOK</TableCell>
-                        <TableCell>
-                          <Box>
-                            <Typography variant="body2">
-                              {campaign.performance.conversions} conversions
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              CTR: {campaign.performance.ctr}%
-                            </Typography>
-                          </Box>
-                        </TableCell>
-                        <TableCell>
-                          <IconButton size="small">
-                            {theming.getThemedIcon('edit')}
-                          </IconButton>
-                          <IconButton size="small">
-                            {theming.getThemedIcon('visibility')}
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                })}
+                  {clients.map((client) => (
+                    <TableRow key={client.id} hover>
+                      <TableCell>
+                        <Typography fontWeight={600}>{client.name}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip label={client.status} size="small" color={client.status === 'active' ? 'success' : client.status === 'pending' ? 'warning' : 'default'} />
+                      </TableCell>
+                      <TableCell>{client.profession}</TableCell>
+                      <TableCell>{formatCurrency(client.monthlyBudget)}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1}>
+                          <Chip icon={<Email />} label={client.email} size="small" variant="outlined" />
+                          <Chip icon={<Phone />} label={client.phone} size="small" variant="outlined" />
+                          <Chip icon={<Web />} label="site" size="small" variant="outlined" onClick={() => window.open(client.website, '_blank', 'noopener,noreferrer')} />
+                        </Stack>
+                      </TableCell>
+                      <TableCell>{new Date(client.lastActivity).toLocaleDateString('nb-NO')}</TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
-            </TableContainer>
-          </CardContent>
-        )}
+            </CardContent>
+          </Card>
+        </TabPanel>
 
-        {/* Analytics Tab */}
-        {activeTab === 2 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Performance Analytics
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <Grid container spacing={3}>
-                <Grid size={{"xs":"12","md" : "6"}}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        Client Performance
+        <TabPanel value={tabValue} index={2}>
+          <Card>
+            <CardContent sx={{ p: 0 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Campaign</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Budget / Spent</TableCell>
+                    <TableCell>Impressions</TableCell>
+                    <TableCell>Clicks</TableCell>
+                    <TableCell>Conversions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {campaigns.map((campaign) => (
+                    <TableRow key={campaign.id} hover>
+                      <TableCell>{campaign.name}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={campaign.status}
+                          color={campaign.status === 'active' ? 'success' : campaign.status === 'paused' ? 'warning' : 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(campaign.budget)} / {formatCurrency(campaign.spent)}
+                      </TableCell>
+                      <TableCell>{campaign.impressions.toLocaleString('nb-NO')}</TableCell>
+                      <TableCell>{campaign.clicks.toLocaleString('nb-NO')}</TableCell>
+                      <TableCell>{campaign.conversions.toLocaleString('nb-NO')}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          <Grid container spacing={2}>
+            {trends.map((trend) => {
+              const delta = trend.previousPosition - trend.currentPosition;
+              const directionColor = delta > 0 ? 'success.main' : delta < 0 ? 'error.main' : 'text.secondary';
+              return (
+                <Grid item xs={12} md={4} key={trend.id}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        {trend.keyword}
                       </Typography>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  2 }}>
-                        <Typography variant="body2">Average Ranking Improvement</Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>+2.3 positions</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  2 }}>
-                        <Typography variant="body2">Total Keywords Tracked</Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>47</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2">Conversion Rate</Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>3.2%</Typography>
-                      </Box>
+                      <Typography variant="h5" fontWeight={700}>
+                        #{trend.currentPosition}
+                      </Typography>
+                      <Typography sx={{ color: directionColor }}>
+                        {delta > 0 ? `+${delta}` : delta} positions vs previous period
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Volume: {trend.volume.toLocaleString('nb-NO')}
+                      </Typography>
                     </CardContent>
                   </Card>
                 </Grid>
-                <Grid size={{"xs":"12","md" : "6"}}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        Revenue Analytics
-                      </Typography>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  2 }}>
-                        <Typography variant="body2">This Month</Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>45,000 NOK</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  2 }}>
-                        <Typography variant="body2">Last Month</Typography>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>38,000 NOK</Typography>
-                      </Box>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2">Growth</Typography>
-                        <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>+18.4%</Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            )}
-          </CardContent>
-        )}
-
-        {/* Trends Tab */}
-        {activeTab === 3 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Trending Keywords & Opportunities
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p:  4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <Grid container spacing={3}>
-                <Grid size={{"xs":"12","md" : "6"}}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        Trending Keywords
-                      </Typography>
-                      <List dense>
-                        {trendingKeywords.slice(0, 5).map((keyword, index) => (
-                          <ListItem key={index}>
-                            <ListItemIcon>
-                              {keyword.trend === 'rising' ? (
-                                <TrendingUp color="success" />
-                              ) : (
-                                <TrendingUp color="info" />
-                              )}
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={keyword.keyword}
-                              secondary={`${keyword.searchVolume} searches • ${keyword.opportunity} opportunity`}
-                            />
-                            <Chip
-                              label={keyword.competition}
-                              size="small"
-                              color={keyword.competition === 'low' ? 'success' : 'warning'}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid size={{"xs":"12","md" : "6"}}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        SEO Tips for Your Clients
-                      </Typography>
-                      <List dense>
-                        {getProfessionSEOTips().map((tip, index) => (
-                          <ListItem key={index}>
-                            <ListItemIcon>
-                              <AutoFixHigh color="primary" />
-                            </ListItemIcon>
-                            <ListItemText primary={tip} />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-            )}
-          </CardContent>
-        )}
-
-        {/* Customer Journeys Tab */}
-        {activeTab === 4 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <CustomerJourneyBuilder selectedProfession={profession} />
-          </CardContent>
-        )}
-
-        {/* Email Center Tab */}
-        {activeTab === 5 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <AdminEmailCenter />
-          </CardContent>
-        )}
-
-        {/* Email Marketing Tab */}
-        {activeTab === 6 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <IntegratedEmailMarketingCenter />
-          </CardContent>
-        )}
-
-        {/* Reports Tab */}
-        {activeTab === 7 && (
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              Client Reports & Analytics
-            </Typography>
-            <Grid container spacing={3}>
-              {clients.map((client) => (
-                <Grid size={{"xs":"12","md" : "6"}} key={client.id}>
-                  <Card sx={theming.getThemedCardSx()}>
-                    <CardContent sx={theming.getThemedCardSx()}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb:  2 }}>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{client.name}</Typography>
-                        <Chip label={`${client.monthlyReports} reports`} color="primary" />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Next Report: {client.nextReport}
-                      </Typography>
-                      <Box sx={{ display:'flex', gap: 1, mt: 2 }}>
-                        <Button size="small" startIcon={theming.getThemedIcon('assessment')}>
-                          Generate Report
-                        </Button>
-                        <Button size="small" startIcon={theming.getThemedIcon('email')}>
-                          Send Report
-                        </Button>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Add Client Dialog */}
-      <Dialog open={showAddClient} onClose={() => setShowAddClient(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add New Client</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid size={{"xs":"12""md" : "6"}}>
-              <TextField fullWidth label="Client Name" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <FormControl fullWidth>
-                <InputLabel>Profession</InputLabel>
-                <Select>
-                  <MenuItem value="photographer">Photographer</MenuItem>
-                  <MenuItem value="videographer">Videographer</MenuItem>
-                  <MenuItem value="music_producer">Music Producer</MenuItem>
-                  <MenuItem value="vendor">Vendor</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Email" type="email" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Phone" />
-            </Grid>
-            <Grid size={{"xs" : "12"}}>
-              <TextField fullWidth label="Website" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Monthly Budget" type="number" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Keywords" placeholder="keyword1, keyword2, keyword3" />
-            </Grid>
+              );
+            })}
           </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={4}>
+          <Stack spacing={1}>
+            {notifications.map((notification) => (
+              <Alert key={notification.id} severity={notification.severity}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}>
+                  <Typography variant="body2">{notification.message}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {new Date(notification.createdAt).toLocaleString('nb-NO')}
+                  </Typography>
+                </Stack>
+              </Alert>
+            ))}
+          </Stack>
+        </TabPanel>
+      </Box>
+
+      <Dialog open={clientDialogOpen} onClose={() => setClientDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Add SEO Client</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Client Name"
+              value={newClient.name}
+              onChange={(event) => setNewClient((current) => ({ ...current, name: event.target.value }))}
+              fullWidth
+            />
+            <FormControl fullWidth>
+              <InputLabel id="seo-client-profession-label">Profession</InputLabel>
+              <Select
+                labelId="seo-client-profession-label"
+                label="Profession"
+                value={newClient.profession}
+                onChange={(event) => setNewClient((current) => ({ ...current, profession: event.target.value }))}
+              >
+                <MenuItem value="photographer">Photographer</MenuItem>
+                <MenuItem value="videographer">Videographer</MenuItem>
+                <MenuItem value="music_producer">Music Producer</MenuItem>
+                <MenuItem value="vendor">Vendor</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              label="Email"
+              type="email"
+              value={newClient.email}
+              onChange={(event) => setNewClient((current) => ({ ...current, email: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Phone"
+              value={newClient.phone}
+              onChange={(event) => setNewClient((current) => ({ ...current, phone: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Website"
+              value={newClient.website}
+              onChange={(event) => setNewClient((current) => ({ ...current, website: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Monthly Budget (NOK)"
+              type="number"
+              value={newClient.monthlyBudget}
+              onChange={(event) => setNewClient((current) => ({ ...current, monthlyBudget: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Keywords (comma separated)"
+              value={newClient.keywords}
+              onChange={(event) => setNewClient((current) => ({ ...current, keywords: event.target.value }))}
+              fullWidth
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowAddClient(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => setShowAddClient(false)}>
-            Add Client
+          <Button onClick={() => setClientDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => createClientMutation.mutate(newClient)}
+            disabled={createClientMutation.isPending || newClient.name.trim().length === 0}
+          >
+            Create Client
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Add Campaign Dialog */}
-      <Dialog open={showAddCampaign} onClose={() => setShowAddCampaign(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Add New Campaign</DialogTitle>
+      <Dialog open={campaignDialogOpen} onClose={() => setCampaignDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Add SEO Campaign</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Campaign Name" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <FormControl fullWidth>
-                <InputLabel>Client</InputLabel>
-                <Select>
-                  {clients.map((client) => (
-                    <MenuItem key={client.id} value={client.id}>
-                      {client.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Budget" type="number" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Keywords" placeholder="keyword1, keyword2, keyword3" />
-            </Grid>
-            <Grid size={{"xs":"12","md" : "6"}}>
-              <TextField fullWidth label="Start Date" type="date" InputLabelProps={{ shrink: true }} />
-            </Grid>
-            <Grid size={{"xs":"12""md" : "6"}}>
-              <TextField fullWidth label="End Date" type="date" InputLabelProps={{ shrink: true }} />
-            </Grid>
-          </Grid>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <FormControl fullWidth>
+              <InputLabel id="seo-campaign-client-label">Client</InputLabel>
+              <Select
+                labelId="seo-campaign-client-label"
+                label="Client"
+                value={newCampaign.clientId}
+                onChange={(event) => setNewCampaign((current) => ({ ...current, clientId: event.target.value }))}
+              >
+                {clients.map((client) => (
+                  <MenuItem key={client.id} value={client.id}>
+                    {client.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Campaign Name"
+              value={newCampaign.name}
+              onChange={(event) => setNewCampaign((current) => ({ ...current, name: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Budget (NOK)"
+              type="number"
+              value={newCampaign.budget}
+              onChange={(event) => setNewCampaign((current) => ({ ...current, budget: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Start Date"
+              type="date"
+              value={newCampaign.startDate}
+              onChange={(event) => setNewCampaign((current) => ({ ...current, startDate: event.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowAddCampaign(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => setShowAddCampaign(false)}>
-            Add Campaign
+          <Button onClick={() => setCampaignDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => createCampaignMutation.mutate(newCampaign)}
+            disabled={
+              createCampaignMutation.isPending ||
+              newCampaign.clientId.length === 0 ||
+              newCampaign.name.trim().length === 0
+            }
+          >
+            Create Campaign
           </Button>
         </DialogActions>
       </Dialog>

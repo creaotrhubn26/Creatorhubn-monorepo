@@ -10,7 +10,17 @@
  * - Real-time updates
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { useNodes, useScene } from '../state/selectors';
 import { getActiveCameraId } from '../core/services/viewports';
 import {
@@ -266,18 +276,12 @@ export function useViewfinder(): UseViewfinderReturn {
 // Viewfinder Context (for sharing state across components)
 // ============================================================================
 
-import { createContext, useContext, ReactNode } from'react';
-
 const ViewfinderContext = createContext<UseViewfinderReturn | null>(null);
 
 export function ViewfinderProvider({ children }: { children: ReactNode }) {
   const viewfinder = useViewfinder();
-  
-  return (
-    <ViewfinderContext.Provider value={viewfinder}>
-      {children}
-    </ViewfinderContext.Provider>
-  );
+
+  return createElement(ViewfinderContext.Provider, { value: viewfinder }, children);
 }
 
 export function useViewfinderContext(): UseViewfinderReturn {
@@ -287,4 +291,3 @@ export function useViewfinderContext(): UseViewfinderReturn {
   }
   return context;
 }
-

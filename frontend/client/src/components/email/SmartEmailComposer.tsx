@@ -172,7 +172,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   const composeMutation = useMutation({
     mutationFn: async (data: typeof emailData) => {
       return apiRequest('/api/emails/smart/send', {
-        method: 'POS',
+        method: 'POST',
         headers: { ...auth, 'Content-Type' : 'application/json' },
         body: JSON.stringify({
           ...data,
@@ -261,7 +261,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   const generateSmartContent = async () => {
     try {
       const response = await apiRequest('/api/emails/generate-content', {
-        method: 'POS',
+        method: 'POST',
         headers: { ...auth, 'Content-Type' : 'application/json' },
         body: JSON.stringify({
           profession,
@@ -453,7 +453,7 @@ const SmartEmailComposer: React.FC<SmartEmailComposerProps> = ({
   }}>
         <Stack direction="row" alignItems="center" spacing={2}>
           <Box sx={{ 
-            p: 1, borderRadius: '50, %', 
+            p: 1, borderRadius: '50%', 
             bgcolor: getProfessionColor(),
             color: 'white'
       }}>

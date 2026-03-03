@@ -157,7 +157,7 @@ export default function BRREGIntegration({
       const auth = await getAuthHeader();
       return apiRequest('/api/brreg/verify', {
         headers: auth,
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({ orgNumber: searchOrgNumber })
     });
   },

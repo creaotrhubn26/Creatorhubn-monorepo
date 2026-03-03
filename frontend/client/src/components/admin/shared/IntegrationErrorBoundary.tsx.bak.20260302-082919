@@ -1,0 +1,242 @@
+/**
+ * CreatorHub Norge - Integration Error Boundary
+ * Robust error handling for integration components
+ */
+
+import { useTheming } from '../../utils/theming-helper';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
+import {
+  Box,
+  Alert,
+  Button,
+  Typography,
+  Card,
+  CardContent,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Chip,
+} from '@mui/material';
+import {
+  Error as ErrorIcon,
+  Refresh as RefreshIcon,
+  ExpandMore as ExpandIcon,
+  BugReport as BugIcon,
+} from '@mui/icons-material';
+
+interface Props {
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  section?: string;
+}
+
+interface State {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: ErrorInfo | null;
+  errorId: string;
+}
+
+export default class IntegrationErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      errorId: '',
+  };
+}
+
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return {
+      hasError: true,
+      error,
+      errorId: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  };
+}
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    this.setState({
+      errorInfo,
+  });
+
+    // Log to console for debugging
+    console.error('Integration Error Boundary caught an error: ', error, errorInfo);
+
+    // Send to monitoring service (if available)
+    if (typeof window !== 'undefined' && (window as any).monitoring) {
+      (window as any).monitoring.logError({
+        error: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack,
+        section: this.props.section || 'integration-panel',
+        errorId: this.state.errord,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+        url: window.location.href,
+    });
+  }
+
+    // Call custom error handler
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+  }
+}
+
+  handleRetry = () => {
+    this.setState({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+      errorId: ', ',
+  });
+};
+
+  handleReload = () => {
+    window.location.reload();
+};
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+    }
+
+      return (
+        <Box sx={{ p:  2 }}>
+          <Alert
+            severity="error"
+            icon={<ErrorIcon />}
+            action={
+              <Box sx={{ display: 'flex', gap:  1 }}>
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={this.handleRetry}
+                  startIcon={<RefreshIcon />}
+                >
+                  Prøv igjen
+                </Button>
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={this.handleReload}
+                  variant="outlined"
+                >
+                  Last siden på nytt
+                </Button>
+              </Box>
+          }
+          >
+            <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
+              Noe gikk galt med integrasjonspanelet
+            </Typography>
+            <Typography variant="body2">
+              {this.props.section 
+                ? `En feil oppstod i ${this.props.section}-seksjonen. `
+                : 'En uventet feil oppstod. '
+            }
+              Prøv å laste siden på nytt, eller kontakt support hvis problemet vedvarer.
+            </Typography>
+          </Alert>
+
+          <Card sx={{ mt:  2 }} variant="outlined" sx={theming.getThemedCardSx()}>
+            <CardContent sx={theming.getThemedCardSx()}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <BugIcon color="error" />
+                <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
+                  Feildetaljer
+                </Typography>
+                <Chip 
+                  label={`ID: ${this.state.errord}`}
+                  size="small" 
+                  variant="outlined"
+                />
+              </Box>
+
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandIcon />}>
+                  <Typography variant="subtitle2">
+                    Tekniske detaljer (for utviklere)
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Box sx={{ mb:  2 }}>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Feilmelding: </Typography>
+                    <Typography 
+                      variant="body2" 
+                      component="pre"
+                      sx={{ 
+                        bgcolor: 'grey.10', 
+                        p: 1, borderRadius:  1,
+                        overflow: 'auto',
+                        fontSize: '0.75rem',
+                        fontFamily: 'monospace'
+                  }}
+                    >
+                      {this.state.error?.message || 'Ukjent feil'}
+                    </Typography>
+                  </Box>
+
+                  {this.state.error?.stack && (
+                    <Box sx={{ mb:  2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Stack trace: </Typography>
+                      <Typography 
+                        variant="body2" 
+                        component="pre"
+                        sx={{ 
+                          bgcolor: 'grey.10', 
+                          p: 1, borderRadius:  1,
+                          overflow: 'auto',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          maxHeight: 200
+                    }}
+                      >
+                        {this.state.error.stack}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {this.state.errorInfo?.componentStack && (
+                    <Box>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Component stack: </Typography>
+                      <Typography 
+                        variant="body2" 
+                        component="pre"
+                        sx={{ 
+                          bgcolor: 'grey.10', 
+                          p: 1, borderRadius:  1,
+                          overflow: 'auto',
+                          fontSize: '0.75rem',
+                          fontFamily: 'monospace',
+                          maxHeight: 200
+                    }}
+                      >
+                        {this.state.errorInfo.componentStack}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box sx={{ mt: 2, p: 1, bgcolor:'info.light', borderRadius:  1 }}>
+                    <Typography variant="caption" color="info.contrastText">
+                      <strong>Tips: </strong> Del denne informasjonen med support-teamet for raskere feilsøking.
+                      Feil-ID: {this.state.errord}
+                    </Typography>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            </CardContent>
+          </Card>
+        </Box>
+      );
+  }
+
+    return this.props.children;
+}
+}

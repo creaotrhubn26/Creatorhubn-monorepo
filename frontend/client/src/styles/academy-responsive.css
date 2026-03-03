@@ -1,0 +1,92 @@
+/* Academy global responsiveness:
+   - iPhone/iPad: stack sidebar + main content and improve touch targets
+   - Macbook/2K/4K/5K: constrain canvas width and scale sidebar safely
+*/
+
+body.academy-route {
+  --academy-shell-max-width: 1920px;
+  --academy-sidebar-min: 228px;
+  --academy-sidebar-ideal: 15vw;
+  --academy-sidebar-max: 320px;
+  --academy-divider: rgba(255, 255, 255, 0.08);
+}
+
+@media (min-width: 2048px) {
+  body.academy-route {
+    --academy-shell-max-width: 2480px;
+    --academy-sidebar-ideal: 13vw;
+  }
+}
+
+@media (min-width: 3840px) {
+  body.academy-route {
+    --academy-shell-max-width: 3200px;
+    --academy-sidebar-ideal: 12vw;
+  }
+}
+
+/* Desktop and large displays:
+   keep academy shells centered and readable on 2K/4K/5K */
+@media (min-width: 1200px) {
+  body.academy-route .MuiBox-root:has(> aside) {
+    width: min(100%, var(--academy-shell-max-width));
+    margin-inline: auto;
+  }
+
+  body.academy-route .MuiBox-root:has(> aside) > aside {
+    width: clamp(
+      var(--academy-sidebar-min),
+      var(--academy-sidebar-ideal),
+      var(--academy-sidebar-max)
+    ) !important;
+    flex: 0 0 auto;
+  }
+
+  body.academy-route .MuiBox-root:has(> aside) > :not(aside) {
+    min-width: 0;
+  }
+}
+
+/* Tablet and phone:
+   force vertical flow for sidebar-based academy pages */
+@media (max-width: 1199.95px) {
+  body.academy-route .MuiBox-root:has(> aside) {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+  }
+
+  body.academy-route .MuiBox-root:has(> aside) > aside {
+    width: 100% !important;
+    max-width: none !important;
+    border-right: none !important;
+    border-bottom: 1px solid var(--academy-divider) !important;
+  }
+
+  body.academy-route .MuiBox-root:has(> aside) > :not(aside) {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 899.95px) {
+  body.academy-route .MuiButton-root {
+    min-height: 40px;
+  }
+
+  body.academy-route .MuiIconButton-root {
+    padding: 8px;
+  }
+
+  body.academy-route .MuiStack-root,
+  body.academy-route .MuiBox-root {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  body.academy-route .MuiTypography-root {
+    overflow-wrap: anywhere;
+  }
+}

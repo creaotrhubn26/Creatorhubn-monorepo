@@ -1,115 +1,84 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
+  Button,
   Card,
   CardContent,
-  Typography,
-  Button,
-  Grid,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
   Chip,
-  LinearProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  TextField,
+  DialogContent,
+  DialogTitle,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Tabs,
-  Tab,
-  Paper,
-  Divider,
-  Alert,
-  Switch,
   FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Avatar,
-  Stepper,
-  Step,
-  StepLabel,
-  StepContent,
-  CircularProgress,
-  Tooltip,
+  Grid,
+  InputLabel,
+  LinearProgress,
+  MenuItem,
+  Select,
   Snackbar,
+  Step,
+  StepContent,
+  StepLabel,
+  Stepper,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
+  type ChipProps,
 } from '@mui/material';
 import {
-  Email as EmailIcon,
-  Campaign as CampaignIcon,
-  Analytics as AnalyticsIcon,
-  People as PeopleIcon,
-  AutoMode as AutoModeIcon,
-  Schedule as ScheduleIcon,
-  TrendingUp as TrendingUpIcon,
   Add as AddIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  PlayArrow as PlayArrowIcon,
-  Pause as PauseIcon,
-  Send as SendIcon,
-  Drafts as DraftIcon,
+  AutoMode as AutoModeIcon,
+  Campaign as CampaignIcon,
   CheckCircle as CheckCircleIcon,
-  Error as ErrorIcon,
-  ExpandMore as ExpandMoreIcon,
-  PersonAdd as PersonAddIcon,
-  FilterList as FilterListIcon,
-  Segment as SegmentIcon,
-  Timeline as TimelineIcon,
-  Settings as SettingsIcon,
+  Drafts as DraftIcon,
+  Email as EmailIcon,
+  Pause as PauseIcon,
+  People as PeopleIcon,
+  PlayArrow as PlayArrowIcon,
   Preview as PreviewIcon,
-  MarkEmailRead as MarkEmailReadIcon,
-  Refresh as RefreshIcon,
-  Launch as LaunchIcon,
+  Schedule as ScheduleIcon,
+  Segment as SegmentIcon,
+  Send as SendIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
+import { apiRequest } from '@/lib/queryClient';
+import { useTheming } from '../../utils/theming-helper';
+import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+
+type CampaignType = 'newsletter' | 'automation' | 'promotion' | 'welcome' | 'retention';
+type CampaignStatus = 'draft' | 'scheduled' | 'active' | 'paused' | 'completed';
+
+interface CampaignStats {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  unsubscribed: number;
+  bounced: number;
+}
 
 interface EmailCampaign {
   id: string;
   name: string;
   subject: string;
-  type: 'newsletter' | 'automation' | 'promotion' | 'welcome' | 'retention';
-  status: 'draft' | 'scheduled' | 'active' | 'paused' | 'completed';
+  type: CampaignType;
+  status: CampaignStatus;
   audienceSegment: string;
   createdAt: string;
   scheduledAt?: string;
   lastSentAt?: string;
-  stats: {
-    sent: number;
-    delivered: number;
-    opened: number;
-    clicked: number;
-    unsubscribed: number;
-    bounced: number;
-};
-  content: {
+  stats?: CampaignStats;
+  content?: {
     html: string;
     text: string;
-    previewText: string;
-};
-  automation?: {
-    trigger: string;
-    delay: number;
-    conditions: any[];
-};
+    previewText?: string;
+  };
 }
 
 interface EmailTemplate {
@@ -117,430 +86,366 @@ interface EmailTemplate {
   name: string;
   category: string;
   subject: string;
-  previewText: string;
-  html: string;
-  text: string;
-  thumbnail: string;
-  profession: string;
-  isCustom: boolean
+  previewText?: string;
+  html?: string;
+  text?: string;
+  thumbnail?: string;
 }
 
 interface ContactSegment {
   id: string;
   name: string;
   description: string;
-  criteria: any;
   contactCount: number;
   lastUpdated: string;
-  profession?: string
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number
+interface MarketingAnalytics {
+  totalSent: number;
+  openRate: number;
+  clickRate: number;
+  unsubscribeRate: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`email-tabpanel-${index}`}
-      aria-labelledby={`email-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p:  3 }}>{children}</Box>}
-    </div>
-  );
+interface CampaignFormState {
+  name: string;
+  subject: string;
+  type: CampaignType;
+  audienceSegment: string;
+  scheduledAt: string;
 }
 
-export default function EmailMarketingManager() {
-  const [activeTab, setActiveTab] = useState(0);
-  const [campaignDialog, setCampaignDialog] = useState(false);
-  const [templateDialog, setTemplateDialog] = useState(false);
-  const [segmentDialog, setSegmentDialog] = useState(false);
-  const [previewDialog, setPreviewDialog] = useState(false);
-  const [sendingProgress, setSendingProgress] = useState(false);
-  const [sendStatus, setSendStatus] = useState<{
-    open: boolean;
-    message: string;
-    severity: 'success' | 'error' | 'info';
-}>({
-    open: false,
-    message: '',
-    severity: 'info',
-});
-  const [selectedCampaign, setSelectedCampaign] = useState<EmailCampaign | null>(null);
-  const [previewCampaign, setPreviewCampaign] = useState<EmailCampaign | null>(null);
-  const [campaignForm, setCampaignForm] = useState({
-    name:  ',',
-    subject: '',
-    type: 'newsletter' as const,
-    audienceSegment: '',
-    scheduledAt: '',
-    template: '',
-});
+const emptyCampaignStats: CampaignStats = {
+  sent: 0,
+  delivered: 0,
+  opened: 0,
+  clicked: 0,
+  unsubscribed: 0,
+  bounced: 0,
+};
 
-  const { user } = useAuth();
-  
-  // Theming system
+const initialCampaignForm: CampaignFormState = {
+  name: '',
+  subject: '',
+  type: 'newsletter',
+  audienceSegment: '',
+  scheduledAt: '',
+};
+
+function safeArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function safeNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function statusColor(status: CampaignStatus): ChipProps['color'] {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'paused':
+      return 'warning';
+    case 'scheduled':
+      return 'primary';
+    case 'completed':
+      return 'info';
+    case 'draft':
+    default:
+      return 'default';
+  }
+}
+
+function statusIcon(status: CampaignStatus): React.ReactNode {
+  switch (status) {
+    case 'active':
+      return <PlayArrowIcon color="success" />;
+    case 'paused':
+      return <PauseIcon color="warning" />;
+    case 'scheduled':
+      return <ScheduleIcon color="primary" />;
+    case 'completed':
+      return <CheckCircleIcon color="info" />;
+    case 'draft':
+    default:
+      return <DraftIcon color="action" />;
+  }
+}
+
+function campaignTypeLabel(type: CampaignType): string {
+  switch (type) {
+    case 'newsletter':
+      return 'Nyhetsbrev';
+    case 'automation':
+      return 'Automatisering';
+    case 'promotion':
+      return 'Kampanje';
+    case 'welcome':
+      return 'Velkommen';
+    case 'retention':
+      return 'Oppfølging';
+    default:
+      return type;
+  }
+}
+
+export default function EmailMarketingManager(): JSX.Element {
   const theming = useTheming('photographer');
+  const { user } = useAuth();
   const { getCurrentUserProfession, getProfessionDisplayName } = useDynamicProfessions();
   const queryClient = useQueryClient();
 
-  // Fetch email campaigns
-  const { data: campaigns = [], isLoading: campaignsLoading } = useQuery({
+  const [tab, setTab] = useState(0);
+  const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewCampaign, setPreviewCampaign] = useState<EmailCampaign | null>(null);
+  const [campaignForm, setCampaignForm] = useState<CampaignFormState>(initialCampaignForm);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
+
+  const campaignsQuery = useQuery({
     queryKey: ['/api/email-marketing/campaigns', user?.id],
-    queryFn: () => apiRequest(`/api/email-marketing/campaigns/${user?.d}`),
-    enabled: !!user?.d,
-});
+    queryFn: async (): Promise<EmailCampaign[]> => {
+      const data = await apiRequest(`/api/email-marketing/campaigns/${user?.id}`);
+      return safeArray<EmailCampaign>(data);
+    },
+    enabled: Boolean(user?.id),
+  });
 
-  // Fetch email templates
-  const { data: templates = [, ],} = useQuery({
+  const templatesQuery = useQuery({
     queryKey: ['/api/email-marketing/templates', getCurrentUserProfession()],
-    queryFn: () =>
-      apiRequest(`/api/email-marketing/templates?profession=${getCurrentUserProfession()}`),
-    enabled: !!user?.d,
-});
-
-  // Fetch contact segments
-  const { data: segments = [, ],} = useQuery({
-    queryKey: ['/api/email-marketing/segments', user?.id],
-    queryFn: () => apiRequest(`/api/email-marketing/segments/${user?.d}`),
-    enabled: !!user?.d,
-});
-
-  // Fetch analytics
-  const { data: analytics } = useQuery({
-    queryKey: ['/api/email-marketing/analytics', user?.id],
-    queryFn: () => apiRequest(`/api/email-marketing/analytics/${user?.d}`),
-    enabled: !!user?.d,
-});
-
-  // Create campaign mutation
-  const createCampaign = useMutation({
-    mutationFn: async (data: any) =>
-      apiRequest('/api/email-marketing/campaigns', {
-        method: 'POS',
-        body: JSON.stringify({ ...data, userId: user?.id }),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/email-marketing/campaigns', ],
-    });
-      setCampaignDialog(false);
-      setCampaignForm({
-        name: '',
-        subject: '',
-        type: 'newsletter',
-        audienceSegment: '',
-        scheduledAt: ', ',
-        template: ', ',
-    });
-  },
-});
-
-  // Update campaign status
-  const updateCampaignStatus = useMutation({
-    mutationFn: async ({ campaignd, status }: { campaignId: string; status: string }) =>
-      apiRequest(`/api/email-marketing/campaigns/${campaignId}/status`, {
-        method: 'PATC',
-        body: JSON.stringify({ status }),
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/email-marketing/campaigns', ],
-    });
-  },
-});
-
-  // Send email campaign
-  const sendCampaign = useMutation({
-    mutationFn: async ({ campaignI, d,}: { campaignId: string }) => {
-      setSendingProgress(true);
-      setSendStatus({
-        open: true,
-        message: 'Sender email kampanje...',
-        severity: 'info',
-    });
-
-      return apiRequest(`/api/email-marketing/campaigns/${campaignId}/send`, {
-        method: 'POS',
-        body: JSON.stringify({ userId: user?.id }),
-    });
-  },
-    onSuccess: (data) => {
-      setSendingProgress(false);
-      setSendStatus({
-        open: true,
-        message: `Email kampanje sendt til ${data.sentCount || 0} mottakere!`,
-        severity: 'success',
-    });
-
-      // Dispatch notification event for real-time updates
-      window.dispatchEvent(
-        new CustomEvent('emailCampaignSent', {
-          detail: {
-            campaignName: data.campaignName || 'Email kampanje',
-            sentCount: data.sentCount || 0,
-            targetCount: data.targetCount || 0,
-            campaignId: data.campaignd,
-        },
-      }),
+    queryFn: async (): Promise<EmailTemplate[]> => {
+      const data = await apiRequest(
+        `/api/email-marketing/templates?profession=${encodeURIComponent(getCurrentUserProfession())}`,
       );
+      return safeArray<EmailTemplate>(data);
+    },
+    enabled: Boolean(user?.id),
+  });
 
-      queryClient.invalidateQueries({
-        queryKey: ['/api/email-marketing/campaigns', ],
-    });
-      queryClient.invalidateQueries({
-        queryKey: ['/api/email-marketing/analytics', ],
-    });
-  },
-    onError: (error) => {
-      setSendingProgress(false);
-      setSendStatus({
-        open: true,
-        message: 'Feil ved sending av email kampanje. Prøv igjen.',
-        severity: 'error',
-    });
-      console.error('Send campaign error: ', error);
-  },
-});
+  const segmentsQuery = useQuery({
+    queryKey: ['/api/email-marketing/segments', user?.id],
+    queryFn: async (): Promise<ContactSegment[]> => {
+      const data = await apiRequest(`/api/email-marketing/segments/${user?.id}`);
+      return safeArray<ContactSegment>(data);
+    },
+    enabled: Boolean(user?.id),
+  });
 
-  // Preview email template
-  const previewEmail = useMutation({
-    mutationFn: async ({ templateI, d,}: { templateId: string }) =>
-      apiRequest(`/api/email-marketing/templates/${templateId}/preview`, {
-        method: 'GE',
-    }),
-    onSuccess: (data) => {
-      setPreviewCampaign(data);
-      setPreviewDialog(true);
-},
-});
+  const analyticsQuery = useQuery({
+    queryKey: ['/api/email-marketing/analytics', user?.id],
+    queryFn: async (): Promise<MarketingAnalytics> => {
+      const data = (await apiRequest(`/api/email-marketing/analytics/${user?.id}`)) as Partial<MarketingAnalytics>;
+      return {
+        totalSent: safeNumber(data.totalSent),
+        openRate: safeNumber(data.openRate),
+        clickRate: safeNumber(data.clickRate),
+        unsubscribeRate: safeNumber(data.unsubscribeRate),
+      };
+    },
+    enabled: Boolean(user?.id),
+  });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'success';
-      case 'paused':
-        return 'warning';
-      case 'completed':
-        return 'info';
-      case 'scheduled':
-        return 'primary';
-      default:
-        return 'default';
-}
-};
+  const createCampaign = useMutation({
+    mutationFn: async (payload: CampaignFormState): Promise<void> => {
+      await apiRequest('/api/email-marketing/campaigns', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...payload,
+          userId: user?.id,
+        }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/campaigns', user?.id] });
+      setCampaignDialogOpen(false);
+      setCampaignForm(initialCampaignForm);
+      setSnackbar({ open: true, message: 'Kampanje opprettet', severity: 'success' });
+    },
+    onError: () => {
+      setSnackbar({ open: true, message: 'Kunne ikke opprette kampanje', severity: 'error' });
+    },
+  });
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <PlayArrowIcon />;
-      case 'paused':
-        return <PauseIcon />;
-      case 'completed':
-        return <CheckCircleIcon />;
-      case 'scheduled':
-        return <ScheduleIcon />;
-      case 'draft':
-        return <DraftIcon />;
-      default:
-        return <EmailIcon />;
-}
-};
+  const updateCampaignStatus = useMutation({
+    mutationFn: async ({ campaignId, status }: { campaignId: string; status: CampaignStatus }): Promise<void> => {
+      await apiRequest(`/api/email-marketing/campaigns/${campaignId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/campaigns', user?.id] });
+    },
+  });
 
-  const getCampaignTypeLabel = (type: string) => {
-    const labels = {
-      newsletter: 'Nyhetsbrev',
-      automation: 'Automatisering',
-      promotion: 'Kampanje',
-      welcome: 'Velkommen',
-      retention: 'Oppfølging',
-  };
-    return labels[type as keyof typeof labels] || type;
-};
+  const sendCampaign = useMutation({
+    mutationFn: async (campaignId: string): Promise<void> => {
+      await apiRequest(`/api/email-marketing/campaigns/${campaignId}/send`, {
+        method: 'POST',
+        body: JSON.stringify({ userId: user?.id }),
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/campaigns', user?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/email-marketing/analytics', user?.id] }),
+      ]);
+      setSnackbar({ open: true, message: 'Kampanje sendt', severity: 'success' });
+    },
+    onError: () => {
+      setSnackbar({ open: true, message: 'Kampanjesending feilet', severity: 'error' });
+    },
+  });
 
-  const handleCreateCampaign = () => {
-    if (!campaignForm.name || !campaignForm.subject || !campaignForm.audienceSegment) return;
+  const campaigns = campaignsQuery.data ?? [];
+  const templates = templatesQuery.data ?? [];
+  const segments = segmentsQuery.data ?? [];
+  const analytics = analyticsQuery.data;
+
+  const busy = campaignsQuery.isLoading || templatesQuery.isLoading || segmentsQuery.isLoading;
+
+  const activeAutomationSummary = useMemo(() => {
+    const active = campaigns.filter((campaign) => campaign.type === 'automation' && campaign.status === 'active');
+    return active.length;
+  }, [campaigns]);
+
+  const handleCreateCampaign = (): void => {
+    if (!campaignForm.name.trim() || !campaignForm.subject.trim() || !campaignForm.audienceSegment.trim()) {
+      setSnackbar({ open: true, message: 'Fyll ut navn, emne og målgruppe', severity: 'error' });
+      return;
+    }
     createCampaign.mutate(campaignForm);
-};
-
-  if (campaignsLoading) {
-    return (
-      <Box sx={{ p:  3 }}>
-        <LinearProgress />
-        <Typography sx={{ mt:  2 }}>Laster email marketing...</Typography>
-      </Box>
-    );
-}
+  };
 
   return (
-    <Box sx={{ width: '100%'}}>
+    <Box sx={{ width: '100%', p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
         Email Marketing
       </Typography>
 
-      <Alert severity="info" sx={{ mb:  3 }}>
+      <Alert severity="info" sx={{ mb: 3 }}>
         <Typography variant="body2">
-          Bygg sterke kundeforhold og øk salget som{', '}
-          {getProfessionDisplayName(getCurrentUserProfession()).toLowerCase()}
-          med automatiserte email-kampanjer og personalisert kommunikasjon.
+          Bygg sterkere relasjoner og øk konvertering som{' '}
+          {getProfessionDisplayName(getCurrentUserProfession()).toLowerCase()} med målrettede kampanjer.
         </Typography>
       </Alert>
 
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb:  3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="Kampanjer" icon={<CampaignIcon />} />
-          <Tab label="Maler" icon={<EmailIcon />} />
-          <Tab label="Kontakter" icon={<PeopleIcon />} />
-          <Tab label="Automatisering" icon={<AutoModeIcon />} />
-          <Tab label="Analyse" icon={<AnalyticsIcon />} />
-        </Tabs>
-      </Box>
+      {(busy || createCampaign.isPending) && <LinearProgress sx={{ mb: 2 }} />}
 
-      <TabPanel value={activeTab} index={0}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Email Kampanjer</Typography>
-          <Button variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setCampaignDialog(true)}
-          >
-            Ny Kampanje
-          </Button>
-        </Box>
+      <Tabs value={tab} onChange={(_, next) => setTab(next)} sx={{ mb: 2 }}>
+        <Tab icon={<CampaignIcon />} label="Kampanjer" />
+        <Tab icon={<EmailIcon />} label="Maler" />
+        <Tab icon={<PeopleIcon />} label="Segmenter" />
+        <Tab icon={<AutoModeIcon />} label="Automatisering" />
+        <Tab icon={<AnalyticsIcon />} label="Analyse" />
+      </Tabs>
 
-        <Grid container spacing={2}>
-          {campaigns.map((campaign: EmailCampaign) => (
-            <Grid item xs={12} key={campaign.id}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box display="flex" alignItems="center" justifyContent="space-between">
-                    <Box display="flex" alignItems="center" gap={2}>
-                      {getStatusIcon(campaign.status)}
-                      <Box>
-                        <Typography variant="h6" sx={{ color: theming.colors.primary }}>{campaign.name}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {campaign.subject}
-                        </Typography>
-                        <Box display="flex" gap={1} mt={1}>
-                          <Chip
-                            label={getCampaignTypeLabel(campaign.type)}
+      {tab === 0 && (
+        <Box>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+              Kampanjer
+            </Typography>
+            <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCampaignDialogOpen(true)}>
+              Ny kampanje
+            </Button>
+          </Box>
+
+          <Grid container spacing={2}>
+            {campaigns.map((campaign) => {
+              const stats = campaign.stats ?? emptyCampaignStats;
+              const openRate = stats.sent > 0 ? (stats.opened / stats.sent) * 100 : 0;
+              const clickRate = stats.sent > 0 ? (stats.clicked / stats.sent) * 100 : 0;
+
+              return (
+                <Grid item xs={12} key={campaign.id}>
+                  <Card sx={theming.getThemedCardSx()}>
+                    <CardContent>
+                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
+                        <Box>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            {statusIcon(campaign.status)}
+                            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                              {campaign.name}
+                            </Typography>
+                            <Chip label={campaignTypeLabel(campaign.type)} variant="outlined" size="small" />
+                            <Chip label={campaign.status} color={statusColor(campaign.status)} size="small" />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            {campaign.subject}
+                          </Typography>
+                        </Box>
+
+                        <Box display="flex" gap={1}>
+                          <Button
                             size="small"
-                            variant="outlined"
-                          />
-                          <Chip
-                            label={campaign.status}
-                            size="small"
-                            color={getStatusColor(campaign.status) as any}
-                          />
+                            startIcon={<PreviewIcon />}
+                            onClick={() => {
+                              setPreviewCampaign(campaign);
+                              setPreviewDialogOpen(true);
+                            }}
+                          >
+                            Preview
+                          </Button>
+                          {campaign.status === 'draft' && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              startIcon={<SendIcon />}
+                              onClick={() => sendCampaign.mutate(campaign.id)}
+                              disabled={sendCampaign.isPending}
+                            >
+                              Send
+                            </Button>
+                          )}
+                          {campaign.status === 'active' && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PauseIcon />}
+                              onClick={() => updateCampaignStatus.mutate({ campaignId: campaign.id, status: 'paused' })}
+                            >
+                              Pause
+                            </Button>
+                          )}
+                          {campaign.status === 'paused' && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<PlayArrowIcon />}
+                              onClick={() => updateCampaignStatus.mutate({ campaignId: campaign.id, status: 'active' })}
+                            >
+                              Resume
+                            </Button>
+                          )}
                         </Box>
                       </Box>
-                    </Box>
 
-                    <Box display="flex" gap={1}>
-                      {campaign.status === 'draft' && (
-                        <>
-                          <Tooltip title="Forhåndsvis email">
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                setPreviewCampaign(campaign);
-                                setPreviewDialog(true);
-                            }}
-                            >
-                              <PreviewIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Button size="small"
-                            variant="contained"
-                            color="primary"
-                            startIcon={
-                              sendingProgress ? <CircularProgress size={16} sx={theming.getThemedButtonSx()}> : <SendIcon />
-                          }
-                            onClick={() => sendCampaign.mutate({ campaignId: campaign.id })}
-                            disabled={sendingProgress || sendCampaign.isPending}
-                          >
-                            {sendingProgress ? 'Sender...' : 'Send'}
-                          </Button>
-                        </>
-                      )}
-                      {campaign.status === 'active' && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<PauseIcon />}
-                          onClick={() =>
-                            updateCampaignStatus.mutate({
-                              campaignId: campaign.d,
-                              status: 'paused',
-                          })
-                        }
-                        >
-                          Pause
-                        </Button>
-                      )}
-                      {campaign.status === 'paused' && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<PlayArrowIcon />}
-                          onClick={() =>
-                            updateCampaignStatus.mutate({
-                              campaignId: campaign.d,
-                              status: 'active',
-                          })
-                        }
-                        >
-                          Resume
-                        </Button>
-                      )}
-                      <Tooltip title="Redigerer kampanje">
-                        <IconButton size="small">
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </Box>
-
-                  {campaign.stats && (
-                    <Box mt={2}>
-                      <Grid container spacing={2}>
-                        <Grid item xs={2} >
-                          <Typography variant="caption" display="block">
+                      <Grid container spacing={2} sx={{ mt: 1 }}>
+                        <Grid item xs={6} md={3}>
+                          <Typography variant="caption" color="text.secondary">
                             Sendt
                           </Typography>
-                          <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-                            {campaign.stats.sent.toLocaleString()}
-                          </Typography>
+                          <Typography variant="h6">{stats.sent.toLocaleString('no-NO')}</Typography>
                         </Grid>
-                        <Grid item xs={2} >
-                          <Typography variant="caption" display="block">
-                            Åpnet
-                          </Typography>
-                          <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
-                            {campaign.stats.opened.toLocaleString()}
-                          </Typography>
+                        <Grid item xs={6} md={3}>
                           <Typography variant="caption" color="text.secondary">
-                            {((campaign.stats.opened / campaign.stats.sent) * 100).toFixed(1)}%
+                            Åpningsrate
                           </Typography>
+                          <Typography variant="h6">{openRate.toFixed(1)}%</Typography>
                         </Grid>
-                        <Grid item xs={2} >
-                          <Typography variant="caption" display="block">
-                            Klikket
-                          </Typography>
-                          <Typography variant="h6" color="secondary" sx={{ color: theming.colors.primary }}>
-                            {campaign.stats.clicked.toLocaleString()}
-                          </Typography>
+                        <Grid item xs={6} md={3}>
                           <Typography variant="caption" color="text.secondary">
-                            {((campaign.stats.clicked / campaign.stats.sent) * 100).toFixed(1)}%
+                            Klikkrate
                           </Typography>
+                          <Typography variant="h6">{clickRate.toFixed(1)}%</Typography>
                         </Grid>
-                        <Grid item xs={3} >
-                          <Typography variant="caption" display="block">
+                        <Grid item xs={6} md={3}>
+                          <Typography variant="caption" color="text.secondary">
                             Sist sendt
                           </Typography>
                           <Typography variant="body2">
@@ -550,432 +455,226 @@ export default function EmailMarketingManager() {
                           </Typography>
                         </Grid>
                       </Grid>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={activeTab} index={1}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Email Maler</Typography>
-          <Button variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setTemplateDialog(true)}
-          >
-            Ny Mal
-          </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
         </Box>
+      )}
 
-        <Grid container spacing={3}>
-          {templates.map((template: EmailTemplate) => (
+      {tab === 1 && (
+        <Grid container spacing={2}>
+          {templates.map((template) => (
             <Grid item xs={12} md={6} lg={4} key={template.id}>
               <Card sx={theming.getThemedCardSx()}>
-                <Box
-                  sx={{
-                    height: 20,
-                    overflow: 'hidden',
-                    backgroundColor: 'grey.10'}}
-                >
-                  {template.thumbnail ? (
-                    <img
-                      src={template.thumbnail}
-                      alt={template.name}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'}}
-                    />
-                  ) : (
-                    <Box display="flex" alignItems="center" justifyContent="center" height="100%">
-                      <EmailIcon sx={{ fontSize:  48, color: 'grey.400'}} />
-                    </Box>
-                  )}
-                </Box>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+                <CardContent>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                     {template.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {template.subject}
                   </Typography>
-                  <Box display="flex" justifyContent="space-between" alignItems="center" mt={2}>
-                    <Chip label={template.category} size="small" variant="outlined" />
-                    <Box>
-                      <IconButton size="small">
-                        <EditIcon />
-                      </IconButton>
-                      <Button size="small" variant="contained" sx={theming.getThemedButtonSx()}>
-                        Bruk
-                      </Button>
-                    </Box>
-                  </Box>
+                  <Chip label={template.category} size="small" variant="outlined" />
                 </CardContent>
               </Card>
             </Grid>
           ))}
         </Grid>
-      </TabPanel>
+      )}
 
-      <TabPanel value={activeTab} index={2}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>Kontakt Segmenter</Typography>
-          <Box>
-            <Button variant="outlined" startIcon={<PersonAddIcon />} sx={{ mr:  1 }}>
-              Importer Kontakter
-            </Button>
-            <Button variant="contained"
-              startIcon={<SegmentIcon />}
-              onClick={() => setSegmentDialog(true)}
-            >
-              Nytt Segment
-            </Button>
-          </Box>
-        </Box>
-
+      {tab === 2 && (
         <Grid container spacing={2}>
-          {segments.map((segment: ContactSegment) => (
+          {segments.map((segment) => (
             <Grid item xs={12} md={6} key={segment.id}>
               <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Box display="flex" justifyContent="space-between" alignItems="flex-start">
-                    <Box>
-                      <Typography variant="h6" sx={{ color: theming.colors.primary }}>{segment.name}</Typography>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        {segment.description}
-                      </Typography>
-                      <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                        {segment.contactCount.toLocaleString()}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        kontakter
-                      </Typography>
-                    </Box>
-                    <Box>
-                      <IconButton size="small">
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton size="small">
-                        <FilterListIcon />
-                      </IconButton>
-                    </Box>
-                  </Box>
-                  <Typography variant="caption" display="block" mt={2}>
-                    Sist oppdatert: {new Date(segment.lastUpdated).toLocaleDateString(', ')}
+                <CardContent>
+                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    {segment.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {segment.description}
+                  </Typography>
+                  <Typography variant="h5" sx={{ mt: 1 }}>
+                    {segment.contactCount.toLocaleString('no-NO')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Sist oppdatert {new Date(segment.lastUpdated).toLocaleDateString('no-NO')}
                   </Typography>
                 </CardContent>
               </Card>
             </Grid>
           ))}
         </Grid>
-      </TabPanel>
+      )}
 
-      <TabPanel value={activeTab} index={3}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Email Automatisering
-        </Typography>
+      {tab === 3 && (
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+              Automatisering
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Aktiv automatisering: {activeAutomationSummary}
+            </Typography>
 
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
+            <Stepper orientation="vertical">
+              <Step active>
+                <StepLabel>Velkommen</StepLabel>
+                <StepContent>
+                  <Typography variant="body2">Sendes ved registrering.</Typography>
+                </StepContent>
+              </Step>
+              <Step active>
+                <StepLabel>Oppfølging</StepLabel>
+                <StepContent>
+                  <Typography variant="body2">Sendes 48 timer etter første åpning.</Typography>
+                </StepContent>
+              </Step>
+              <Step>
+                <StepLabel>Retention</StepLabel>
+                <StepContent>
+                  <Typography variant="body2">Sendes til inaktive kontakter etter 30 dager.</Typography>
+                </StepContent>
+              </Step>
+            </Stepper>
+
+            <Box mt={2}>
+              <FormControlLabel control={<Switch defaultChecked />} label="Automatisering aktiv" />
+              <FormControlLabel control={<Switch />} label="Smart sendetid" />
+            </Box>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 4 && analytics && (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Velkommen Serie
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Automatisk velkommen-sekvens for nye kontakter
-                </Typography>
-
-                <Stepper orientation="vertical" sx={{ mt:  2 }}>
-                  <Step active>
-                    <StepLabel>Øyeblikkelig velkommen</StepLabel>
-                    <StepContent>
-                      <Typography variant="body2">
-                        Send velkommen email umiddelbart etter registrering
-                      </Typography>
-                    </StepContent>
-                  </Step>
-                  <Step active>
-                    <StepLabel>Introduksjon (1 dag)</StepLabel>
-                    <StepContent>
-                      <Typography variant="body2">
-                        Introduser dine tjenester og portefølje
-                      </Typography>
-                    </StepContent>
-                  </Step>
-                  <Step>
-                    <StepLabel>Tilbud (3 dager)</StepLabel>
-                    <StepContent>
-                      <Typography variant="body2">
-                        Send personalisert tilbud basert på interesser
-                      </Typography>
-                    </StepContent>
-                  </Step>
-                </Stepper>
-
-                <Box mt={2}>
-                  <FormControlLabel
-                    control={<Switch defaultChecked />}
-                    label="Aktiver automatisering"
-                  />
-                </Box>
+              <CardContent>
+                <Typography variant="h5">{analytics.totalSent.toLocaleString('no-NO')}</Typography>
+                <Typography variant="caption">Totalt sendt</Typography>
               </CardContent>
             </Card>
           </Grid>
-
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={3}>
             <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Oppfølging Serie
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Re-engager inaktive kontakter
-                </Typography>
-
-                <Box mt={2}>
-                  <Alert severity="info">
-                    <Typography variant="body2">
-                      Automatisk oppfølging av kontakter som ikke har åpnet emails på 30 dager.
-                    </Typography>
-                  </Alert>
-                </Box>
-
-                <Box mt={2}>
-                  <FormControlLabel control={theming.getThemedIcon('switch')}} label="Aktiver oppfølging" />
-                </Box>
+              <CardContent>
+                <Typography variant="h5">{analytics.openRate.toFixed(1)}%</Typography>
+                <Typography variant="caption">Åpningsrate</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent>
+                <Typography variant="h5">{analytics.clickRate.toFixed(1)}%</Typography>
+                <Typography variant="caption">Klikkrate</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent>
+                <Typography variant="h5">{analytics.unsubscribeRate.toFixed(2)}%</Typography>
+                <Typography variant="caption">Avmeldingsrate</Typography>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
-      </TabPanel>
+      )}
 
-      <TabPanel value={activeTab} index={4}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Email Marketing Analyse
-        </Typography>
-
-        {analytics && (
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                    {analytics.totalSent?.toLocaleString() || '0'}
-                  </Typography>
-                  <Typography variant="caption">Totalt sendt</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h4" color="secondary" sx={{ color: theming.colors.primary }}>
-                    {analytics.openRate || '0'}%
-                  </Typography>
-                  <Typography variant="caption">Åpningsrate</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h4" color="success.main" sx={{ color: theming.colors.primary }}>
-                    {analytics.clickRate || '0'}%
-                  </Typography>
-                  <Typography variant="caption">Klikkrate</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h4" color="warning.main" sx={{ color: theming.colors.primary }}>
-                    {analytics.unsubscribeRate || '0'}%
-                  </Typography>
-                  <Typography variant="caption">Avmeldingsrate</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
-      </TabPanel>
-
-      {/* Create Campaign Dialog */}
-      <Dialog
-        open={campaignDialog}
-        onClose={() => setCampaignDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Opprett Ny Email Kampanje</DialogTitle>
+      <Dialog open={campaignDialogOpen} onClose={() => setCampaignDialogOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Ny kampanje</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt:  1 }}>
-            <Grid item xs={12}>
-              <TextField
-                label="Kampanje Navn"
-                fullWidth
-                value={campaignForm.name}
-                onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
-              />
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                label="Email Emne"
-                fullWidth
-                value={campaignForm.subject}
-                onChange={(e) => setCampaignForm({ ...campaignForm, subject: e.target.value })}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Kampanje Type</InputLabel>
-                <Select
-                  value={campaignForm.type}
-                  onChange={(e) =>
-                    setCampaignForm({
-                      ...campaignForm,
-                      type: e.target.value as any,
-                  })
-                }
-                >
-                  <MenuItem value="newsletter">Nyhetsbrev</MenuItem>
-                  <MenuItem value="promotion">Kampanje</MenuItem>
-                  <MenuItem value="welcome">Velkommen</MenuItem>
-                  <MenuItem value="retention">Oppfølging</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Målgruppe</InputLabel>
-                <Select
-                  value={campaignForm.audienceSegment}
-                  onChange={(e) =>
-                    setCampaignForm({
-                      ...campaignForm,
-                      audienceSegment: e.target.value,
-                  })
-                }
-                >
-                  {segments.map((segment: ContactSegment) => (
-                    <MenuItem key={segment.d} value={segment.id}>
-                      {segment.name} ({segment.contactCount} kontakter)
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12}>
-              <TextField
-                label="Planlagt Sending (valgfritt)"
-                type="datetime-local"
-                fullWidth
-                value={campaignForm.scheduledAt}
-                onChange={(e) =>
-                  setCampaignForm({
-                    ...campaignForm,
-                    scheduledAt: e.target.value,
-                })
-              }
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-          </Grid>
+          <TextField
+            fullWidth
+            label="Kampanjenavn"
+            margin="normal"
+            value={campaignForm.name}
+            onChange={(event) => setCampaignForm((prev) => ({ ...prev, name: event.target.value }))}
+          />
+          <TextField
+            fullWidth
+            label="Emne"
+            margin="normal"
+            value={campaignForm.subject}
+            onChange={(event) => setCampaignForm((prev) => ({ ...prev, subject: event.target.value }))}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="campaign-type-label">Type</InputLabel>
+            <Select
+              labelId="campaign-type-label"
+              label="Type"
+              value={campaignForm.type}
+              onChange={(event) => setCampaignForm((prev) => ({ ...prev, type: event.target.value as CampaignType }))}
+            >
+              <MenuItem value="newsletter">Nyhetsbrev</MenuItem>
+              <MenuItem value="promotion">Kampanje</MenuItem>
+              <MenuItem value="welcome">Velkommen</MenuItem>
+              <MenuItem value="retention">Oppfølging</MenuItem>
+              <MenuItem value="automation">Automatisering</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            label="Målgruppe"
+            margin="normal"
+            value={campaignForm.audienceSegment}
+            onChange={(event) => setCampaignForm((prev) => ({ ...prev, audienceSegment: event.target.value }))}
+          />
+          <TextField
+            fullWidth
+            label="Planlagt tid"
+            margin="normal"
+            type="datetime-local"
+            InputLabelProps={{ shrink: true }}
+            value={campaignForm.scheduledAt}
+            onChange={(event) => setCampaignForm((prev) => ({ ...prev, scheduledAt: event.target.value }))}
+          />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCampaignDialog(false)}>Avbryt</Button>
-          <Button onClick={handleCreateCampaign}
-            variant="contained"
-            disabled={createCampaign.isPending}
-           sx={theming.getThemedButtonSx()}>
-            Opprett Kampanje
+          <Button onClick={() => setCampaignDialogOpen(false)}>Avbryt</Button>
+          <Button variant="contained" onClick={handleCreateCampaign} disabled={createCampaign.isPending}>
+            Opprett
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Email Preview Dialog */}
-      <Dialog open={previewDialog} onClose={() => setPreviewDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
-          <PreviewIcon />
-          Email Forhåndsvisning
-          {previewCampaign && <Chip label={previewCampaign.type} size="small" sx={{ ml:  1 }} />}
-        </DialogTitle>
+      <Dialog open={previewDialogOpen} onClose={() => setPreviewDialogOpen(false)} fullWidth maxWidth="md">
+        <DialogTitle>Preview</DialogTitle>
         <DialogContent>
-          {previewCampaign && (
+          {previewCampaign ? (
             <Box>
-              <Alert severity="info" sx={{ mb:  2 }}>
-                <Typography variant="body2">
-                  Forhåndsvisning av "{previewCampaign.name}" - dette er hvordan mottakerne vil se
-                  emailen.
-                </Typography>
-              </Alert>
-
-              <Paper sx={{ p: 2, border: '1px solid #e0e0e0', mb:  2 ,  ...theming.getThemedCardSx() }}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  {previewCampaign.subject}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Fra: CreatorHub Norge &lt;noreply@creatorhubn.com&gt;
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Til: Dine valgte kontakter ({previewCampaign.audienceSegment || 'Alle'})
-                </Typography>
-                <Divider sx={{ my:  2 }} />
-
-                {previewCampaign.content ? (
-                  <Box
-                    dangerouslySetInnerHTML={{
-                      __html: previewCampaign.content.html || '<p>Email innhold vil bli vist her...</p>'}}
-                  />
-                ) : (
-                  <Typography variant="body1" color="text.secondary">
-                    Email mal vil bli lastet inn basert på valgt template...
-                  </Typography>
-                )}
-              </Paper>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                {previewCampaign.name}
+              </Typography>
+              <Typography variant="subtitle1" sx={{ mt: 1 }}>
+                {previewCampaign.subject}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                {previewCampaign.content?.previewText ?? 'Ingen preview-tekst tilgjengelig.'}
+              </Typography>
             </Box>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Ingen kampanje valgt.
+            </Typography>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPreviewDialog(false)}>Lukk</Button>
-          {previewCampaign && previewCampaign.status === 'draft' && (
-            <Button variant="contained"
-              startIcon={<SendIcon />}
-              onClick={() => {
-                setPreviewDialog(false);
-                sendCampaign.mutate({ campaignId: previewCampaign.id });
-            }}
-            >
-              Send Nå
-            </Button>
-          )}
+          <Button onClick={() => setPreviewDialogOpen(false)}>Lukk</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Status Snackbar */}
       <Snackbar
-        open={sendStatus.open}
-        autoHideDuration={6000}
-        onClose={() => setSendStatus({ ...sendStatus, open: false })}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center'}}
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
       >
-        <Alert
-          onClose={() => setSendStatus({ ...sendStatus, open: false })}
-          severity={sendStatus.severity}
-          sx={{ width:'100%'}}
-        >
-          {sendStatus.message}
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}>
+          {snackbar.message}
         </Alert>
       </Snackbar>
     </Box>

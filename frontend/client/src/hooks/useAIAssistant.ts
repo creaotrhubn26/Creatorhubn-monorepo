@@ -142,7 +142,7 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
 
   const generateAIResponse = useCallback((conversationId: string, userMessage: string): AIMessage | null => {
     try {
-      const response = aiAssistant.generateAIResponse(conversationd, userMessage);
+      const response = aiAssistant.generateAIResponse(conversationId, userMessage);
       if (response) {
         setConversations(prev => 
           prev.map(conv => 
@@ -232,7 +232,6 @@ export const useAIAssistant = (): UseAIAssistantReturn => {
     error
 };
 };
-
 
 
 

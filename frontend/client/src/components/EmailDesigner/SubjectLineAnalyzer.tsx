@@ -221,7 +221,7 @@ export default function SubjectLineAnalyzer({
       </Box>
 
       {/* Feature indicators */}
-      <Stack direction="row" spacing={1}, sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
+      <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Chip
           label="Emoji"
           size="small"
@@ -407,7 +407,7 @@ function generateAISuggestions(
 
   // If no emoji, add one
   if (!features.hasEmoji) {
-    const emojis = ['📸', '✨','🎉''💫', '🌟'];
+    const emojis = ['📸', '✨', '🎉', '💫', '🌟'];
     const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
     suggestions.push({
       text: `${randomEmoji} ${subject}`,

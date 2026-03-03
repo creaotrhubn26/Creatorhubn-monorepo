@@ -374,7 +374,7 @@ export function VisualEditor({ enabled = false, onToggle }: VisualEditorProps) {
         await testEndpoint({
           id: 'visual-editor-save',
           name: 'Visual Editor Save',
-          method: 'POS',
+          method: 'POST',
           url: '/api/visual-editor/save',
           responseStatus: 20,
           responseBody: { success: true, saved: Object.keys(changes).length },

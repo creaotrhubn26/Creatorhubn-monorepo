@@ -15,7 +15,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { logger } from '../../core/services/logger';
 
-const log = logger.module('ViewfinderView, ');
+const log = logger.module('ViewfinderView');
 import {
   Box,
   IconButton,
@@ -81,7 +81,7 @@ let THREE: any = null;
 try {
   THREE = require('three');
 } catch (e) {
-  log.warn('THREE.js not available, ');
+  log.warn('THREE.js not available');
 }
 
 // ============================================================================
@@ -364,7 +364,7 @@ function ViewfinderSettingsPanel({
                   fontSize: 11,
                   textTransform: 'capitalize'}}
               >
-                {type.replace('_, ',',')}
+                {type.replace('_', ' ')}
               </Box>
             ))}
           </Stack>
@@ -644,7 +644,7 @@ export function ViewfinderViewInner({
         position: isFullscreen ? 'fixed' : 'relative',
         top: isFullscreen ? 0 : 'auto',
         left: isFullscreen ? 0 : 'auto',
-        zIndex: , isFullscreen ? 9999 : 'auto',
+        zIndex: isFullscreen ? 9999 : 'auto',
         bgcolor: '#000',
         overflow: 'hidden',
         display: 'flex',
@@ -675,7 +675,7 @@ export function ViewfinderViewInner({
           </Stack>
           
           <Stack direction="row" spacing={isTouch ? 1 : 0.5}>
-            <Tooltip title={isTouch ? ', ' : 'Take Snapshot'} enterDelay={isTouch ? 99999 : 300}>
+            <Tooltip title={isTouch ? '' : 'Take Snapshot'} enterDelay={isTouch ? 99999 : 300}>
               <TouchIconButton 
                 touchSize={isTouch ? 'medium' : 'small'} 
                 onClick={handleSnapshot} 
@@ -685,7 +685,10 @@ export function ViewfinderViewInner({
               </TouchIconButton>
             </Tooltip>
             
-            <Tooltip title={isTouch ? ', ' : (isRecording ? 'Stop Recording' : 'Start Recording')} enterDelay={isTouch ? 99999 : 300}>
+            <Tooltip
+              title={isTouch ? '' : isRecording ? 'Stop Recording' : 'Start Recording'}
+              enterDelay={isTouch ? 99999 : 300}
+            >
               <TouchIconButton
                 touchSize={isTouch ? 'medium' : 'small'}
                 onClick={isRecording ? stopRecording : startRecording}
@@ -724,7 +727,7 @@ export function ViewfinderViewInner({
               </>
             )}
             
-            <Tooltip title={isTouch ? ', ' : 'Settings'} enterDelay={isTouch ? 99999 : 300}>
+            <Tooltip title={isTouch ? '' : 'Settings'} enterDelay={isTouch ? 99999 : 300}>
               <TouchIconButton
                 touchSize={isTouch ? 'medium' : 'small'}
                 onClick={() => setShowSettings(!showSettings)}
@@ -734,7 +737,10 @@ export function ViewfinderViewInner({
               </TouchIconButton>
             </Tooltip>
             
-            <Tooltip title={isTouch ? ', ' : (isFullscreen ? 'Exit Fullscreen' : 'Fullscreen')} enterDelay={isTouch ? 99999 : 300}>
+            <Tooltip
+              title={isTouch ? '' : isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              enterDelay={isTouch ? 99999 : 300}
+            >
               <TouchIconButton 
                 touchSize={isTouch ? 'medium' : 'small'} 
                 onClick={toggleFullscreen} 
@@ -878,4 +884,3 @@ export function ViewfinderPanel() {
     </Box>
   );
 }
-

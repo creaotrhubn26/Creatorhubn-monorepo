@@ -1,34 +1,83 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Search, 
-  Filter, 
-  Eye, 
-  Copy, 
-  Edit, 
-  Trash2,
-  Star,
-  StarOff,
-  Mail,
-  Calendar,
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  CardHeader,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid2,
+  IconButton,
+  InputAdornment,
+  LinearProgress,
+  MenuItem,
+  Select,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material';
+import {
+  CalendarMonth,
+  ContentCopy,
+  Delete,
+  Email,
+  Favorite,
+  FavoriteBorder,
+  Notifications,
+  PersonAdd,
+  Search,
   TrendingUp,
-  Users,
-  Heart,
-  Gift,
-  Bell,
-  Megaphone,
-  FileText
-} from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { QUERY_KEYS } from '@/lib/queryKeys';
-import { useToast } from '@/hooks/use-toast';
+  Visibility,
+} from '@mui/icons-material';
+import { QUERY_KEYS } from '../../lib/queryKeys';
+import { useToast } from '../../hooks/use-toast';
+
+type SortBy = 'recent' | 'popular' | 'name';
+type CategoryValue =
+  | 'all'
+  | 'newsletter'
+  | 'promotional'
+  | 'transactional'
+  | 'event'
+  | 'engagement'
+  | 'welcome'
+  | 'update';
+
+interface EmailComponentStyles {
+  color?: string;
+  backgroundColor?: string;
+  borderRadius?: number;
+}
+
+interface EmailComponentContent {
+  text?: string;
+  src?: string;
+  alt?: string;
+}
+
+interface EmailTemplateComponent {
+  type: 'header' | 'text' | 'button' | 'image' | 'divider' | string;
+  styles?: EmailComponentStyles;
+  content?: EmailComponentContent;
+}
+
+interface EmailGlobalStyles {
+  backgroundColor?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  lineHeight?: number;
+}
 
 interface EmailTemplate {
   id: string;
@@ -37,8 +86,8 @@ interface EmailTemplate {
   subject: string;
   preheader: string;
   thumbnail?: string;
-  components: any[];
-  globalStyles: any;
+  components: EmailTemplateComponent[];
+  globalStyles: EmailGlobalStyles;
   isFavorite?: boolean;
   isDefault?: boolean;
   usageCount?: number;
@@ -48,161 +97,214 @@ interface EmailTemplate {
   tags?: string[];
 }
 
-const CATEGORIES = [
-  { value: 'all', label: 'All Templates', icon: FileText },
-  { value: 'newsletter', label: 'Newsletter', icon: Mail },
-  { value: 'promotional', label: 'Promotional', icon: Megaphone },
-  { value: 'transactional', label: 'Transactional', icon: Bell },
-  { value: 'event', label: 'Event', icon: Calendar },
-  { value: 'engagement', label: 'Engagement', icon: Heart },
-  { value: 'welcome', label: 'Welcome', icon: Gift },
+interface EmailTemplateLibraryProps {
+  onSelectTemplate?: (template: EmailTemplate) => void;
+}
+
+type CategoryConfig = {
+  value: CategoryValue;
+  label: string;
+  icon: React.ElementType;
+};
+
+const CATEGORIES: CategoryConfig[] = [
+  { value: 'all', label: 'All Templates', icon: Email },
+  { value: 'newsletter', label: 'Newsletter', icon: Email },
+  { value: 'promotional', label: 'Promotional', icon: TrendingUp },
+  { value: 'transactional', label: 'Transactional', icon: Notifications },
+  { value: 'event', label: 'Event', icon: CalendarMonth },
+  { value: 'engagement', label: 'Engagement', icon: Favorite },
+  { value: 'welcome', label: 'Welcome', icon: PersonAdd },
   { value: 'update', label: 'Update', icon: TrendingUp },
 ];
 
-export default function EmailTemplateLibrary({ onSelectTemplate }: { onSelectTemplate?: (template: EmailTemplate) => void }) {
+const sortTemplates = (templates: EmailTemplate[], sortBy: SortBy): EmailTemplate[] => {
+  const sorted = [...templates];
+  if (sortBy === 'name') {
+    sorted.sort((a, b) => a.name.localeCompare(b.name));
+    return sorted;
+  }
+  if (sortBy === 'popular') {
+    sorted.sort((a, b) => (b.usageCount ?? 0) - (a.usageCount ?? 0));
+    return sorted;
+  }
+  sorted.sort(
+    (a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+  );
+  return sorted;
+};
+
+export default function EmailTemplateLibrary({
+  onSelectTemplate,
+}: EmailTemplateLibraryProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all,');
-  const [sortBy, setSortBy] = useState<'recent' | 'popular' | 'name'>('recent');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryValue>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Fetch templates
-  const { data: templates = [], isLoading } = useQuery({
+  const {
+    data: templates = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<EmailTemplate[]>({
     queryKey: [...QUERY_KEYS.EMAIL_TEMPLATES, selectedCategory, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (selectedCategory !== 'all') params.append('category, ', selectedCategory);
-      params.append('sortBy, ', sortBy);
+      if (selectedCategory !== 'all') {
+        params.append('category', selectedCategory);
+      }
+      params.append('sortBy', sortBy);
 
-      const res = await fetch(`/api/email-templates?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to fetch templates');
-      return res.json() as Promise<EmailTemplate[]>;
-    }
+      const response = await fetch(`/api/email-templates?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch templates');
+      }
+      return response.json() as Promise<EmailTemplate[]>;
+    },
   });
 
-  // Toggle favorite mutation
   const toggleFavoriteMutation = useMutation({
-    mutationFn: async ({ templateId, isFavorite }: { templateId: string; isFavorite: boolean }) => {
-      const res = await fetch(`/api/email-templates/${templateId}/favorite`, {
+    mutationFn: async ({
+      templateId,
+      isFavorite,
+    }: {
+      templateId: string;
+      isFavorite: boolean;
+    }) => {
+      const response = await fetch(`/api/email-templates/${templateId}/favorite`, {
         method: 'PATCH',
-        headers: { 'Content-Type' : 'application/json' },
-        body: JSON.stringify({ isFavorite })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFavorite }),
       });
-      if (!res.ok) throw new Error('Failed to update favorite status');
-      return res.json();
+      if (!response.ok) {
+        throw new Error('Failed to update favorite status');
+      }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.EMAIL_TEMPLATES });
-    }
+    },
   });
 
-  // Duplicate template mutation
   const duplicateMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const res = await fetch(`/api/email-templates/${templateId}/duplicate`, {
-        method: 'POST'
+      const response = await fetch(`/api/email-templates/${templateId}/duplicate`, {
+        method: 'POST',
       });
-      if (!res.ok) throw new Error('Failed to duplicate template');
-      return res.json() as Promise<EmailTemplate>;
+      if (!response.ok) {
+        throw new Error('Failed to duplicate template');
+      }
+      return response.json() as Promise<EmailTemplate>;
     },
     onSuccess: (newTemplate) => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.EMAIL_TEMPLATES });
       toast({
         title: 'Template duplicated',
-        description: `${newTemplate.name} has been created.`
+        description: `${newTemplate.name} has been created.`,
       });
-    }
+    },
   });
 
-  // Delete template mutation
   const deleteMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const res = await fetch(`/api/email-templates/${templateId}`, {
-        method: 'DELETE'
+      const response = await fetch(`/api/email-templates/${templateId}`, {
+        method: 'DELETE',
       });
-      if (!res.ok) throw new Error('Failed to delete template');
+      if (!response.ok) {
+        throw new Error('Failed to delete template');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.EMAIL_TEMPLATES });
       toast({
         title: 'Template deleted',
-        description: 'The template has been removed.'
+        description: 'The template has been removed.',
       });
-    }
+    },
   });
 
-  // Filter templates
-  const filteredTemplates = templates.filter(template => {
-    const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         template.subject.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFavorites = !showFavoritesOnly || template.isFavorite;
-    return matchesSearch && matchesFavorites;
-  });
+  const filteredTemplates = useMemo(() => {
+    const filtered = templates.filter((template) => {
+      const query = searchQuery.toLowerCase();
+      const matchesSearch =
+        template.name.toLowerCase().includes(query) ||
+        template.subject.toLowerCase().includes(query);
+      const matchesFavorites = !showFavoritesOnly || template.isFavorite;
+      return matchesSearch && matchesFavorites;
+    });
 
-  const handleToggleFavorite = (templateId: string, currentStatus: boolean) => {
-    toggleFavoriteMutation.mutate({ templateId, isFavorite: !currentStatus });
-  };
-
-  const handleDuplicate = (templateId: string) => {
-    duplicateMutation.mutate(templateId);
-  };
-
-  const handleDelete = (templateId: string) => {
-    setDeleteConfirmId(templateId);
-  };
-
-  const executeDelete = () => {
-    if (deleteConfirmId) {
-      deleteMutation.mutate(deleteConfirmId);
-      setDeleteConfirmId(null);
-    }
-  };
+    return sortTemplates(filtered, sortBy);
+  }, [templates, searchQuery, showFavoritesOnly, sortBy]);
 
   const handleUseTemplate = (template: EmailTemplate) => {
     if (onSelectTemplate) {
       onSelectTemplate(template);
-    } else {
-      // Navigate to email designer with template
-      window.location.href = `/admin/email-designer?template=${template.id}`;
+      return;
     }
+    window.location.href = `/admin/email-designer?template=${template.id}`;
   };
 
-  const getCategoryIcon = (category: string) => {
-    const categoryData = CATEGORIES.find(c => c.value === category);
-    const Icon = categoryData?.icon || FileText;
-    return <Icon className="h-4 w-4" />;
+  const executeDelete = () => {
+    if (!deleteConfirmId) return;
+    deleteMutation.mutate(deleteConfirmId);
+    setDeleteConfirmId(null);
+  };
+
+  const getCategoryConfig = (category: string): CategoryConfig => {
+    return (
+      CATEGORIES.find((entry) => entry.value === category) ?? {
+        value: 'all',
+        label: category,
+        icon: Email,
+      }
+    );
   };
 
   const renderTemplatePreview = (template: EmailTemplate) => {
-    // Simple HTML rendering of template
-    const previewHtml = template.components.map((component: any) => {
-      switch (component.type) {
-        case 'header':
-          return `<h1 style="text-align: center; color: ${component.styles?.color || '#000'}">${component.content?.text || ', '}</h1>`;
-        case 'text':
-          return `<p style="color: ${component.styles?.color || '#000'}">${component.content?.text || ', '}</p>`;
-        case 'button':
-          return `<div style="text-align: center"><button style="background: ${component.styles?.backgroundColor || '#007bff'}; color: ${component.styles?.color || '#fff'}; padding: 10px 20px; border-radius: ${component.styles?.borderRadius || 4}px">${component.content?.text || 'Button'}</button></div>`;
-        case 'image':
-          return `<img src="${component.content?.src || '/placeholder.png'}" alt="${component.content?.alt || ', '}" style="max-width: 100%;, height: auto;" />`;
-        case 'divider':
-          return '<hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;" />';
-        default:
-          return '';
-      }
-    }).join(', ');
+    const previewHtml = template.components
+      .map((component) => {
+        switch (component.type) {
+          case 'header':
+            return `<h1 style="text-align:center;color:${component.styles?.color ?? '#000'}">${
+              component.content?.text ?? ''
+            }</h1>`;
+          case 'text':
+            return `<p style="color:${component.styles?.color ?? '#000'}">${
+              component.content?.text ?? ''
+            }</p>`;
+          case 'button':
+            return `<div style="text-align:center"><button style="background:${
+              component.styles?.backgroundColor ?? '#1976d2'
+            };color:${component.styles?.color ?? '#fff'};padding:10px 20px;border-radius:${
+              component.styles?.borderRadius ?? 4
+            }px;border:none;">${component.content?.text ?? 'Button'}</button></div>`;
+          case 'image':
+            return `<img src="${component.content?.src ?? '/placeholder.png'}" alt="${
+              component.content?.alt ?? ''
+            }" style="max-width:100%;height:auto;" />`;
+          case 'divider':
+            return '<hr style="border:0;border-top:1px solid #ddd;margin:20px 0;" />';
+          default:
+            return '';
+        }
+      })
+      .join('');
 
     return (
-      <div 
-        style={{ 
-          backgroundColor: template.globalStyles?.backgroundColor || '#f5f5f5',
-          padding: '20px',
-          fontFamily: template.globalStyles?.fontFamily || 'Arial, sans-serif',
-          fontSize: `${template.globalStyles?.fontSize || 14}px`,
-          lineHeight: template.globalStyles?.lineHeight || 1.6
+      <Box
+        sx={{
+          backgroundColor: template.globalStyles.backgroundColor ?? '#f5f5f5',
+          p: 2.5,
+          fontFamily: template.globalStyles.fontFamily ?? 'Arial, sans-serif',
+          fontSize: `${template.globalStyles.fontSize ?? 14}px`,
+          lineHeight: template.globalStyles.lineHeight ?? 1.6,
+          borderRadius: 1,
         }}
         dangerouslySetInnerHTML={{ __html: previewHtml }}
       />
@@ -210,239 +312,273 @@ export default function EmailTemplateLibrary({ onSelectTemplate }: { onSelectTem
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Email Template Library</h2>
-        <p className="text-muted-foreground">
-          Browse and select from your email templates
-        </p>
-      </div>
+    <Stack spacing={3}>
+      <Box>
+        <Typography variant="h4" fontWeight={700}>
+          Email Template Library
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Browse and select from your email templates.
+        </Typography>
+      </Box>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search templates..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="recent">Most Recent</SelectItem>
-            <SelectItem value="popular">Most Popular</SelectItem>
-            <SelectItem value="name">Name (A-Z)</SelectItem>
-          </SelectContent>
-        </Select>
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          fullWidth
+          placeholder="Search templates..."
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+
+        <FormControl sx={{ minWidth: 180 }}>
+          <Select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as SortBy)}
+            displayEmpty
+          >
+            <MenuItem value="recent">Most Recent</MenuItem>
+            <MenuItem value="popular">Most Popular</MenuItem>
+            <MenuItem value="name">Name (A-Z)</MenuItem>
+          </Select>
+        </FormControl>
+
         <Button
-          variant={showFavoritesOnly ? 'default' : 'outline'}
-          onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+          variant={showFavoritesOnly ? 'contained' : 'outlined'}
+          onClick={() => setShowFavoritesOnly((previous) => !previous)}
+          startIcon={showFavoritesOnly ? <Favorite /> : <FavoriteBorder />}
         >
-          <Star className={`h-4 w-4 mr-2 ${showFavoritesOnly ? 'fill-current' : ','}`} />
           Favorites
         </Button>
-      </div>
+      </Stack>
 
-      {/* Category Tabs */}
-      <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-        <TabsList className="flex-wrap h-auto">
-          {CATEGORIES.map(category => {
-            const Icon = category.icon;
-            return (
-              <TabsTrigger key={category.value} value={category.value} className="flex items-center gap-2">
-                <Icon className="h-4 w-4" />
-                {category.label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-
-        <TabsContent value={selectedCategory} className="mt-6">
-          {isLoading ? (
-            <div className="grid grid-cols-1 md: grid-cols-2, lg:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <Card key={i} className="animate-pulse">
-                  <CardHeader>
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-gray-200 rounded w-1/2" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-32 bg-gray-200 rounded" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : filteredTemplates.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Mail className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No templates found</p>
-                <p className="text-sm text-muted-foreground mt-2">
-                  Try adjusting your search or filters
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md: grid-cols-2, lg:grid-cols-3 gap-6">
-              {filteredTemplates.map(template => (
-                <Card key={template.id} className="hover:shadow-lg transition-shadow group">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {template.name}
-                          {template.isDefault && (
-                            <Badge variant="secondary" className="text-xs">Default</Badge>
-                          )}
-                        </CardTitle>
-                        <CardDescription className="mt-1 line-clamp-2">
-                          {template.subject}
-                        </CardDescription>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleToggleFavorite(template.id, template.isFavorite || false)}
-                      >
-                        {template.isFavorite ? (
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                        ) : (
-                          <StarOff className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        {getCategoryIcon(template.category)}
-                        {template.category}
-                      </Badge>
-                      {template.tags?.slice(0, 2).map(tag => (
-                        <Badge key={tag} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Thumbnail Preview */}
-                    <div className="bg-gray-100 rounded-md overflow-hidden mb-4" style={{ height: '200px' }}>
-                      {template.thumbnail ? (
-                        <img 
-                          src={template.thumbnail} 
-                          alt={template.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <Mail className="h-12 w-12" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Stats */}
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-4">
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3 w-3" />
-                        Used {template.usageCount || 0} times
-                      </span>
-                      {template.lastUsed && (
-                        <span>
-                          Last used {new Date(template.lastUsed).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="flex-1"
-                            onClick={() => setPreviewTemplate(template)}
-                          >
-                            <Eye className="h-4 w-4 mr-2" />
-                            Preview
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle>{template.name}</DialogTitle>
-                            <DialogDescription>
-                              Subject: {template.subject}
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="border rounded-md overflow-hidden">
-                            {renderTemplatePreview(template)}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button onClick={() => handleUseTemplate(template)} className="flex-1">
-                              Use Template
-                            </Button>
-                            <Button variant="outline" onClick={() => handleDuplicate(template.id)}>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Duplicate
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-
-                      <Button 
-                        size="sm"
-                        onClick={() => handleUseTemplate(template)}
-                        className="flex-1"
-                      >
-                        Use Template
-                      </Button>
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDuplicate(template.id)}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-
-                      {!template.isDefault && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(template.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
+      <Tabs
+        value={selectedCategory}
+        onChange={(_event, value: CategoryValue) => setSelectedCategory(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+      >
+        {CATEGORIES.map((category) => {
+          const Icon = category.icon;
+          return (
+            <Tab
+              key={category.value}
+              value={category.value}
+              label={
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Icon fontSize="small" />
+                  <span>{category.label}</span>
+                </Stack>
+              }
+            />
+          );
+        })}
       </Tabs>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Template</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this template? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={executeDelete}>Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      {isLoading && <LinearProgress />}
+      {isError && (
+        <Alert severity="error">
+          {(error as Error)?.message || 'Failed to load email templates'}
+        </Alert>
+      )}
+
+      {!isLoading && filteredTemplates.length === 0 ? (
+        <Card>
+          <CardContent sx={{ py: 8, textAlign: 'center' }}>
+            <Email sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+            <Typography>No templates found</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Try adjusting your search or filters.
+            </Typography>
+          </CardContent>
+        </Card>
+      ) : (
+        <Grid2 container spacing={2}>
+          {filteredTemplates.map((template) => {
+            const category = getCategoryConfig(template.category);
+            const CategoryIcon = category.icon;
+
+            return (
+              <Grid2 key={template.id} size={{ xs: 12, md: 6, lg: 4 }}>
+                <Card>
+                  <CardHeader
+                    title={
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="h6">{template.name}</Typography>
+                        {template.isDefault && (
+                          <Chip label="Default" size="small" color="primary" />
+                        )}
+                      </Stack>
+                    }
+                    subheader={template.subject}
+                    action={
+                      <IconButton
+                        aria-label="Toggle favorite"
+                        onClick={() =>
+                          toggleFavoriteMutation.mutate({
+                            templateId: template.id,
+                            isFavorite: !template.isFavorite,
+                          })
+                        }
+                      >
+                        {template.isFavorite ? (
+                          <Favorite color="error" />
+                        ) : (
+                          <FavoriteBorder />
+                        )}
+                      </IconButton>
+                    }
+                  />
+
+                  <CardContent>
+                    <Box
+                      sx={{
+                        bgcolor: 'action.hover',
+                        borderRadius: 1,
+                        height: 180,
+                        mb: 2,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {template.thumbnail ? (
+                        <Box
+                          component="img"
+                          src={template.thumbnail}
+                          alt={template.name}
+                          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <Email sx={{ fontSize: 40, color: 'text.secondary' }} />
+                      )}
+                    </Box>
+
+                    <Stack direction="row" spacing={1} mb={1} flexWrap="wrap">
+                      <Chip
+                        size="small"
+                        icon={<CategoryIcon />}
+                        label={category.label}
+                        variant="outlined"
+                      />
+                      {template.tags?.slice(0, 2).map((tag) => (
+                        <Chip key={tag} size="small" label={tag} />
+                      ))}
+                    </Stack>
+
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      color="text.secondary"
+                      mb={2}
+                    >
+                      <Typography variant="caption">
+                        Used {template.usageCount ?? 0} times
+                      </Typography>
+                      <Typography variant="caption">
+                        {template.lastUsed
+                          ? `Last used ${new Date(template.lastUsed).toLocaleDateString()}`
+                          : 'Never used'}
+                      </Typography>
+                    </Stack>
+                  </CardContent>
+
+                  <CardActions sx={{ px: 2, pb: 2 }}>
+                    <Tooltip title="Preview template">
+                      <IconButton onClick={() => setPreviewTemplate(template)}>
+                        <Visibility />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Duplicate template">
+                      <IconButton onClick={() => duplicateMutation.mutate(template.id)}>
+                        <ContentCopy />
+                      </IconButton>
+                    </Tooltip>
+                    {!template.isDefault && (
+                      <Tooltip title="Delete template">
+                        <IconButton onClick={() => setDeleteConfirmId(template.id)}>
+                          <Delete />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Box sx={{ flexGrow: 1 }} />
+                    <Button variant="contained" onClick={() => handleUseTemplate(template)}>
+                      Use Template
+                    </Button>
+                  </CardActions>
+                </Card>
+              </Grid2>
+            );
+          })}
+        </Grid2>
+      )}
+
+      <Dialog
+        open={Boolean(previewTemplate)}
+        onClose={() => setPreviewTemplate(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>{previewTemplate?.name ?? 'Template Preview'}</DialogTitle>
+        <DialogContent dividers>
+          {previewTemplate && (
+            <Stack spacing={2}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Subject: {previewTemplate.subject}
+              </Typography>
+              {renderTemplatePreview(previewTemplate)}
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewTemplate(null)}>Close</Button>
+          {previewTemplate && (
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<ContentCopy />}
+                onClick={() => duplicateMutation.mutate(previewTemplate.id)}
+              >
+                Duplicate
+              </Button>
+              <Button
+                variant="contained"
+                onClick={() => handleUseTemplate(previewTemplate)}
+              >
+                Use Template
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteConfirmId)}
+        onClose={() => setDeleteConfirmId(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Template</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this template? This action cannot be
+            undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={executeDelete}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Stack>
   );
 }

@@ -33,10 +33,21 @@ import {
 import { Analytics, Language } from '@mui/icons-material';
 
 interface SEOToolsPanelProps {
-  selectedProject?: { id: string; name?: string };
+  selectedProject?: { id: string; name?: string; url?: string; description?: string };
   onProjectUpdate?: (project: Record<string, unknown>) => void;
   onNotificationCreate?: (notification: Record<string, unknown>) => void; 
 }
+
+interface KeywordResearchResult {
+  type: 'related' | 'longtail' | 'suggestions';
+  seedKeyword: string;
+  keywords: string[];
+  suggestions: string[];
+  timestamp: string;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
   selectedProject,
@@ -101,7 +112,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
   const [isAnalyzingCompetitor, setIsAnalyzingCompetitor] = useState(false);
   const [seedKeyword, setSeedKeyword] = useState('');
   const [isResearchingKeywords, setIsResearchingKeywords] = useState(false);
-  const [keywordResearch, setKeywordResearch] = useState<Record<string, unknown> | null>(null);
+  const [keywordResearch, setKeywordResearch] = useState<KeywordResearchResult | null>(null);
   const [jsonLDData, setJsonLDData] = useState<Record<string, unknown> | null>(null);
   const [isGeneratingJSONLD, setIsGeneratingJSONLD] = useState(false);
 
@@ -272,7 +283,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
     try {
       const headers = await auth.getAuthHeader();
       // Simulate keyword research API call
-      const keywordResults = await apiRequest('/api/seo/keywords/research', {
+      const keywordResultsRaw = await apiRequest('/api/seo/keywords/research', {
         headers: {
           ...headers,
           'Content-Type': 'application/json',
@@ -289,11 +300,19 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
         }),
       });
 
+      const keywordResults = isRecord(keywordResultsRaw) ? keywordResultsRaw : {};
+      const keywords = Array.isArray(keywordResults.keywords)
+        ? keywordResults.keywords.filter((keyword): keyword is string => typeof keyword === 'string')
+        : [];
+      const suggestions = Array.isArray(keywordResults.suggestions)
+        ? keywordResults.suggestions.filter((keyword): keyword is string => typeof keyword === 'string')
+        : [];
+
       setKeywordResearch({
         type: researchType,
         seedKeyword,
-        keywords: keywordResults.keywords,
-        suggestions: keywordResults.suggestions,
+        keywords,
+        suggestions,
         timestamp: new Date().toISOString(),
       });
 
@@ -301,7 +320,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
         id: `keyword_research_${Date.now()}`,
         type: 'seo_audit',
         title: 'Keyword Research Completed',
-        message: `Found ${keywordResults.keywords?.length || 0} keywords for "${seedKeyword}"`,
+        message: `Found ${keywords.length} keywords for "${seedKeyword}"`,
         priority: 'medium',
         timestamp: new Date().toISOString(),
         source: 'keyword-research',
@@ -410,7 +429,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
                 Results for "{keywordResearch.seedKeyword}"
               </Typography>
               <Box display="flex" gap={1} flexWrap="wrap">
-                {keywordResearch.keywords?.slice(0, 10).map((keyword: string, index: number) => (
+                {keywordResearch.keywords.slice(0, 10).map((keyword, index) => (
                   <Chip
                     key={index}
                     label={keyword}
@@ -505,7 +524,7 @@ export const SEOToolsPanel: React.FC<SEOToolsPanelProps> = ({
             <TableContainer component={Paper} sx={{ ...theming.getThemedCardSx(), mb: 2 }}>
               <Table size="small">
                 <TableHead>
-                  <TableRow sx={{ backgroundColor: theming.colors.surface }}>
+                  <TableRow sx={{ backgroundColor: theming.colors.light }}>
                     <TableCell>Property</TableCell>
                     <TableCell>Value</TableCell>
                   </TableRow>

@@ -123,6 +123,34 @@ function buildCorsOptions(): cors.CorsOptions {
 
 type SessionData = { userId: string; email: string; name: string; role: string; loginAt: string };
 
+function isRoleRoomDevBypassEnabled(): boolean {
+  if (process.env.ROLE_ROOM_DEV_AUTH_BYPASS === '1') return true;
+  if (process.env.ROLE_ROOM_DEV_AUTH_BYPASS === '0') return false;
+  return process.env.NODE_ENV !== 'production';
+}
+
+function deriveDevUserIdFromBearer(token: string): string {
+  const fallback = 'dev-session-user';
+  const trimmed = token.trim();
+  if (!trimmed) return fallback;
+
+  const jwtParts = trimmed.split('.');
+  if (jwtParts.length >= 2) {
+    try {
+      const payloadJson = Buffer.from(jwtParts[1], 'base64url').toString('utf8');
+      const payload = JSON.parse(payloadJson) as { sub?: string; userId?: string; id?: string };
+      const fromPayload = payload.sub ?? payload.userId ?? payload.id;
+      if (typeof fromPayload === 'string' && fromPayload.trim()) {
+        return fromPayload.trim();
+      }
+    } catch {
+      // Ignore decode errors and continue with deterministic fallback.
+    }
+  }
+
+  return `dev-${hashApiKey(trimmed).slice(0, 16)}`;
+}
+
 // ── API Key Middleware ───────────────────────────────────────
 
 /**
@@ -132,6 +160,8 @@ type SessionData = { userId: string; email: string; name: string; role: string; 
  */
 function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const devBypassEnabled = isRoleRoomDevBypassEnabled();
+
     // ── 1. Try Bearer token (in-app session) ──────────────
     const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '').trim();
     if (bearer && activeSessions) {
@@ -144,6 +174,17 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
         next();
         return;
       }
+    }
+
+    // ── 1b. Dev-mode bypass for local UI integration ───────
+    if (devBypassEnabled) {
+      const userId = bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user';
+      (req as Request & { apiKeyUser: { userId: string; scopes: string[] } }).apiKeyUser = {
+        userId,
+        scopes: ['read', 'write', 'admin'],
+      };
+      next();
+      return;
     }
 
     // ── 2. Try x-api-key header (external clients) ────────
@@ -627,6 +668,89 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
       res.status(201).json({ id, name });
     } catch (err) {
       res.status(500).json({ error: 'Kunne ikke legge til crew-medlem' });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // Locations (compat routes expected by role-room frontend)
+  // ═══════════════════════════════════════════════════════════
+
+  router.get('/projects/:projectId/locations', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const result = await pool.query(
+        'SELECT * FROM casting_locations WHERE project_id = $1 ORDER BY name',
+        [req.params.projectId]
+      );
+      res.json({ locations: result.rows });
+    } catch (err) {
+      console.error('Fetch locations error:', err);
+      res.status(500).json({ error: 'Kunne ikke hente lokasjoner' });
+    }
+  });
+
+  router.post('/locations', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'Skrive-tilgang kreves' });
+      return;
+    }
+    const body = req.body as Record<string, unknown>;
+    const projectId = body.project_id as string | undefined;
+    const name = body.name as string | undefined;
+    if (!projectId || !name) {
+      res.status(400).json({ error: 'project_id og name er påkrevd' });
+      return;
+    }
+
+    const id = makeId();
+    const locationData = (body.location_data as Record<string, unknown> | undefined) ?? {};
+    const coordinates = (locationData.coordinates as Record<string, unknown> | undefined)
+      ?? (body.coordinates as Record<string, unknown> | undefined)
+      ?? null;
+    const contactInfo = (locationData.contact_info as Record<string, unknown> | undefined)
+      ?? (body.contact_info as Record<string, unknown> | undefined)
+      ?? {};
+    const photos = Array.isArray(locationData.photos)
+      ? locationData.photos
+      : Array.isArray(body.photos)
+        ? body.photos
+        : [];
+
+    try {
+      const result = await pool.query(
+        `INSERT INTO casting_locations
+          (id, project_id, name, address, coordinates, type, contact_info, access_notes, photos)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING *`,
+        [
+          id,
+          projectId,
+          name,
+          (body.address as string | undefined) ?? (locationData.address as string | undefined) ?? null,
+          coordinates ? JSON.stringify(coordinates) : null,
+          (body.type as string | undefined) ?? (locationData.type as string | undefined) ?? null,
+          JSON.stringify(contactInfo),
+          (locationData.access_notes as string | undefined) ?? (body.access_notes as string | undefined) ?? null,
+          JSON.stringify(photos),
+        ]
+      );
+      res.status(201).json({ location: result.rows[0] });
+    } catch (err) {
+      console.error('Create location error:', err);
+      res.status(500).json({ error: 'Kunne ikke opprette lokasjon' });
+    }
+  });
+
+  router.delete('/locations/:locationId', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    if (!requireScope(req, 'write')) {
+      res.status(403).json({ error: 'Skrive-tilgang kreves' });
+      return;
+    }
+    try {
+      await pool.query('DELETE FROM casting_locations WHERE id = $1', [req.params.locationId]);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('Delete location error:', err);
+      res.status(500).json({ error: 'Kunne ikke slette lokasjon' });
     }
   });
 
@@ -1429,6 +1553,119 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const did = req.query.shootingDayId as string;
     if (!did) return res.status(400).json({ error: 'shootingDayId required' });
     res.json(auditLog.get(storeKey(projectId, did)) ?? []);
+  });
+
+  // ══════════════════════════════════════════════════════════
+  //  MEMORY CARD BACKUP CONTROL (Shotlist-linked production log)
+  // ══════════════════════════════════════════════════════════
+
+  const defaultMemoryCardControlState = () => ({
+    shootDayLabel: '',
+    entries: [] as Array<Record<string, unknown>>,
+    updatedAt: nowISO(),
+  });
+
+  const sanitizeMemoryCardControlState = (raw: unknown) => {
+    const fallback = defaultMemoryCardControlState();
+    if (!raw || typeof raw !== 'object') return fallback;
+    const value = raw as Record<string, unknown>;
+
+    const shootDayLabel =
+      typeof value.shootDayLabel === 'string' ? value.shootDayLabel.trim() : fallback.shootDayLabel;
+    const updatedAt =
+      typeof value.updatedAt === 'string' && value.updatedAt.trim() ? value.updatedAt : nowISO();
+    const entries = Array.isArray(value.entries)
+      ? value.entries
+          .filter((entry) => entry && typeof entry === 'object')
+          .slice(0, 1500)
+          .map((entry) => entry as Record<string, unknown>)
+      : fallback.entries;
+
+    return {
+      shootDayLabel,
+      entries,
+      updatedAt,
+    };
+  };
+
+  router.get('/projects/:projectId/memory-card-control', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const result = await pool.query<{ settings: unknown }>(
+        'SELECT settings FROM casting_projects WHERE id = $1',
+        [projectId]
+      );
+
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const settingsValue = result.rows[0]?.settings;
+      const settings =
+        settingsValue && typeof settingsValue === 'object'
+          ? (settingsValue as Record<string, unknown>)
+          : {};
+      const controlState = sanitizeMemoryCardControlState(settings.memoryCardControl);
+
+      res.json({
+        state: controlState,
+        source: 'casting_projects.settings.memoryCardControl',
+      });
+    } catch (err) {
+      console.error('GET memory-card-control error:', err);
+      res.status(500).json({ error: 'Kunne ikke hente minnekortkontroll' });
+    }
+  });
+
+  router.put('/projects/:projectId/memory-card-control', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      if (!requireScope(req, 'write')) {
+        res.status(403).json({ error: 'Skrive-tilgang kreves' });
+        return;
+      }
+
+      const { projectId } = req.params;
+      const body = req.body as Record<string, unknown>;
+      const nextState = sanitizeMemoryCardControlState(body.state ?? body);
+
+      const existing = await pool.query<{ settings: unknown }>(
+        'SELECT settings FROM casting_projects WHERE id = $1',
+        [projectId]
+      );
+
+      if (existing.rowCount === 0) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const currentSettingsValue = existing.rows[0]?.settings;
+      const currentSettings =
+        currentSettingsValue && typeof currentSettingsValue === 'object'
+          ? (currentSettingsValue as Record<string, unknown>)
+          : {};
+
+      const updatedSettings = {
+        ...currentSettings,
+        memoryCardControl: {
+          ...nextState,
+          updatedAt: nowISO(),
+        },
+      };
+
+      await pool.query(
+        'UPDATE casting_projects SET settings = $1::jsonb, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(updatedSettings), projectId]
+      );
+
+      res.json({
+        ok: true,
+        state: updatedSettings.memoryCardControl,
+      });
+    } catch (err) {
+      console.error('PUT memory-card-control error:', err);
+      res.status(500).json({ error: 'Kunne ikke lagre minnekortkontroll' });
+    }
   });
 
   // ══════════════════════════════════════════════════════════

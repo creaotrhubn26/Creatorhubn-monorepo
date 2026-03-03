@@ -107,7 +107,7 @@ const BrandingStep: React.FC<BrandingStepProps> = ({
           "Content-Type" : "application/json"
     },
         
-        method: 'POS',
+        method: 'POST',
         body: formData
   });
   },
@@ -334,9 +334,9 @@ const BrandingStep: React.FC<BrandingStepProps> = ({
         <Button variant="contained"
           onClick={handleUpload}
           disabled={!logoFile || !businessName.trim() || uploadMutation.isPending}
-          startIcon={uploadMutation.isPending ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('checkCircle')}
+          startIcon={uploadMutation.isPending ? <CircularProgress size={20} /> : theming.getThemedIcon('checkCircle')}
           sx={{ 
-            minWidth: 10,
+            minWidth: 120,
             background: 'linear-gradient(135deg, #FF6B35 0%, #F7931E 100%)'
         }}
         >

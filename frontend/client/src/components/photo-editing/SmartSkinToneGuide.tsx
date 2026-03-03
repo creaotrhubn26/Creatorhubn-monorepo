@@ -126,7 +126,7 @@ export default function SmartSkinToneGuide({
   const updateSkinToneAnalysis = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/ai/skin-tone-analysis/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: (response) => {

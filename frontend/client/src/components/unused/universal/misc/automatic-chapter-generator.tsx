@@ -93,7 +93,7 @@ export default function AutomaticChapterGenerator({
       return apiRequest('/api/component/update', {
         headers: auth,
         headers: {},
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {
@@ -110,7 +110,7 @@ export default function AutomaticChapterGenerator({
       const response = await const auth = await getAuthHeader();
  return apiRequest('/api/video/generate-chapters', {
    headers: auth,
-        method: 'POS',
+        method: 'POST',
         headers: {},
         body: JSON.stringify({
           videod,

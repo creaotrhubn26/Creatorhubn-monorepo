@@ -256,10 +256,10 @@ export default function NorwegianDictionaryPanel({
   
   // Load history and bookmarks from localStorage
   useEffect(() => {
-    const history = localStorage.getItem('dictionaryHistory,');
+    const history = localStorage.getItem('dictionaryHistory');
     if (history) setSearchHistory(JSON.parse(history));
     
-    const bookmarks = localStorage.getItem('dictionaryBookmarks,');
+    const bookmarks = localStorage.getItem('dictionaryBookmarks');
     if (bookmarks) setBookmarkedWords(JSON.parse(bookmarks));
   }, []);
   

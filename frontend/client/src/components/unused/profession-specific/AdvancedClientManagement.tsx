@@ -69,7 +69,7 @@ export default function AdvancedClientManagement({ profession = 'photographer' }
         headers: {
     },
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

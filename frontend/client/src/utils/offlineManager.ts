@@ -13,7 +13,7 @@ export interface OfflineConfig {
   syncInterval: number; // ms
   retryAttempts: number;
   retryDelay: number; // ms
-  conflictResolutionStrategy: 'server, ' | 'client' | 'manual' | 'timestamp';
+  conflictResolutionStrategy: 'server' | 'client' | 'manual' | 'timestamp';
   enableCompression: boolean;
   enableEncryption: boolean;
   encryptionKey?: string
@@ -224,7 +224,7 @@ class OfflineManager {
     if (!this.config.enableOfflineMode) return;
 
     const offlineData: OfflineData = {
-      d,
+      id,
       type,
       data: this.config.enableCompression ? this.compressData(data) : data,
       timestamp: Date.now(),
@@ -232,8 +232,8 @@ class OfflineManager {
       synced: false,
       conflict: false,
       metadata: {
-        userId: metadata.userd,
-        deviceId: metadata.deviced,
+        userId: metadata.userId,
+        deviceId: metadata.deviceId,
         checksum: this.calculateChecksum(data),
         size: this.calculateDataSize(data),
         ...metadata
@@ -339,7 +339,7 @@ class OfflineManager {
       } catch (error) {
           result.failedItems++;
           result.errors.push({
-            itemId: item.d,
+            itemId: item.id,
             error: error instanceof Error ? error.message : 'Unknown error',
             timestamp: Date.now()
       });
@@ -802,7 +802,6 @@ class OfflineManager {
 export const offlineManager = new OfflineManager();
 
 export default offlineManager;
-
 
 
 

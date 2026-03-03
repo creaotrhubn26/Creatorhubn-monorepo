@@ -1,689 +1,511 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Paper,
-  Typography,
-  Grid,
+  Button,
   Card,
   CardContent,
   CardHeader,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   Chip,
-  Button,
-  IconButton,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Stack,
+  DialogContent,
+  DialogTitle,
   Divider,
-  Tooltip,
-  Badge,
-  Avatar,
-  Tabs,
-  Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Alert,
-  AlertTitle,
   FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  TextField,
-  Switch,
   FormControlLabel,
-  Slider,
+  Grid,
+  InputLabel,
   LinearProgress,
+  MenuItem,
+  Paper,
+  Select,
+  Slider,
+  Stack,
+  Switch,
+  Tab,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import {
+  AutoAwesome,
+  BlurOn,
+  FilterHdr,
+  Gradient,
+  LightMode,
+  Settings,
+  Tune,
+} from '@mui/icons-material';
 
-// Types
-interface VisualEffect {
+export type VisualEffectType =
+  | 'particle'
+  | 'gradient'
+  | 'blur'
+  | 'glow'
+  | 'shadow'
+  | 'transform'
+  | 'filter';
+
+export interface VisualEffect {
   id: string;
   name: string;
   description: string;
-  type: 'particle' | 'gradient' | 'blur' | 'glow' | 'shadow' | 'transform' | 'filter';
+  type: VisualEffectType;
   intensity: number;
   duration: number;
   enabled: boolean;
-  config: Record<string, any>;
+  config: Record<string, unknown>;
 }
 
-interface EffectPreset {
+export interface EffectPreset {
   id: string;
   name: string;
   description: string;
   effects: VisualEffect[];
-  category: 'ambient' | 'interactive' | 'decorative' | 'functional'
+  category: 'ambient' | 'interactive' | 'decorative' | 'functional';
 }
 
 interface VisualEffectsProps {
   className?: string;
   onEffectChange?: (effect: VisualEffect) => void;
   onPresetApply?: (preset: EffectPreset) => void;
-  onEffectExport?: (effects: VisualEffect[]) => void
+  onEffectExport?: (effects: VisualEffect[]) => void;
 }
 
-// Mock data
-const defaultEffects: VisualEffect[] = [
-  {
-    id: 'particle-rain',
-    name: 'Particle Rain',
-    description: 'Falling particle effect',
-    type: 'particle',
-    intensity: 0.7,
-    duration: 500,
-    enabled: true,
-    config: {
-      particleCount: 50,
-      speed:  2,
-      color: '#ffffff',
-      size: 2 }
-},
-  {
-    id: 'gradient-bg',
-    name: 'Gradient Background',
-    description: 'Animated gradient background',
-    type: 'gradient',
-    intensity: 0.5,
-    duration: 300,
-    enabled: true,
-    config: {
-      colors: ['#ff6b60', '#4ecdc4','#45b7d1'],
-      direction: 'diagonal',
-      animation: 'wave'
-}
-},
-  {
-    id: 'blur-focus',
-    name: 'Blur Focus',
-    description: 'Blur effect for focus areas',
-    type: 'blur',
-    intensity: 0.8,
-    duration: 20,
-    enabled: false,
-    config: {
-      radius: 10,
-      target: 'background'
-}
-},
-  {
-    id: 'glow-hover',
-    name: 'Glow Hover',
-    description: 'Glow effect on hover',
-    type: 'glow',
-    intensity: 0.6,
-    duration: 30,
-    enabled: true,
-    config: {
-      color: '#1976d0',
-      radius:  20,
-      spread: 5 }
-},
-  {
-    id: 'shadow-elevation',
-    name: 'Shadow Elevation',
-    description: 'Dynamic shadow based on elevation',
-    type: 'shadow',
-    intensity: 0.4,
-    duration:  0,
-    enabled: true,
-    config: {
-      offsetX: 0,
-      offsetY:  4,
-      blur:  8,
-      spread:  0,
-      color: 'rgba(0,0,0,0.1)'
-  }
-}
+const EFFECT_TYPES: VisualEffectType[] = [
+  'particle',
+  'gradient',
+  'blur',
+  'glow',
+  'shadow',
+  'transform',
+  'filter',
 ];
 
-const effectPresets: EffectPreset[] = [
+const DEFAULT_EFFECTS: VisualEffect[] = [
   {
-    id: 'ambient',
-    name: 'Ambient Effects',
-    description: 'Subtle background effects',
+    id: 'fx-particle-rain',
+    name: 'Particle Rain',
+    description: 'Subtle particles for motion depth.',
+    type: 'particle',
+    intensity: 0.6,
+    duration: 1200,
+    enabled: true,
+    config: { particleCount: 30, speed: 1.2, color: '#ffffff' },
+  },
+  {
+    id: 'fx-gradient-background',
+    name: 'Gradient Backdrop',
+    description: 'Animated gradient background blend.',
+    type: 'gradient',
+    intensity: 0.45,
+    duration: 900,
+    enabled: true,
+    config: { colors: ['#1b263b', '#415a77', '#778da9'] },
+  },
+  {
+    id: 'fx-soft-glow',
+    name: 'Soft Glow',
+    description: 'Glow for selected clips and UI feedback.',
+    type: 'glow',
+    intensity: 0.35,
+    duration: 350,
+    enabled: true,
+    config: { color: '#ff8c00', radius: 16 },
+  },
+  {
+    id: 'fx-smart-blur',
+    name: 'Smart Blur',
+    description: 'Directional blur for focus transitions.',
+    type: 'blur',
+    intensity: 0.25,
+    duration: 700,
+    enabled: false,
+    config: { radius: 6, target: 'background' },
+  },
+];
+
+const DEFAULT_PRESETS: EffectPreset[] = [
+  {
+    id: 'preset-clean-cinematic',
+    name: 'Clean Cinematic',
+    description: 'Balanced cinematic look for narrative edits.',
     category: 'ambient',
     effects: [
       {
-        id: 'particle-rain',
-        name: 'Particle Rain',
-        description: 'Falling particle effect',
-        type: 'particle',
+        id: 'fx-cine-shadow',
+        name: 'Cinematic Shadow',
+        description: 'Adds soft vignetting and depth.',
+        type: 'shadow',
         intensity: 0.3,
         duration: 500,
         enabled: true,
-        config: {
-          particleCount: 20,
-          speed:  1,
-          color: '#ffffff',
-          size: 1 }
-    }
-    ]
-},
+        config: { spread: 12, color: 'rgba(0,0,0,0.25)' },
+      },
+      {
+        id: 'fx-cine-gradient',
+        name: 'Cinematic Tint',
+        description: 'Dual-tone grade style blend.',
+        type: 'gradient',
+        intensity: 0.4,
+        duration: 600,
+        enabled: true,
+        config: { highlights: '#f2c879', shadows: '#264653' },
+      },
+    ],
+  },
   {
-    id: 'interactive',
-    name: 'Interactive Effects',
-    description: 'Effects that respond to user interaction',
-    category: 'interactive',
+    id: 'preset-ui-feedback',
+    name: 'UI Feedback',
+    description: 'High-clarity interaction cues for editing.',
+    category: 'functional',
     effects: [
       {
-        id: 'glow-hover',
-        name: 'Glow Hover',
-        description: 'Glow effect on hover',
+        id: 'fx-ui-glow',
+        name: 'Selection Glow',
+        description: 'Clip edge emphasis for active selection.',
         type: 'glow',
-        intensity: 0.8,
-        duration: 30,
+        intensity: 0.65,
+        duration: 250,
         enabled: true,
-        config: {
-          color: '#1976d0',
-          radius:  25,
-          spread: 8 }
-    }
-    ]
-}
+        config: { color: '#ffb347', radius: 10 },
+      },
+    ],
+  },
 ];
 
-const VisualEffects: React.FC<VisualEffectsProps> = ({
-  className ='',
-  onEffectChange,
-  onPresetApply,
-  onEffectExport
-}) => {
-  // State
-  const [activeTab, setActiveTab] = useState(false);
-  
-  // Theming system
-  const theming = useTheming('photographer');
-  const [selectedEffect, setSelectedEffect] = useState<VisualEffect | null>(null);
-  const [showEffectEditor, setShowEffectEditor] = useState(false);
-  const [effects, setEffects] = useState<VisualEffect[]>(defaultEffects);
-  const [presets, setPresets] = useState<EffectPreset[]>(effectPresets);
-  const [previewMode, setPreviewMode] = useState(false);
-  const [previewEffect, setPreviewEffect] = useState<VisualEffect | null>(null);
+const toNumeric = (value: number | number[]): number =>
+  Array.isArray(value) ? value[0] ?? 0 : value;
 
-  // Handlers
-  const handleEffectSelect = useCallback((effect: VisualEffect) => {
-    setSelectedEffect(effect);
-    onEffectChange?.(effect);
-}, [onEffectChange]);
+const isEffectType = (value: string): value is VisualEffectType =>
+  EFFECT_TYPES.includes(value as VisualEffectType);
 
-  const handleEffectEdit = useCallback((effect: VisualEffect) => {
-    setSelectedEffect(effect);
-    setShowEffectEditor(true);
-}, []);
-
-  const handleEffectSave = useCallback(() => {
-    if (selectedEffect) {
-      const existingIndex = effects.findIndex(e => e.id === selectedEffect.id);
-      if (existingIndex >= 0) {
-        setEffects(prev => prev.map((e, i) => i === existingIndex ? selectedEffect : e));
-    } else {
-        setEffects(prev => [...prev, selectedEffect]);
-    }
-      setShowEffectEditor(false);
+const getEffectIcon = (type: VisualEffectType): React.ReactElement => {
+  switch (type) {
+    case 'particle':
+      return <AutoAwesome fontSize="small" />;
+    case 'gradient':
+      return <Gradient fontSize="small" />;
+    case 'blur':
+      return <BlurOn fontSize="small" />;
+    case 'glow':
+      return <LightMode fontSize="small" />;
+    case 'shadow':
+      return <FilterHdr fontSize="small" />;
+    case 'transform':
+      return <Tune fontSize="small" />;
+    case 'filter':
+      return <Settings fontSize="small" />;
+    default:
+      return <Tune fontSize="small" />;
   }
-}, [selectedEffect, effects]);
-
-  const handleEffectDelete = useCallback((effectId: string) => {
-    setEffects(prev => prev.filter(e => e.id !== effectId));
-    if (selectedEffect?.id === effectId) {
-      setSelectedEffect(null);
-}
-}, [selectedEffect]);
-
-  const handlePresetApply = useCallback((preset: EffectPreset) => {
-    setEffects(prev => [...prev, ...preset.effects]);
-    onPresetApply?.(preset);
-}, [onPresetApply]);
-
-  const handleEffectExport = useCallback(() => {
-    onEffectExport?.(effects);
-}, [effects, onEffectExport]);
-
-  const handlePreview = useCallback((effect: VisualEffect) => {
-    setPreviewEffect(effect);
-    setPreviewMode(true);
-    setTimeout(() => setPreviewMode(false), effect.duration || 2000);
-}, []);
-
-  const getEffectIcon = useCallback((type: string) => {
-    switch (type) {
-      case 'particle': return <CREATOR_HUB_ICONS.star />;
-      case 'gradient': return <CREATOR_HUB_ICONS.palette />;
-      case 'blur': return <CREATOR_HUB_ICONS.blur />;
-      case 'glow': return <CREATOR_HUB_ICONS.lightbulb />;
-      case 'shadow': return <CREATOR_HUB_ICONS.shadow />;
-      case 'transform': return <CREATOR_HUB_ICONS.transform />;
-      case 'filter': return <CREATOR_HUB_ICONS.filter />;
-      default: return <CREATOR_HUB_ICONS.settings />;
-}
-}, []);
-
-  const getCategoryIcon = useCallback((category: string) => {
-    switch (category) {
-      case 'ambient': return <CREATOR_HUB_ICONS.visibility />;
-      case 'interactive': return <CREATOR_HUB_ICONS.touchApp />;
-      case 'decorative': return <CREATOR_HUB_ICONS.palette />;
-      case 'functional': return <CREATOR_HUB_ICONS.build />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-}, []);
-
-  const renderEffectPreview = useCallback((effect: VisualEffect) => {
-    const effectStyle = {
-      width: 20,
-      height: 10,
-      borderRadius:  8,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-      fontWeight: 'bold',
-      position: 'relative' as const,
-      overflow: 'hidden' as const
 };
 
-    switch (effect.type) {
-      case 'particle':
-        return (
-          <Box sx={effectStyle} style={{ background: 'linear-gradient(45deg, #1976d2, #42a5f5)' }}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Particle Effect</Typography>
-            {previewMode && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top:  0,
-                  left:  0,
-                  right:  0,
-                  bottom:  0,
-                  background: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
-                  backgroundSize: '20px 20px',
-                  animation: 'particle-rain 1s linear infinite'
-            }}
-              />
-            )}
-          </Box>
-        );
-      case 'gradient':
-        return (
-          <Box 
-            sx={effectStyle}
-            style={{ 
-              background: `linear-gradient(45deg, ${effect.config.colors?.join(', ') || '#ff6b6b, #4ecdc4'})`,
-              animation: previewMode ? 'gradient-shift 2s ease-in-out infinite' : 'none'
-        }}
-          >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Gradient</Typography>
-          </Box>
-        );
-      case 'blur':
-        return (
-          <Box 
-            sx={effectStyle}
-            style={{ 
-              background: 'linear-gradient(45deg, #ff6b6b, #4ecdc4)',
-              filter: previewMode ? `blur(${effect.config.radius || 5}px)` : 'none'
-          }}
-          >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Blur Effect</Typography>
-          </Box>
-        );
-      case 'glow':
-        return (
-          <Box 
-            sx={effectStyle}
-            style={{ 
-              background: '#1976d0',
-              boxShadow: previewMode ? `0 0 ${effect.config.radius || 20}px ${effect.config.color || '#1976d2'}` : 'none'
-          }}
-          >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Glow Effect</Typography>
-          </Box>
-        );
-      case 'shadow':
-        return (
-          <Box 
-            sx={effectStyle}
-            style={{ 
-              background: '#1976d0',
-              boxShadow: `${effect.config.offsetX || 0}px ${effect.config.offsetY || 4}px ${effect.config.blur || 8}px ${effect.config.color || 'rgba(0,0,0,0.1)'}`
-          }}
-          >
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Shadow</Typography>
-          </Box>
-        );
-      default: return (
-          <Box sx={effectStyle} style={{ background: '#666'}}>
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Custom Effect</Typography>
-          </Box>
-        );
-  }
-}, [previewMode]);
+const createNewEffect = (): VisualEffect => ({
+  id: `fx-custom-${Date.now()}`,
+  name: 'Custom Effect',
+  description: '',
+  type: 'filter',
+  intensity: 0.5,
+  duration: 500,
+  enabled: true,
+  config: {},
+});
 
-  // Memoized data
-  const effectCategories = useMemo(() => {
-    const categories = [...new Set(effects.map(e => e.type))];
-    return categories.map(category => ({
-      id: category,
-      name: category.charAt(0).toUpperCase() + category.slice(),
-      count: effects.filter(e => e.type === category).length
-}));
-}, [effects]);
+const VisualEffects: React.FC<VisualEffectsProps> = ({
+  className,
+  onEffectChange,
+  onPresetApply,
+  onEffectExport,
+}) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const [effects, setEffects] = useState<VisualEffect[]>(DEFAULT_EFFECTS);
+  const [presets] = useState<EffectPreset[]>(DEFAULT_PRESETS);
+  const [editingEffectId, setEditingEffectId] = useState<string | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+  const selectedEffect = useMemo(
+    () => effects.find((effect) => effect.id === editingEffectId) ?? null,
+    [effects, editingEffectId],
+  );
+
+  useEffect(() => {
+    if (selectedEffect) {
+      onEffectChange?.(selectedEffect);
+    }
+  }, [selectedEffect, onEffectChange]);
+
+  const updateEffect = (effectId: string, patch: Partial<VisualEffect>): void => {
+    setEffects((prev) =>
+      prev.map((effect) =>
+        effect.id === effectId
+          ? {
+              ...effect,
+              ...patch,
+            }
+          : effect,
+      ),
+    );
+  };
+
+  const openEditor = (effectId: string): void => {
+    setEditingEffectId(effectId);
+    setIsEditorOpen(true);
+  };
+
+  const addEffect = (): void => {
+    const created = createNewEffect();
+    setEffects((prev) => [...prev, created]);
+    setEditingEffectId(created.id);
+    setIsEditorOpen(true);
+  };
+
+  const deleteEffect = (effectId: string): void => {
+    setEffects((prev) => prev.filter((effect) => effect.id !== effectId));
+    if (editingEffectId === effectId) {
+      setEditingEffectId(null);
+      setIsEditorOpen(false);
+    }
+  };
+
+  const applyPreset = (preset: EffectPreset): void => {
+    setEffects((prev) => {
+      const byId = new Map(prev.map((item) => [item.id, item]));
+      preset.effects.forEach((effect) => {
+        byId.set(effect.id, effect);
+      });
+      return Array.from(byId.values());
+    });
+    onPresetApply?.(preset);
+  };
+
+  const enabledCount = useMemo(
+    () => effects.filter((effect) => effect.enabled).length,
+    [effects],
+  );
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.palette sx={{ fontSize:  32, color: 'primary.main'}} />
-            <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>Visual Effects</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Advanced visual effects and animations
-              </Typography>
-            </Box>
-          </Stack>
+    <Box className={className}>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+          <Box>
+            <Typography variant="h6">Visual Effects</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {enabledCount}/{effects.length} active effects
+            </Typography>
+          </Box>
           <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              startIcon={<CREATOR_HUB_ICONS.add />}
-              onClick={() => {
-                setSelectedEffect({
-                  id: `effect-${Date.now()}`,
-                  name: 'New Effect',
-                  description: 'Custom visual effect',
-                  type: 'particle',
-                  intensity: 0.5,
-                  duration: 100,
-                  enabled: true,
-                  config:  , {}
-              });
-                setShowEffectEditor(true);
-            }}
-            >
-              New Effect
+            <Button variant="outlined" onClick={addEffect}>
+              Add Effect
             </Button>
-            <Button variant="contained"
-              startIcon={<CREATOR_HUB_ICONS.download sx={theming.getThemedButtonSx()} />}
-              onClick={handleEffectExport}
-            >
-              Export
+            <Button variant="contained" onClick={() => onEffectExport?.(effects)}>
+              Export Effects
             </Button>
           </Stack>
         </Stack>
-      </Paper>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)} sx={{ mb:  2 }}>
-        <Tab label="Effects" icon={<CREATOR_HUB_ICONS.palette />} />
-        <Tab label="Presets" icon={<CREATOR_HUB_ICONS.star />} />
-        <Tab label="Preview" icon={<CREATOR_HUB_ICONS.visibility />} />
-      </Tabs>
+        <LinearProgress
+          variant="determinate"
+          value={effects.length === 0 ? 0 : (enabledCount / effects.length) * 100}
+          sx={{ mb: 2 }}
+        />
 
-      {/* Effects Tab */}
-      {activeTab === 0 && (
-        <Grid container spacing={2}>
-          {effects.map((effect) => (
-            <Grid item xs={12} sm={6} md={4} key={effect.id}>
-              <Card 
-                sx={{ 
-                  cursor: 'pointer', '&:hover': { elevation:  4 },
-                  transition: 'all 0.2',
-                  border: selectedEffect?.id === effect.id ? 2 : 0,
-                  borderColor: selectedEffect?.id === effect.id ? 'primary.main' : 'transparent'
-            }}
-                onClick={() => handleEffectSelect(effect)} sx={theming.getThemedCardSx()}
-              >
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getEffectIcon(effect.type)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {effect.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {effect.description}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip 
-                          label={effect.type}
-                          size="small" 
-                          color="primary"
-                        />
-                        <Chip 
-                          label={`${Math.round(effect.intensity * 100)}%`}
-                          size="small" 
-                          variant="outlined"
-                        />
-                        <Chip 
-                          label={effect.enabled ? 'On' : 'Off'}
-                          size="small" 
-                          color={effect.enabled ? 'success' : 'default'}
-                        />
-                      </Stack>
-                      
-                      <LinearProgress 
-                        variant="determinate" 
-                        value={effect.intensity * 100}
-                        sx={{ mb: 2, height:  4, borderRadius:  2 }}
+        <Tabs value={activeTab} onChange={(_event, value: number) => setActiveTab(value)}>
+          <Tab label="Effects" />
+          <Tab label="Presets" />
+          <Tab label="Preview" />
+        </Tabs>
+
+        {activeTab === 0 && (
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            {effects.map((effect) => (
+              <Grid item xs={12} md={6} key={effect.id}>
+                <Card variant="outlined">
+                  <CardHeader
+                    avatar={getEffectIcon(effect.type)}
+                    title={effect.name}
+                    subheader={effect.description}
+                    action={
+                      <Chip
+                        label={effect.enabled ? 'Enabled' : 'Disabled'}
+                        color={effect.enabled ? 'success' : 'default'}
+                        size="small"
                       />
-                      
+                    }
+                  />
+                  <CardContent>
+                    <Stack spacing={1.5}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={effect.enabled}
+                            onChange={(event) =>
+                              updateEffect(effect.id, { enabled: event.target.checked })
+                            }
+                          />
+                        }
+                        label="Enabled"
+                      />
+                      <Typography variant="body2">Intensity {Math.round(effect.intensity * 100)}%</Typography>
+                      <Slider
+                        value={effect.intensity}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        onChange={(_event, value) =>
+                          updateEffect(effect.id, { intensity: toNumeric(value) })
+                        }
+                      />
+                      <Typography variant="body2">Duration {effect.duration}ms</Typography>
+                      <Slider
+                        value={effect.duration}
+                        min={50}
+                        max={5000}
+                        step={50}
+                        onChange={(_event, value) =>
+                          updateEffect(effect.id, { duration: Math.round(toNumeric(value)) })
+                        }
+                      />
                       <Stack direction="row" spacing={1}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.playArrow />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePreview(effect);
-                        }}
-                        >
-                          Preview
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<CREATOR_HUB_ICONS.edit />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEffectEdit(effect);
-                        }}
-                        >
+                        <Button size="small" variant="outlined" onClick={() => openEditor(effect.id)}>
                           Edit
                         </Button>
                         <Button
                           size="small"
-                          variant="outlined"
                           color="error"
-                          startIcon={<CREATOR_HUB_ICONS.delete />}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEffectDelete(effect.id);
-                        }}
+                          variant="outlined"
+                          onClick={() => deleteEffect(effect.id)}
                         >
                           Delete
                         </Button>
                       </Stack>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        )}
 
-      {/* Presets Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={2}>
-          {presets.map((preset) => (
-            <Grid item xs={12} sm={6} md={4} key={preset.id}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    {getCategoryIcon(preset.category)}
-                    <Box sx={{ flex:  1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                        {preset.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {preset.description}
-                      </Typography>
-                      
-                      <Stack direction="row" spacing={1} sx={{ mb:  2 }}>
-                        <Chip 
-                          label={preset.category}
-                          size="small" 
-                          color="secondary"
-                        />
-                        <Chip 
-                          label={`${preset.effects.length} effects`}
-                          size="small" 
-                          variant="outlined"
-                        />
-                      </Stack>
-                      
-                      <Button size="small"
-                        variant="contained"
-                        startIcon={<CREATOR_HUB_ICONS.add sx={theming.getThemedButtonSx()} />}
-                        onClick={() => handlePresetApply(preset)}
-                      >
-                        Apply Preset
-                      </Button>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Preview Tab */}
-      {activeTab === 2 && (
-        <Box>
-          <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-            Effect Preview
-          </Typography>
-          <Paper elevation={1} sx={{ p:  3, textAlign: 'center',  ...theming.getThemedCardSx() }}>
-            <Box sx={{ minHeight: 20, display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-              {previewEffect ? renderEffectPreview(previewEffect) : (
-                <Typography variant="body1" color="text.secondary">
-                  Select an effect to preview
-                </Typography>
-              )}
-            </Box>
-            <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt:  2 }}>
-              {effects.map((effect) => (
-                <Button
-                  key={effect.id}
-                  variant="outlined"
-                  onClick={() => handlePreview(effect)}
-                >
-                  {effect.name}
-                </Button>
-              ))}
-            </Stack>
-          </Paper>
-        </Box>
-      )}
-
-      {/* Effect Editor Dialog */}
-      <Dialog open={showEffectEditor} onClose={() => setShowEffectEditor(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.settings />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-              {selectedEffect?.id.startsWith('effect-') ? 'Create Effect' : 'Edit Effect'}
-            </Typography>
+        {activeTab === 1 && (
+          <Stack spacing={2} sx={{ mt: 2 }}>
+            {presets.map((preset) => (
+              <Paper key={preset.id} variant="outlined" sx={{ p: 2 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Box>
+                    <Typography variant="subtitle1">{preset.name}</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {preset.description}
+                    </Typography>
+                    <Stack direction="row" spacing={1} mt={1}>
+                      <Chip label={preset.category} size="small" />
+                      <Chip label={`${preset.effects.length} effects`} size="small" />
+                    </Stack>
+                  </Box>
+                  <Button variant="contained" onClick={() => applyPreset(preset)}>
+                    Apply
+                  </Button>
+                </Stack>
+              </Paper>
+            ))}
           </Stack>
-        </DialogTitle>
+        )}
+
+        {activeTab === 2 && (
+          <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+            {enabledCount === 0 ? (
+              <Alert severity="warning">Enable at least one effect to preview the stack.</Alert>
+            ) : (
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle1">Preview Stack</Typography>
+                {effects
+                  .filter((effect) => effect.enabled)
+                  .map((effect) => (
+                    <Box
+                      key={effect.id}
+                      sx={{
+                        borderRadius: 1,
+                        p: 1.5,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        background:
+                          effect.type === 'gradient'
+                            ? 'linear-gradient(135deg, rgba(64,90,120,0.25), rgba(255,140,0,0.2))'
+                            : 'background.paper',
+                      }}
+                    >
+                      <Stack direction="row" justifyContent="space-between">
+                        <Typography variant="body2">{effect.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {effect.type}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Intensity {Math.round(effect.intensity * 100)}% • {effect.duration}ms
+                      </Typography>
+                    </Box>
+                  ))}
+              </Stack>
+            )}
+          </Paper>
+        )}
+      </Paper>
+
+      <Dialog open={isEditorOpen} onClose={() => setIsEditorOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Edit Effect</DialogTitle>
         <DialogContent>
-          {selectedEffect && (
-            <Stack spacing={3} sx={{ mt:  2 }}>
+          {!selectedEffect ? (
+            <Alert severity="info">Select an effect to edit.</Alert>
+          ) : (
+            <Stack spacing={2} sx={{ pt: 1 }}>
               <TextField
-                label="Effect Name"
+                label="Name"
                 value={selectedEffect.name}
-                onChange={(e) => setSelectedEffect(prev => prev ? { ...prev, name: e.target.value } : null)}
+                onChange={(event) =>
+                  updateEffect(selectedEffect.id, { name: event.target.value })
+                }
                 fullWidth
               />
               <TextField
                 label="Description"
                 value={selectedEffect.description}
-                onChange={(e) => setSelectedEffect(prev => prev ? { ...prev, description: e.target.value } : null)}
+                onChange={(event) =>
+                  updateEffect(selectedEffect.id, { description: event.target.value })
+                }
                 fullWidth
                 multiline
                 rows={2}
               />
               <FormControl fullWidth>
-                <InputLabel>Effect Type</InputLabel>
+                <InputLabel id="effect-type-label">Type</InputLabel>
                 <Select
+                  labelId="effect-type-label"
+                  label="Type"
                   value={selectedEffect.type}
-                  onChange={(e) => setSelectedEffect(prev => prev ? { ...prev, type: e.target.value as any } : null)}
+                  onChange={(event) => {
+                    const value = String(event.target.value);
+                    if (isEffectType(value)) {
+                      updateEffect(selectedEffect.id, { type: value });
+                    }
+                  }}
                 >
-                  <MenuItem value="particle">Particle</MenuItem>
-                  <MenuItem value="gradient">Gradient</MenuItem>
-                  <MenuItem value="blur">Blur</MenuItem>
-                  <MenuItem value="glow">Glow</MenuItem>
-                  <MenuItem value="shadow">Shadow</MenuItem>
-                  <MenuItem value="transform">Transform</MenuItem>
-                  <MenuItem value="filter">Filter</MenuItem>
+                  {EFFECT_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
-              <Box>
-                <Typography variant="body2" gutterBottom>
-                  Intensity: {Math.round(selectedEffect.intensity * 10)}%
-                </Typography>
-                <Slider
-                  value={selectedEffect.intensity}
-                  onChange={(_, value) => setSelectedEffect(prev => prev ? { ...prev, intensity: value } : null)}
-                  min={0}
-                  max={1}
-                  step={0.1}
-                />
-              </Box>
-              <Box>
-                <Typography variant="body2" gutterBottom>
-                  Duration: {selectedEffect.duration}ms
-                </Typography>
-                <Slider
-                  value={selectedEffect.duration}
-                  onChange={(_, value) => setSelectedEffect(prev => prev ? { ...prev, duration: value } : null)}
-                  min={100}
-                  max={10000}
-                  step={100}
-                />
-              </Box>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={selectedEffect.enabled}
-                    onChange={(e) => setSelectedEffect(prev => prev ? { ...prev, enabled: e.target.checked } : null)}
-                  />
-              }
-                label="Enabled"
-              />
+              <Divider />
+              <Typography variant="caption" color="text.secondary">
+                You can fine-tune intensity/duration directly in the effects list.
+              </Typography>
             </Stack>
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowEffectEditor(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained" 
-            onClick={handleEffectSave}
-           sx={theming.getThemedButtonSx()}>
-            {selectedEffect?.id.startsWith('effect-') ? 'Create' : 'Update'} Effect
-          </Button>
+          <Button onClick={() => setIsEditorOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -691,4 +513,3 @@ const VisualEffects: React.FC<VisualEffectsProps> = ({
 };
 
 export default VisualEffects;
-

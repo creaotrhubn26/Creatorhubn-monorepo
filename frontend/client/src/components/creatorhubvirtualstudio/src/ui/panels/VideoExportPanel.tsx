@@ -358,7 +358,8 @@ export function VideoExportPanel({
   const handleExportFrame = useCallback(() => {
     const result = videoExportService.exportFrame(
       currentDimensions.width,
-      currentDimensions.height'png'
+      currentDimensions.height,
+      'png'
     );
 
     if (result.success && result.url && result.filename) {
@@ -719,8 +720,10 @@ export function VideoExportPanel({
                         backgroundColor: '#1a1a2a',
                         borderRadius: 1,
                         mb: 0.5,
-                        cursor: 'pointer', '&:hover': { backgroundColor: '#2a2a3a' }}}
-                      onClick={() => window.open(folder.webViewLink'_blank')}
+                        cursor: 'pointer',
+                        '&:hover': { backgroundColor: '#2a2a3a' },
+                      }}
+                      onClick={() => window.open(folder.webViewLink, '_blank')}
                     >
                       <ListItemIcon>
                         <FolderOpen />
@@ -888,4 +891,3 @@ export function VideoExportPanel({
 }
 
 export default VideoExportPanel;
-

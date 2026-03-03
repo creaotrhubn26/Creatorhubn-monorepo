@@ -127,7 +127,7 @@ export default function PhotoBatchProcessor({
   const createBatchJob = useMutation({
     mutationFn: async (jobData: any) =>
       apiRequest('/api/batch-processing/create', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(jobData),
     }),
     onSuccess: (response) => {
@@ -140,7 +140,7 @@ export default function PhotoBatchProcessor({
   const startBatchProcessing = useMutation({
     mutationFn: async (jobId: string) =>
       apiRequest(`/api/batch-processing/${jobd}/start`, {
-        method: 'POS',
+        method: 'POST',
     }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['/api/batch-processing', ],});
@@ -152,7 +152,7 @@ export default function PhotoBatchProcessor({
   const updateBatchJob = useMutation({
     mutationFn: async (data: any) =>
       apiRequest('/api/batch-processing/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data),
     }),
     onSuccess: (response) => {

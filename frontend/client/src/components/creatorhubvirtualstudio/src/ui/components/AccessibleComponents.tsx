@@ -299,14 +299,18 @@ export function AccessibleSlider({
         sx={{
           '& .MuiSlider-thumb': {
             width: Math.max(24, settings.minimumTargetSize / 2),
-            height: Math.max(24, settings.minimumTargetSize / 2)'&:focus-visible': {
+            height: Math.max(24, settings.minimumTargetSize / 2),
+            '&:focus-visible': {
               boxShadow: `0 0 0 4px rgba(33, 150, 243, 0.4)`,
             },
-          }, '& .MuiSlider-track': {
+          },
+          '& .MuiSlider-track': {
             height: 8,
-          }, '& .MuiSlider-rail': {
+          },
+          '& .MuiSlider-rail': {
             height: 8,
-          }}}
+          },
+        }}
         {...props}
       />
       {stepAnnouncement && (
@@ -497,7 +501,7 @@ export function AccessibleDialog({
   ...props
 }: AccessibleDialogProps) {
   const { announce } = useAccessibility();
-  const dialogId = `dialog-${title.toLowerCase().replace(/\s+/g, '-,')}`;
+  const dialogId = `dialog-${title.toLowerCase().replace(/\s+/g, '-')}`;
   
   // Focus trap
   useFocusTrap(dialogId, open, initialFocus || `#${dialogId}-close`);
@@ -505,7 +509,7 @@ export function AccessibleDialog({
   // Announce when opened
   useEffect(() => {
     if (open) {
-      announce(`${title} dialog opened`'assertive');
+      announce(`${title} dialog opened`, 'assertive');
     }
   }, [open, title, announce]);
 
@@ -601,7 +605,7 @@ export function AccessibleDraggable({
   const startMove = () => {
     setIsMoving(true);
     setTempIndex(index);
-    announce(`Moving ${itemLabel}. ${moveInstructions}`'assertive');
+    announce(`Moving ${itemLabel}. ${moveInstructions}`, 'assertive');
   };
 
   // Confirm move
@@ -945,7 +949,8 @@ export function AccessibleTooltip({
       >
         {React.cloneElement(children, {
           onFocus: showOnFocus ? () => setOpen(true) : undefined,
-          onBlur: showOnFocus ? () => setOpen(false) : undefined'aria-describedby': descriptionId,
+          onBlur: showOnFocus ? () => setOpen(false) : undefined,
+          'aria-describedby': descriptionId,
         })}
       </Tooltip>
       {descriptionId && (
@@ -1024,4 +1029,3 @@ export default {
   AccessibleTooltip,
   AccessibleProgress,
 };
-

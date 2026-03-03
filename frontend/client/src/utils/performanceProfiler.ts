@@ -6,7 +6,7 @@
 export interface PerformanceMetric {
   id: string;
   name: string;
-  category: 'render, ' | 'network' | 'memory' | 'cpu' | 'user' | 'custom';
+  category: 'render' | 'network' | 'memory' | 'cpu' | 'user' | 'custom';
   startTime: number;
   endTime: number;
   duration: number;
@@ -145,7 +145,7 @@ class PerformanceProfiler {
   });
 
       // Observe different types of performance entries
-      this.performanceObserver.observe({ entryTypes: ['measure, ','navigation','resource','paint','largest-contentful-paint','first-input','layout-shift'] });
+      this.performanceObserver.observe({ entryTypes: ['measure','navigation','resource','paint','largest-contentful-paint','first-input','layout-shift'] });
 } catch (error) {
       console.warn('Performance Observer not supported: ', error);
 }
@@ -378,7 +378,7 @@ class PerformanceProfiler {
   public startProfile(name: string, metadata: Record<string, any> = {}): string {
     const profileId = this.generateId();
     const profile: PerformanceProfile = {
-      id: profiled,
+      id: profileId,
       name,
       startTime: performance.now(),
       endTime:  0,
@@ -464,7 +464,7 @@ class PerformanceProfiler {
         endTime,
         duration: endTime - startTime,
         timestamp: Date.now(),
-        metadata: { error: error instanceof Error ? error.message : 'Unknown error, ',},
+        metadata: { error: error instanceof Error ? error.message : 'Unknown error' },
         tags: ['measure','error'],
         severity: 'high'
 });
@@ -473,7 +473,11 @@ class PerformanceProfiler {
 }
 }
 
-  public async measureAsync<T>(name: string, fn: () => Promise<>, category: PerformanceMetric['category'] = 'custom'): Promise<T> {
+  public async measureAsync<T>(
+    name: string,
+    fn: () => Promise<T>,
+    category: PerformanceMetric['category'] = 'custom',
+  ): Promise<T> {
     const startTime = performance.now();
     try {
       const result = await fn();
@@ -502,7 +506,7 @@ class PerformanceProfiler {
         endTime,
         duration: endTime - startTime,
         timestamp: Date.now(),
-        metadata: { error: error instanceof Error ? error.message : 'Unknown error, ',},
+        metadata: { error: error instanceof Error ? error.message : 'Unknown error' },
         tags: ['measure','async','error'],
         severity: 'high'
 });
@@ -666,9 +670,18 @@ class PerformanceProfiler {
       duration: this.config.reportInterval,
       summary: {
         totalMetrics: recentMetrics.length,
-        averageRenderTime: this.calculateAverage(recentMetrics.filter(m => m.category === ', '),'duration'),
-        averageMemoryUsage: this.calculateAverage(recentMetrics.filter(m => m.category === ', '),'metadata.usedJSHeapSize'),
-        averageNetworkLatency: this.calculateAverage(recentMetrics.filter(m => m.category === ', '),'duration'),
+        averageRenderTime: this.calculateAverage(
+          recentMetrics.filter((m) => m.category === 'render'),
+          'duration',
+        ),
+        averageMemoryUsage: this.calculateAverage(
+          recentMetrics.filter((m) => m.category === 'memory'),
+          'metadata.usedJSHeapSize',
+        ),
+        averageNetworkLatency: this.calculateAverage(
+          recentMetrics.filter((m) => m.category === 'network'),
+          'duration',
+        ),
         bottlenecksFound: this.profiles.reduce((sum, p) => sum + p.bottlenecks.length, 0),
         score: this.calculateOverallScore()
 },
@@ -803,7 +816,6 @@ export const performanceProfiler = new PerformanceProfiler();
 // Export types and class
 export { PerformanceProfiler };
 export default performanceProfiler;
-
 
 
 

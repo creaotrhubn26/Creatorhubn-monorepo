@@ -1,78 +1,50 @@
-import { useTheming } from '../../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
-import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
-  Grid,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Switch,
-  FormControlLabel,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  Grid,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Tabs,
-  Tab,
+  InputLabel,
+  MenuItem,
   Paper,
-  Divider,
-  Alert,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Select,
+  Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Avatar,
-  Stack,
+  Tabs,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
   Add,
-  Edit,
   Delete,
+  Edit,
   Save,
-  Cancel,
-  PhotoCamera as PhotoCameraAlt,
-  Videocam as Videocamcam,
-  LibraryMusic as LibraryMusicNote,
-  AdminPanelSettings,
-  ExpandMore,
-  Palette,
-  Settings,
-  Dashboard,
-  Business as DirectionsBusiness,
   Work,
   Group,
-  Star,
   CheckCircle,
   Warning,
-  Timeline,
-  Psychology,
-  Analytics,
 } from '@mui/icons-material';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import CustomerJourneyBuilder from './CustomerJourneyBuilder';
+
+type ProfessionStatus = 'active' | 'inactive' | 'beta' | 'coming_soon';
 
 interface ProfessionConfig {
   id?: string;
@@ -82,7 +54,7 @@ interface ProfessionConfig {
   description: string;
   color: string;
   icon: string;
-  status: 'active' | 'inactive' | 'beta' | 'coming_soon';
+  status: ProfessionStatus;
   tabs: string[];
   features: string[];
   integrations: string[];
@@ -92,595 +64,632 @@ interface ProfessionConfig {
     averageRevenue?: string;
     complexity?: 'low' | 'medium' | 'high';
     developmentTime?: string;
-};
+  };
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface ProfessionTypeApi {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  iconColor: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const DEFAULT_TABS = ['Oversikt', 'Prosjekter', 'Kunder', 'Utstyr', 'Filer', 'Innstillinger'];
+const DEFAULT_FEATURES = ['dashboard', 'file-manager', 'analytics'];
+const DEFAULT_INTEGRATIONS = ['google-drive', 'email'];
+
+const EMPTY_FORM: ProfessionConfig = {
+  key: '',
+  name: '',
+  nameEnglish: '',
+  description: '',
+  color: '#1976d2',
+  icon: 'work',
+  status: 'active',
+  tabs: [...DEFAULT_TABS],
+  features: [...DEFAULT_FEATURES],
+  integrations: [...DEFAULT_INTEGRATIONS],
+  priority: 1,
+  metadata: {
+    complexity: 'medium',
+  },
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === 'object' && value !== null) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
+}
+
+function toStringValue(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function toNumberValue(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+function normalizeProfessions(raw: unknown): ProfessionTypeApi[] {
+  const root = asRecord(raw);
+  const listCandidate = Array.isArray(raw)
+    ? raw
+    : Array.isArray(root.data)
+      ? root.data
+      : Array.isArray(root.items)
+        ? root.items
+        : [];
+
+  return listCandidate
+    .map((entry): ProfessionTypeApi | null => {
+      const record = asRecord(entry);
+      const rawId = record.id;
+      const id = typeof rawId === 'string' || typeof rawId === 'number' ? String(rawId) : '';
+      const name = toStringValue(record.name).trim();
+      const displayName = toStringValue(record.displayName).trim();
+
+      if (!id || !name) {
+        return null;
+      }
+
+      return {
+        id,
+        name,
+        displayName: displayName || name,
+        description: toStringValue(record.description),
+        iconColor: toStringValue(record.iconColor, '#1976d2'),
+        isActive: Boolean(record.isActive),
+        sortOrder: Math.max(1, toNumberValue(record.sortOrder, 1)),
+        createdAt: toStringValue(record.createdAt, new Date().toISOString()),
+        updatedAt: toStringValue(record.updatedAt, new Date().toISOString()),
+      };
+    })
+    .filter((entry): entry is ProfessionTypeApi => entry !== null);
+}
+
+function toProfessionConfig(apiItem: ProfessionTypeApi): ProfessionConfig {
+  return {
+    id: apiItem.id,
+    key: apiItem.name,
+    name: apiItem.displayName,
+    nameEnglish: apiItem.displayName,
+    description: apiItem.description,
+    color: apiItem.iconColor,
+    icon: apiItem.name,
+    status: apiItem.isActive ? 'active' : 'inactive',
+    tabs: [...DEFAULT_TABS],
+    features: [...DEFAULT_FEATURES],
+    integrations: [...DEFAULT_INTEGRATIONS],
+    priority: apiItem.sortOrder,
+    metadata: {
+      complexity: 'medium',
+    },
+    createdAt: apiItem.createdAt,
+    updatedAt: apiItem.updatedAt,
+  };
+}
+
+function statusColor(status: ProfessionStatus): 'success' | 'default' | 'warning' {
+  switch (status) {
+    case 'active':
+      return 'success';
+    case 'beta':
+      return 'warning';
+    default:
+      return 'default';
+  }
 }
 
 export default function ProfessionCMSManager() {
   const queryClient = useQueryClient();
   const { auth } = useEnhancedMasterIntegration();
 
-  // Theming system
-  const theming = useTheming('prototype_tester');
   const [currentTab, setCurrentTab] = useState(0);
   const [openDialog, setOpenDialog] = useState(false);
-  const [selectedProfession, setSelectedProfession] = useState<ProfessionConfig | null>(null);
-  const [selectedProfessionForJourney, setSelectedProfessionForJourney] = useState('photographer,');
-  const [formData, setFormData] = useState<ProfessionConfig>({
-    key: '',
-    name: '',
-    nameEnglish: '',
-    description: '',
-    color: '#2196F0',
-    icon: 'business',
-    status: 'active',
-    tabs: ['Oversikt','Prosjekter','Kunder','Utstyr','Filer','Innstillinger'],
-    features:  [],
-    integrations:  [],
-    priority:  1,
-    metadata:  , {},
-});
+  const [selectedProfessionForJourney, setSelectedProfessionForJourney] = useState('photographer');
+  const [editingProfessionId, setEditingProfessionId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<ProfessionConfig>(EMPTY_FORM);
+  const [newTabValue, setNewTabValue] = useState('');
+  const [newFeatureValue, setNewFeatureValue] = useState('');
+  const [newIntegrationValue, setNewIntegrationValue] = useState('');
 
-  // Fetch profession configurations
-  const { data: rawProfessions = [], isLoading } = useQuery({
-    queryKey: ['/api/admin/profession-types', ],
+  const professionsQuery = useQuery({
+    queryKey: ['/api/admin/profession-types'],
     queryFn: async () => {
       const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/profession-types', { headers });
+      const response = await apiRequest('/api/admin/profession-types', { headers });
+      return normalizeProfessions(response);
     },
     retry: false,
-});
+  });
 
-  // Transform backend data to frontend format
-  const professions = rawProfessions.map((p: any) => ({
-    id: p.id,
-    key: p.name,
-    name: p.displayName,
-    nameEnglish: p.displayName,
-    description: p.description,
-    color: p.iconColor,
-    icon: getProfessionIconString(p.name),
-    status: p.isActive ? 'active' : 'inactive',
-    tabs: ['Oversikt','Prosjekter','Kunder','Utstyr','Filer','Innstillinger'],
-    features: [],
-    integrations: [],
-    priority: p.sortOrder,
-    metadata: {},
-    createdAt: p.createdAt,
-    updatedAt: p.updatedAt,
-}));
+  const professions = useMemo(() => {
+    return professionsQuery.data?.map(toProfessionConfig) ?? [];
+  }, [professionsQuery.data]);
 
-  // Fetch profession statistics
-  const { data: professionStats } = useQuery({
-    queryKey: ['/api/admin/cms/profession-stats', ],
-    queryFn: async () => {
-      const headers = await auth.getAuthHeader();
-      return apiRequest('/api/admin/cms/profession-stats', { headers });
-    },
-    retry: false,
-});
+  const stats = useMemo(() => {
+    const total = professions.length;
+    const active = professions.filter((item) => item.status === 'active').length;
+    const inactive = professions.filter((item) => item.status === 'inactive').length;
+    const beta = professions.filter((item) => item.status === 'beta').length;
 
-  // Save profession mutation
+    return { total, active, inactive, beta };
+  }, [professions]);
+
   const saveProfessionMutation = useMutation({
-    mutationFn: async (professionData: ProfessionConfig) => {
-      // Transform data to match backend API
-      const backendData = {
-        name: professionData.key,
-        displayName: professionData.name,
-        description: professionData.description,
-        iconColor: professionData.color,
-        isActive: professionData.status === 'active',
-        sortOrder: professionData.priority,
-    };
-
+    mutationFn: async (payload: ProfessionConfig) => {
       const headers = await auth.getAuthHeader();
-      if (professionData.id) {
-        return apiRequest(`/api/admin/profession-types/${professionData.id}`, {
+      const requestBody = {
+        name: payload.key,
+        displayName: payload.name,
+        description: payload.description,
+        iconColor: payload.color,
+        isActive: payload.status === 'active' || payload.status === 'beta',
+        sortOrder: payload.priority,
+      };
+
+      if (payload.id) {
+        return apiRequest(`/api/admin/profession-types/${payload.id}`, {
           method: 'PUT',
           headers: {
-            ...headers, , 'Content-Type': 'application/json'
+            ...headers,
+            'Content-Type': 'application/json',
           },
-          body: JSON.stringify(backendData),
-      });
-    } else {
-        return apiRequest('/api/admin/profession-types', {
-          method: 'POST',
-          headers: {
-            ...headers, , 'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(backendData),
-      });
-    }
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/admin/profession-types', ],
-    });
-      queryClient.invalidateQueries({
-        queryKey: ['/api/admin/cms/profession-stats', ],
-    });
-      setOpenDialog(false);
-      setSelectedProfession(null);
-  },
-});
+          body: requestBody,
+        });
+      }
 
-  // Delete profession mutation
+      return apiRequest('/api/admin/profession-types', {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
+      setOpenDialog(false);
+      setEditingProfessionId(null);
+      setFormData(EMPTY_FORM);
+      setNewTabValue('');
+      setNewFeatureValue('');
+      setNewIntegrationValue('');
+    },
+  });
+
   const deleteProfessionMutation = useMutation({
     mutationFn: async (id: string) => {
       const headers = await auth.getAuthHeader();
       return apiRequest(`/api/admin/profession-types/${id}`, {
         method: 'DELETE',
-        headers
-    });
-  },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['/api/admin/profession-types', ],
-    });
-      queryClient.invalidateQueries({
-        queryKey: ['/api/admin/cms/profession-stats', ],
-    });
-  },
-});
-
-  const handleOpenDialog = (profession?: ProfessionConfig) => {
-    if (profession) {
-      setSelectedProfession(profession);
-      setFormData(profession);
-  } else {
-      setSelectedProfession(null);
-      setFormData({
-        key: '',
-        name: '',
-        nameEnglish: '',
-        description: ', ',
-        color: '#2196F0',
-        icon: 'business',
-        status: 'active',
-        tabs: ['Oversikt', 'Prosjekter', 'Kunder', 'Utstyr', 'Filer','Innstillinger'],
-        features:  [],
-        integrations:  [],
-        priority:  1,
-        metadata:  , {},
-    });
-  }
-    setOpenDialog(true);
-};
-
-  const handleSave = () => {
-    saveProfessionMutation.mutate(formData);
-};
-
-  const handleTabsChange = (index: number, value: string) => {
-    const newTabs = [...formData.tabs];
-    newTabs[index] = value;
-    setFormData({ ...formData, tabs: newTabs });
-};
-
-  const addTab = () => {
-    setFormData({ ...formData, tabs: [...formData.tabs'Ny Tab'] });
-};
-
-  const removeTab = (index: number) => {
-    const newTabs = formData.tabs.filter((_, i) => i !== index);
-    setFormData({ ...formData, tabs: newTabs });
-};
-
-  const addFeature = (feature: string) => {
-    if (feature && !formData.features.includes(feature)) {
-      setFormData({ ...formData, features: [...formData.features, feature] });
-  }
-};
-
-  const removeFeature = (feature: string) => {
-    setFormData({
-      ...formData,
-      features: formData.features.filter((f) => f !== feature),
+        headers,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['/api/admin/profession-types'] });
+    },
   });
-};
 
-  const getProfessionIconString = (professionKey: string): string => {
-    const iconStringMap: { [key: string]: string } = {
-      photographer: 'camera',
-      videographer: 'videocam',
-      musicproducer: 'library_music',
-      vendor: 'business',
+  const openCreateDialog = () => {
+    setEditingProfessionId(null);
+    setFormData(EMPTY_FORM);
+    setNewTabValue('');
+    setNewFeatureValue('');
+    setNewIntegrationValue('');
+    setOpenDialog(true);
   };
-    return iconStringMap[professionKey] || 'business';
-};
 
-  const getProfessionIcon = (profession: ProfessionConfig) => {
-    const iconMap: { [key: string]: React.ReactNode } = {
-      photographer: <PhotoCamera sx={{ color: profession.color }} />,
-      videographer: <Videocam sx={{ color: profession.color }} />,
-      musicproducer: <LibraryMusic sx={{ color: profession.color }} />,
-      vendor: <Business sx={{ color: profession.color }} />,
-      admin: <AdminPanelSettings sx={{ color: profession.color }} />,
+  const openEditDialog = (profession: ProfessionConfig) => {
+    setEditingProfessionId(profession.id ?? null);
+    setFormData({
+      ...profession,
+      tabs: [...profession.tabs],
+      features: [...profession.features],
+      integrations: [...profession.integrations],
+      metadata: { ...profession.metadata },
+    });
+    setNewTabValue('');
+    setNewFeatureValue('');
+    setNewIntegrationValue('');
+    setOpenDialog(true);
   };
-    return iconMap[profession.key] || <Business sx={{ color: profession.color }} />;
-};
 
-  const getStatusColor = (status: string) => {
-    const statusColors = {
-      active: 'success',
-      inactive: 'default',
-      beta: 'warning',
-      coming_soon: 'info',
+  const appendUnique = (items: string[], value: string): string[] => {
+    const normalized = value.trim();
+    if (!normalized || items.includes(normalized)) {
+      return items;
+    }
+
+    return [...items, normalized];
   };
-    return statusColors[status as keyof typeof statusColors] || 'default';
-};
+
+  const removeByIndex = (items: string[], index: number): string[] => {
+    return items.filter((_, itemIndex) => itemIndex !== index);
+  };
+
+  const canSave = formData.key.trim().length > 0 && formData.name.trim().length > 0;
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  3 }}>
-        <Typography variant="h4" sx={{  color: '#2196F0', fontWeight: 'bold' }}>
-          🎨 Profession Management CMS
+    <Box sx={{ p: 3 }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+        <Typography variant="h5" fontWeight={700}>
+          Profession CMS Manager
         </Typography>
-        <Button variant="contained"
-          startIcon={theming.getThemedIcon('add')}
-          onClick={() => handleOpenDialog()}
-          sx={{ bgcolor: '#4CAF50', '&:hover': { bgcolor: '#45a049'} }}
-        >
-          Legg til Profesjon
+        <Button variant="contained" startIcon={<Add />} onClick={openCreateDialog}>
+          Ny profesjon
         </Button>
-      </Box>
+      </Stack>
 
-      {/* ✅ Main Navigation Tabs */}
-      <Tabs
-        value={currentTab}
-        onChange={(_, value) => setCurrentTab(value)}
-        sx={{ mb:  3, borderBottom: 1, borderColor: 'divider'}}
-      >
-        <Tab icon={<Dashboard />} label="Profesjoner Oversikt" iconPosition="start" />
-        <Tab icon={<Box />} label="Customer Journey Builder" iconPosition="start" />
-        <Tab icon={theming.getThemedIcon('analytics')}} label="Statistikk & Analyse" iconPosition="start" />
-      </Tabs>
-
-      {/* ✅ Tab Content */}
-      {currentTab === 0 && (
-        <Box>
-          {/* Statistics Cards */}
-          <Grid container spacing={3}, sx={{ mb:  3 }}>
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="textSecondary" sx={{ color: theming.colors.primary }}>
-                    Totale Profesjoner
-                  </Typography>
-                  <Typography variant="h3" sx={{  color: theming.colors.primary }}>
-                    {professions.length}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="textSecondary" sx={{ color: theming.colors.primary }}>
-                    Aktive Profesjoner
-                  </Typography>
-                  <Typography variant="h3" sx={{  color: theming.colors.primary }}>
-                    {professions.filter((p: ProfessionConfig) => p.status === 'active').length}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="textSecondary" sx={{ color: theming.colors.primary }}>
-                    Beta Profesjoner
-                  </Typography>
-                  <Typography variant="h3" sx={{  color: theming.colors.primary }}>
-                    {professions.filter((p: ProfessionConfig) => p.status === 'beta').length}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={3}>
-              <Card sx={theming.getThemedCardSx()}>
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" color="textSecondary" sx={{ color: theming.colors.primary }}>
-                    Kommende
-                  </Typography>
-                  <Typography variant="h3" sx={{  color: theming.colors.primary }}>
-                    {professions.filter((p: ProfessionConfig) => p.status === 'coming_soon').length}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {/* Profession List */}
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" sx={{  mb:  2  }}>
-                Konfigurerte Profesjoner
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Work color="primary" />
+                <Typography variant="subtitle2">Totalt</Typography>
+              </Stack>
+              <Typography variant="h4" fontWeight={700}>
+                {stats.total}
               </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <CheckCircle color="success" />
+                <Typography variant="subtitle2">Aktive</Typography>
+              </Stack>
+              <Typography variant="h4" fontWeight={700}>
+                {stats.active}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Warning color="warning" />
+                <Typography variant="subtitle2">Beta</Typography>
+              </Stack>
+              <Typography variant="h4" fontWeight={700}>
+                {stats.beta}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card>
+            <CardContent>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Group color="disabled" />
+                <Typography variant="subtitle2">Inaktive</Typography>
+              </Stack>
+              <Typography variant="h4" fontWeight={700}>
+                {stats.inactive}
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Profesjon</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Antall Tabs</TableCell>
-                      <TableCell>Funksjoner</TableCell>
-                      <TableCell>Prioritet</TableCell>
-                      <TableCell align="right">Handlinger</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {professions.map((profession: ProfessionConfig) => (
-                      <TableRow key={profession.id || profession.key}>
-                        <TableCell>
-                          <Stack direction="row" alignItems="center" spacing={2}>
-                            <Avatar sx={{ bgcolor: profession.color }}>
-                              {getProfessionIcon(profession)}
-                            </Avatar>
-                            <Box>
-                              <Typography variant="subtitle1">{profession.name}</Typography>
-                              <Typography variant="caption" color="textSecondary">
-                                {profession.nameEnglish}
-                              </Typography>
-                            </Box>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={profession.status}
-                            color={getStatusColor(profession.status) as any}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>{profession.tabs.length}</TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={1}>
-                            {profession.features.slice(0, 2).map((feature) => (
-                              <Chip key={feature} label={feature} size="small" variant="outlined" />
-                            ))}
-                            {profession.features.length > 2 && (
-                              <Chip label={`+${profession.features.length - 2}`} size="small" />
-                            )}
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Star
+      <Paper sx={{ mb: 2 }}>
+        <Tabs value={currentTab} onChange={(_, value: number) => setCurrentTab(value)}>
+          <Tab label="Professioner" />
+          <Tab label="Customer Journey" />
+        </Tabs>
+      </Paper>
+
+      {currentTab === 0 && (
+        <>
+          {professionsQuery.isLoading && <Alert severity="info">Laster profesjoner...</Alert>}
+          {professionsQuery.isError && (
+            <Alert severity="error">Kunne ikke laste profesjoner. Sjekk API og autentisering.</Alert>
+          )}
+
+          {!professionsQuery.isLoading && !professionsQuery.isError && (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Key</TableCell>
+                    <TableCell>Navn</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Prioritet</TableCell>
+                    <TableCell>Farge</TableCell>
+                    <TableCell>Handlinger</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {professions.map((profession) => (
+                    <TableRow key={profession.id ?? profession.key} hover>
+                      <TableCell>{profession.key}</TableCell>
+                      <TableCell>{profession.name}</TableCell>
+                      <TableCell>
+                        <Chip size="small" label={profession.status} color={statusColor(profession.status)} />
+                      </TableCell>
+                      <TableCell>{profession.priority}</TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box
                             sx={{
-                              color: profession.priority <= 3 ? '#FFD700' : '#ccc'}}
+                              width: 14,
+                              height: 14,
+                              borderRadius: '50%',
+                              bgcolor: profession.color,
+                              border: '1px solid rgba(0,0,0,0.2)',
+                            }}
                           />
-                          {profession.priority}
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton onClick={() => handleOpenDialog(profession)} color="primary">
-                            {theming.getThemedIcon('edit')}
+                          <Typography variant="caption">{profession.color}</Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1}>
+                          <IconButton size="small" onClick={() => openEditDialog(profession)}>
+                            <Edit fontSize="small" />
                           </IconButton>
                           <IconButton
-                            onClick={() =>
-                              profession.id && deleteProfessionMutation.mutate(profession.id)
-                          }
-                            color="error"
+                            size="small"
+                            onClick={() => {
+                              if (profession.id) {
+                                deleteProfessionMutation.mutate(profession.id);
+                              }
+                            }}
+                            disabled={!profession.id || deleteProfessionMutation.isPending}
                           >
-                            {theming.getThemedIcon('delete')}
+                            <Delete fontSize="small" />
                           </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </CardContent>
-          </Card>
-        </Box>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </>
       )}
 
-      {/* ✅ Customer Journey Builder Tab */}
       {currentTab === 1 && (
-        <Box>
-          {/* Profession Selector for Journey Builder */}
-          <Card sx={{ mb:  3 ,  ...theming.getThemedCardSx() }}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Velg profesjon for Customer Journey: </Typography>
-                <FormControl size="small" sx={{ minWidth: 200}}>
-                  <Select
-                    value={selectedProfessionForJourney}
-                    onChange={(e) => setSelectedProfessionForJourney(e.target.value)}
-                  >
-                    <MenuItem value="photographer">
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <PhotoCamera fontSize="small" />
-                        <span>Fotograf</span>
-                      </Stack>
-                    </MenuItem>
-                    <MenuItem value="videographer">
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Videocam fontSize="small" />
-                        <span>Videograf</span>
-                      </Stack>
-                    </MenuItem>
-                    <MenuItem value="musicproducer">
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <LibraryMusic fontSize="small" />
-                        <span>Musikkprodusent</span>
-                      </Stack>
-                    </MenuItem>
-                    <MenuItem value="vendor">
-                      <Stack direction="row" alignItems="center" spacing={1}>
-                        <Business fontSize="small" />
-                        <span>Leverandør</span>
-                      </Stack>
-                    </MenuItem>
-                  </Select>
-                </FormControl>
-              </Stack>
-            </CardContent>
-          </Card>
-
-          {/* Customer Journey Builder Component */}
+        <Stack spacing={2}>
+          <FormControl size="small" sx={{ maxWidth: 320 }}>
+            <InputLabel id="journey-profession-label">Profession</InputLabel>
+            <Select
+              labelId="journey-profession-label"
+              label="Profession"
+              value={selectedProfessionForJourney}
+              onChange={(event) => setSelectedProfessionForJourney(event.target.value)}
+            >
+              {professions.map((profession) => (
+                <MenuItem key={profession.key} value={profession.key}>
+                  {profession.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <CustomerJourneyBuilder selectedProfession={selectedProfessionForJourney} />
-        </Box>
+        </Stack>
       )}
 
-      {/* ✅ Analytics Tab */}
-      {currentTab === 2 && (
-        <Box>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                <Analytics sx={{ mr: 1, verticalAlign: 'bottom'}} />
-                Statistikk & Analyse
-              </Typography>
-              <Typography variant="body1" color="text.secondary">
-                Detaljert analyse av Customer Journey performance, brukerengasjement og
-                konverteringsrater kommer snart...
-              </Typography>
-            </CardContent>
-          </Card>
-        </Box>
-      )}
-
-      {/* Profession Configuration Dialog */}
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>{selectedProfession ? 'Rediger Profesjon' : 'Ny Profesjon'}</DialogTitle>
+        <DialogTitle>{editingProfessionId ? 'Rediger profesjon' : 'Opprett profesjon'}</DialogTitle>
         <DialogContent>
-          <Grid container spacing={2}, sx={{ mt:  1 }}>
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Profesjon Key"
+                label="Key"
                 value={formData.key}
-                onChange={(e) => setFormData({ ...formData, key: e.target.value })}
-                helperText="Unik identifikator (f.eks: photographer)"
+                onChange={(event) => setFormData((prev) => ({ ...prev, key: event.target.value.trim().toLowerCase() }))}
+                helperText="Unik intern nøkkel"
               />
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Navn (Norsk)"
+                label="Visningsnavn"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(event) => setFormData((prev) => ({ ...prev, name: event.target.value }))}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Name (English)"
-                value={formData.nameEnglish}
-                onChange={(e) => setFormData({ ...formData, nameEnglish: e.target.value })}
+                multiline
+                minRows={2}
+                label="Beskrivelse"
+                value={formData.description}
+                onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                type="color"
+                label="Farge"
+                value={formData.color}
+                onChange={(event) => setFormData((prev) => ({ ...prev, color: event.target.value }))}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
               <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
+                <InputLabel id="status-select-label">Status</InputLabel>
                 <Select
+                  labelId="status-select-label"
+                  label="Status"
                   value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                  onChange={(event) =>
+                    setFormData((prev) => ({ ...prev, status: event.target.value as ProfessionStatus }))
+                  }
                 >
-                  <MenuItem value="active">Aktiv</MenuItem>
-                  <MenuItem value="inactive">Inaktiv</MenuItem>
-                  <MenuItem value="beta">Beta</MenuItem>
-                  <MenuItem value="coming_soon">Kommende</MenuItem>
+                  <MenuItem value="active">active</MenuItem>
+                  <MenuItem value="inactive">inactive</MenuItem>
+                  <MenuItem value="beta">beta</MenuItem>
+                  <MenuItem value="coming_soon">coming_soon</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} md={4}>
               <TextField
                 fullWidth
-                label="Beskrivelse"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                multiline
-                rows={3}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Farge"
-                type="color"
-                value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Ikon (Emoji)"
-                value={formData.icon}
-                onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                inputProps={{ maxLength:  2 }}
+                type="number"
+                label="Prioritet"
+                value={formData.priority}
+                onChange={(event) =>
+                  setFormData((prev) => ({ ...prev, priority: Math.max(1, Number(event.target.value) || 1) }))
+                }
               />
             </Grid>
 
-            {/* Tabs Configuration */}
             <Grid item xs={12}>
-              <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Dashboard Tabs</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {formData.tabs.map((tab, index) => (
-                    <Box key={index}, sx={{ display: 'flex', alignItems: 'center', mb:  1 }}>
-                      <TextField
-                        fullWidth
-                        value={tab}
-                        onChange={(e) => handleTabsChange(index, e.target.value)}
-                        sx={{ mr:  1 }}
-                      />
-                      <IconButton onClick={() => removeTab(index)} color="error">
-                        {theming.getThemedIcon('delete')}
-                      </IconButton>
-                    </Box>
-                  ))}
-                  <Button onClick={addTab} startIcon={theming.getThemedIcon('add')}>
-                    Legg til Tab
-                  </Button>
-                </AccordionDetails>
-              </Accordion>
-            </Grid>
-
-            {/* Features Configuration */}
-            <Grid item xs={12}>
-              <Accordion>
-                <AccordionSummary expandIcon={theming.getThemedIcon('expandMore')>
-                  <Typography variant="h6" sx={{ color: theming.colors.primary }}>Funksjoner</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Stack direction="row" flexWrap="wrap" gap={1}, sx={{ mb:  2 }}>
-                    {formData.features.map((feature) => (
-                      <Chip
-                        key={feature}
-                        label={feature}
-                        onDelete={() => removeFeature(feature)}
-                        color="primary"
-                      />
-                    ))}
-                  </Stack>
-                  <TextField
-                    fullWidth
-                    label="Legg til funksjon"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        addFeature((e.target as HTMLInputElement).value);
-                        (e.target as HTMLInputElement).value = '';
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Tabs
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                {formData.tabs.map((tab, index) => (
+                  <Chip
+                    key={`${tab}-${index}`}
+                    label={tab}
+                    onDelete={() =>
+                      setFormData((prev) => ({ ...prev, tabs: removeByIndex(prev.tabs, index) }))
                     }
-                  }}
-                    helperText="Trykk Enter for å legge til"
                   />
-                </AccordionDetails>
-              </Accordion>
+                ))}
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ny tab"
+                  value={newTabValue}
+                  onChange={(event) => setNewTabValue(event.target.value)}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setFormData((prev) => ({ ...prev, tabs: appendUnique(prev.tabs, newTabValue) }));
+                    setNewTabValue('');
+                  }}
+                >
+                  Legg til
+                </Button>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Features
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                {formData.features.map((feature, index) => (
+                  <Chip
+                    key={`${feature}-${index}`}
+                    label={feature}
+                    color="primary"
+                    variant="outlined"
+                    onDelete={() =>
+                      setFormData((prev) => ({ ...prev, features: removeByIndex(prev.features, index) }))
+                    }
+                  />
+                ))}
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ny feature"
+                  value={newFeatureValue}
+                  onChange={(event) => setNewFeatureValue(event.target.value)}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setFormData((prev) => ({ ...prev, features: appendUnique(prev.features, newFeatureValue) }));
+                    setNewFeatureValue('');
+                  }}
+                >
+                  Legg til
+                </Button>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Integrasjoner
+              </Typography>
+              <Stack direction="row" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
+                {formData.integrations.map((integration, index) => (
+                  <Chip
+                    key={`${integration}-${index}`}
+                    label={integration}
+                    color="secondary"
+                    variant="outlined"
+                    onDelete={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        integrations: removeByIndex(prev.integrations, index),
+                      }))
+                    }
+                  />
+                ))}
+              </Stack>
+              <Stack direction="row" spacing={1}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ny integrasjon"
+                  value={newIntegrationValue}
+                  onChange={(event) => setNewIntegrationValue(event.target.value)}
+                />
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      integrations: appendUnique(prev.integrations, newIntegrationValue),
+                    }));
+                    setNewIntegrationValue('');
+                  }}
+                >
+                  Legg til
+                </Button>
+              </Stack>
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpenDialog(false)}>Avbryt</Button>
-          <Button onClick={handleSave}
+          <Button
             variant="contained"
-            disabled={saveProfessionMutation.isPending}
-           sx={theming.getThemedButtonSx()}>
-            {saveProfessionMutation.isPending ? 'Lagrer...' : 'Lagre'}
+            startIcon={<Save />}
+            onClick={() => saveProfessionMutation.mutate({ ...formData, id: editingProfessionId ?? formData.id })}
+            disabled={!canSave || saveProfessionMutation.isPending}
+          >
+            Lagre
           </Button>
         </DialogActions>
       </Dialog>

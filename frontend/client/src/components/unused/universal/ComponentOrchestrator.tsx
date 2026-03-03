@@ -173,7 +173,7 @@ export default function ComponentOrchestrator({
         headers: {
           ...auth, 'Content-Type' : 'application/json'
       },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,});
   },

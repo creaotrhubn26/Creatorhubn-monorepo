@@ -25,6 +25,72 @@ import {
   Verified,
 } from '@mui/icons-material';
 
+export type AcademyToastType = 'success' | 'error' | 'warning' | 'info';
+
+export interface AcademyToastActionButton {
+  id: string;
+  label: string;
+  action: string;
+  style: 'primary' | 'secondary' | 'text';
+  color: string;
+}
+
+export interface AcademyToastStyle {
+  backgroundColor: string;
+  textColor: string;
+  borderRadius: number;
+  boxShadow: string;
+  padding: number;
+  fontSize: number;
+  fontWeight: 'normal' | 'bold' | 'lighter';
+  border: string;
+  borderColor: string;
+  borderWidth: number;
+  borderStyle: 'solid' | 'dashed' | 'dotted' | 'none';
+  [key: string]: string | number | boolean | undefined;
+}
+
+export interface AcademyToastIcon {
+  enabled: boolean;
+  type: string;
+  customIcon: string;
+  size: number;
+  color: string;
+}
+
+export interface AcademyToastActions {
+  enabled: boolean;
+  buttons: AcademyToastActionButton[];
+}
+
+export interface AcademyToastProgress {
+  enabled: boolean;
+  color: string;
+  height: number;
+}
+
+export interface AcademyToastConfig {
+  message: string;
+  type: AcademyToastType;
+  duration: number;
+  position: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'top-center' | 'bottom-center';
+  animation: 'slide' | 'fade' | 'bounce' | 'zoom';
+  style: AcademyToastStyle;
+  icon: AcademyToastIcon;
+  actions: AcademyToastActions;
+  progress: AcademyToastProgress;
+}
+
+export type AcademyToastTemplateConfig = Omit<AcademyToastConfig, 'duration' | 'position' | 'animation'>
+  & Partial<Pick<AcademyToastConfig, 'duration' | 'position' | 'animation'>>;
+
+export interface AcademyToastTemplate {
+  id: string;
+  name: string;
+  description: string;
+  config: AcademyToastTemplateConfig;
+}
+
 // Icon mapping for academy features and status types
 export const getAcademyIcon = (iconType: string, size: number = 24) => {
   const iconProps = { sx: { fontSize: size } };
@@ -94,7 +160,7 @@ export const useAcademyToastTheming = (templateId: string) => {
   const theming = useTheming('academy');
   
   // Find the template configuration for this templateId
-  const template = academyToastTemplates.find((t: { id: string }) => t.id === templateId);
+  const template = academyToastTemplates.find((t) => t.id === templateId);
   
   // Memoize template-specific theming
   const templateSpecificStyle = React.useMemo(() => {
@@ -133,7 +199,7 @@ export const useAcademyToastTheming = (templateId: string) => {
 };
 
 // Function to render a toast with themed styling and icon
-export const renderAcademyToast = (template: Record<string, unknown>) => {
+export const renderAcademyToast = (template: AcademyToastTemplate) => {
   const theming = useTheming('academy');
   const icon = template.config.icon.customIcon || getAcademyIcon(template.config.icon.type, template.config.icon.size);
   
@@ -208,7 +274,7 @@ export const getVideoLibraryIcon = (type: 'library' | 'lesson' | 'playlist') => 
   }
 };
 
-export const academyToastTemplates = [
+export const academyToastTemplates: AcademyToastTemplate[] = [
   // Course Management Templates
   {
     id: 'academy-course-created',
@@ -1104,11 +1170,6 @@ export const academyToastTemplates = [
 ];
 
 export default academyToastTemplates;
-
-
-
-
-
 
 
 

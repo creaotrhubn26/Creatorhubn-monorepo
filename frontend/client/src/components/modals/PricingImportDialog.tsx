@@ -3,39 +3,31 @@
  * Import recommended pricing from Creo or NJ
  */
 
-import React, { useState, useMemo } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import React, { useMemo, useState } from 'react';
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
+  Alert,
   Box,
-  Typography,
-  Tabs,
-  Tab,
+  Button,
   Card,
   CardContent,
-  CardActions,
-  Chip,
-  Alert,
-  Link,
-  Grid,
   Checkbox,
-  FormControlLabel,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
-  Stack,
+  FormControlLabel,
+  Grid,
+  Link,
+  Tab,
+  Tabs,
+  Typography,
 } from '@mui/material';
 import {
-  Close as CloseIcon,
-  Download as ImportIcon,
-  Info as InfoIcon,
-  CheckCircle as CheckIcon,
-  ArrowForward as ArrowIcon,
+  CheckCircle,
+  Download,
+  Info,
 } from '@mui/icons-material';
 import { PricingImportService, PricingRecommendation } from '@/services/PricingImportService';
 
@@ -46,282 +38,201 @@ interface PricingImportDialogProps {
   onImport: (recommendations: PricingRecommendation[]) => void;
 }
 
+function sourceTabToIndex(source: 'creo' | 'nj'): number {
+  return source === 'creo' ? 0 : 1;
+}
+
+function indexToSource(index: number): 'creo' | 'nj' {
+  return index === 1 ? 'nj' : 'creo';
+}
+
 export default function PricingImportDialog({
   open,
   onClose,
   profession,
   onImport,
 }: PricingImportDialogProps) {
-  // Dynamic profession system
-  const { getProfessionDisplayName } = useDynamicProfessions();
-  
   const [selectedSource, setSelectedSource] = useState<'creo' | 'nj'>('creo');
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set();
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
 
-  const availableSources = useMemo(() => {
-    return PricingImportService.getAvailableSources(profession);
-  }, [profession]);
+  const availableSources = useMemo(() => PricingImportService.getAvailableSources(profession), [profession]);
 
-  const recommendations = useMemo(() => {
-    return PricingImportService.getPricingRecommendations(profession, selectedSource);
-  }, [profession, selectedSource]);
+  const recommendations = useMemo(
+    () => PricingImportService.getPricingRecommendations(profession, selectedSource),
+    [profession, selectedSource],
+  );
 
-  const categories = useMemo(() => {
-    const categoryMap = new Map<string, PricingRecommendation[]>();
-    recommendations.forEach((rec) => {
-      if (!categoryMap.has(rec.category) {
-        categoryMap.set(rec.category, []);
+  const groupedRecommendations = useMemo(() => {
+    const groups = new Map<string, PricingRecommendation[]>();
+
+    for (const recommendation of recommendations) {
+      if (!groups.has(recommendation.category)) {
+        groups.set(recommendation.category, []);
       }
-      categoryMap.get(rec.category)!.push(rec);
-    });
-    return categoryMap;
+      groups.get(recommendation.category)?.push(recommendation);
+    }
+
+    return groups;
   }, [recommendations]);
 
+  const selectedCount = selectedItems.size;
+
   const handleToggleItem = (id: string) => {
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(id) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedItems(newSelected);
+    setSelectedItems((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleSelectAll = () => {
     if (selectedItems.size === recommendations.length) {
-      setSelectedItems(new Set();
-    } else {
-      setSelectedItems(new Set(recommendations.map((r) => r.id)));
+      setSelectedItems(new Set());
+      return;
     }
+
+    setSelectedItems(new Set(recommendations.map((recommendation) => recommendation.id)));
   };
 
   const handleImport = () => {
-    const selectedRecommendations = recommendations.filter((r) => selectedItems.has(r.id);
+    const selectedRecommendations = recommendations.filter((recommendation) =>
+      selectedItems.has(recommendation.id),
+    );
+
     onImport(selectedRecommendations);
-    setSelectedItems(new Set();
+    setSelectedItems(new Set());
     onClose();
   };
 
-  const professionName = getProfessionDisplayName(profession);
+  const sourceName = PricingImportService.getSourceName(selectedSource);
+  const sourceUrl = PricingImportService.getSourceUrl(selectedSource);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box>
-            <Typography variant="h5" component="div">
-              Importer prisanbefalinger
-            </Typography>
-            <Typography variant="caption" color="textSecondary">
-              {professionName} - Norske bransjestandarder
-            </Typography>
-          </Box>
-          <Button onClick={onClose} color="inherit">
-            <CloseIcon />
-          </Button>
-        </Box>
+        <Typography variant="h5">Importer prisanbefalinger</Typography>
+        <Typography variant="caption" color="text.secondary">
+          {PricingImportService.getProfessionDisplayName(profession)} • Norske bransjestandarder
+        </Typography>
       </DialogTitle>
 
       <DialogContent>
         {availableSources.length === 0 ? (
           <Alert severity="info">
-            Ingen prisanbefalinger tilgjengelig for {professionName.toLowerCase()} akkurat nå.
+            Ingen prisanbefalinger tilgjengelig for denne profesjonen akkurat nå.
           </Alert>
         ) : (
           <>
-            {/* Source Tabs */}
-            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2.5 }}>
               <Tabs
-                value={selectedSource}
-                onChange={(_, newValue) => {
-                  setSelectedSource(newValue);
-                  setSelectedItems(new Set();
+                value={sourceTabToIndex(selectedSource)}
+                onChange={(_, nextIndex) => {
+                  const nextSource = indexToSource(nextIndex);
+                  setSelectedSource(nextSource);
+                  setSelectedItems(new Set());
                 }}
               >
-                {availableSources.map((source) => (
-                  <Tab
-                    key={source}
-                    value={source}
-                    label={
-                      <Box
-                        sx={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {source === 'creo' ? (
-                          <img
-                            src="https://creokultur.no/wp-content/uploads/2021/01/CREO_hovedlogo_lys-bakgrunn-RGB-logo-01-kopi.png"
-                            alt="Creo logo"
-                            style={{ height: 24, objectFit: 'contain' }}
-                            onError={(e) => {
-                              // Fallback if logo fails to load
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <img
-                            src="https://commons.wikimedia.org/wiki/File:Norsk_Journalistlag_logo.svg"
-                            alt="NJ logo"
-                            style={{ height: 24, objectFit: 'contain' }}
-                            onError={(e) => {
-                              // Fallback if logo fails to load
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        )}
-                        <Box>
-                          <Typography variant="subtitle2">
-                            {source === 'creo' ? 'Creo' : 'NJ'}
-                          </Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            {source === 'creo' ? 'Kunst og kultur' : 'Journalistforbundet'}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    }
-                  />
-                ))}
+                <Tab label="Creo" disabled={!availableSources.includes('creo')} />
+                <Tab label="NJ" disabled={!availableSources.includes('nj')} />
               </Tabs>
             </Box>
 
-            {/* Info Alert */}
-            <Alert
-              severity="info"
-              icon={
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  {selectedSource === 'creo' ? (
-                    <img
-                      src="https://creokultur.no/wp-content/uploads/2021/01/CREO_hovedlogo_lys-bakgrunn-RGB-logo-01-kopi.png"
-                      alt="Creo"
-                      style={{ height: 20, marginRight: 8 }}
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                  ) : (
-                    <img
-                      src="https://commons.wikimedia.org/wiki/File:Norsk_Journalistlag_logo.svg"
-                      alt="NJ"
-                      style={{ height: 20, marginRight: 8 }}
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                  )}
-                </Box>
-              }
-              sx={{ mb: 3 }}>
-              <Typography variant="body2">
-                Prisene er hentet fra{''}
-                <Link
-                  href={PricingImportService.getSourceUrl(selectedSource)}
-                  target="_blank"
-                  rel="noopener"
-                >
-                  {PricingImportService.getSourceName(selectedSource)}
-                </Link>{''}
-                og er basert på bransjestandarder i Norge. Du kan justere prisene etter import.
-              </Typography>
+            <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mb: 2 }}>
+              Prisene er hentet fra{' '}
+              <Link href={sourceUrl} target="_blank" rel="noopener">
+                {sourceName}
+              </Link>{' '}
+              og kan justeres etter import.
             </Alert>
 
-            {/* Select All */}
-            <Box
-              sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <FormControlLabel
                 control={
                   <Checkbox
-                    checked={
-                      selectedItems.size === recommendations.length && recommendations.length > 0 }
-                    indeterminate={
-                      selectedItems.size > 0 && selectedItems.size < recommendations.length
-                    }
+                    checked={selectedItems.size === recommendations.length && recommendations.length > 0}
+                    indeterminate={selectedItems.size > 0 && selectedItems.size < recommendations.length}
                     onChange={handleSelectAll}
                   />
                 }
-                label={`Velg alle (${selectedItems.size} av ${recommendations.length} valgt)`}
+                label={`Velg alle (${selectedCount} av ${recommendations.length})`}
               />
-              <Typography variant="caption" color="textSecondary">
-                Kilde oppdatert: {recommendations[0]?.lastUpdated || 'Ukjent'}
+              <Typography variant="caption" color="text.secondary">
+                Sist oppdatert: {recommendations[0]?.lastUpdated ?? 'Ukjent'}
               </Typography>
             </Box>
 
-            {/* Pricing Cards by Category */}
-            {Array.from(categories.entries().map(([category, items]) => (
+            {Array.from(groupedRecommendations.entries()).map(([category, items]) => (
               <Box key={category} sx={{ mb: 3 }}>
-                <Typography
-                  variant="h6"
-                  gutterBottom
-                  sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="h6" sx={{ mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                   {category}
                   <Chip label={`${items.length} priser`} size="small" />
                 </Typography>
+
                 <Grid container spacing={2}>
-                  {items.map((rec) => (
-                    <Grid item xs={12} md={6} key={rec.id}>
-                      <Card
-                        sx={{
-                          border: selectedItems.has(rec.id) ? '2px solid' : '1px solid',
-                          borderColor: selectedItems.has(rec.id) ? 'primary.main' : 'divider',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s','&:hover': {
-                            boxShadow: 4,
-                            borderColor: 'primary.main',
-                          }}}
-                        onClick={() => handleToggleItem(rec.id)}
-                      >
-                        <CardContent>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'start',
-                              mb: 1}}>
-                            <Typography variant="h6" component="div">
-                              {rec.name}
-                            </Typography>
-                            {selectedItems.has(rec.id) && <CheckIcon color="primary" />}
-                          </Box>
-                          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-                            {rec.description}
-                          </Typography>
-
-                          <Divider sx={{ my: 1 }} />
-
-                          <Stack spacing={1}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption" color="textSecondary">
-                                Minimum: </Typography>
-                              <Typography variant="body2" fontWeight="bold">
-                                {PricingImportService.formatPrice(rec.minPrice)}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption" color="textSecondary">
-                                Anbefalt: </Typography>
-                              <Typography variant="body2" fontWeight="bold" color="primary.main">
-                                {PricingImportService.formatPrice(rec.recommendedPrice)}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption" color="textSecondary">
-                                Maksimum: </Typography>
-                              <Typography variant="body2" fontWeight="bold">
-                                {PricingImportService.formatPrice(rec.maxPrice)}
-                              </Typography>
-                            </Box>
-                          </Stack>
-
-                          <Box sx={{ mt: 2 }}>
-                            <Chip label={rec.unit} size="small" variant="outlined" />
-                          </Box>
-
-                          {rec.notes && (
-                            <Alert
-                              severity="info"
-                              sx={{ mt: 2 }}
-                              icon={<InfoIcon fontSize="small" />}}
-
+                  {items.map((recommendation) => {
+                    const selected = selectedItems.has(recommendation.id);
+                    return (
+                      <Grid item xs={12} md={6} key={recommendation.id}>
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            borderColor: selected ? 'primary.main' : 'divider',
+                            borderWidth: selected ? 2 : 1,
+                            cursor: 'pointer',
+                          }}
+                          onClick={() => handleToggleItem(recommendation.id)}
+                        >
+                          <CardContent>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                mb: 1,
+                              }}
                             >
-                              <Typography variant="caption">{rec.notes}</Typography>
-                            </Alert>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
+                              <Typography variant="h6">{recommendation.name}</Typography>
+                              {selected && <CheckCircle color="primary" fontSize="small" />}
+                            </Box>
+
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                              {recommendation.description}
+                            </Typography>
+
+                            <Divider sx={{ my: 1 }} />
+
+                            <Box sx={{ display: 'grid', gap: 0.5 }}>
+                              <Typography variant="body2">
+                                Minimum: <strong>{PricingImportService.formatPrice(recommendation.minPrice)}</strong>
+                              </Typography>
+                              <Typography variant="body2">
+                                Anbefalt:{' '}
+                                <strong>{PricingImportService.formatPrice(recommendation.recommendedPrice)}</strong>
+                              </Typography>
+                              <Typography variant="body2">
+                                Maksimum: <strong>{PricingImportService.formatPrice(recommendation.maxPrice)}</strong>
+                              </Typography>
+                            </Box>
+
+                            <Box sx={{ mt: 1.5, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                              <Chip label={recommendation.unit} size="small" variant="outlined" />
+                              <Chip label={recommendation.source.toUpperCase()} size="small" variant="outlined" />
+                            </Box>
+
+                            {recommendation.notes && (
+                              <Alert severity="info" icon={<Info fontSize="small" />} sx={{ mt: 1.5 }}>
+                                <Typography variant="caption">{recommendation.notes}</Typography>
+                              </Alert>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    );
+                  })}
                 </Grid>
               </Box>
             ))}
@@ -333,11 +244,11 @@ export default function PricingImportDialog({
         <Button onClick={onClose}>Avbryt</Button>
         <Button
           variant="contained"
-          startIcon={<ImportIcon />}
+          startIcon={<Download />}
           onClick={handleImport}
-          disabled={selectedItems.size === 0}
+          disabled={selectedCount === 0}
         >
-          Importer {selectedItems.size > 0 && `(${selectedItems.size})`}
+          Importer {selectedCount > 0 ? `(${selectedCount})` : ''}
         </Button>
       </DialogActions>
     </Dialog>

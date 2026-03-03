@@ -105,7 +105,7 @@ export class CreatorHubSEOFixService {
           'fotograf oslo', 'profesjonell fotografering', 'bryllupsfotograf', 'portrettfotograf', 'eventfotograf', 'bedriftsfotograf', 'produktfotograf', 'naturfotograf'
         ],
         professionSpecific: true,
-        trendingKeywords: trendingKeywords.filter(k => k.category === ', '),
+        trendingKeywords: trendingKeywords.filter((keyword) => keyword.category === 'photographer'),
         trendsInsights: {
           searchVolume: trendingKeywords.reduce((sum, k) => sum + k.searchVolume, 0),
           trend: trendingKeywords.some(k => k.trend === 'rising') ? 'rising' : 'stable',

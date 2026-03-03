@@ -427,7 +427,7 @@ export function AccessibilityProvider({
         shortcut.action();
         
         if (settings.announceChanges) {
-          announce(shortcut.description'polite');
+          announce(shortcut.description, 'polite');
         }
       }
     };
@@ -812,4 +812,3 @@ export function LiveRegion({
 }
 
 export default AccessibilityProvider;
-

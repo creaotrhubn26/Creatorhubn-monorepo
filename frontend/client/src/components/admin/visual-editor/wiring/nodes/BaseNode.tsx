@@ -154,7 +154,7 @@ export const BaseNode = memo(function BaseNode({
       }}
     >
       {!isOutput && (
-        <Tooltip title={`${port.dataType}${port.required ? ' (required)' : ''}`}>
+        <Tooltip title={`${port.dataType}${port.required ? ' (required)' : ', '}`}>
           <Box
             sx={{
               width: 12,

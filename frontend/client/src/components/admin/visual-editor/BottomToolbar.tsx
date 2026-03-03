@@ -126,7 +126,7 @@ export const BottomToolbar: React.FC = () => {
         {/* Zoom Control */}
         <Select
           value={zoom}
-          onChange={(e) => setZoom(Number(e.target.value)}
+          onChange={(e) => setZoom(Number(e.target.value))}
           size="small"
           sx={{
             color: 'white',

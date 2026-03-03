@@ -117,7 +117,7 @@ export default function ScrollStorySVGGraphic({
 
   if (error) {
     return (
-      <Alert severity="error" sx={{ width, maxWidth: '100%' }}>
+      <Alert severity="error" sx={{ width: '100%', maxWidth: '100%' }}>
         {error}
       </Alert>
     );
@@ -142,7 +142,7 @@ export default function ScrollStorySVGGraphic({
           transform: 'translateZ(0)', // Enable GPU acceleration
           willChange:'transform',
         }),
-      }
+      }}
     />
   );
 }

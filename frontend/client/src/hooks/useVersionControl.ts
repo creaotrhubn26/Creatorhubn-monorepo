@@ -81,7 +81,7 @@ export interface UseVersionControlReturn {
  */
 export const useVersionControl = (options: UseVersionControlOptions = {}): UseVersionControlReturn => {
   const {
-    config = {},
+    config: optionConfig = {},
     onVersionCreated,
     onVersionUpdated,
     onVersionDeleted,
@@ -124,7 +124,8 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     totalCommits:  0,
     totalTags:  0,
     totalChanges:  0,
-    totalDiffs: 0
+    totalDiffs: 0,
+    errorCount: 0
 });
 
   const stateIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -133,8 +134,8 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
   // Initialize version control manager
   useEffect(() => {
     // Update configuration
-    if (Object.keys(config).length > 0) {
-      versionControlManager.updateConfig(config);
+    if (Object.keys(optionConfig).length > 0) {
+      versionControlManager.updateConfig(optionConfig);
   }
 
     // Setup event handlers
@@ -288,7 +289,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     });
       eventHandlersRef.current.clear();
   };
-}, [config, onVersionCreated, onVersionUpdated, onVersionDeleted, onVersionRollback, onChangeTracked, onChangesStaged, onChangesUnstaged, onCommitCreated, onBranchCreated, onBranchSwitched, onBranchMerged, onTagCreated, onDiffCreated, onBackupCreated, onSyncCompleted, onError, onInitialized]);
+}, [optionConfig, onVersionCreated, onVersionUpdated, onVersionDeleted, onVersionRollback, onChangeTracked, onChangesStaged, onChangesUnstaged, onCommitCreated, onBranchCreated, onBranchSwitched, onBranchMerged, onTagCreated, onDiffCreated, onBackupCreated, onSyncCompleted, onError, onInitialized]);
 
   // Setup state monitoring
   useEffect(() => {
@@ -341,7 +342,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
 
   // Merge branch
   const mergeBranch = useCallback((sourceBranchId: string, targetBranchId: string, strategy: 'fast-forward' | 'merge' | 'squash' = 'merge') => {
-    versionControlManager.mergeBranch(sourceBranchd, targetBranchId, strategy);
+    versionControlManager.mergeBranch(sourceBranchId, targetBranchId, strategy);
 }, []);
 
   // Create tag
@@ -351,7 +352,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
 
   // Create diff
   const createDiff = useCallback((fromVersionId: string, toVersionId: string) => {
-    return versionControlManager.createDiff(fromVersiond, toVersionId);
+    return versionControlManager.createDiff(fromVersionId, toVersionId);
 }, []);
 
   // Rollback to version
@@ -365,7 +366,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
 }, []);
 
   // Get configuration
-  const config = useMemo(() => {
+  const currentConfig = useMemo(() => {
     return versionControlManager.getConfig();
 }, []);
 
@@ -383,7 +384,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     createDiff,
     rollbackToVersion,
     state,
-    config,
+    config: currentConfig,
     updateConfig,
     isEnabled: state.isEnabled,
     isInitialized: state.isInitialized,
@@ -392,11 +393,11 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     currentVersion: state.currentVersion,
     currentBranch: state.currentBranch,
     currentCommit: state.currentCommit,
-    versions: Array.from(state.versions.values(, ), ),
-    branches: Array.from(state.branches.values(, ), ),
-    commits: Array.from(state.commits.values(, ), ),
-    tags: Array.from(state.tags.values(, ), ),
-    diffs: Array.from(state.diffs.values(, ), ),
+    versions: Array.from(state.versions.values()),
+    branches: Array.from(state.branches.values()),
+    commits: Array.from(state.commits.values()),
+    tags: Array.from(state.tags.values()),
+    diffs: Array.from(state.diffs.values()),
     stagedChanges: state.stagedChanges,
     unstagedChanges: state.unstagedChanges,
     lastCommit: state.lastCommit,
@@ -420,7 +421,7 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
     createDiff,
     rollbackToVersion,
     state,
-    config,
+    currentConfig,
     updateConfig
   ]);
 
@@ -428,8 +429,5 @@ export const useVersionControl = (options: UseVersionControlOptions = {}): UseVe
 };
 
 export default useVersionControl;
-
-
-
 
 

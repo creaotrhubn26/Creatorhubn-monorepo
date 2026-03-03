@@ -81,7 +81,7 @@ export default function RecentUploadsWidget({
   const relocateFileMutation = useMutation({
     mutationFn: async ({ filed, targetFolder }: { fileId: number; targetFolder: string }) => {
       const response = await fetch('/api/relocate-file', {
-        method: 'POS',
+        method: 'POST',
         headers: { 'Content-Type' : 'application/json',},
         body: JSON.stringify({ filed, targetFolder, userId }),
     });

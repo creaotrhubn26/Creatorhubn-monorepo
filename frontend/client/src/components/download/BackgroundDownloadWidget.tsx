@@ -98,7 +98,7 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
       case 'completed': return <CheckCircle sx={{ color: '#4caf50' }} />;
       case 'failed': return <ErrorIcon sx={{ color: '#f44336' }} />;
       case 'paused': return <Pause sx={{ color: '#ff9800' }} />;
-      default: return <FileDownload sx={{ color: '#666', '}} />;
+      default: return <FileDownload sx={{ color: '#666' }} />;
   }
 };
 
@@ -108,7 +108,7 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
       case 'completed': return '#4caf50';
       case 'failed': return '#f44336';
       case 'paused': return '#ff9800';
-      default: return '#666',;
+      default: return '#666';
 }
 };
 
@@ -257,7 +257,8 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
                           sx={{
                             height:  4,
                             borderRadius:  2,
-                            backgroundColor: `${getStatusColor(task.status)}20`'& .MuiLinearProgress-bar': {
+                            backgroundColor: `${getStatusColor(task.status)}20`,
+                            '& .MuiLinearProgress-bar': {
                               backgroundColor: getStatusColor(task.status)
                         }
                         }}
@@ -294,7 +295,7 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
                     <Tooltip title="Prøv igjen">
                       <IconButton 
                         size="small" 
-                        onClick={() => handleTaskAction(task'retry')}
+                        onClick={() => handleTaskAction(task, 'retry')}
                       >
                         <Refresh fontSize="small" />
                       </IconButton>
@@ -305,7 +306,7 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
                     <Tooltip title="Avbryt">
                       <IconButton 
                         size="small" 
-                        onClick={() => handleTaskAction(task'cancel')}
+                        onClick={() => handleTaskAction(task, 'cancel')}
                       >
                         <Close fontSize="small" />
                       </IconButton>
@@ -338,7 +339,8 @@ export function BackgroundDownloadWidget({ profession =  'photographer,' }: Back
             variant="caption"
             sx={{ 
               cursor: 'pointer',
-              color: professionColor'&:hover': { textDecoration: 'underline' }
+              color: professionColor,
+              '&:hover': { textDecoration: 'underline' },
           }}
             onClick={() => backgroundDownloadService.clearCompleted()}
           >

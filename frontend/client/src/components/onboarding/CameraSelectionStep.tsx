@@ -1,65 +1,71 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Typography,
-  TextField,
-  Paper,
-  Grid,
-  Card as MuiCard,
-  CardContent,
-  CardMedia,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  CircularProgress,
-  Chip,
   Alert,
-  LinearProgress,
-  Stepper,
-  Step,
-  StepLabel,
-  Avatar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  InputAdornment,
   List,
   ListItem,
-  ListItemAvatar,
-  ListItemText,
   ListItemSecondaryAction,
-  IconButton,
+  ListItemText,
+  Paper,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Search,
-  PhotoCamera as PhotoCameraAlt,
-  Check,
-  Close,
-  Memory,
-  Videocam as Videocamcam,
-  AddCircle as Add,
+  AddCircleOutline,
   Delete,
-  CameraAlt,
-  Info,
-  Verified,
-  Speed as Speed,
+  Memory,
+  Search,
 } from '@mui/icons-material';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import type { CameraSearchResult } from '@shared/camera-database-schema';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 
 interface CameraSelectionStepProps {
   onCamerasSelected: (cameras: CameraSearchResult[]) => void;
   selectedCameras: CameraSearchResult[];
-  profession: string; // Dynamic profession type - supports all profession types with camera usage
+  profession: string;
 }
 
-interface ProcessStep {
-  label: string;
-  status: 'pending' | 'active' | 'completed'
+function extractCameraResults(payload: unknown): CameraSearchResult[] {
+  if (Array.isArray(payload)) {
+    return payload as CameraSearchResult[];
+  }
+
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    Array.isArray((payload as { data?: unknown }).data)
+  ) {
+    return (payload as { data: CameraSearchResult[] }).data;
+  }
+
+  return [];
+}
+
+function professionLabel(profession: string): string {
+  switch (profession) {
+    case 'photographer':
+    case 'fotograf':
+      return 'fotograf';
+    case 'videographer':
+    case 'videograf':
+      return 'videograf';
+    case 'music_producer':
+    case 'musikkprodusent':
+      return 'musikkprodusent';
+    default:
+      return profession;
+  }
 }
 
 export function CameraSelectionStep({
@@ -67,149 +73,92 @@ export function CameraSelectionStep({
   selectedCameras,
   profession,
 }: CameraSelectionStepProps) {
-  const [searchQuery, setSearchQuery] = useState(false);
-  
-  // Dynamic profession system
-  const { getProfessionDisplayName } = useDynamicProfessions();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession);
-  const [processingCamera, setProcessingCamera] = useState<string | null>(null);
-  const [confirmationDialog, setConfirmationDialog] = useState<{
-    camera: CameraSearchResult | null;
-    open: boolean;
-}>({ camera: null, open: false });
+  const [query, setQuery] = useState('');
+  const [pendingCamera, setPendingCamera] = useState<CameraSearchResult | null>(null);
 
-  const [processSteps, setProcessSteps] = useState<ProcessStep[]>([
-    { label: 'Søker etter kamera informasjon', status: 'pending',},
-    { label: 'Henter tekniske spesifikasjoner', status: 'pending',},
-    { label: 'Analyserer minnekort-kompatibilitet', status: 'pending',},
-    { label: 'Oppdaterer minnekort-ikoner', status: 'pending',},
-  ]);
-
-  // Search cameras query
-  const { data: searchResults = [], isLoading: isSearching } = useQuery({
-    queryKey: [ '/api/cameras/search', searchQuery],
-    enabled: searchQuery.length >= 2,
-    staleTime: 5 * 60 * 100, // 5 minutes
-});
-
-  // Camera detection mutation
-  const detectCameraMutation = useMutation({
-    mutationFn: async (cameraId: string) => {
-      return apiRequest(`/api/cameras/${camerad}/detect`, {
-        method: 'POS',
-    });
-  },
-    onSuccess: (detectedCamera: CameraSearchResult) => {
-      setConfirmationDialog({ camera: detectedCamera, open: true });
-      setProcessingCamera(null);
-      // Reset process steps
-      setProcessSteps((steps) => steps.map((step) => ({ ...step, status: 'pending',})));
-  },
-});
-
-  // Handle camera selection with processing animation
-  const handleCameraSelect = async (camera: CameraSearchResult) => {
-    setProcessingCamera(camera.id);
-
-    // Animate through process steps
-    // Mock data removed - using database connection
-    for (let i = 0; i < steps.length; i++) {
-      setTimeout(() => {
-        setProcessSteps((currentSteps) =>
-          currentSteps.map((step, index) => ({
-            ...step,
-            status: index < i ? 'completed' : index === i ? 'active' : 'pending',
-        })),
-        );
-    }, i * 800); // 800ms delay between steps
-  }
-
-    // Complete the final step and trigger detection
-    setTimeout(
-      () => {
-        setProcessSteps((currentSteps) =>
-          currentSteps.map((step) => ({ ...step, status: 'completed',})),
-        );
-        detectCameraMutation.mutate(camera.id);
+  const { data: cameraResults = [], isLoading } = useQuery({
+    queryKey: ['/api/cameras/search', query],
+    enabled: query.trim().length >= 2,
+    queryFn: async () => {
+      const response = await apiRequest(
+        `/api/cameras/search?q=${encodeURIComponent(query.trim())}&limit=25`,
+      );
+      return extractCameraResults(response);
     },
-      steps.length * 800 + 500,
-    );
-};
+  });
 
-  // Confirm camera selection
-  const handleConfirmCamera = () => {
-    if (confirmationDialog.camera) {
-      // Mock data removed - using database connection
-      onCamerasSelected(updatedCameras);
-      setConfirmationDialog({ camera: null, open: false });
-      setSearchQuery('');
-  }
-};
+  const selectedIds = useMemo(() => new Set(selectedCameras.map((camera) => camera.id)), [selectedCameras]);
 
-  // Remove selected camera
+  const handleConfirmAdd = () => {
+    if (!pendingCamera) {
+      return;
+    }
+
+    if (!selectedIds.has(pendingCamera.id)) {
+      onCamerasSelected([...selectedCameras, pendingCamera]);
+    }
+
+    setPendingCamera(null);
+    setQuery('');
+  };
+
   const handleRemoveCamera = (cameraId: string) => {
-    const updatedCameras = selectedCameras.filter((camera) => camera.id !== cameraId);
-    onCamerasSelected(updatedCameras);
-};
+    onCamerasSelected(selectedCameras.filter((camera) => camera.id !== cameraId));
+  };
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Typography variant="h5" gutterBottom sx={{  display: 'flex', alignItems: 'center', gap:  2  }}>
-        <PhotoCamera color="primary" />
-        Velg dine kameraer
-        <Chip
-          label={getProfessionDisplayName(profession)}
-          color="primary"
-          variant="outlined"
-        />
+    <Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Søk etter kamera-modellene du bruker som {professionLabel(profession)}. Dette styrer presets,
+        filoppsett og minnekort-workflow.
       </Typography>
 
-      <Typography variant="body1" color="text.secondary" sx={{ mb:  3 }}>
-        Søk etter ditt kamera for automatisk minnekort-konfigurasjon og optimerte projektmapper
-      </Typography>
+      <TextField
+        fullWidth
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Søk kamera (f.eks. Sony A7S, Canon R5, BMPCC...)"
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Search fontSize="small" />
+            </InputAdornment>
+          ),
+        }}
+      />
 
-      {/* Selected Cameras List */}
       {selectedCameras.length > 0 && (
-        <Paper sx={{ p: 2, mb: 3, bgcolor: 'success.light', opacity: 0.1,  ...theming.getThemedCardSx() }}>
-          <Typography variant="h6"
-            gutterBottom
-            sx={{  display: 'flex', alignItems: 'center', gap:  1  }}>
-            <Verified color="success" />
+        <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
             Valgte kameraer ({selectedCameras.length})
           </Typography>
-          <List dense>
+          <List dense disablePadding>
             {selectedCameras.map((camera) => (
-              <ListItem key={camera.id}>
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: 'primary.main'}}>
-                    <CameraAlt />
-                  </Avatar>
-                </ListItemAvatar>
+              <ListItem key={camera.id} divider>
                 <ListItemText
                   primary={camera.fullName}
                   secondary={
-                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mt: 0.75 }}>
                       {camera.supportedMemoryCardTypes.map((cardType) => (
                         <Chip
-                          key={cardType}
+                          key={`${camera.id}-${cardType}`}
                           label={cardType}
                           size="small"
-                          icon={<Memory />}
+                          icon={<Memory fontSize="small" />}
                           variant="outlined"
                         />
                       ))}
                     </Box>
-                }
+                  }
                 />
                 <ListItemSecondaryAction>
                   <IconButton
                     edge="end"
-                    onClick={() => handleRemoveCamera(camera.id)}
                     color="error"
+                    onClick={() => handleRemoveCamera(camera.id)}
+                    aria-label={`Remove ${camera.fullName}`}
                   >
-                    {theming.getThemedIcon('delete')}
+                    <Delete fontSize="small" />
                   </IconButton>
                 </ListItemSecondaryAction>
               </ListItem>
@@ -218,220 +167,62 @@ export function CameraSelectionStep({
         </Paper>
       )}
 
-      {/* Camera Search */}
-      <TextField
-        fullWidth
-        placeholder="Søk etter kamera (f.eks. Canon EOS R5, Nikon Z9, Sony A7R V)"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        InputProps={{
-          startAdornment: <Search sx={{ mr: 1, color: 'text.secondary'}} />}}
-        sx={{ mb:  3 }}
-      />
-
-      {/* Search Results */}
-      {isSearching && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my:  3 }}>
-          <CircularProgress />
-        </Box>
-      )}
-
-      {searchResults.length > 0 && (
-        <Grid container spacing={2}>
-          {searchResults.map((camera) => (
-            <Grid item xs={12} md={6} lg={4} key={camera.id}>
-              <MuiCard
-                sx={{
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease', '&:hover': {
-                    transform: 'translateY(-4px)',
-                    boxShadow:  4,
-                }}}
-                onClick={() => handleCameraSelect(camera)}
-              >
-                {camera.imageUrl && (
-                  <CardMedia component="img"
-                    height="200"
-                    image={camera.imageUrl}
-                    alt={camera.fullName}
-                    sx={{ objectFit: 'contain', bgcolor: 'grey.50',  ...theming.getThemedCardSx() }}>
-                )}
-                <CardContent sx={theming.getThemedCardSx()}>
-                  <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                    {camera.fullName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {camera.category} • {camera.releaseYear || 'Aktuell'}
-                  </Typography>
-
-                  {camera.specs && (
-                    <Box sx={{ mb:  2 }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.85rem'}}>
-                        {camera.specs.resolution} • {camera.specs.iso} ISO
-                      </Typography>
-                    </Box>
-                  )}
-
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-                    {camera.supportedMemoryCardTypes.map((cardType) => (
-                      <Chip
-                        key={cardType}
-                        label={cardType}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    ))}
-                  </Box>
-                </CardContent>
-              </MuiCard>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Processing Dialog */}
-      <Dialog open={!!processingCamera} maxWidth="sm" fullWidth disableEscapeKeyDown>
-        <DialogTitle sx={{ textAlign: 'center'}}>Analyserer kamera-informasjon</DialogTitle>
-        <DialogContent>
-          <Box sx={{ textAlign: 'center', mb:  3 }}>
-            <CircularProgress size={60} />
-            <Typography variant="body1" sx={{ mt:  2 }}>
-              Henter detaljert informasjon og minnekort-kompatibilitet...
-            </Typography>
+      {query.trim().length < 2 ? (
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Skriv minst 2 tegn for å søke i kameradatabasen.
+        </Alert>
+      ) : (
+        <Paper variant="outlined" sx={{ mt: 2, p: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="subtitle2">Søkeresultater</Typography>
+            {isLoading && <CircularProgress size={18} />}
           </Box>
 
-          <Stepper orientation="vertical">
-            {processSteps.map((step, index) => (
-              <Step
-                key={index}
-                active={step.status === 'active'}
-                completed={step.status === 'completed'}
-              >
-                <StepLabel>
-                  <Typography
-                    variant="body2"
-                    color={
-                      step.status === 'completed'
-                        ? 'success.main'
-                        : step.status === 'active'
-                          ? 'primary.main'
-                          : 'text.secondary'
-                  }
-                  >
-                    {step.label}
-                  </Typography>
-                </StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-        </DialogContent>
-      </Dialog>
+          {!isLoading && cameraResults.length === 0 ? (
+            <Alert severity="warning">Ingen kamera funnet for "{query}".</Alert>
+          ) : (
+            <List dense disablePadding>
+              {cameraResults.map((camera) => {
+                const alreadySelected = selectedIds.has(camera.id);
 
-      {/* Camera Confirmation Dialog */}
-      <Dialog
-        open={confirmationDialog.open}
-        maxWidth="md"
-        fullWidth
-        onClose={() => setConfirmationDialog({ camera: null, open: false })}
-      >
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-          <PhotoCamera color="primary" />
-          Er dette riktig kamera?
-        </DialogTitle>
-        <DialogContent>
-          {confirmationDialog.camera && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={5}>
-                {confirmationDialog.camera.imageUrl && (
-                  <img
-                    src={confirmationDialog.camera.imageUrl}
-                    alt={confirmationDialog.camera.fullName}
-                    style={{
-                      width: '100%',
-                      maxHeight: '300px',
-                      objectFit: 'contain'}}
-                  />
-                )}
-              </Grid>
-              <Grid item xs={12} md={7}>
-                <Typography variant="h5" gutterBottom sx={{ color: theming.colors.primary }}>
-                  {confirmationDialog.camera.fullName}
-                </Typography>
-
-                <Typography variant="h6" sx={{  mb: 2, color: 'primary.main' }}>
-                  Tekniske spesifikasjoner: </Typography>
-
-                {confirmationDialog.camera.specs && (
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="body2" sx={{ mb:  1 }}>
-                      <strong>Oppløsning: </strong> {confirmationDialog.camera.specs.resolution}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb:  1 }}>
-                      <strong>ISO-område: </strong> {confirmationDialog.camera.specs.iso}
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb:  1 }}>
-                      <strong>Vekt: </strong> {confirmationDialog.camera.specs.weight}
-                    </Typography>
-                    {confirmationDialog.camera.specs.videoCapabilities && (
-                      <Typography variant="body2" sx={{ mb:  1 }}>
-                        <strong>Video: </strong>{', '}
-                        {confirmationDialog.camera.specs.videoCapabilities.join(', ')}
-                      </Typography>
-                    )}
-                  </Box>
-                )}
-
-                <Typography variant="h6" sx={{  mb: 2, color: 'secondary.main' }}>
-                  Støttede minnekort: </Typography>
-                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb:  3 }}>
-                  {confirmationDialog.camera.supportedMemoryCardTypes.map((cardType) => (
-                    <Chip
-                      key={cardType}
-                      label={cardType}
-                      color="primary"
-                      icon={<Memory />}
-                      sx={{ fontWeight: 'bold'}}
+                return (
+                  <ListItem key={camera.id} divider>
+                    <ListItemText
+                      primary={camera.fullName}
+                      secondary={camera.category || 'Kamera'}
                     />
-                  ))}
-                </Box>
-
-                <Alert severity="success">
-                  <Typography variant="body2">
-                    Minnekort-ikonene vil automatisk tilpasses dette kameraets kompatible kort
-                  </Typography>
-                </Alert>
-              </Grid>
-            </Grid>
+                    <Button
+                      size="small"
+                      variant={alreadySelected ? 'outlined' : 'contained'}
+                      color={alreadySelected ? 'inherit' : 'primary'}
+                      disabled={alreadySelected}
+                      startIcon={<AddCircleOutline fontSize="small" />}
+                      onClick={() => setPendingCamera(camera)}
+                    >
+                      {alreadySelected ? 'Valgt' : 'Legg til'}
+                    </Button>
+                  </ListItem>
+                );
+              })}
+            </List>
           )}
+        </Paper>
+      )}
+
+      <Dialog open={Boolean(pendingCamera)} onClose={() => setPendingCamera(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Legg til kamera</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Vil du legge til <strong>{pendingCamera?.fullName}</strong> i prosjektoppsettet?
+          </Typography>
         </DialogContent>
-        <DialogActions sx={{ p:  3 }}>
-          <Button onClick={() => setConfirmationDialog({ camera: null, open: false })}>
-            Nei, søk på nytt
-          </Button>
-          <Button variant="contained" onClick={handleConfirmCamera} startIcon={<Check />}>
-            Ja, legg til kamera
+        <DialogActions>
+          <Button onClick={() => setPendingCamera(null)}>Avbryt</Button>
+          <Button onClick={handleConfirmAdd} variant="contained">
+            Legg til
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Add More Cameras Button */}
-      {selectedCameras.length > 0 && (
-        <Box sx={{ mt:  3, textAlign: 'center'}}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-            {profession === 'photographer'
-              ? 'Trenger du flere kameraer for backups eller ulike situasjoner?' : 'Videografer bruker ofte flere kameraer samtidig'}
-          </Typography>
-          <Button
-            variant="outlined"
-            startIcon={theming.getThemedIcon('add')}
-            onClick={() => setSearchQuery('')}
-            disabled={!!processingCamera}
-          >
-            Legg til flere kameraer
-          </Button>
-        </Box>
-      )}
     </Box>
   );
 }

@@ -1,39 +1,31 @@
-import { useTheming } from '../utils/theming-helper';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
-import { useDynamicProfessions } from './universal/hooks/useDynamicProfessions';
-import React, { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
+import { useTheming } from '../utils/theming-helper';
 import {
+  Alert,
   Box,
-  Typography,
+  Button,
   Card,
   CardContent,
   CardHeader,
-  CircularProgress,
   Chip,
-  TextField,
-  InputAdornment,
+  CircularProgress,
   Grid,
-  Button,
-  Link,
-  Divider,
+  InputAdornment,
   Tab,
   Tabs,
-  Alert,
+  TextField,
+  Typography,
 } from '@mui/material';
 import {
-  Search as SearchIcon,
-  PhotoCamera as CameraIcon,
-  Videocam as VideocamIcon,
-  LibraryMusic as MusicIcon,
   Business as BusinessIcon,
-  TrendingUp as TrendingIcon,
-  Schedule as ClockIcon,
+  LibraryMusic as MusicIcon,
   OpenInNew as ExternalIcon,
+  PhotoCamera as CameraIcon,
+  Schedule as ClockIcon,
+  Search as SearchIcon,
+  TrendingUp as TrendingIcon,
+  Videocam as VideocamIcon,
 } from '@mui/icons-material';
 
 interface NewsItem {
@@ -46,7 +38,7 @@ interface NewsItem {
   category: string;
   brand?: string;
   imageUrl?: string;
-  isNorwegian: boolean
+  isNorwegian: boolean;
 }
 
 interface GearNewsFeedProps {
@@ -55,119 +47,117 @@ interface GearNewsFeedProps {
   showSearch?: boolean;
 }
 
-function TabPanel(props: any) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`news-tabpanel-${index}`}
-      aria-labelledby={`news-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p:  2 }}>{children}</Box>}
-    </div>
-  );
+interface TabPanelProps {
+  children: React.ReactNode;
+  value: number;
+  index: number;
 }
 
-export default function GearNewsFeed({ 
-  profession = 'photographer', 
-  maxItems = 20, 
-  showSearch = true 
-}: GearNewsFeedProps) {
-  const [searchQuery, setSearchQuery] = useState(false);
-  
-  // Theming system - use dynamic profession
-  const theming = useTheming(profession);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [tabValue, setTabValue] = useState(0);
+const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => {
+  return (
+    <div role="tabpanel" hidden={value !== index} id={`news-tabpanel-${index}`} aria-labelledby={`news-tab-${index}`}>
+      {value === index ? <Box sx={{ p: 2 }}>{children}</Box> : null}
+    </div>
+  );
+};
 
-  // Fetch gear news from API
-  const { data: newsData, isLoading, error } = useQuery({
+const getProfessionConfig = (profession: GearNewsFeedProps['profession']) => {
+  switch (profession) {
+    case 'photographer':
+      return {
+        title: 'Fotoutstyr Nyheter',
+        icon: CameraIcon,
+        color: '#f59e0b',
+      };
+    case 'videographer':
+      return {
+        title: 'Videoutstyr Nyheter',
+        icon: VideocamIcon,
+        color: '#dc2626',
+      };
+    case 'music_producer':
+      return {
+        title: 'Studioutstyr Nyheter',
+        icon: MusicIcon,
+        color: '#7c3aed',
+      };
+    case 'vendor':
+      return {
+        title: 'Leverandor Nyheter',
+        icon: BusinessIcon,
+        color: '#2563eb',
+      };
+    default:
+      return {
+        title: 'Utstyr Nyheter',
+        icon: TrendingIcon,
+        color: '#6b7280',
+      };
+  }
+};
+
+export default function GearNewsFeed({ profession = 'photographer', maxItems = 20, showSearch = true }: GearNewsFeedProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tabValue, setTabValue] = useState(0);
+  const theming = useTheming(profession);
+
+  const { data: newsData, isLoading, error } = useQuery<{ success: boolean; data: NewsItem[] }>({
     queryKey: ['/api/gear-news', profession],
     queryFn: async () => {
       const response = await fetch(`/api/gear-news?profession=${profession}`);
-      const data = await response.json();
-      return data;
-  },
-    refetchInterval: 30 * 60 * 100, // Refresh every 30 minutes
-    staleTime: 10 * 60 * 100, // Cache for 10 minutes
-});
+      if (!response.ok) {
+        throw new Error(`Failed to fetch gear news (${response.status})`);
+      }
+      return (await response.json()) as { success: boolean; data: NewsItem[] };
+    },
+    refetchInterval: 30 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
+  });
 
-  // Process news data
-  const newsItems: NewsItem[] = newsData?.success ? (newsData.data || []) : [];
+  const newsItems = useMemo<NewsItem[]>(() => {
+    if (!newsData?.success) {
+      return [];
+    }
+    return Array.isArray(newsData.data) ? newsData.data : [];
+  }, [newsData]);
 
-  // Filter news based on search and category
-  const filteredNews = newsItems.filter((item: NewsItem) => {
-    const matchesSearch = searchQuery === '' || 
-      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.brand && item.brand.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
-    
-    return matchesSearch && matchesCategory;
-}).slice(0, maxItems);
+  const filteredNews = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    return newsItems
+      .filter((item) => {
+        const matchesSearch =
+          normalizedQuery.length === 0 ||
+          item.title.toLowerCase().includes(normalizedQuery) ||
+          item.summary.toLowerCase().includes(normalizedQuery) ||
+          (item.brand?.toLowerCase().includes(normalizedQuery) ?? false);
 
-  // Get profession configuration
-  const getProfessionConfig = (prof: string) => {
-    switch (prof) {
-      case 'photographer':
-        return {
-          title: 'Fotoutstyr Nyheter',
-          icon: CameraIcon,
-          color: '#f59e00',
-          categories: ['Kameraer','Objektiver','Blits','Stativer','Software']
-      };
-      case 'videographer':
-        return {
-          title: 'Videoutstyr Nyheter',
-          icon: VideocamIcon,
-          color: '#dc2620',
-          categories: ['Kameraer','Gimbals','Lyd','Editing','Droner']
-      };
-      case 'music_producer':
-        return {
-          title: 'Studioutstyr Nyheter',
-          icon: MusicIcon,
-          color: '#7c3aed',
-          categories: ['Audio Interface', 'Mikrofoner', 'Software','Synthesizers']
-      };
-      case 'vendor':
-        return {
-          title: 'Leverandør Nyheter',
-          icon: BusinessIcon,
-          color: '#2563eb',
-          categories: ['AV-utstyr', 'Sceneteknikk', 'Lys', 'Lyd']
-      };
-      default: return {
-          title: 'Utstyr Nyheter',
-          icon: TrendingIcon,
-          color: '#6b7280',
-          categories: ['Generelt']
-    };
-  }
-};
+        const matchesTab = tabValue === 0 || (tabValue === 1 ? item.isNorwegian : !item.isNorwegian);
+        return matchesSearch && matchesTab;
+      })
+      .slice(0, maxItems);
+  }, [maxItems, newsItems, searchQuery, tabValue]);
 
   const config = getProfessionConfig(profession);
   const ProfessionIcon = config.icon;
 
   if (isLoading) {
     return (
-      <Box sx={{ p:  3 }}>
+      <Box sx={{ p: 3 }}>
         <Card sx={theming.getThemedCardSx()}>
           <CardHeader
             title={
-              <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 ,  ...theming.getThemedCardSx() }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <CircularProgress size={24} />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster nyheter...</Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  Laster nyheter...
+                </Typography>
               </Box>
-          }
+            }
           />
           <CardContent sx={theming.getThemedCardSx()}>
-            <Box sx={{ textAlign: 'center', py:  4 }}>
+            <Box sx={{ textAlign: 'center', py: 4 }}>
               <CircularProgress size={40} />
-              <Typography variant="body2" color="text.secondary" sx={{ mt:  2 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                 Henter siste nytt innen {config.title.toLowerCase()}
               </Typography>
             </Box>
@@ -175,33 +165,33 @@ export default function GearNewsFeed({
         </Card>
       </Box>
     );
-}
+  }
 
   if (error) {
     return (
-      <Box sx={{ p:  3 }}>
-        <Alert severity="warning">
-          Kunne ikke laste nyheter. Prøv igjen senere.
-        </Alert>
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">Kunne ikke laste nyheter. Prov igjen senere.</Alert>
       </Box>
     );
-}
+  }
 
   return (
-    <Box sx={{ width: '100%'}}>
-      {/* Header */}
-      <Box sx={{ mb:  3, display: 'flex', alignItems: 'center', gap:  2 }}>
-        <Box sx={{ 
-          p: 1, borderRadius: '50, %', 
-          bgcolor: `${config.color}20`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-    }}>
-          <ProfessionIcon sx={{ color: config.color, fontSize: 24}} />
+    <Box sx={{ width: '100%' }}>
+      <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box
+          sx={{
+            p: 1,
+            borderRadius: '50%',
+            bgcolor: `${config.color}20`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ProfessionIcon sx={{ color: config.color, fontSize: 24 }} />
         </Box>
         <Box>
-          <Typography variant="h5" sx={{  fontWeight: 600}}>
+          <Typography variant="h5" sx={{ fontWeight: 600, color: theming.colors.primary }}>
             {config.title}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -210,34 +200,28 @@ export default function GearNewsFeed({
         </Box>
       </Box>
 
-      {/* Search and filters */}
-      {showSearch && (
-        <Box sx={{ mb:  3 }}>
+      {showSearch ? (
+        <Box sx={{ mb: 3 }}>
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12 }} md={8}>
+            <Grid size={{ xs: 12, md: 8 }}>
               <TextField
                 fullWidth
-                placeholder="Søk i nyheter..."
+                placeholder="Sok i nyheter..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
                       <SearchIcon />
                     </InputAdornment>
-                  )
+                  ),
                 }}
                 variant="outlined"
                 size="small"
               />
             </Grid>
-            <Grid size={{ xs: 12 }} md={4}>
-              <Tabs
-                value={tabValue}
-                onChange={(e, newValue) => setTabValue(newValue)}
-                variant="scrollable"
-                scrollButtons="auto"
-              >
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Tabs value={tabValue} onChange={(_, value: number) => setTabValue(value)} variant="scrollable" scrollButtons="auto">
                 <Tab label="Alle" />
                 <Tab label="Norske" />
                 <Tab label="Internasjonale" />
@@ -245,69 +229,58 @@ export default function GearNewsFeed({
             </Grid>
           </Grid>
         </Box>
-      )}
+      ) : null}
 
-      {/* News content */}
-      <TabPanel value={tabValue} index={0}>
+      <TabPanel value={tabValue} index={tabValue}>
         <Grid container spacing={3}>
-          {filteredNews.map((item: NewsItem) => (
-            <Grid size={{ xs: 12 }} md={6} lg={4} key={item.id}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column',  ...theming.getThemedCardSx() }}>
+          {filteredNews.map((item) => (
+            <Grid size={{ xs: 12, md: 6, lg: 4 }} key={item.id}>
+              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', ...theming.getThemedCardSx() }}>
                 <CardHeader
                   title={
-                    <Typography variant="h6" sx={{  
-                      fontSize: '1rem',
-                      lineHeight: 1.3,
-                      display: '-webkit-box',
-                      WebkitLineClamp:  2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden'
-                  ,  ...theming.getThemedCardSx() }}>
+                    <Typography
+                      variant="h6"
+                      sx={{
+                        fontSize: '1rem',
+                        lineHeight: 1.3,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      }}
+                    >
                       {item.title}
                     </Typography>
-                }
+                  }
                   subheader={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                      <Chip 
-                        label={item.source}
-                        size="small" 
-                        variant="outlined"
-                        sx={{ fontSize: '0.75rem'}}
-                      />
-                      {item.isNorwegian && (
-                        <Chip 
-                          label="🇳🇴" 
-                          size="small" 
-                          sx={{ fontSize: '0.75rem'}}
-                        />
-                      )}
+                      <Chip label={item.source} size="small" variant="outlined" sx={{ fontSize: '0.75rem' }} />
+                      {item.isNorwegian ? <Chip label="NO" size="small" sx={{ fontSize: '0.75rem' }} /> : null}
                     </Box>
-                }
+                  }
+                  sx={theming.getThemedCardSx()}
                 />
-                <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="body2" color="text.secondary" sx={{
-                    display: '-webkit-box',
-                    WebkitLineClamp:  3,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                    mb: 2 }}>
+                <CardContent sx={{ flexGrow: 1, ...theming.getThemedCardSx() }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      mb: 2,
+                    }}
+                  >
                     {item.summary}
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                    <ClockIcon sx={{ fontSize:  16, color: 'text.secondary'}} />
+                    <ClockIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
                     <Typography variant="caption" color="text.secondary">
-                      {new Date(item.publishDate).toLocaleDateString('no-NO')}
+                      {new Date(item.publishDate).toLocaleDateString('nb-NO')}
                     </Typography>
                   </Box>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    endIcon={<ExternalIcon />}
-                    sx={{ mt: 'auto'}}
-                  >
+                  <Button variant="outlined" size="small" href={item.url} target="_blank" rel="noopener noreferrer" endIcon={<ExternalIcon />}>
                     Les mer
                   </Button>
                 </CardContent>
@@ -317,72 +290,16 @@ export default function GearNewsFeed({
         </Grid>
       </TabPanel>
 
-      <TabPanel value={tabValue} index={1}>
-        <Grid container spacing={3}>
-          {filteredNews.filter(item => item.isNorwegian).map((item: NewsItem) => (
-            <Grid size={{ xs: 12 }} md={6} lg={4} key={item.id}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column',  ...theming.getThemedCardSx() }}>
-                <CardHeader title={item.title}
-                  subheader={item.source}, sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    {item.summary}
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    endIcon={<ExternalIcon />}
-                  >
-                    Les mer
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </TabPanel>
-
-      <TabPanel value={tabValue} index={2}>
-        <Grid container spacing={3}>
-          {filteredNews.filter(item => !item.isNorwegian).map((item: NewsItem) => (
-            <Grid size={{ xs: 12 }} md={6} lg={4} key={item.id}>
-              <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column',  ...theming.getThemedCardSx() }}>
-                <CardHeader title={item.title}
-                  subheader={item.source}, sx={theming.getThemedCardSx()}>
-                <CardContent sx={{ flexGrow:  1 ,  ...theming.getThemedCardSx() }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                    {item.summary}
-                  </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    endIcon={<ExternalIcon />}
-                  >
-                    Les mer
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </TabPanel>
-
-      {filteredNews.length === 0 && !isLoading && (
-        <Box sx={{ textAlign: 'center', py:  6 }}>
+      {filteredNews.length === 0 && !isLoading ? (
+        <Box sx={{ textAlign: 'center', py: 6 }}>
           <Typography variant="h6" color="text.secondary" gutterBottom sx={{ color: theming.colors.primary }}>
             Ingen nyheter funnet
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Prøv å justere søkekriteriene eller kom tilbake senere.
+            Prov a justere soket eller kom tilbake senere.
           </Typography>
         </Box>
-      )}
+      ) : null}
     </Box>
   );
 }

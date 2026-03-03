@@ -1,1701 +1,603 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
-import { usePushNotifications } from '../../hooks/usePushNotifications';
-import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import React, { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Box,
-  Grid,
-  Paper,
-  Typography,
-  Button,
-  TextField,
+  Alert,
   Avatar,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  ListItemAvatar,
   Badge,
-  IconButton,
-  Chip,
-  InputAdornment,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Tab,
-  Tabs,
-  Divider,
-  Stack,
+  Box,
+  Button,
   Card,
   CardContent,
-  Fab,
-  Menu,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
+  InputAdornment,
+  List,
+  ListItem,
+  ListItemAvatar,
+  ListItemButton,
+  ListItemText,
   MenuItem,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-  ToggleButtonGroup,
+  Paper,
   Select,
-  FormControl,
-  InputLabel,
-  Popover,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
+  Archive as ArchiveIcon,
+  Delete as DeleteIcon,
+  Drafts as DraftsIcon,
   Email as EmailIcon,
   Inbox as InboxIcon,
-  Drafts as DraftsIcon,
+  MoreVert as MoreVertIcon,
+  Notifications as NotificationsIcon,
+  NotificationsActive as NotificationsActiveIcon,
+  Refresh as RefreshIcon,
+  Reply as ReplyIcon,
+  Search as SearchIcon,
   Send as SendIcon,
   Star as StarIcon,
   StarBorder as StarBorderIcon,
-  Delete as DeleteIcon,
-  Archive as ArchiveIcon,
-  Search as SearchIcon,
-  Add as AddIcon,
-  Settings as SettingsIcon,
-  Attachment as AttachmentIcon,
-  Reply as ReplyIcon,
-  Forward as ForwardIcon,
-  MoreVert as MoreVertIcon,
-  Person as PersonIcon,
-  Business as BusinessIcon,
-  Palette as PaletteIcon,
-  Image as ImageIcon,
-  Refresh as RefreshIcon,
-  FilterList as FilterIcon,
-  FormatBold as FormatBoldIcon,
-  FormatItalic as FormatItalicIcon,
-  FormatUnderlined as FormatUnderlinedIcon,
-  FormatColorText as FormatColorTextIcon,
-  FormatSize as FormatSizeIcon,
-  FormatAlignLeft as FormatAlignLeftIcon,
-  FormatAlignCenter as FormatAlignCenterIcon,
-  FormatAlignRight as FormatAlignRightIcon,
-  FormatListBulleted as FormatListBulletedIcon,
-  FormatListNumbered as FormatListNumberedIcon,
-  Link as LinkIcon,
-  EmojiEmotions as EmojiEmotionsIcon,
-  TableChart as TableChartIcon,
-  Code as CodeIcon,
-  Undo as UndoIcon,
-  Redo as RedoIcon,
-  Notifications,
-  NotificationsActive,
 } from '@mui/icons-material';
+import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
-import { EmailDesigner } from '../EmailDesigner/EmailDesigner';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { PushNotificationSettings } from '../shared/PushNotificationSettings';
+import { useTheming } from '../../utils/theming-helper';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
+import SmartEmailCenter from './SmartEmailCenter';
 
 interface ComprehensiveEmailCenterProps {
   profession: string;
-  userId: string
+  userId: string;
+}
+
+interface EmailPerson {
+  name: string;
+  email: string;
+  avatar?: string;
 }
 
 interface EmailMessage {
   id: string;
-  from: {
-    name: string;
-    email: string;
-    avatar?: string;
-};
+  from: EmailPerson;
   to: string[];
-  cc?: string[];
-  bcc?: string[];
   subject: string;
   body: string;
-  htmlBody?: string;
   date: string;
   isRead: boolean;
   isStarred: boolean;
   hasAttachments: boolean;
   labels: string[];
-  threadId?: string
 }
 
-const ComprehensiveEmailCenter: React.FC<ComprehensiveEmailCenterProps> = ({
-  profession,
-  userId,
-}) => {
-  const [selectedTab, setSelectedTab] = useState(0);
-  const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showDesigner, setShowDesigner] = useState(false);
-  const [brandingOpen, setBrandingOpen] = useState(false);
-  const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
-  const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
-  
-  // Push notifications
+interface ComposeDraft {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+const EMPTY_DRAFT: ComposeDraft = {
+  to: '',
+  subject: '',
+  body: '',
+};
+
+const TAB_DEFINITIONS = [
+  { label: 'Innboks', icon: <InboxIcon />, filter: (email: EmailMessage) => !email.labels.includes('sent') && !email.labels.includes('archive') },
+  { label: 'Sendt', icon: <SendIcon />, filter: (email: EmailMessage) => email.labels.includes('sent') },
+  { label: 'Utkast', icon: <DraftsIcon />, filter: (email: EmailMessage) => email.labels.includes('draft') },
+  { label: 'Stjernemerket', icon: <StarIcon />, filter: (email: EmailMessage) => email.isStarred },
+  { label: 'Arkiv', icon: <ArchiveIcon />, filter: (email: EmailMessage) => email.labels.includes('archive') },
+];
+
+export default function ComprehensiveEmailCenter({ profession, userId }: ComprehensiveEmailCenterProps) {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { pushEnabled, isSupported } = usePushNotifications(userId);
-
-  // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
-  
-  // Get user profile for branding
-  const { data: userProfile } = useQuery({
-    queryKey: ['/api/auth/user,', ],
-    staleTime: 10 * 60 * 100, // 10 minutes
-});
+  const theming = useTheming(profession);
 
-  // Mock email data - in production this would come from Gmail API
-  const { data: emails = [], isLoading } = useQuery({
-    queryKey: ['/api/emails', selectedTab, searchQuery],
+  const resolvedUserId = userId || (typeof user?.id === 'string' ? user.id : 'guest');
+  const { pushEnabled, isSupported } = usePushNotifications(resolvedUserId);
+
+  const [tab, setTab] = useState(0);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [draft, setDraft] = useState<ComposeDraft>(EMPTY_DRAFT);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mode, setMode] = useState<'classic' | 'smart'>('classic');
+  const [statusMessage, setStatusMessage] = useState<null | { message: string; severity: 'success' | 'error' | 'info' }>(null);
+
+  const { data: emailsRaw, isLoading, refetch } = useQuery({
+    queryKey: ['/api/emails/smart', profession, resolvedUserId, search],
     queryFn: async () => {
-      // This would be your actual email API
-      return mockEmails;
-},
-    staleTime: 2 * 60 * 100,
-});
+      const response = await apiRequest(
+        `/api/emails/smart?profession=${encodeURIComponent(profession)}&userId=${encodeURIComponent(resolvedUserId)}&search=${encodeURIComponent(search)}`,
+      );
+      return response;
+    },
+    staleTime: 30_000,
+  });
 
-  // Branding settings
-  const [branding, setBranding] = useState({
-    primaryColor: '#ff6b30',
-    secondaryColor: '#1976d0',
-    logo: userProfile?.profileImageUrl ||'',
-    companyName: `${userProfile?.firstName ||''} ${userProfile?.lastName || ','}`.trim() || 'CreatorHub Norge',
-    signature: `Med vennlig hilsen,\n${userProfile?.firstName || ''} ${userProfile?.lastName || ','}\n${getProfessionDisplayName(profession)}\nCreatorHub Norge`,
-    headerStyle: 'modern',
-});
+  const emails = useMemo(() => normalizeEmails(emailsRaw), [emailsRaw]);
 
-  const tabLabels = ['Innboks','Sendt','Utkast','Stjernemerket','Arkiv'];
-  const sidebarItems = [
-    { icon: <InboxIcon />, label: 'Innboks', count:  12, color: '#1976d2',},
-    { icon: <SendIcon />, label: 'Sendt', count: 0, color: '#4caf50',},
-    { icon: <DraftsIcon />, label: 'Utkast', count:  3, color: '#ff9800',},
-    { icon: <StarIcon />, label: 'Stjernemerket', count:  5, color: '#ffc107',},
-    { icon: <ArchiveIcon />, label: 'Arkiv', count: 0, color: '#9e9e9e',},
-  ];
+  const visibleEmails = useMemo(() => {
+    const predicate = TAB_DEFINITIONS[tab]?.filter ?? (() => true);
+    const query = search.trim().toLowerCase();
+    return emails.filter((email) => {
+      const tabMatch = predicate(email);
+      if (!tabMatch) {
+        return false;
+      }
+      if (query.length === 0) {
+        return true;
+      }
+      return (
+        email.subject.toLowerCase().includes(query) ||
+        email.from.name.toLowerCase().includes(query) ||
+        email.from.email.toLowerCase().includes(query) ||
+        email.body.toLowerCase().includes(query)
+      );
+    });
+  }, [emails, search, tab]);
 
-  const filteredEmails = emails.filter(
-    (email: EmailMessage) =>
-      email.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      email.from.name.toLowerCase().includes(searchQuery.toLowerCase(, ), ),
+  const selectedEmail = useMemo(
+    () => visibleEmails.find((email) => email.id === selectedEmailId) ?? visibleEmails[0] ?? null,
+    [selectedEmailId, visibleEmails],
   );
 
-  const getEmailsByTab = (tabIndex: number) => {
-    switch (tabIndex) {
-      case 0:
-        return filteredEmails.filter((e: EmailMessage) => !e.labels.includes('sent'));
-      case 1:
-        return filteredEmails.filter((e: EmailMessage) => e.labels.includes('sent'));
-      case 2:
-        return filteredEmails.filter((e: EmailMessage) => e.labels.includes('draft'));
-      case 3:
-        return filteredEmails.filter((e: EmailMessage) => e.isStarred);
-      case 4:
-        return filteredEmails.filter((e: EmailMessage) => e.labels.includes('archive'));
-      default:
-        return filteredEmails;
-}
-};
+  const updateEmailMutation = useMutation({
+    mutationFn: async (payload: { id: string; patch: Record<string, unknown> }) =>
+      apiRequest(`/api/emails/${payload.id}`, {
+        method: 'PATCH',
+        body: payload.patch,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/emails/smart'] });
+    },
+    onError: () => {
+      setStatusMessage({ message: 'Kunne ikke oppdatere e-post', severity: 'error' });
+    },
+  });
 
-  const currentEmails = getEmailsByTab(selectedTab);
+  const deleteEmailMutation = useMutation({
+    mutationFn: async (id: string) =>
+      apiRequest(`/api/emails/${id}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/emails/smart'] });
+      setSelectedEmailId(null);
+      setStatusMessage({ message: 'E-post slettet', severity: 'success' });
+    },
+    onError: () => {
+      setStatusMessage({ message: 'Kunne ikke slette e-post', severity: 'error' });
+    },
+  });
 
-  const handleEmailClick = (email: EmailMessage) => {
-    setSelectedEmail(email);
-};
+  const sendEmailMutation = useMutation({
+    mutationFn: async (payload: ComposeDraft) =>
+      apiRequest('/api/emails/send', {
+        method: 'POST',
+        body: {
+          to: payload.to,
+          subject: payload.subject,
+          body: payload.body,
+          profession,
+          userId: resolvedUserId,
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/emails/smart'] });
+      setComposeOpen(false);
+      setDraft(EMPTY_DRAFT);
+      setStatusMessage({ message: 'E-post sendt', severity: 'success' });
+    },
+    onError: () => {
+      setStatusMessage({ message: 'Kunne ikke sende e-post', severity: 'error' });
+    },
+  });
 
-  const handleCompose = () => {
-    setComposeOpen(true);
-};
-
-  const handleBrandingCustomizer = () => {
-    setBrandingOpen(true);
-};
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 1) return 'I dag';
-    if (diffDays === 2) return 'I går';
-    if (diffDays <= 7) return `${diffDays} dager siden`;
-    return date.toLocaleDateString('nb-NO');
-};
+  if (mode === 'smart') {
+    return (
+      <Box sx={{ height: '100%' }}>
+        <Card sx={{ mb: 2, ...theming.getThemedCardSx() }}>
+          <CardContent>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="h6">Smart arbeidsflyt</Typography>
+              <Button variant="outlined" onClick={() => setMode('classic')}>
+                Bytt til klassisk visning
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+        <SmartEmailCenter profession={profession} userId={resolvedUserId} />
+      </Box>
+    );
+  }
 
   return (
-    <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column'}}>
-      {/* Header */}
-      <Paper elevation={1} sx={{ p: 2, borderRadius:  0 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Typography variant="h5"
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap:  2,
-              fontWeight: 600, color: theming.colors.primary }}>
-            <Avatar sx={{ bgcolor: branding.primaryColor }}>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Paper sx={{ p: 2, mb: 2, ...theming.getThemedCardSx() }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Avatar sx={{ bgcolor: theming.colors.primary }}>
               <EmailIcon />
             </Avatar>
-            E-post Senter
-          </Typography>
-
+            <Box>
+              <Typography variant="h5" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
+                Comprehensive Email Center
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {getProfessionDisplayName(profession)} • bruker {resolvedUserId}
+              </Typography>
+            </Box>
+          </Stack>
           <Stack direction="row" spacing={1}>
-            {isSupported && (
-              <Tooltip title="Push-varsler innstillinger">
-                <IconButton onClick={() => setPushSettingsOpen(true)} color={pushEnabled ? 'primary' : 'default'}>
-                  {pushEnabled ? <NotificationsActive /> : <Notifications />}
-                </IconButton>
-              </Tooltip>
-            )}
+            <Tooltip title="Push-varsler">
+              <IconButton onClick={() => setSettingsOpen(true)}>
+                {isSupported && pushEnabled ? <NotificationsActiveIcon /> : <NotificationsIcon />}
+              </IconButton>
+            </Tooltip>
+            <Button startIcon={<RefreshIcon />} onClick={() => refetch()}>
+              Oppdater
+            </Button>
+            <Button variant="outlined" onClick={() => setMode('smart')}>
+              Smart visning
+            </Button>
+            <Button variant="contained" startIcon={<SendIcon />} onClick={() => setComposeOpen(true)}>
+              Ny e-post
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {statusMessage && (
+        <Alert severity={statusMessage.severity} sx={{ mb: 2 }} onClose={() => setStatusMessage(null)}>
+          {statusMessage.message}
+        </Alert>
+      )}
+
+      <Card sx={{ flex: 1, minHeight: 0 }}>
+        <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column', p: 0 }}>
+          <Box sx={{ px: 2, pt: 2 }}>
             <TextField
+              fullWidth
               size="small"
-              placeholder="Søk i e-post..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Søk e-post..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon />
+                    <SearchIcon fontSize="small" />
                   </InputAdornment>
-               , )}}
-              sx={{ width: 300}}
+                ),
+              }}
             />
-
-            <IconButton onClick={(e) => setFilterAnchor(e.currentTarget)}>
-              <FilterIcon />
-            </IconButton>
-
-            <Button
-              variant="outlined"
-              startIcon={<PaletteIcon />}
-              onClick={handleBrandingCustomizer}
-            >
-              Branding
-            </Button>
-
-            <Button
-              variant="outlined"
-              startIcon={<ImageIcon />}
-              onClick={() => setShowDesigner(true)}
-            >
-              Designer
-            </Button>
-
-            <Button variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleCompose}
-              sx={{ bgcolor: branding.primaryColor }}
-            >
-              Ny melding
-            </Button>
-          </Stack>
-        </Stack>
-      </Paper>
-
-      <Box sx={{ flex: 1, display: 'flex'}}>
-        {/* Sidebar */}
-        <Paper
-          sx={{
-            width: 20,
-            borderRadius:  0,
-            borderRight:  1,
-            borderColor: 'divider'}}
-         sx={theming.getThemedCardSx()}>
-          <List sx={{ p:  1 }}>
-            {sidebarItems.map((item, index) => (
-              <ListItem
-                button
-                key={item.label}
-                selected={selectedTab === index}
-                onClick={() => setSelectedTab(index)}
-                sx={{
-                  borderRadius:  2,
-                  mb: 0.5, '&.Mui-selected': { bgcolor: `${item.color}15`,
-                    color: item.color, '& .MuiListItemIcon-root': {
-                      color: item.color,
-                  },
-                }}}
-              >
-                <ListItemIcon>
-                  <Badge badgeContent={item.count} color="primary" invisible={item.count === 0}>
-                    {item.icon}
-                  </Badge>
-                </ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItem>
-            ))}
-          </List>
-
-          <Divider sx={{ mx: 2, my: 2 }} />
-
-          {/* Quick Actions */}
-          <Box sx={{ p:  2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, color: 'text.secondary'}}>
-              Hurtighandlinger
-            </Typography>
-            <Stack spacing={1}>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<RefreshIcon />}
-                fullWidth
-                sx={{ justifyContent: 'flex-start'}}
-              >
-                Oppdater
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<SettingsIcon />}
-                fullWidth
-                sx={{ justifyContent: 'flex-start'}}
-              >
-                Innstillinger
-              </Button>
-            </Stack>
           </Box>
-        </Paper>
-
-        {/* Email List */}
-        <Paper
-          sx={{
-            width: 40,
-            borderRadius:  0,
-            borderRight:  1,
-            borderColor: 'divider'}}
-         sx={theming.getThemedCardSx()}>
-          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider'}}>
-            <Typography variant="h6" sx={{  fontWeight: 600}}>
-              {tabLabels[selectedTab]} ({currentEmails.length})
-            </Typography>
-          </Box>
-
-          <List sx={{ p:  0 }}>
-            {isLoading ? (
-              <Box sx={{ p:  4, textAlign: 'center'}}>
-                <Typography color="text.secondary">Laster e-post...</Typography>
-              </Box>
-            ) : currentEmails.length === 0 ? (
-              <Box sx={{ p:  4, textAlign: 'center'}}>
-                <EmailIcon sx={{ fontSize:  48, color: 'text.disabled', mb:  2 }} />
-                <Typography color="text.secondary">Ingen e-post funnet</Typography>
-              </Box>
-            ) : (
-              currentEmails.map((email: EmailMessage) => (
-                <ListItem
-                  key={email.d}
-                  button
-                  selected={selectedEmail?.id === email.id}
-                  onClick={() => handleEmailClick(email)}
-                  sx={{
-                    borderBottom:  1,
-                    borderColor: 'divider',
-                    alignItems: 'flex-start',
-                    py: 2, '&:hover': { bgcolor: 'rgba(0,0,0,0.04)',
-                  }, '&.Mui-selected': {
-                      bgcolor: `${branding.primaryColor}08`,
-                      borderLeft:  3,
-                      borderLeftColor: branding.primaryColor,
-                  }}}
-                >
-                  <ListItemAvatar>
-                    <Avatar src={email.from.avatar} sx={{ bgcolor: branding.primaryColor }}>
-                      {email.from.name.charAt(0).toUpperCase()}
-                    </Avatar>
-                  </ListItemAvatar>
-
-                  <ListItemText
-                    primary={
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5}}>
-                        <Typography
-                          variant="subtitle2"
-                          sx={{
-                            fontWeight: mail.isRead ? 400 : 60,
-                            flex:  1,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'}}
-                        >
-                          {email.from.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDate(email.date)}
-                        </Typography>
-                      </Stack>
+          <Tabs value={tab} onChange={(_, value: number) => setTab(value)} variant="scrollable" sx={{ px: 1 }}>
+            {TAB_DEFINITIONS.map((definition) => {
+              const count = emails.filter(definition.filter).length;
+              return (
+                <Tab
+                  key={definition.label}
+                  icon={
+                    <Badge badgeContent={count} color="primary">
+                      {definition.icon}
+                    </Badge>
                   }
-                    secondary={
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            fontWeight: mail.isRead ? 400 : 50,
-                            mb: 0.5,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'}}
-                        >
-                          {email.subject}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={{
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'}}
-                        >
-                          {email.body.substring(0, 100)}...
-                        </Typography>
+                  iconPosition="start"
+                  label={definition.label}
+                />
+              );
+            })}
+          </Tabs>
+          <Divider />
 
-                        <Stack direction="row" spacing={0.5} sx={{ mt:  1 }}>
-                          {email.hasAttachments && (
-                            <Chip
-                              size="small"
-                              icon={<AttachmentIcon />}
-                              label="Vedlegg"
-                              variant="outlined"
-                              sx={{ height:  20, fontSize: '10px'}}
-                            />
-                          )}
-                          {email.labels.map((label) => (
-                            <Chip
-                              key={label}
-                              size="small"
-                              label={label}
-                              variant="outlined"
-                              sx={{ height:  20, fontSize: '10px'}}
-                            />
-                          ))}
-                        </Stack>
-                      </Box>
-                  }
-                  />
-
-                  <Stack direction="column" spacing={0.5} sx={{ ml:  1 }}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Toggle star
-                    }}
-                    >
-                      {email.isStarred ? (
-                        <StarIcon sx={{ color: '#ffc100', fontSize: 18}} />
-                      ) : (
-                        <StarBorderIcon sx={{ fontSize: 18}} />
-                      )}
-                    </IconButton>
-
-                    <IconButton size="small">
-                      <MoreVertIcon sx={{ fontSize: 18}} />
-                    </IconButton>
-                  </Stack>
-                </ListItem>
-              ))
-            )}
-          </List>
-        </Paper>
-
-        {/* Email Content */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column'}}>
-          {selectedEmail ? (
-            <EmailViewer email={selectedEmail} branding={branding} />
-          ) : (
-            <Box
-              sx={{
-                flex:  1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'text.secondary'}}
-            >
-              <EmailIcon sx={{ fontSize:  64, mb: 2, opacity: 0.5}} />
-              <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                Velg en e-post for å lese
-              </Typography>
-              <Typography variant="body2">
-                Velg en melding fra listen til venstre for å se innholdet
-              </Typography>
-            </Box>
-          )}
-        </Box>
-      </Box>
-
-      {/* Email Designer Dialog */}
-      <Dialog
-        open={showDesigner}
-        onClose={() => setShowDesigner(false)}
-        maxWidth={false}
-        fullWidth
-        sx={{ '& .MuiDialog-paper': { width: '95vw', height: '95vh',} }}
-      >
-        <DialogTitle>
-          <Stack direction="row" alignItems="center" justifyContent="space-between">
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>E-post Designer</Typography>
-            <IconButton onClick={() => setShowDesigner(false)}>
-              <DeleteIcon />
-            </IconButton>
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ p:  0 }}>
-          <EmailDesigner context="general" />
-        </DialogContent>
-      </Dialog>
-
-      {/* Compose Email Dialog */}
-      <EmailComposer
-        open={composeOpen}
-        onClose={() => setComposeOpen(false)}
-        branding={branding}
-        userProfile={userProfile}
-        profession={profession}
-      />
-
-      {/* Branding Customizer Dialog */}
-      <BrandingCustomizer
-        open={brandingOpen}
-        onClose={() => setBrandingOpen(false)}
-        branding={branding}
-        setBranding={setBranding}
-        userProfile={userProfile}
-        profession={profession}
-      />
-
-      {/* Floating Compose Button */}
-      <Fab
-        color="primary"
-        sx={{
-          position: 'fixed',
-          bottom:  24,
-          right:  24,
-          bgcolor: branding.primaryColor, '&:hover': {
-            bgcolor: branding.primaryColor + 'dd',
-        }}}
-        onClick={handleCompose}
-      >
-        <AddIcon />
-      </Fab>
-
-      {/* Push Notification Settings Dialog */}
-      {isSupported && (
-        <Dialog open={pushSettingsOpen} onClose={() => setPushSettingsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Push-varsler innstillinger</DialogTitle>
-          <DialogContent>
-            <Box sx={{ mt: 2 }}>
-              <PushNotificationSettings userId={userId} showDescription={false} />
-            </Box>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPushSettingsOpen(false)}>Lukk</Button>
-          </DialogActions>
-        </Dialog>
-      )}
-    </Box>
-  );
-};
-
-// Email Viewer Component
-const EmailViewer: React.FC<{ email: EmailMessage; branding: any }> = ({ email, branding }) => {
-  return (
-    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column'}}>
-      {/* Email Header */}
-      <Paper elevation={0} sx={{ p:  3, borderBottom: 1, borderColor: 'divider',  ...theming.getThemedCardSx() }}>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          sx={{ mb:  2 }}
-        >
-          <Box sx={{ flex:  1 }}>
-            <Typography variant="h6" sx={{  fontWeight: 600, mb:  1  }}>
-              {email.subject}
-            </Typography>
-            <Stack direction="row" spacing={2} alignItems="center" sx={{ mb:  1 }}>
-              <Avatar
-                src={email.from.avatar}
-                sx={{ width:  32, height:  32, bgcolor: branding.primaryColor }}
-              >
-                {email.from.name.charAt(0)}
-              </Avatar>
-              <Box>
-                <Typography variant="body2" sx={{ fontWeight: 600}>
-                  {email.from.name}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {email.from.email}
-                </Typography>
-              </Box>
-              <Typography variant="caption" color="text.secondary">
-                {new Date(email.date).toLocaleString('nb-NO')}
-              </Typography>
-            </Stack>
-          </Box>
-
-          <Stack direction="row" spacing={1}>
-            <Tooltip title="Svar">
-              <IconButton size="small">
-                <ReplyIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Videresend">
-              <IconButton size="small">
-                <ForwardIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Arkiver">
-              <IconButton size="small">
-                <ArchiveIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Slett">
-              <IconButton size="small" color="error">
-                <DeleteIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        </Stack>
-      </Paper>
-
-      {/* Email Body */}
-      <Box sx={{ flex: 1, p: 3, overflow: 'auto'}}>
-        {email.htmlBody ? (
-          <div dangerouslySetInnerHTML={{ __html: email.htmlBody }} />
-        ) : (
-          <Typography
-            variant="body1"
-            sx={{
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.6}}
-          >
-            {email.body}
-          </Typography>
-        )}
-      </Box>
-    </Box>
-  );
-};
-
-// Email Composer Component
-const EmailComposer: React.FC<{
-  open: boolean;
-  onClose: () => void;
-  branding: any;
-  userProfile: any;
-  profession: string
-}> = ({ open, onClose, branding, userProfile, profession }) => {
-  // Fetch active client submissions for customer suggestions
-  const { data: submissions = [, ],} = useQuery({
-    queryKey: ['/api/submissions', profession],
-    enabled: open,
-});
-
-  // Fetch email templates for profession
-  const { data: templates = [, ],} = useQuery({
-    queryKey: ['/api/email-templates', profession],
-    enabled: open,
-});
-
-  useEffect(() => {
-    if (submissions) {
-      setCustomerSuggestions(
-        submissions.filter((s: any) => s.status !== 'completed' && s.status !== ','),
-      );
-  }
-    if (templates) {
-      setEmailTemplates(templates);
-  }
-}, [submissions, templates]);
-  const [to, setTo] = useState('');
-  const [cc, setCc] = useState('');
-  const [bcc, setBcc] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [showCcBcc, setShowCcBcc] = useState(false);
-  const [attachments, setAttachments] = useState<Description[]>([]);
-
-  // Rich text formatting states
-  const [fontSize, setFontSize] = useState('14');
-  const [fontFamily, setFontFamily] = useState('Arial');
-  const [textColor, setTextColor] = useState('#000000');
-  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
-  const [formatting, setFormatting] = useState<string[]>([]);
-  const [alignment, setAlignment] = useState('left');
-  const [showFormattingToolbar, setShowFormattingToolbar] = useState(true);
-
-  // CRM Integration states
-  const [customerSuggestions, setCustomerSuggestions] = useState<any[]>([]);
-  const [selectedProject, setSelectedProject] = useState<any>(null);
-  const [showCustomerPicker, setShowCustomerPicker] = useState(false);
-  const [emailTemplates, setEmailTemplates] = useState<any[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [emojiAnchor, setEmojiAnchor] = useState<HTMLElement | null>(null);
-
-  // Query client for invalidating cache
-  const queryClient = useQueryClient();
-  
-  // Theming system - use dynamic profession instead of hardcoded value
-  const theming = useTheming(profession);
-
-  const handleSend = async () => {
-    try {
-      const emailData = {
-        to,
-        cc,
-        bcc,
-        subject,
-        body,
-        attachments: attachments.map((file) => file.name),
-        projectId: selectedProject?.d,
-        projectType: selectedProject?.projectType,
-        templateUsed: selectedTemplate,
-        profession,
-    };
-
-      // Send email via API
-      const response = await apiRequest('/api/emails/send', {
-        method: 'POS',
-        body: JSON.stringify(emailData),
-        headers: {
-          'Content-Type' : 'application/json',
-      },
-    });
-
-      if (response.ok) {
-        // Close dialog and reset form
-        onClose();
-        setTo('');
-        setCc('');
-        setBcc('');
-        setSubject('');
-        setBody('');
-        setAttachments([]);
-        setFormatting([]);
-        setSelectedProject(null);
-        setSelectedTemplate('');
-
-        console.log('✅ E-post sendt og tilknyttet prosjekt: ', selectedProject?.name);
-
-        // Invalidate queries to refresh data
-        queryClient.invalidateQueries({ queryKey: ['/api/submissions', ],});
-        queryClient.invalidateQueries({ queryKey: ['/api/emails', ],});
-    }
-  } catch (error) {
-      console.error('Feil ved sending av e-post: ', error);
-  }
-};
-
-  const handleFormatting = (format: string) => {
-    setFormatting((prev) =>
-      prev.includes(format) ? prev.filter((f) => f !== format) : [...prev, format],
-    );
-};
-
-  const applyFormatting = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
-};
-
-  const insertText = (text: string) => {
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(text));
-      range.collapse(false);
-      selection.removeAllRanges();
-      selection.addRange(range);
-}
-};
-
-  const handleCustomerSelect = (customer: any) => {
-    setTo(customer.email);
-    setSelectedProject(customer);
-    setShowCustomerPicker(false);
-
-    // Auto-fill subject based on project type
-    if (customer.projectType) {
-      const subjectTemplates = {
-        wedding: `Bryllupsfotografering - ${customer.name}`,
-        portrait: `Portrettfotografering - ${customer.name}`,
-        business: `Bedriftsfotografering - ${customer.company || customer.name}`,
-        product: `Produktfotografering - ${customer.name}`,
-        event: `Arrangement - ${customer.name}`,
-    };
-      setSubject(
-        subjectTemplates[customer.projectType as keyof typeof subjectTemplates] ||
-          `Re: ${customer.name}`,
-      );
-  }
-};
-
-  const handleTemplateSelect = (templateId: string) => {
-    const template = getTemplatesForProfession().find((t) => t.id === templateId);
-    if (template) {
-      setSelectedTemplate(templateId);
-
-      // Replace variables in template
-      let processedSubject = template.subject;
-      let processedContent = template.content;
-
-      if (selectedProject) {
-        processedSubject = processedSubject
-          .replace('[KUNDE_NAVN]', selectedProject.name)
-          .replace('[PROSJEKT_TYPE]', selectedProject.projectType);
-
-        processedContent = processedContent
-          .replace(/\[KUNDE_NAVN\]/g, selectedProject.name)
-          .replace(/\[PROSJEKT_TYPE\]/g, selectedProject.projectType)
-          .replace('[FOTOGRAF_NAVN]', userProfile?.name || 'Fotograf')
-          .replace(
-            '[DATO]',
-            selectedProject.eventDate
-              ? new Date(selectedProject.eventDate).toLocaleDateString('no-NO')
-              : '[DATO]',
-          )
-          .replace('[GOOGLE_DRIVE_LINK]', 'https://drive.google.com/...')
-          .replace('[VIDEO_LINK]', 'https://video.link/...');
-  }
-
-      setSubject(processedSubject);
-      setBody(processedContent);
-  }
-};
-
-  const getTemplatesForProfession = () => {
-    const commonTemplates = [
-      {
-        id: 'welcome',
-        name: 'Velkommen',
-        subject: 'Velkommen som kunde, !',
-        content: '<p>Hei [KUNDE_NAV],</p><p>Takk for at du valgte oss for ditt [PROSJEKT_TYPE] prosjekt!</p><p>Vi gleder oss til å samarbeide med deg.</p><p>Med vennlig hilsen,<br/>[FOTOGRAF_NAVN]</p>',
-    },
-      {
-        id: 'timeline',
-        name: 'Tidsplan',
-        subject: 'Tidsplan for ditt prosjekt',
-        content: '<p>Hei [KUNDE_NAV],</p><p>Her er tidsplanen for ditt [PROSJEKT_TYPE] prosjekt: </p><ul><li>Planlegging: [DATO1]</li><li>Fotografering: [DATO2]</li><li>Leveranse: [DATO3]</li></ul><p>Ta kontakt hvis du har spørsmål!</p>',
-    },
-      {
-        id: 'delivery',
-        name: 'Leveranse klar',
-        subject: 'Bildene dine er klare, !',
-        content: '<p>Hei [KUNDE_NAV],</p><p>Bildene fra ditt [PROSJEKT_TYPE] er nå klare for nedlasting!</p><p>Du finner dem her: [GOOGLE_DRIVE_LINK]</p><p>Takk for samarbeidet!</p>',
-    },
-    ];
-
-    const professionSpecific = {
-      photographer: [
-        ...commonTemplates,
-        {
-          id: 'wedding_reminder',
-          name: 'Bryllup påminnelse',
-          subject: 'Påminnelse - bryllupsfotografering',
-          content: '<p>Hei [KUNDE_NAV],</p><p>Dette er en påminnelse om fotograferingen av bryllupet ditt [DATO].</p><p>Husk å ha klar: [SJEKKLISTE]</p>',
-      },
-      ],
-      videographer: [
-        ...commonTemplates,
-        {
-          id: 'video_preview',
-          name: 'Video forhåndsvisning',
-          subject: 'Forhåndsvisning av videoen din',
-          content: '<p>Hei [KUNDE_NAV],</p><p>Her er en forhåndsvisning av videoen din: [VIDEO_LINK]</p><p>Gi meg beskjed om eventuelle endringer!</p>',
-      },
-      ],
-  };
-
-    return professionSpecific[profession as keyof typeof professionSpecific] || commonTemplates;
-};
-
-  const handleAttachmentChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    setAttachments((prev) => [...prev, ...files]);
-};
-
-  const removeAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-};
-
-  // Comprehensive emoji collections
-  const emojiCategories = {
-    Smilefjes: [
-      '�, �','😃''😄','😁''😆','😅''😂','🤣''😊','😇''🙂','🙃''😉','😌''😍','🥰''😘','😗''😙','😚''😋','😛''😝','😜''🤪','🤨''🧐','🤓''😎','🤩''🥳','😏''😒','😞''😔','😟''😕','🙁''☹️','😣''😖','😫''😩','🥺''😢','😭''😤','😠''😡','🤬''🤯','😳''🥵','🥶''😱','😨''😰','😥''😓',
-    ]'Hjerter & Følelser': [
-      '❤️','🧡''💛','💚''💙','💜''🖤','🤍''🤎','💔''❣️','💕''💞','💓''💗','💖''💘','💝''💟','♥️''💋','💯''💢','💥''💫','💦''💨','🕳️''💤',
-    ]'Hender & Gester': [
-      '👍','👎''👌','🤌''🤏','✌️''🤞','🤟''🤘','🤙''👈','👉''👆','🖕''👇','☝️''👋','🤚''🖐️','✋''🖖','👏''🙌','🤝''👐','🤲''🤜','🤛''✊','👊''🙏',
-    ],
-    Aktiviteter: [
-      ', ⚽','🏀''🏈','⚾''🥎','🎾''🏐','🏉''🥏','🎱''🪀','🏓''🏸','🏒''🏑','🥍''🏏','🪃''🥅','⛳''🪁','🏹''🎣','🤿''🥊','🥋''🎽','🛹''🛷','⛸️''🥌','🎿''⛷️','🏂''🪂','🏋️‍♂️''🏋️‍♀️',
-    ]'Mat & Drikke': [
-      '🍎','🍊''🍋','🍌''🍉','🍇''🍓','🫐''🍈','🍒''🍑','🥭''🍍','🥥''🥝','🍅''🍆','🥑''🥦','🥬''🥒','🌶️''🫑','🌽''🥕','🫒''🧄','🧅''🥔','🍠''🥐','🥖''🍞','🥨''🥯','🧀''🥚','🍳''🧈','🥞''🧇','🥓''🥩','🍗''🍖','🦴''🌭','🍔''🍟','🍕',
-    ]'Reise & Steder': [
-      '🚗','🚕''🚙','🚌''🚎','🏎️''🚓','🚑''🚒','🚐''🛻','🚚''🚛','🚜''🏍️','🛵''🚲','🛴''🛹','🛼''🚁','🛸''✈️','🛩️''🛫','🛬''🪂','💺''🚀','🛰️''🚉','🚊''🚝','🚞''🚋','🚃''🚋','🚆''🚄','🚅''🚈','🚂''🚖','🚘',
-    ],
-    Objekter: [
-      '�, �','💻''🖥️','🖨️''⌨️','🖱️''🖲️','💽''💾','💿''📀','📼''📷','📸''📹','🎥''📽️','🎞️''📞','☎️''📟','📠''📺','📻''🎙️','🎚️''🎛️','🧭''⏰','⌚''📱','📲''💡','🔦''🕯️','🪔''🧯','🛢️''💸','💳''💎','⚖️''🧰','🔧', '🔨', '⚒️', '🛠️', '⛏️', '🔩',
-    ],
-};
-
-  const insertEmoji = (emoji: string) => {
-    insertText(emoji);
-    setShowEmojiPicker(false);
-    setEmojiAnchor(null);
-};
-
-  const handleEmojiClick = (event: React.MouseEvent<HTMLElement>) => {
-    setEmojiAnchor(event.currentTarget);
-    setShowEmojiPicker(true);
-};
-
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      maxWidth="md"
-      fullWidth
-      sx={{ '& .MuiDialog-paper': { height: '80vh',} }}
-    >
-      <DialogTitle>
-        <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <EmailIcon sx={{ color: branding.primaryColor }} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Ny melding</Typography>
-          </Stack>
-          <IconButton onClick={onClose} size="small">
-            <DeleteIcon />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
-
-      <DialogContent sx={{ p:  0 }}>
-        <Stack divider={<Divider />}>
-          {/* Recipients */}
-          <Box sx={{ p:  2 }}>
-            {/* Template and Customer Selection */}
-            <Box sx={{ mb:  2 }}>
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-                <FormControl size="small" sx={{ minWidth: 200}}>
-                  <InputLabel>Velg mal</InputLabel>
-                  <Select
-                    value={selectedTemplate}
-                    label="Velg mal"
-                    onChange={(e) => handleTemplateSelect(e.target.value)}
-                  >
-                    <MenuItem value="">Ingen mal</MenuItem>
-                    {getTemplatesForProfession().map((template) => (
-                      <MenuItem key={template.id} value={template.id}>
-                        {template.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => setShowCustomerPicker(!showCustomerPicker)}
-                  startIcon={<PersonIcon />}
-                >
-                  Velg kunde ({customerSuggestions.length})
-                </Button>
-              </Stack>
-            </Box>
-
-            {/* Customer Picker */}
-            {showCustomerPicker && (
-              <Box
-                sx={{
-                  mb:  2,
-                  p:  2,
-                  border:  1,
-                  borderColor: 'divider',
-                  borderRadius:  1,
-                  bgcolor: 'grey.5'}}
-              >
-                <Typography variant="subtitle2" sx={{ mb:  1 }}>
-                  Aktive kunder: </Typography>
-                <List dense>
-                  {customerSuggestions.slice, (5).map((customer) => (
-                    <ListItem
-                      key={customer.id}
-                      button
-                      onClick={() => handleCustomerSelect(customer)}
-                      sx={{ borderRadius: 1, mb: 0, .cursor: 'pointer'}}
+          <Box sx={{ display: 'grid', gridTemplateColumns: '380px 1fr', minHeight: 0, flex: 1 }}>
+            <Box sx={{ borderRight: '1px solid rgba(255,255,255,0.08)', overflowY: 'auto' }}>
+              {isLoading ? (
+                <Stack sx={{ p: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Laster e-poster...
+                  </Typography>
+                </Stack>
+              ) : (
+                <List disablePadding>
+                  {visibleEmails.map((email) => (
+                    <ListItemButton
+                      key={email.id}
+                      selected={selectedEmail?.id === email.id}
+                      onClick={() => {
+                        setSelectedEmailId(email.id);
+                        if (!email.isRead) {
+                          updateEmailMutation.mutate({
+                            id: email.id,
+                            patch: { isRead: true },
+                          });
+                        }
+                      }}
+                      sx={{ alignItems: 'flex-start', py: 1.5 }}
                     >
                       <ListItemAvatar>
-                        <Avatar
-                          sx={{
-                            bgcolor: branding.primaryColor,
-                            width:  32,
-                            height:  32}}
-                        >
-                          {customer.name.charAt(0)}
+                        <Avatar src={email.from.avatar}>
+                          {email.from.name.slice(0, 1).toUpperCase()}
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
-                        primary={customer.name}
-                        secondary={`${customer.email} - ${customer.projectType}`}
+                        primary={
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: email.isRead ? 500 : 700 }}
+                              noWrap
+                            >
+                              {email.from.name}
+                            </Typography>
+                            {!email.isRead && <Chip size="small" color="primary" label="Ny" />}
+                          </Stack>
+                        }
+                        secondary={
+                          <Stack spacing={0.5}>
+                            <Typography
+                              variant="body2"
+                              noWrap
+                              sx={{ color: email.isRead ? 'text.secondary' : 'text.primary', fontWeight: email.isRead ? 400 : 600 }}
+                            >
+                              {email.subject}
+                            </Typography>
+                            <Typography variant="caption" noWrap color="text.secondary">
+                              {email.body}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatDate(email.date)}
+                            </Typography>
+                          </Stack>
+                        }
                       />
-                      <Chip
-                        label={customer.status}
-                        size="small"
-                        color={customer.status === 'new' ? 'primary' : 'default'}
-                      />
-                    </ListItem>
+                    </ListItemButton>
                   ))}
+                  {visibleEmails.length === 0 && (
+                    <ListItem>
+                      <ListItemText primary="Ingen e-poster matcher filteret." />
+                    </ListItem>
+                  )}
                 </List>
-              </Box>
-            )}
-
-            {/* Project Info Display */}
-            {selectedProject && (
-              <Box sx={{ mb: 2, p: 1,bgcolor: 'info.light', borderRadius:  1 }}>
-                <Typography variant="body2" color="info.contrastText">
-                  📋 <strong>{selectedProject.name}</strong> - {selectedProject.projectType}
-                  {selectedProject.eventDate &&
-                    ` • ${new Date(selectedProject.eventDate).toLocaleDateString('no-NO')}`}
-                  {selectedProject.location && ` • ${selectedProject.location}`}
-                </Typography>
-              </Box>
-            )}
-
-            <Stack spacing={2}>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="body2" sx={{ minWidth: 60}}>
-                  Til: </Typography>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={o}
-                  onChange={(e) => setTo(e.target.value)}
-                  placeholder="mottaker@example.com"
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          onClick={() => setShowCustomerPicker(!showCustomerPicker)}
-                        >
-                          <PersonIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    )}}
-                />
-                <Button size="small" variant="text" onClick={() => setShowCcBcc(!showCcBcc)}>
-                  {showCcBcc ? 'Skjul' : 'Cc/Bcc'}
-                </Button>
-              </Stack>
-
-              {showCcBcc && (
-                <>
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Typography variant="body2" sx={{ minWidth: 60}}>
-                      Cc: </Typography>
-                    <TextField
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      value={c}
-                      onChange={(e) => setCc(e.target.value)}
-                      placeholder="kopi@example.com"
-                    />
-                  </Stack>
-
-                  <Stack direction="row" alignItems="center" spacing={2}>
-                    <Typography variant="body2" sx={{ minWidth: 60}}>
-                      Bcc: </Typography>
-                    <TextField
-                      fullWidth
-                      variant="outlined"
-                      size="small"
-                      value={bcc}
-                      onChange={(e) => setBcc(e.target.value)}
-                      placeholder="blindkopi@example.com"
-                    />
-                  </Stack>
-                </>
               )}
-
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <Typography variant="body2" sx={{ minWidth: 60}}>
-                  Emne: </Typography>
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Skriv emne her..."
-                />
-              </Stack>
-            </Stack>
-          </Box>
-
-          {/* Attachments */}
-          {attachments.length > 0 && (
-            <Box sx={{ p:  2 }}>
-              <Typography variant="body2" gutterBottom>
-                Vedlegg: </Typography>
-              <Stack spacing={1}>
-                {attachments.map((file, index) => (
-                  <Chip
-                    key={index}
-                    label={file.name}
-                    onDelete={() => removeAttachment(index)}
-                    icon={<AttachmentIcon />}
-                    variant="outlined"
-                  />
-                ))}
-              </Stack>
             </Box>
-          )}
 
-          {/* Rich Text Formatting Toolbar */}
-          <Box
-            sx={{
-              p:  2,
-              borderBottom:  1,
-              borderColor: 'divider',
-              bgcolor: 'grey.5'}}
-          >
-            <Stack spacing={2}>
-              {/* Font Controls */}
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <FormControl size="small" sx={{ minWidth: 120}}>
-                  <InputLabel>Skrifttype</InputLabel>
-                  <Select
-                    value={fontFamily}
-                    label="Skrifttype"
-                    onChange={(e) => setFontFamily(e.target.value)}
-                  >
-                    <MenuItem value="Arial">Arial</MenuItem>
-                    <MenuItem value="Times New Roman">Times New Roman</MenuItem>
-                    <MenuItem value="Helvetica">Helvetica</MenuItem>
-                    <MenuItem value="Georgia">Georgia</MenuItem>
-                    <MenuItem value="Verdana">Verdana</MenuItem>
-                    <MenuItem value="Calibri">Calibri</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControl size="small" sx={{ minWidth: 80}}>
-                  <InputLabel>Størrelse</InputLabel>
-                  <Select
-                    value={fontSize}
-                    label="Størrelse"
-                    onChange={(e) => setFontSize(e.target.value)}
-                  >
-                    <MenuItem value="10">10</MenuItem>
-                    <MenuItem value="12">12</MenuItem>
-                    <MenuItem value="14">14</MenuItem>
-                    <MenuItem value="16">16</MenuItem>
-                    <MenuItem value="18">18</MenuItem>
-                    <MenuItem value="20">20</MenuItem>
-                    <MenuItem value="24">24</MenuItem>
-                    <MenuItem value="28">28</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <Divider orientation="vertical" flexItem />
-
-                {/* Text Formatting */}
-                <ToggleButtonGroup
-                  value={formatting}
-                  onChange={(e, newFormats) => setFormatting(newFormats)}
-                  size="small"
-                >
-                  <ToggleButton value="bold" onClick={() => applyFormatting('bold')}>
-                    <FormatBoldIcon />
-                  </ToggleButton>
-                  <ToggleButton value="italic" onClick={() => applyFormatting('italic')}>
-                    <FormatItalicIcon />
-                  </ToggleButton>
-                  <ToggleButton value="underline" onClick={() => applyFormatting('underline')}>
-                    <FormatUnderlinedIcon />
-                  </ToggleButton>
-                </ToggleButtonGroup>
-
-                <Divider orientation="vertical" flexItem />
-
-                {/* Color Controls */}
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <TextField
-                    type="color"
-                    size="small"
-                    value={textColor}
-                    onChange={(e) => {
-                      setTextColor(e.target.value);
-                      applyFormatting('foreColor', e.target.value);
-                  }}
-                    sx={{ width: 50}}
-                    title="Tekstfarge"
-                  />
-                  <TextField
-                    type="color"
-                    size="small"
-                    value={backgroundColor}
-                    onChange={(e) => {
-                      setBackgroundColor(e.target.value);
-                      applyFormatting('backColor', e.target.value);
-                  }}
-                    sx={{ width: 50}}
-                    title="Bakgrunnsfarge"
-                  />
+            <Box sx={{ p: 2, overflowY: 'auto' }}>
+              {selectedEmail ? (
+                <Stack spacing={2}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="start">
+                    <Box>
+                      <Typography variant="h6">{selectedEmail.subject}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Fra {selectedEmail.from.name} ({selectedEmail.from.email})
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatDate(selectedEmail.date)}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Svar">
+                        <IconButton>
+                          <ReplyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title={selectedEmail.isStarred ? 'Fjern stjerne' : 'Stjernemerk'}>
+                        <IconButton
+                          onClick={() =>
+                            updateEmailMutation.mutate({
+                              id: selectedEmail.id,
+                              patch: { isStarred: !selectedEmail.isStarred },
+                            })
+                          }
+                        >
+                          {selectedEmail.isStarred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Arkiver">
+                        <IconButton
+                          onClick={() =>
+                            updateEmailMutation.mutate({
+                              id: selectedEmail.id,
+                              patch: { labels: Array.from(new Set([...selectedEmail.labels, 'archive'])) },
+                            })
+                          }
+                        >
+                          <ArchiveIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Slett">
+                        <IconButton onClick={() => deleteEmailMutation.mutate(selectedEmail.id)}>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Mer">
+                        <IconButton>
+                          <MoreVertIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                  <Divider />
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>
+                    {selectedEmail.body}
+                  </Typography>
                 </Stack>
-
-                <Divider orientation="vertical" flexItem />
-
-                {/* Alignment */}
-                <ToggleButtonGroup
-                  value={alignment}
-                  exclusive
-                  onChange={(e, newAlignment) => {
-                    if (newAlignment) {
-                      setAlignment(newAlignment);
-                      applyFormatting(
-                        `justify${newAlignment === 'left' ? 'Left' : newAlignment === 'center' ? 'Center' : 'Right'}`,
-                      );
-                  }
-                }}
-                  size="small"
-                >
-                  <ToggleButton value="left">
-                    <FormatAlignLeftIcon />
-                  </ToggleButton>
-                  <ToggleButton value="center">
-                    <FormatAlignCenterIcon />
-                  </ToggleButton>
-                  <ToggleButton value="right">
-                    <FormatAlignRightIcon />
-                  </ToggleButton>
-                </ToggleButtonGroup>
-
-                <Divider orientation="vertical" flexItem />
-
-                {/* Lists and Special */}
-                <ToggleButtonGroup size="small">
-                  <ToggleButton value="ul" onClick={() => applyFormatting('insertUnorderedList')}>
-                    <FormatListBulletedIcon />
-                  </ToggleButton>
-                  <ToggleButton value="ol" onClick={() => applyFormatting('insertOrderedList')}>
-                    <FormatListNumberedIcon />
-                  </ToggleButton>
-                  <ToggleButton
-                    value="link"
-                    onClick={() => {
-                      const url = prompt('Skriv inn URL: ');
-                      if (url) applyFormatting('createLink', url);
-                  }}
-                  >
-                    <LinkIcon />
-                  </ToggleButton>
-                </ToggleButtonGroup>
-
-                <Divider orientation="vertical" flexItem />
-
-                {/* Undo/Redo */}
-                <ToggleButtonGroup size="small">
-                  <ToggleButton value="undo" onClick={() => applyFormatting('undo')}>
-                    <UndoIcon />
-                  </ToggleButton>
-                  <ToggleButton value="redo" onClick={() => applyFormatting('redo')}>
-                    <RedoIcon />
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Stack>
-            </Stack>
+              ) : (
+                <Typography color="text.secondary">Velg en e-post for å lese innhold.</Typography>
+              )}
+            </Box>
           </Box>
+        </CardContent>
+      </Card>
 
-          {/* Rich Text Message Body */}
-          <Box sx={{ flex: 1, p: 2 }}>
-            <Box
-              contentEditable
-              suppressContentEditableWarning
-              onBlur={(e) => setBody(e.currentTarget.innerHTML)}
-              sx={{
-                minHeight: '300px',
-                border:  1,
-                borderColor: 'divider',
-                borderRadius:  1,
-                p:  2,
-                fontFamily: fontFamily,
-                fontSize: `${fontSize}px`,
-                color: textColor,
-                backgroundColor: backgroundColor,
-                outline: 'none',
-                cursor: 'text','&:focus': {
-                  borderColor: branding.primaryColor,
-                  borderWidth:  2,
-              }, '& p': {
-                  margin:  0,
-                  marginBottom:  1,
-              }, '& ul, & ol': {
-                  paddingLeft:  2,
-              }, '& a': {
-                  color: branding.primaryColor,
-                  textDecoration: 'underline',
-              }}}
-              dangerouslySetInnerHTML={{
-                __html: body || '<p>Skriv melding her...</p>'}}
+      <Dialog open={composeOpen} onClose={() => setComposeOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Ny e-post</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Til"
+              placeholder="kunde@firma.no"
+              value={draft.to}
+              onChange={(event) => setDraft((previous) => ({ ...previous, to: event.target.value }))}
+              fullWidth
             />
-          </Box>
-
-          {/* Signature */}
-          <Box sx={{ p: 2, bgcolor: 'grey.50'}}>
-            <Typography
-              variant="body2"
-              sx={{
-                whiteSpace: 'pre-line',
-                color: 'text.secondary',
-                fontStyle: 'italic'}}
+            <TextField
+              label="Emne"
+              value={draft.subject}
+              onChange={(event) => setDraft((previous) => ({ ...previous, subject: event.target.value }))}
+              fullWidth
+            />
+            <TextField
+              label="Melding"
+              value={draft.body}
+              onChange={(event) => setDraft((previous) => ({ ...previous, body: event.target.value }))}
+              fullWidth
+              multiline
+              minRows={10}
+            />
+            <Select
+              size="small"
+              value={profession}
+              disabled
+              fullWidth
+              renderValue={() => `Profesjonskontekst: ${getProfessionDisplayName(profession)}`}
             >
-              {branding.signature}
-            </Typography>
-          </Box>
-        </Stack>
-      </DialogContent>
-
-      <DialogActions sx={{ p: 2, justifyContent: 'space-between'}}>
-        <Stack direction="row" spacing={1}>
-          <Button component="label" startIcon={<AttachmentIcon />} variant="outlined" size="small">
-            Vedlegg
-            <input type="file" hidden multiple onChange={handleAttachmentChange} />
-          </Button>
-
-          <Button component="label" startIcon={<ImageIcon />} variant="outlined" size="small">
-            Bilder
-            <input type="file" hidden multiple accept="image/*" onChange={handleAttachmentChange} />
-          </Button>
-
+              <MenuItem value={profession}>{profession}</MenuItem>
+            </Select>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setComposeOpen(false)}>Avbryt</Button>
           <Button
-            startIcon={<EmojiEmotionsIcon />}
-            variant="outlined"
-            size="small"
-            onClick={handleEmojiClick}
-          >
-            Emoji
-          </Button>
-
-          <Button
-            startIcon={<TableChartIcon />}
-            variant="outlined"
-            size="small"
-            onClick={() => {
-              const table = `
-                <table border="1" style="border-collapse: collapse; width: 100%;, margin: 10px 0;">
-                  <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">Celle 1</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">Celle 2</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border: 1px solid #ddd;">Celle 3</td>
-                    <td style="padding: 8px; border: 1px solid #ddd;">Celle 4</td>
-                  </tr>
-                </table>
-              `;
-              applyFormatting('insertHTM', table);
-          }}
-          >
-            Tabell
-          </Button>
-
-          <Button
-            startIcon={<CodeIcon />}
-            variant="outlined"
-            size="small"
-            onClick={() => {
-              const signature = `
-                <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd;">
-                  <p style="margin: 0; font-family: Arial, sans-serif; font-size: 14px; color: #666;">
-                    ${branding.signature.split('\n').join('<br/>')}
-                  </p>
-                </div>
-              `;
-              applyFormatting('insertHTML', signature);
-          }}
-          >
-            Signatur
-          </Button>
-        </Stack>
-
-        <Stack direction="row" spacing={1}>
-          <Button onClick={onClose} variant="outlined">
-            Avbryt
-          </Button>
-          <Button onClick={handleSend}
             variant="contained"
-            startIcon={<SendIcon />}
-            disabled={!to || !subject || !body}
-            sx={{ bgcolor: branding.primaryColor }}
+            onClick={() => sendEmailMutation.mutate(draft)}
+            disabled={
+              sendEmailMutation.isPending ||
+              draft.to.trim().length === 0 ||
+              draft.subject.trim().length === 0 ||
+              draft.body.trim().length === 0
+            }
           >
             Send
           </Button>
-        </Stack>
-      </DialogActions>
+        </DialogActions>
+      </Dialog>
 
-      {/* Emoji Picker Popover */}
-      <Popover
-        open={showEmojiPicker}
-        anchorEl={emojiAnchor}
-        onClose={() => {
-          setShowEmojiPicker(false);
-          setEmojiAnchor(null);
-      }}
-        anchorOrigin={{
-          vertical: 'top',
-          horizontal: 'center'}}
-        transformOrigin={{
-          vertical: 'bottom',
-          horizontal: 'center'}}
-      >
-        <Box sx={{ p: 2, maxWidth: 40, maxHeight: 30, overflow: 'auto'}}>
-          <Typography variant="h6" sx={{  mb: 2, color: branding.primaryColor  }}>
-            Velg emoji
-          </Typography>
-
-          {Object.entries(emojiCategories).map(([category, emojis]) => (
-            <Box key={category} sx={{ mb:  2 }}>
-              <Typography
-                variant="subtitle2"
-                sx={{ mb: 1, fontWeight: 600, color: 'text.secondary'}}
-              >
-                {category}
-              </Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5}}>
-                {emojis.map((emoji, index) => (
-                  <Button
-                    key={`${category}-${index}`}
-                    onClick={() => insertEmoji(emoji)}
-                    sx={{
-                      minWidth:  32,
-                      width:  32,
-                      height:  32,
-                      p:  0,
-                      fontSize: '18px','&:hover': {
-                        backgroundColor: `${branding.primaryColor}15`,
-                        transform: 'scale(1.1, )',
-                    }}}
-                  >
-                    {emoji}
-                  </Button>
-                ))}
-              </Box>
-            </Box>
-          ))}
-        </Box>
-      </Popover>
-    </Dialog>
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Varslingsinnstillinger</DialogTitle>
+        <DialogContent>
+          <PushNotificationSettings userId={resolvedUserId} contextId="comprehensive-email-center" />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSettingsOpen(false)}>Lukk</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
-};
+}
 
-// Branding Customizer Component
-const BrandingCustomizer: React.FC<{
-  open: boolean;
-  onClose: () => void;
-  branding: any;
-  setBranding: (branding: any) => void;
-  userProfile: any;
-  profession: string
-}> = ({ open, onClose, branding, setBranding, userProfile, profession }) => {
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>
-        <Stack direction="row" alignItems="center" spacing={2}>
-          <PaletteIcon />
-          <Typography variant="h6" sx={{ color: theming.colors.primary }}>E-post Branding Tilpasning</Typography>
-        </Stack>
-      </DialogTitle>
-      <DialogContent>
-        <Grid container spacing={3} sx={{ mt:  1 }}>
-          <Grid item xs={12} md={6}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Farger
-                </Typography>
-                <Stack spacing={2}>
-                  <TextField
-                    fullWidth
-                    label="Primærfarge"
-                    type="color"
-                    value={branding.primaryColor}
-                    onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Sekundærfarge"
-                    type="color"
-                    value={branding.secondaryColor}
-                    onChange={(e) =>
-                      setBranding({
-                        ...branding,
-                        secondaryColor: e.target.value,
-                    })
-                  }
-                  />
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+function normalizeEmails(input: unknown): EmailMessage[] {
+  const items = unwrapToArray(input);
+  return items
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) {
+        return null;
+      }
+      const id = toStringOrEmpty(record.id || record.messageId);
+      const subject = toStringOrEmpty(record.subject);
+      const body = toStringOrEmpty(record.body || record.snippet);
+      if (!id || !subject) {
+        return null;
+      }
 
-          <Grid item xs={12} md={6}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Bedriftsinformasjon
-                </Typography>
-                <Stack spacing={2}>
-                  <TextField
-                    fullWidth
-                    label="Bedriftsnavn"
-                    value={branding.companyName}
-                    onChange={(e) => setBranding({ ...branding, companyName: e.target.value })}
-                  />
-                  <TextField
-                    fullWidth
-                    label="Logo URL"
-                    value={branding.logo}
-                    onChange={(e) => setBranding({ ...branding, logo: e.target.value })}
-                    placeholder={userProfile?.profileImageUrl || 'Last opp logo'}
-                  />
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+      const fromRecord = asRecord(record.from);
+      const toRaw = Array.isArray(record.to) ? record.to : [];
+      const labelsRaw = Array.isArray(record.labels) ? record.labels : [];
+      return {
+        id,
+        from: {
+          name: toStringOrEmpty(fromRecord?.name) || toStringOrEmpty(fromRecord?.email) || 'Ukjent',
+          email: toStringOrEmpty(fromRecord?.email) || 'ukjent@ukjent.no',
+          avatar: toStringOrUndefined(fromRecord?.avatar),
+        },
+        to: toRaw.map((entry) => String(entry)),
+        subject,
+        body,
+        date: toStringOrEmpty(record.date) || new Date().toISOString(),
+        isRead: Boolean(record.isRead),
+        isStarred: Boolean(record.isStarred),
+        hasAttachments: Boolean(record.hasAttachments),
+        labels: labelsRaw.map((entry) => String(entry)),
+      } satisfies EmailMessage;
+    })
+    .filter((email): email is EmailMessage => email !== null);
+}
 
-          <Grid item xs={12}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  E-post Signatur
-                </Typography>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={4}
-                  label="Signatur"
-                  value={branding.signature}
-                  onChange={(e) => setBranding({ ...branding, signature: e.target.value })}
-                />
-              </CardContent>
-            </Card>
-          </Grid>
+function unwrapToArray(input: unknown): unknown[] {
+  if (Array.isArray(input)) {
+    return input;
+  }
+  const record = asRecord(input);
+  if (!record) {
+    return [];
+  }
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+  if (Array.isArray(record.emails)) {
+    return record.emails;
+  }
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+  return [];
+}
 
-          <Grid item xs={12}>
-            <Card sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-                  Forhåndsvisning
-                </Typography>
-                <Box
-                  sx={{
-                    p:  2,
-                    border:  1,
-                    borderColor: 'divider',
-                    borderRadius:  1,
-                    bgcolor: 'grey.5'}}
-                >
-                  <Box
-                    sx={{
-                      p:  2,
-                      bgcolor: branding.primaryColor,
-                      color: 'white',
-                      borderRadius: '4px 4px 0 0',
-                      textAlign: 'center'}}
-                  >
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>{branding.companyName}</Typography>
-                  </Box>
-                  <Box sx={{ p: 2, bgcolor: 'white', borderRadius: '0 0 4px 4px'}}>
-                    <Typography variant="body1" sx={{ mb:  2 }}>
-                      Hei [Kundenavn],
-                    </Typography>
-                    <Typography variant="body1" sx={{ mb:  2 }}>
-                      Dette er et eksempel på hvordan e-postene dine vil se ut med den nye
-                      brandingen.
-                    </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        whiteSpace: 'pre-line',
-                        mt:  2,
-                        pt:  2,
-                        borderTop:  1,
-                        borderColor: 'divider',
-                        color: 'text.secondary'}}
-                    >
-                      {branding.signature}
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Avbryt</Button>
-        <Button variant="contained" onClick={onClose} sx={theming.getThemedButtonSx()}>
-          Lagre Branding
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
+function asRecord(input: unknown): Record<string, unknown> | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return null;
+  }
+  return input as Record<string, unknown>;
+}
 
-// Mock data - replace with real API calls
-const mockEmails: EmailMessage[] = [
-  {
-    id: ', ',
-    from: {
-      name: 'Mildred Wilson',
-      email: 'mildred@example.com',
-      avatar: 'https://i.pravatar.cc/150?img=',
-  },
-    to: ['you@creatorhubn.com', ],
-    subject: 'New project brief',
-    body: 'Hi Eric,\n\nA design is a plan or specification for the construction of an object or system or for the implementation of an activity or process...',
-    date: '2025-01-14T10:30:0',
-    isRead: false,
-    isStarred: true,
-    hasAttachments: true,
-    labels: [', '],
-    threadId: 'thread-',
-},
-  {
-    id: '',
-    from: {
-      name: 'Rita Mendez',
-      email: 'rita@example.com',
-      avatar: 'https://i.pravatar.cc/150?img=',
-  },
-    to: ['you@creatorhubn.com', ],
-    subject: 'New Updates',
-    body: 'The person who develops a design is called a designer, which is a term generally used for people who work professionally in one of the various design areas...',
-    date: '2025-01-14T09:15:0',
-    isRead: true,
-    isStarred: false,
-    hasAttachments: false,
-    labels: [''],
-    threadId: 'thread-',
-},
-  {
-    id: '',
-    from: {
-      name: 'Felix Harper',
-      email: 'felix@example.com',
-      avatar: 'https://i.pravatar.cc/150?img=',
-  },
-    to: ['you@creatorhubn.com', ],
-    subject: 'Reconstruction',
-    body: 'Substantial disagreement exists concerning how designers in many fields, whether amateur or professional, alone or in teams...',
-    date: '2025-01-14T08:45:0',
-    isRead: true,
-    isStarred: false,
-    hasAttachments: false,
-    labels: [', '],
-    threadId:'thread-',
-},
-];
+function toStringOrEmpty(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
 
-export default ComprehensiveEmailCenter;
+function toStringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function formatDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) {
+    return isoDate;
+  }
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) {
+    return date.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' });
+  }
+  return date.toLocaleDateString('nb-NO', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}

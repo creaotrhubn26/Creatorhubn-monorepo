@@ -30,7 +30,7 @@ export async function inspectMaleFashionCollection(): Promise<void> {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n,');
     
     info.meshes.forEach((mesh, index) => {
-      const id = mesh.name.toLowerCase().replace(/[^a-z0-9]/g'_');
+      const id = mesh.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
       console.log(`{
   id: 'male_${id}',
   name: '${mesh.name}',
@@ -119,4 +119,3 @@ if (typeof window !=='undefined') {
   console.log('   Run: inspectHairModels.testHairModelLoading()');
   console.log('   Run: inspectHairModels.inspectMaleFashionCollection()');
 }
-

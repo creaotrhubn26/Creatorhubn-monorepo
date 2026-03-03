@@ -18,7 +18,6 @@ import {
   CardContent,
   Button,
   Grid,
-  Avatar,
   Chip,
 } from '@mui/material';
 import { Download as DownloadIcon, Visibility as ViewIcon, AccountBalance as SplitSheetIcon } from '@mui/icons-material';
@@ -93,7 +92,7 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
 
       <Container maxWidth="lg" sx={{ py: 4 }}>
         {/* Welcome Section */}
-        <Card sx={{ mb: 4, borderTop: `4px solid ${brandColor}` }>
+        <Card sx={{ mb: 4, borderTop: `4px solid ${brandColor}` }}>
           <CardContent>
             <Typography variant="h4" gutterBottom sx={{ color: brandColor }}>
               Hei, {clientName}! 👋
@@ -103,7 +102,7 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
             </Typography>
             {message && (
               <Typography variant="body1" sx={{ mt: 2 }}>
-                {message}}
+                {message}
               </Typography>
             )}
           </CardContent>
@@ -117,13 +116,17 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
               onChange={(_, newValue) => setActiveTab(newValue)}
               sx={{
                 borderBottom: 1,
-                borderColor: 'divider', '& .MuiTab-root': {
-                  color: 'text.secondary','&.Mui-selected': {
+                borderColor: 'divider',
+                '& .MuiTab-root': {
+                  color: 'text.secondary',
+                  '&.Mui-selected': {
                     color: brandColor,
                   },
-                }, '& .MuiTabs-indicator': {
+                },
+                '& .MuiTabs-indicator': {
                   bgcolor: brandColor,
-                }}}
+                },
+              }}
             >
               <Tab label="Dine filer" icon={<ViewIcon />} iconPosition="start" />
               <Tab label="Split Sheets" icon={<SplitSheetIcon />} iconPosition="start" />
@@ -144,10 +147,12 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
                   <Card
                     sx={{
                       height: '100%',
-                      transition: 'transform 0.2s','&:hover': {
+                      transition: 'transform 0.2s',
+                      '&:hover': {
                         transform: 'translateY(-4px)',
                         boxShadow: `0 8px 24px ${getBrandedBackground(0.2)}`,
-                      }}}
+                      },
+                    }}
                   >
                     <Box
                       sx={{
@@ -156,7 +161,8 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
                         bgcolor: 'grey.200',
                         backgroundImage: `url(${item.thumbnail})`,
                         backgroundSize: 'cover',
-                        backgroundPosition: 'center' }
+                        backgroundPosition: 'center',
+                      }}
                     >
                       <Chip
                         label={item.type}
@@ -177,7 +183,7 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
                           size="small"
                           variant="outlined"
                           startIcon={<ViewIcon />}
-                          sx={{ borderColor: brandColor, color: brandColor }
+                          sx={{ borderColor: brandColor, color: brandColor }}
                           fullWidth
                         >
                           Vis
@@ -185,8 +191,11 @@ export const BrandedClientPortal: React.FC<BrandedClientPortalProps> = ({
                         <Button
                           size="small"
                           variant="contained"
-                          startIcon={<DownloadIcon />}}
-                          sx={{ bgcolor: brandColor'&:hover': { bgcolor: brandColor } }
+                          startIcon={<DownloadIcon />}
+                          sx={{
+                            bgcolor: brandColor,
+                            '&:hover': { bgcolor: brandColor },
+                          }}
                           fullWidth
                           href={item.downloadUrl}
                           download

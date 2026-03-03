@@ -776,13 +776,13 @@ const VirtualStudioInner: React.FC = () => {
     // --- Lens Events ---
     const handleLensAttached = (e: CustomEvent) => {
       const { cameraId, lensId, lens } = e.detail;
-      log.debug('Lens attached:', lensId'to camera:', cameraId);
-      addToast({ message: `Lens, attached: ${lens?.name || lensId}`, type: 'success' });
+      log.debug('Lens attached:', lensId, 'to camera:', cameraId);
+      addToast({ message: `Lens attached: ${lens?.name || lensId}`, type: 'success' });
     };
 
     const handleLensDetached = (e: CustomEvent) => {
       const { cameraId, lensId } = e.detail;
-      log.debug('Lens detached:', lensId'from camera:', cameraId);
+      log.debug('Lens detached:', lensId, 'from camera:', cameraId);
       addToast({ message: 'Lens detached', type: 'info' });
     };
 

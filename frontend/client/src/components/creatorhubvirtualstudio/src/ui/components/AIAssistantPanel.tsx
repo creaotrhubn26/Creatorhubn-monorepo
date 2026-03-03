@@ -266,12 +266,14 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
                   disableGutters
                   elevation={0}
                   sx={{
-                    bgcolor: 'transparent', '&:before': { display: 'none' },
-                    mt: 0.5}}
+                    bgcolor: 'transparent',
+                    '&:before': { display: 'none' },
+                    mt: 0.5,
+                  }}
                 >
                   <AccordionSummary
                     expandIcon={<ExpandIcon sx={{ fontSize: 16 }} />}
-                    sx={{ minHeight: 0, px: 0'& .MuiAccordionSummary-content': { my: 0.5 } }}
+                    sx={{ minHeight: 0, px: 0, '& .MuiAccordionSummary-content': { my: 0.5 } }}
                   >
                     <Typography variant="caption" sx={{ fontSize: 10, color: '#1976d2', fontWeight: 500}}>
                       Why this matters
@@ -412,4 +414,3 @@ export function AIAssistantPanel({ lights, onApplyRecommendation, imageUrl }: AI
     </Paper>
   );
 }
-

@@ -586,7 +586,7 @@ export const CharacterModelLoader: React.FC = () => {
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption">Skin Tone</Typography>
             <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-              {['#FFDAB9','#F0C19F','#D4A574''#8D5524', '#4A2C2A'].map((color) => (
+              {['#FFDAB9', '#F0C19F', '#D4A574', '#8D5524', '#4A2C2A'].map((color) => (
                 <Box
                   key={color}
                   onClick={() => setSkinTone(color)}

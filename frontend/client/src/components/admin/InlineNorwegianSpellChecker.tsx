@@ -118,7 +118,7 @@ export default function InlineNorwegianSpellChecker({
       const response = await apiRequest('/api/admin/norwegian/spell-check', {
         method: 'POST',
         headers: {
-          ...headers, , 'Content-Type': 'application/json'
+          ...headers, 'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           text: plainText,
@@ -158,7 +158,7 @@ export default function InlineNorwegianSpellChecker({
   // Handle ignore word
   const handleIgnore = useCallback(
     (word: string) => {
-      setIgnoredWords((prev) => new Set(prev).add(word);
+      setIgnoredWords((prev) => new Set(prev).add(word));
       setErrors((prev) => prev.filter((e) => e.word !== word));
       onIgnore?.(word);
     },
@@ -273,7 +273,7 @@ export default function InlineNorwegianSpellChecker({
                         : error.type === 'grammar'
                           ? 'warning.light'
                           : 'info.light',
-                    opacity: 0.95
+                    opacity: 0.95,
                     border: '1px solid',
                     borderColor: error.type === 'spelling'
                         ? 'error.main'
@@ -315,9 +315,9 @@ export default function InlineNorwegianSpellChecker({
                     <Box
                       sx={{
                         bgcolor: 'background.paper',
-                        p: 0.75
-                        borderRadius: 0.5
-                       , border: '1px solid',
+                        p: 0.75,
+                        borderRadius: 0.5,
+                        border: '1px solid',
                         borderColor: 'divider'}}
                     >
                       <Typography

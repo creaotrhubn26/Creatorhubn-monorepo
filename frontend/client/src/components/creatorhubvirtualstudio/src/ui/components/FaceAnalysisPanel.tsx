@@ -51,7 +51,7 @@ import {
 } from '../../services/FaceAnalysisEnhancements';
 import { faceAnalysisHistory, type AnalysisSnapshot } from '../../services/FaceAnalysisHistory';
 
-const log = logger.module('FaceAnalysisPanel, ');
+const log = logger.module('FaceAnalysisPanel');
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -107,7 +107,7 @@ export function FaceAnalysisPanel() {
   // Background analysis
   const backgroundIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastBackgroundAnalysisRef = useRef<number>(0);
-  const lastSceneHashRef = useRef<string>(', ');
+  const lastSceneHashRef = useRef<string>('');
   const isAnalyzingRef = useRef<boolean>(false);
   const backgroundTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -243,7 +243,7 @@ export function FaceAnalysisPanel() {
             // Run lightweight analysis (headpose only for speed)
             // Using 'trained' model (latest fine-tuned version)
             log.debug('Running background analysis (scene changed)...');
-            const result = await faceXFormerService.analyzeFace(imageFile, 'headpose','trained');
+            const result = await faceXFormerService.analyzeFace(imageFile, 'headpose', 'trained');
             
             if (result?.results?.headpose) {
               lastBackgroundAnalysisRef.current = Date.now();
@@ -337,7 +337,7 @@ export function FaceAnalysisPanel() {
         clearTimeout(backgroundTimeoutRef.current);
         backgroundTimeoutRef.current = null;
       }
-      lastSceneHashRef.current = ', ';
+      lastSceneHashRef.current = '';
       isAnalyzingRef.current = false;
     }
     
@@ -375,7 +375,7 @@ export function FaceAnalysisPanel() {
           
           // Run analysis with headpose only for real-time (faster)
           // Using 'trained' model (latest fine-tuned version)
-          const result = await faceXFormerService.analyzeFace(imageFile, 'headpose','trained');
+          const result = await faceXFormerService.analyzeFace(imageFile, 'headpose', 'trained');
           
           if (result?.results?.headpose) {
             // Apply only camera adjustment for real-time (lighting changes can be jarring)
@@ -530,7 +530,7 @@ export function FaceAnalysisPanel() {
 
     try {
       // Convert captured image to File
-      const imageFile = dataURLtoFile(capturedImage'scene-capture.png');
+      const imageFile = dataURLtoFile(capturedImage, 'scene-capture.png');
       
       // Use 'all' if selected, otherwise use first selected task
       const task = selectedTasks.has('all') ? 'all' : Array.from(selectedTasks)[0];
@@ -554,7 +554,7 @@ export function FaceAnalysisPanel() {
       }
       
       // Using 'trained' model (latest fine-tuned version)
-      const result = await faceXFormerService.analyzeFace(imageFile, task'trained');
+      const result = await faceXFormerService.analyzeFace(imageFile, task, 'trained');
       
       // Enhance result with SAM 2 mask if available
       if (sam2FaceMask && result.results) {
@@ -970,7 +970,7 @@ export function FaceAnalysisPanel() {
                 <Button
                   size="small"
                   startIcon={<DownloadIcon />}
-                  onClick={() => handleDownload(results.results.face'face.png')}
+                  onClick={() => handleDownload(results.results.face, 'face.png')}
                   sx={{ mt: 1 }}
                 >
                   Download
@@ -1001,7 +1001,8 @@ export function FaceAnalysisPanel() {
                   startIcon={<DownloadIcon />}
                   onClick={() =>
                     handleDownload(
-                      results.results.parsing_visualization || results.results.parsing'parsing.png'
+                      results.results.parsing_visualization || results.results.parsing,
+                      'parsing.png'
                     )
                   }
                   sx={{ mt: 1 }}
@@ -1036,7 +1037,8 @@ export function FaceAnalysisPanel() {
                   startIcon={<DownloadIcon />}
                   onClick={() =>
                     handleDownload(
-                      results.results.landmarks_visualization || results.results.face'landmarks.png'
+                      results.results.landmarks_visualization || results.results.face,
+                      'landmarks.png'
                     )
                   }
                   sx={{ mt: 1 }}
@@ -1084,7 +1086,9 @@ export function FaceAnalysisPanel() {
                   startIcon={<DownloadIcon />}
                   onClick={() =>
                     handleDownload(
-                      results.results.headpose_visualization || results.results.face'headpose.png')
+                      results.results.headpose_visualization || results.results.face,
+                      'headpose.png'
+                    )
                   }
                   sx={{ mt: 1 }}
                 >
@@ -1126,5 +1130,4 @@ export function FaceAnalysisPanel() {
     </Box>
   );
 }
-
 

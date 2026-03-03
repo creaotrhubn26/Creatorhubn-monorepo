@@ -343,7 +343,7 @@ export default function PrototypeFeedbackPanel({
   const queryClient = useQueryClient();
 
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
 
   // Enhanced Master Integration for advanced features
   const { analytics, performance, debugging, lifecycle, auth } = useEnhancedMasterIntegration();
@@ -379,7 +379,7 @@ export default function PrototypeFeedbackPanel({
       totalFeedback: feedbackList.length
     });
 
-    debugging.logIntegration('info, ','PrototypeFeedbackPanel initialized with enhanced features', {
+    debugging.logIntegration('info', 'PrototypeFeedbackPanel initialized with enhanced features', {
       professionFilterEnabled: true,
       groupingEnabled: true,
       searchEnabled: true,

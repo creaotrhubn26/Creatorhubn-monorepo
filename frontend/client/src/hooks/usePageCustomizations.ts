@@ -423,8 +423,8 @@ export function usePageConnections(pageId: string) {
   });
 
   const saveConnectionMutation = useMutation({
-    mutationFn: async ({ connectionId, ...connectionData }: WiringConnection) => {
-      return apiRequest(`/api/admin/pages/${pageId}/connections/${connectionId}`, {
+    mutationFn: async ({ id, ...connectionData }: WiringConnection) => {
+      return apiRequest(`/api/admin/pages/${pageId}/connections/${id}`, {
         method: 'PUT',
         body: JSON.stringify(connectionData),
       });
@@ -457,4 +457,3 @@ export function usePageConnections(pageId: string) {
 }
 
 export default usePageCustomizations;
-

@@ -119,7 +119,7 @@ export default function GoogleDriveDocsBridge({
   
   // 📁 Fetch Google Drive folders
   const { data: driveFolders = [], isLoading: foldersLoading } = useQuery({
-    queryKey: ['google-drive-folders,', userId],
+    queryKey: ['google-drive-folders', userId],
     queryFn: async () => {
       if (!canUseDrive) return [];
       

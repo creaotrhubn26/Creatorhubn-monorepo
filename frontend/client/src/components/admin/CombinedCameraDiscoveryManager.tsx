@@ -1,53 +1,48 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Badge,
   Box,
   Button,
-  Typography,
-  Paper,
+  Card,
+  CardActions,
+  CardContent,
+  Chip,
   CircularProgress,
-  Alert,
+  FormControlLabel,
+  Grid,
   List,
   ListItem,
-  ListItemText,
   ListItemIcon,
-  Chip,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  Divider,
+  ListItemText,
+  Paper,
   Switch,
-  FormControlLabel,
-  Badge,
-  Tooltip,
-  IconButton,
-  Tabs,
   Tab,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
+  Tabs,
+  Typography,
 } from '@mui/material';
 import {
-  Refresh,
-  NewReleases,
-  Update,
-  CameraAlt,
-  CheckCircle,
-  Error,
-  Info,
-  Settings,
   AutoAwesome,
-  Videocam,
+  CheckCircle,
+  Error as ErrorIcon,
+  NewReleases,
   PhotoCamera,
-  ExpandMore,
-  TrendingUp,
-  Timeline,
+  Refresh,
+  Update,
+  Videocam,
 } from '@mui/icons-material';
-import { videoCameraDiscovery, VideoCameraDiscoveryResult } from '../../data/video-camera-discovery';
-import { photoCameraDiscovery, CameraDiscoveryResult } from '../../data/photo-camera-discovery';
-import { Camera } from '../../data/video-camera-database';
-import { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
+import { useTheming } from '../../utils/theming-helper';
+import {
+  photoCameraDiscovery,
+  type CameraDiscoveryResult,
+  type CameraDiscoveryStatus,
+} from '../../data/photo-camera-discovery';
+import {
+  videoCameraDiscovery,
+  type VideoCameraDiscoveryResult,
+  type VideoCameraDiscoveryStatus,
+} from '../../data/video-camera-discovery';
+import type { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
+import type { Camera as VideoCameraType } from '../../data/video-camera-database';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -55,350 +50,277 @@ interface TabPanelProps {
   value: number;
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-
+function TabPanel({ children, value, index }: TabPanelProps) {
   return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`camera-tabpanel-${index}`}
-      aria-labelledby={`camera-tab-${index}`}
-      {...other}
-    >
+    <div role="tabpanel" hidden={value !== index} id={`camera-tabpanel-${index}`}>
       {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   );
 }
 
 interface CombinedCameraDiscoveryManagerProps {
-  onVideoCameraUpdate?: (cameras: Camera[]) => void;
+  onVideoCameraUpdate?: (cameras: VideoCameraType[]) => void;
   onPhotoCameraUpdate?: (cameras: PhotoCameraType[]) => void;
 }
 
-export const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerProps> = ({
+const emptyVideoStatus: VideoCameraDiscoveryStatus = {
+  totalSources: 0,
+  enabledSources: 0,
+  lastUpdate: '',
+  totalCameras: 0,
+  newCameras: 0,
+  recentlyUpdated: 0,
+  inserted: 0,
+  updated: 0,
+  rejected: 0,
+  conflicts: 0,
+  logFormats: [],
+  brands: [],
+};
+
+const emptyPhotoStatus: CameraDiscoveryStatus = {
+  totalSources: 0,
+  enabledSources: 0,
+  lastUpdate: '',
+  totalCameras: 0,
+  newCameras: 0,
+  recentlyUpdated: 0,
+  inserted: 0,
+  updated: 0,
+  rejected: 0,
+  conflicts: 0,
+};
+
+const formatDate = (value?: string): string => {
+  if (!value) return 'Aldri';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Aldri';
+  return parsed.toLocaleString('nb-NO');
+};
+
+const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryManagerProps> = ({
   onVideoCameraUpdate,
-  onPhotoCameraUpdate
+  onPhotoCameraUpdate,
 }) => {
-  // Theming system
   const theming = useTheming('prototype_tester');
   const [activeTab, setActiveTab] = useState(0);
   const [isDiscovering, setIsDiscovering] = useState(false);
-  const [videoResults, setVideoResults] = useState<VideoCameraDiscoveryResult[]>([]);
-  const [photoResults, setPhotoResults] = useState<CameraDiscoveryResult[]>([]);
-  const [videoNewCameras, setVideoNewCameras] = useState<Camera[]>([]);
-  const [photoNewCameras, setPhotoNewCameras] = useState<PhotoCameraType[]>([]);
-  const [videoRecentlyUpdated, setVideoRecentlyUpdated] = useState<Camera[]>([]);
-  const [photoRecentlyUpdated, setPhotoRecentlyUpdated] = useState<PhotoCameraType[]>([]);
-  const [videoStatus, setVideoStatus] = useState<any>(null);
-  const [photoStatus, setPhotoStatus] = useState<any>(null);
   const [showNewOnly, setShowNewOnly] = useState(false);
 
-  useEffect(() => {
-    // Load initial data
-    loadDiscoveryData();
-    
-    // Subscribe to updates if methods exist
-    const videoDiscovery = videoCameraDiscovery as any;
-    const photoDiscovery = photoCameraDiscovery as any;
-    
-    if (typeof videoDiscovery.onCameraUpdate === 'function') {
-      videoDiscovery.onCameraUpdate(handleVideoCameraUpdate);
-    }
-    if (typeof photoDiscovery.onCameraUpdate === 'function') {
-      photoDiscovery.onCameraUpdate(handlePhotoCameraUpdate);
-    }
-    
-    return () => {
-      if (typeof videoDiscovery.offCameraUpdate === 'function') {
-        videoDiscovery.offCameraUpdate(handleVideoCameraUpdate);
-      }
-      if (typeof photoDiscovery.offCameraUpdate === 'function') {
-        photoDiscovery.offCameraUpdate(handlePhotoCameraUpdate);
-      }
-    };
+  const [videoResults, setVideoResults] = useState<VideoCameraDiscoveryResult[]>([]);
+  const [photoResults, setPhotoResults] = useState<CameraDiscoveryResult[]>([]);
+  const [videoStatus, setVideoStatus] = useState<VideoCameraDiscoveryStatus>(emptyVideoStatus);
+  const [photoStatus, setPhotoStatus] = useState<CameraDiscoveryStatus>(emptyPhotoStatus);
+  const [videoNew, setVideoNew] = useState<VideoCameraType[]>([]);
+  const [videoRecent, setVideoRecent] = useState<VideoCameraType[]>([]);
+  const [photoNew, setPhotoNew] = useState<PhotoCameraType[]>([]);
+  const [photoRecent, setPhotoRecent] = useState<PhotoCameraType[]>([]);
+
+  const loadDiscoveryData = useCallback(() => {
+    const nextVideoStatus = videoCameraDiscovery.getDiscoveryStatus();
+    const nextPhotoStatus = photoCameraDiscovery.getDiscoveryStatus();
+
+    setVideoStatus(nextVideoStatus);
+    setPhotoStatus(nextPhotoStatus);
+
+    setVideoNew(videoCameraDiscovery.getCamerasByStatus('new'));
+    setVideoRecent(videoCameraDiscovery.getCamerasByStatus('recently-updated'));
+    setPhotoNew(photoCameraDiscovery.getCamerasByStatus('new'));
+    setPhotoRecent(photoCameraDiscovery.getCamerasByStatus('recently-updated'));
   }, []);
 
-  const loadDiscoveryData = () => {
-    const videoDiscovery = videoCameraDiscovery as any;
-    const photoDiscovery = photoCameraDiscovery as any;
-    
-    // Get discovery status if methods exist
-    const videoStatus = typeof videoDiscovery.getDiscoveryStatus === 'function' 
-      ? videoDiscovery.getDiscoveryStatus() 
-      : null;
-    const photoStatus = typeof photoDiscovery.getDiscoveryStatus === 'function' 
-      ? photoDiscovery.getDiscoveryStatus() 
-      : null;
-    
-    setVideoStatus(videoStatus);
-    setPhotoStatus(photoStatus);
-    
-    // Get cameras by status if methods exist
-    const videoNew = typeof videoDiscovery.getCamerasByStatus === 'function'
-      ? videoDiscovery.getCamerasByStatus('new,')
-      : [];
-    const videoRecent = typeof videoDiscovery.getCamerasByStatus === 'function'
-      ? videoDiscovery.getCamerasByStatus('recently-updated')
-      : [];
-    const photoNew = typeof photoDiscovery.getCamerasByStatus === 'function'
-      ? photoDiscovery.getCamerasByStatus('new')
-      : [];
-    const photoRecent = typeof photoDiscovery.getCamerasByStatus === 'function'
-      ? photoDiscovery.getCamerasByStatus('recently-updated')
-      : [];
-    
-    setVideoNewCameras(videoNew);
-    setVideoRecentlyUpdated(videoRecent);
-    setPhotoNewCameras(photoNew);
-    setPhotoRecentlyUpdated(photoRecent);
-  };
+  useEffect(() => {
+    const handleVideoUpdate = (cameras: VideoCameraType[]) => {
+      onVideoCameraUpdate?.(cameras);
+      loadDiscoveryData();
+    };
 
-  const handleVideoCameraUpdate = (cameras: Camera[]) => {
-    setVideoNewCameras(prev => [...prev, ...cameras]);
-    onVideoCameraUpdate?.(cameras);
-    loadDiscoveryData();
-};
+    const handlePhotoUpdate = (cameras: PhotoCameraType[]) => {
+      onPhotoCameraUpdate?.(cameras);
+      loadDiscoveryData();
+    };
 
-  const handlePhotoCameraUpdate = (cameras: PhotoCameraType[]) => {
-    setPhotoNewCameras(prev => [...prev, ...cameras]);
-    onPhotoCameraUpdate?.(cameras);
+    videoCameraDiscovery.onCameraUpdate(handleVideoUpdate);
+    photoCameraDiscovery.onCameraUpdate(handlePhotoUpdate);
     loadDiscoveryData();
-};
+
+    return () => {
+      videoCameraDiscovery.offCameraUpdate(handleVideoUpdate);
+      photoCameraDiscovery.offCameraUpdate(handlePhotoUpdate);
+    };
+  }, [loadDiscoveryData, onPhotoCameraUpdate, onVideoCameraUpdate]);
 
   const handleTriggerDiscovery = async () => {
     setIsDiscovering(true);
     try {
-      const videoDiscovery = videoCameraDiscovery as any;
-      const photoDiscovery = photoCameraDiscovery as any;
-      const promises = [];
-      
-      if (typeof videoDiscovery.triggerDiscovery === 'function') {
-        promises.push(videoDiscovery.triggerDiscovery());
-      } else {
-        promises.push(Promise.resolve([]));
-      }
-      
-      if (typeof photoDiscovery.triggerDiscovery === 'function') {
-        promises.push(photoDiscovery.triggerDiscovery());
-      } else {
-        promises.push(Promise.resolve([]));
-      }
-      
-      const [videoResults, photoResults] = await Promise.all(promises);
-      setVideoResults(videoResults);
-      setPhotoResults(photoResults);
+      const [nextVideoResults, nextPhotoResults] = await Promise.all([
+        videoCameraDiscovery.triggerDiscovery(),
+        photoCameraDiscovery.triggerDiscovery(),
+      ]);
+      setVideoResults(nextVideoResults);
+      setPhotoResults(nextPhotoResults);
       loadDiscoveryData();
-    } catch (error) {
-      console.error('Discovery failed: ', error);
     } finally {
       setIsDiscovering(false);
     }
   };
 
-  const getStatusIcon = (success: boolean) => {
-    return success ? <CheckCircle color="success" /> : <Error color="error" />;
-};
+  const renderDiscoveryResults = (
+    results: Array<VideoCameraDiscoveryResult | CameraDiscoveryResult>,
+    title: string
+  ) => {
+    if (results.length === 0) return null;
 
-  const getStatusColor = (success: boolean) => {
-    return success ? 'success' : 'error';
-};
+    return (
+      <Paper sx={{ p: 3, mb: 3 }} component="div">
+        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
+          {title}
+        </Typography>
+        <List>
+          {results.map((result, index) => (
+            <ListItem key={`${result.source}-${result.timestamp}-${index}`}>
+              <ListItemIcon>
+                {result.success ? <CheckCircle color="success" /> : <ErrorIcon color="error" />}
+              </ListItemIcon>
+              <ListItemText
+                primary={result.source}
+                secondary={
+                  result.success
+                    ? `Inn: ${result.inserted ?? 0}, Oppdatert: ${result.updated ?? 0}, Avvist: ${result.rejected ?? 0}, Konflikter: ${result.conflicts ?? 0}`
+                    : `Feil: ${result.error ?? 'Ukjent feil'}`
+                }
+              />
+              <Chip
+                size="small"
+                color={result.success ? 'success' : 'error'}
+                label={result.success ? 'Synk fullført' : 'Synk feilet'}
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Paper>
+    );
+  };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-};
+  const renderCameraCard = (
+    camera: VideoCameraType | PhotoCameraType,
+    isVideo: boolean
+  ) => {
+    const addedLabel = camera.addedDate ? formatDate(camera.addedDate) : formatDate(camera.lastSeenAt);
 
-  const getCameraStatusChips = (camera: Camera | PhotoCameraType) => {
-    const chips = [];
-    
-    if (camera.isNew) {
-      chips.push(
-        <Chip
-          key="new"
-          icon={<NewReleases />}
-          label="NEW"
-          color="primary"
-          size="small"
-          sx={{ mr: 1 }}
-        />
-      );
-  }
-    
-    if (camera.isRecentlyUpdated) {
-      chips.push(
-        <Chip
-          key="updated"
-          icon={<Update />}
-          label="UPDATED"
-          color="secondary"
-          size="small"
-          sx={{ mr: 1 }}
-        />
-      );
-  }
-    
-    if (camera.source === 'api') {
-      chips.push(
-        <Chip
-          key="auto"
-          icon={<AutoAwesome />}
-          label="AUTO-DISCOVERED"
-          color="info"
-          size="small"
-        />
-      );
-  }
-    
-    return chips;
-};
-
-  const renderCameraCard = (camera: Camera | PhotoCameraType, isVideo: boolean) => (
-    <Grid item xs={12} sm={6} md={4} key={camera.id}>
-      <Card sx={theming.getThemedCardSx()}>
-        <CardContent sx={theming.getThemedCardSx()}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              {isVideo ? <Videocam color="primary" sx={{ mr: 1 }} /> : <PhotoCamera color="secondary" sx={{ mr: 1 }} />}
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+    return (
+      <Grid item xs={12} sm={6} md={4} key={camera.id}>
+        <Card sx={theming.getThemedCardSx()}>
+          <CardContent sx={theming.getThemedCardSx()}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              {isVideo ? <Videocam color="primary" /> : <PhotoCamera color="secondary" />}
+              <Typography variant="subtitle1" sx={{ color: theming.colors.primary, fontWeight: 700 }}>
                 {camera.brand} {camera.model}
               </Typography>
             </Box>
-            <Box>
-              {getCameraStatusChips(camera)}
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {camera.description}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1 }}>
+              {camera.isNew && <Chip size="small" icon={<NewReleases />} label="Ny" color="primary" />}
+              {camera.isRecentlyUpdated && <Chip size="small" icon={<Update />} label="Oppdatert" color="secondary" />}
+              {camera.source && camera.source !== 'manual' && (
+                <Chip size="small" icon={<AutoAwesome />} label={camera.source.toUpperCase()} variant="outlined" />
+              )}
             </Box>
-          </Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {camera.description}
-          </Typography>
-          {isVideo && 'logFormats' in camera && camera.logFormats && camera.logFormats.length > 0 && (
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="caption" color="text.secondary">
-                LOG: {camera.logFormats.join(', ')}
-              </Typography>
-            </Box>
-          )}
-          <Typography variant="caption" color="text.secondary">
-            Added: {formatDate(camera.addedDate)}
-          </Typography>
-        </CardContent>
-        <CardActions sx={theming.getThemedCardSx()}>
-          <Button size="small">View Details</Button>
-          <Button size="small">Add to Favorites</Button>
-        </CardActions>
-      </Card>
-    </Grid>
-  );
+            <Typography variant="caption" color="text.secondary">
+              Sist sett: {formatDate(camera.lastSeenAt)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Lagt til: {addedLabel}
+            </Typography>
+          </CardContent>
+          <CardActions sx={theming.getThemedCardSx()}>
+            <Button size="small">Detaljer</Button>
+          </CardActions>
+        </Card>
+      </Grid>
+    );
+  };
 
-  const renderDiscoveryResults = (results: any[], title: string) => (
-    <Paper sx={{ p: 3, mb: 3 }} component="div">
-      <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-        {title}
-      </Typography>
-      <List>
-        {results.map((result, index) => (
-          <ListItem key={index}>
-            <ListItemIcon>
-              {getStatusIcon(result.success)}
-            </ListItemIcon>
-            <ListItemText
-              primary={result.source}
-              secondary={
-                result.success 
-                  ? `Found ${result.cameras.length} cameras at ${formatDate(result.timestamp)}`
-                  : `Error: ${result.error}`
-            }
-            />
-            <Chip
-              label={result.success ? 'Success' : 'Failed'}
-              color={getStatusColor(result.success)}
-              size="small"
-            />
-          </ListItem>
-        ))}
-      </List>
-    </Paper>
-  );
+  const filteredVideoCameras = useMemo(() => {
+    if (!showNewOnly) return videoCameraDiscovery.getCamerasByStatus('all').slice(0, 120);
+    const recentById = new Set(videoRecent.map((camera) => camera.id));
+    return [...videoNew, ...videoRecent.filter((camera) => !recentById.has(camera.id))];
+  }, [showNewOnly, videoNew, videoRecent]);
+
+  const filteredPhotoCameras = useMemo(() => {
+    if (!showNewOnly) return photoCameraDiscovery.getCamerasByStatus('all').slice(0, 120);
+    const recentById = new Set(photoRecent.map((camera) => camera.id));
+    return [...photoNew, ...photoRecent.filter((camera) => !recentById.has(camera.id))];
+  }, [showNewOnly, photoNew, photoRecent]);
 
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom sx={{ color: theming.colors.primary }}>
-        📸🎬 Combined Camera Discovery Manager
+        Combined Camera Discovery Manager
       </Typography>
-      
-      {/* Overall Status Overview */}
+
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="primary" sx={{ color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
                 Total Cameras
               </Typography>
               <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                {(videoStatus?.totalCameras || 0) + (photoStatus?.totalCameras || 0)}
+                {videoStatus.totalCameras + photoStatus.totalCameras}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="success.main" sx={{ color: theming.colors.primary }}>
-                New Cameras
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Inserted
               </Typography>
               <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                <Badge badgeContent={videoNewCameras.length + photoNewCameras.length} color="primary">
-                  {videoNewCameras.length + photoNewCameras.length}
-                </Badge>
+                {videoStatus.inserted + photoStatus.inserted}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="warning.main" sx={{ color: theming.colors.primary }}>
-                Recently Updated
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Updated
               </Typography>
               <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                <Badge badgeContent={videoRecentlyUpdated.length + photoRecentlyUpdated.length} color="secondary">
-                  {videoRecentlyUpdated.length + photoRecentlyUpdated.length}
-                </Badge>
+                {videoStatus.updated + photoStatus.updated}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
-        
         <Grid item xs={12} md={3}>
           <Card sx={theming.getThemedCardSx()}>
             <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="h6" color="info.main" sx={{ color: theming.colors.primary }}>
-                Data Sources
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                Rejected/Conflicts
               </Typography>
               <Typography variant="h3" sx={{ color: theming.colors.primary }}>
-                {(videoStatus?.enabledSources || 0) + (photoStatus?.enabledSources || 0)}
+                {videoStatus.rejected + photoStatus.rejected + videoStatus.conflicts + photoStatus.conflicts}
               </Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Discovery Controls */}
       <Paper sx={{ p: 3, mb: 3 }} component="div">
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h6" sx={{ color: theming.colors.primary }}>
-            Discovery Controls
+            Discovery Controls (Admin)
           </Typography>
           <Box>
             <FormControlLabel
-              control={
-                <Switch
-                  checked={showNewOnly}
-                  onChange={(e) => setShowNewOnly(e.target.checked)}
-                />
-            }
-              label="Show New/Updated Only"
+              control={<Switch checked={showNewOnly} onChange={(event) => setShowNewOnly(event.target.checked)} />}
+              label="Only New/Updated"
             />
             <Button
               variant="contained"
@@ -407,118 +329,73 @@ export const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryMan
               disabled={isDiscovering}
               sx={{ ml: 2 }}
             >
-              {isDiscovering ? 'Discovering...' : 'Trigger Discovery'}
+              {isDiscovering ? 'Syncing...' : 'Run Discovery Sync'}
             </Button>
           </Box>
         </Box>
-        
+
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <Typography variant="body2" color="text.secondary">
-              Video Last Update: {videoStatus?.lastUpdate ? formatDate(videoStatus.lastUpdate) : 'Never'}
+              Video last sync: {formatDate(videoStatus.lastUpdate)}
             </Typography>
           </Grid>
           <Grid item xs={12} md={6}>
             <Typography variant="body2" color="text.secondary">
-              Photo Last Update: {photoStatus?.lastUpdate ? formatDate(photoStatus.lastUpdate) : 'Never'}
+              Photo last sync: {formatDate(photoStatus.lastUpdate)}
             </Typography>
           </Grid>
         </Grid>
       </Paper>
 
-      {/* Tabs for Video and Photo */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab 
+        <Tabs value={activeTab} onChange={(_, value: number) => setActiveTab(value)}>
+          <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Videocam sx={{ mr: 1 }} />
                 Video Cameras
-                <Badge badgeContent={videoNewCameras.length} color="primary" sx={{ ml: 1 }} />
+                <Badge badgeContent={videoNew.length} color="primary" sx={{ ml: 1 }} />
               </Box>
-          } 
+            }
           />
-          <Tab 
+          <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <PhotoCamera sx={{ mr: 1 }} />
                 Photo Cameras
-                <Badge badgeContent={photoNewCameras.length} color="primary" sx={{ ml: 1 }} />
+                <Badge badgeContent={photoNew.length} color="primary" sx={{ ml: 1 }} />
               </Box>
-          } 
+            }
           />
         </Tabs>
       </Box>
 
-      {/* Video Cameras Tab */}
       <TabPanel value={activeTab} index={0}>
-        {videoResults.length > 0 && renderDiscoveryResults(videoResults, 'Latest Video Discovery Results')}
-        
-        {videoNewCameras.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3 }} component="div">
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              🆕 New Video Cameras ({videoNewCameras.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {videoNewCameras.map((camera) => renderCameraCard(camera, true))}
-            </Grid>
-          </Paper>
-        )}
-
-        {videoRecentlyUpdated.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3 }} component="div">
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              🔄 Recently Updated Video Cameras ({videoRecentlyUpdated.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {videoRecentlyUpdated.map((camera) => renderCameraCard(camera, true))}
-            </Grid>
-          </Paper>
-        )}
-
-        {videoNewCameras.length === 0 && videoRecentlyUpdated.length === 0 && (
+        {renderDiscoveryResults(videoResults, 'Latest Video Discovery Result')}
+        {filteredVideoCameras.length === 0 ? (
           <Paper sx={{ p: 3, textAlign: 'center' }} component="div">
-            <Videocam sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-              No new or updated video cameras found
-            </Typography>
+            <Videocam sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+            <Typography color="text.secondary">Ingen videokamera-data tilgjengelig.</Typography>
           </Paper>
+        ) : (
+          <Grid container spacing={2}>
+            {filteredVideoCameras.map((camera) => renderCameraCard(camera, true))}
+          </Grid>
         )}
       </TabPanel>
 
-      {/* Photo Cameras Tab */}
       <TabPanel value={activeTab} index={1}>
-        {photoResults.length > 0 && renderDiscoveryResults(photoResults, 'Latest Photo Discovery Results')}
-        
-        {photoNewCameras.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3 }} component="div">
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              🆕 New Photo Cameras ({photoNewCameras.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {photoNewCameras.map((camera) => renderCameraCard(camera, false))}
-            </Grid>
-          </Paper>
-        )}
-
-        {photoRecentlyUpdated.length > 0 && (
-          <Paper sx={{ p: 3, mb: 3 }} component="div">
-            <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-              🔄 Recently Updated Photo Cameras ({photoRecentlyUpdated.length})
-            </Typography>
-            <Grid container spacing={2}>
-              {photoRecentlyUpdated.map((camera) => renderCameraCard(camera, false))}
-            </Grid>
-          </Paper>
-        )}
-
-        {photoNewCameras.length === 0 && photoRecentlyUpdated.length === 0 && (
+        {renderDiscoveryResults(photoResults, 'Latest Photo Discovery Result')}
+        {filteredPhotoCameras.length === 0 ? (
           <Paper sx={{ p: 3, textAlign: 'center' }} component="div">
-            <PhotoCamera sx={{ fontSize: 64, color:'text.secondary', mb: 2 }} />
-            <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
-              No new or updated photo cameras found
-            </Typography>
+            <PhotoCamera sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+            <Typography color="text.secondary">Ingen fotokamera-data tilgjengelig.</Typography>
           </Paper>
+        ) : (
+          <Grid container spacing={2}>
+            {filteredPhotoCameras.map((camera) => renderCameraCard(camera, false))}
+          </Grid>
         )}
       </TabPanel>
     </Box>
@@ -526,17 +403,3 @@ export const CombinedCameraDiscoveryManager: React.FC<CombinedCameraDiscoveryMan
 };
 
 export default CombinedCameraDiscoveryManager;
-
-
-
-
-
-
-
-
-
-
-
-
-
-

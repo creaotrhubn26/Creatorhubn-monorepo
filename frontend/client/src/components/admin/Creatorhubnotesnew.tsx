@@ -3021,9 +3021,9 @@ function CreatorHubNotesInner() {
             <Box>User ID: {userId}</Box>
             <Box>Health: {health.status}</Box>
             <Box>Components: {health.components.active}/{health.components.total}</Box>
-            <Box>Avg Response: {health.perf.avgResponseTime.toFixed(2)}ms</Box>
-            <Box>Memory: {health.perf.memoryUsage.toFixed(2)}MB</Box>
-            <Box>Error Rate: {(health.perf.errorRate * 100).toFixed(1)}%</Box>
+            <Box>Avg Response: {health.performance.avgResponseTime.toFixed(2)}ms</Box>
+            <Box>Memory: {health.performance.memoryUsage.toFixed(2)}MB</Box>
+            <Box>Error Rate: {(health.performance.errorRate * 100).toFixed(1)}%</Box>
             <Box>AI Tools: {canUseAI ? '✅ Enabled' : '❌ Disabled'}</Box>
             <Box>Google Drive: {canUseGoogleDrive ? '✅ Enabled' : '❌ Disabled'}</Box>
             <Box>Notes Loaded: {notes.length}</Box>

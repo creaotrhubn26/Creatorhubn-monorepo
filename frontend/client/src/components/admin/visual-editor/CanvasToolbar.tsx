@@ -27,17 +27,14 @@ import {
   Redo,
   CropSquare,
   TextFields,
-  Image,
   Circle,
-  Add,
-  Remove,
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
 
 type Tool = 'select' | 'pan' | 'rect' | 'circle' | 'text' | 'image';
 
 export const CanvasToolbar: React.FC = () => {
-  const { state, undo, redo, canUndo, canRedo, setZoom, toggleGridVisibility, addElement } =
+  const { state, undo, redo, canUndo, canRedo, setZoom, setGridVisible, addElement } =
     useVisualEditor();
 
   const [activeTool, setActiveTool] = useState<Tool>('select');
@@ -49,12 +46,12 @@ export const CanvasToolbar: React.FC = () => {
   };
 
   const handleZoomIn = () => {
-    const newZoom = Math.min(state.zoom * 1.2 5);
+    const newZoom = Math.min(state.zoom * 1.2, 5);
     setZoom(newZoom);
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(state.zoom / 1.2 0.1);
+    const newZoom = Math.max(state.zoom / 1.2, 0.1);
     setZoom(newZoom);
   };
 
@@ -63,7 +60,7 @@ export const CanvasToolbar: React.FC = () => {
   };
 
   const handleZoomChange = (_event: Event, value: number | number[]) => {
-    setZoom(value as number);
+    setZoom(Array.isArray(value) ? value[0] : value);
   };
 
   const handleAddShape = (type: 'rect' | 'circle' | 'text') => {
@@ -190,10 +187,10 @@ export const CanvasToolbar: React.FC = () => {
       <Divider orientation="vertical" flexItem />
 
       {/* Grid Toggle */}
-      <Tooltip title={state.gridSystem.visible ? 'Hide Grid' : 'Show Grid'}>
-        <IconButton size="small" onClick={() => toggleGridVisibility()}>
-          {state.gridSystem.visible ? (
-            <Grid fontSize="small" color="primary" />
+      <Tooltip title={state.gridVisible ? 'Hide Grid' : 'Show Grid'}>
+        <IconButton size="small" onClick={() => setGridVisible(!state.gridVisible)}>
+          {state.gridVisible ? (
+            <GridOn fontSize="small" color="primary" />
           ) : (
             <GridOff fontSize="small" />
           )}
@@ -235,7 +232,7 @@ export const CanvasToolbar: React.FC = () => {
         </Tooltip>
 
         <Tooltip title="Reset Zoom">
-          <Button size="small" variant="text" onClick={handleZoomReset}, sx={{ minWidth: 'auto' }}>
+          <Button size="small" variant="text" onClick={handleZoomReset} sx={{ minWidth: 'auto' }}>
             <Typography variant="caption">{Math.round(state.zoom * 100)}%</Typography>
           </Button>
         </Tooltip>

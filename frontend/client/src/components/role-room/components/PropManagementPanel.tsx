@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useId } from 'react';
+import React, { useState, useMemo, useEffect, useId, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -13,7 +13,6 @@ import {
   TextField,
   Chip,
   Stack,
-  Grid,
   Tooltip,
   Collapse,
   Checkbox,
@@ -34,7 +33,6 @@ import {
   Snackbar,
   useTheme,
   useMediaQuery,
-  Fade,
   Grow,
 } from '@mui/material';
 import {
@@ -53,17 +51,13 @@ import {
   ExpandMore as ExpandIcon,
   ExpandLess as CollapseIcon,
   Close as CloseIcon,
-  Check as CheckIcon,
   Cancel as CancelIcon,
   Save as SaveIcon,
   Image as ImageIcon,
   Photo as PhotoIcon,
-  PhotoCamera as PhotoCameraIcon,
   CloudUpload as CloudUploadIcon,
   Inventory as InventoryIcon,
   Inventory2 as Inventory2Icon,
-  Visibility as VisibilityIcon,
-  VisibilityOff as VisibilityOffIcon,
   Category as CategoryIcon,
 } from '@mui/icons-material';
 import { 
@@ -74,15 +68,16 @@ import {
   NotesIcon,
   QuantityIcon,
   StorageIcon,
-  CategoryCustomIcon,
 } from './icons/CastingIcons';
 import { Prop } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import equipPng from './icons/Keep/roleroom_equip.png';
+import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
+import warehouseInventoryService from '../services/warehouseInventoryService';
 // GLB3DPreview stub — renders inline 3D preview placeholder
-const GLB3DPreview = ({ src, width, height }: { src?: string; width?: number; height?: number }) => (
+const GLB3DPreview = ({ _src, width, height }: { _src?: string; width?: number; height?: number }) => (
   <Box sx={{ width: width || 200, height: height || 200, bgcolor: 'grey.100', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
     <Typography variant="caption" color="text.secondary">3D Preview</Typography>
   </Box>
@@ -99,9 +94,197 @@ const focusVisibleStyles = {
   },
 };
 
+const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
+
+const blurFocusedElement = () => {
+  if (typeof document === 'undefined') return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    active.blur();
+  }
+};
+
 type SortField = 'name' | 'category' | 'quantity' | 'scenes';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+type PanelMode = 'standard' | 'pro';
+type PropItemType = 'equipment' | 'prop';
+type PropItemTypeFilter = 'all' | PropItemType;
+
+interface CategoryDefinition {
+  key: string;
+  label: string;
+  color: string;
+  itemType: PropItemType;
+}
+
+const CATEGORY_DEFINITIONS: CategoryDefinition[] = [
+  { key: 'equipment', label: 'Utstyr', color: '#2196f3', itemType: 'equipment' },
+  { key: 'vehicle', label: 'Kjøretøy', color: '#607d8b', itemType: 'equipment' },
+  { key: 'sanitation', label: 'Sanitet', color: '#26c6da', itemType: 'equipment' },
+  { key: 'power', label: 'Strøm', color: '#ffb300', itemType: 'equipment' },
+  { key: 'safety', label: 'Sikkerhet', color: '#ef5350', itemType: 'equipment' },
+  { key: 'admin', label: 'Administrasjon', color: '#7e57c2', itemType: 'equipment' },
+  { key: 'weather', label: 'Vær', color: '#4fc3f7', itemType: 'equipment' },
+  { key: 'logistics', label: 'Logistikk', color: '#66bb6a', itemType: 'equipment' },
+  { key: 'furniture', label: 'Møbler', color: '#8b4513', itemType: 'prop' },
+  { key: 'decoration', label: 'Dekorasjon', color: '#9c27b0', itemType: 'prop' },
+  { key: 'costume', label: 'Kostyme', color: '#e91e63', itemType: 'prop' },
+  { key: 'prop', label: 'Rekvisitt', color: '#ab47bc', itemType: 'prop' },
+  { key: 'food', label: 'Mat', color: '#4caf50', itemType: 'prop' },
+  { key: 'other', label: 'Annet', color: '#9333ea', itemType: 'prop' },
+];
+
+const CATEGORY_BY_KEY = new Map(CATEGORY_DEFINITIONS.map((category) => [category.key, category]));
+
+const normalizeCategoryKey = (category?: string): string => (category || '').trim().toLowerCase();
+const normalizeItemText = (value?: string): string => (value || '').trim().toLowerCase();
+const includesAnyKeyword = (value: string, keywords: string[]): boolean =>
+  keywords.some((keyword) => value.includes(keyword));
+
+const PROP_NAME_HINTS = [
+  'kirkeklokk',
+  'lydeffekt',
+  'militærutstyr',
+  'våpen',
+  'stunt-bil',
+  'stunt bil',
+  'tunnelboremaskin',
+  'uv-lys',
+  'kunstig sollys',
+];
+
+const EQUIPMENT_NAME_HINTS = [
+  'aggregat',
+  'kabeltrommel',
+  'strømfordelingsskap',
+  'kabelbro',
+  'ups',
+  'jording',
+  'brannslukker',
+  'førstehjelp',
+  'refleksvest',
+  'sperrebånd',
+  'vaktutstyr',
+  'quiet on set',
+  'crew only',
+  'håndvaskstasjon',
+  'whiteboard',
+  'call sheet',
+  'laminerte dagsplaner',
+  'walkie',
+  'headset',
+  'navneskilt',
+  'presenning',
+  'regnponcho',
+  'parasoll',
+  'varmelampe',
+  'snøskuffe',
+  'isfjerner',
+  'hånddesinfeksjon',
+  'tralle',
+  'dolly cart',
+  'lagerboks',
+  'flight case',
+  'låsbare skap',
+  'kabelkasse',
+  'regntelt',
+  'sminke- og kostymetelt',
+  'catering-telt',
+  'skyggetelt',
+  'vindbeskyttelse',
+  'sandsekker',
+  'portable toaletter',
+  'toalettvogn',
+  'søppelhåndtering',
+  'sammenleggbare bord',
+  'sammenleggbare stoler',
+  'varmeovner',
+  'vifter',
+  'tepper',
+];
+
+const EQUIPMENT_CATEGORY_HINTS: Array<{ category: string; keywords: string[] }> = [
+  {
+    category: 'sanitation',
+    keywords: ['toalett', 'toalettvogn', 'håndvask', 'desinfeksjon', 'søppel', 'søppelhåndtering'],
+  },
+  {
+    category: 'power',
+    keywords: ['aggregat', 'kabeltrommel', 'strømfordelingsskap', 'kabelbro', 'ups', 'jording', 'jordingsutstyr'],
+  },
+  {
+    category: 'safety',
+    keywords: ['brannslukker', 'førstehjelp', 'refleksvest', 'sperrebånd', 'vaktutstyr', 'quiet on set', 'crew only'],
+  },
+  {
+    category: 'admin',
+    keywords: ['whiteboard', 'call sheet', 'dagsplan', 'walkie', 'headset', 'synkronisert', 'navneskilt'],
+  },
+  {
+    category: 'weather',
+    keywords: [
+      'regntelt',
+      'værbeskyttelse',
+      'sminke- og kostymetelt',
+      'catering-telt',
+      'skyggetelt',
+      'vindbeskyttelse',
+      'sandsekker',
+      'presenning',
+      'regnponcho',
+      'parasoll',
+      'varmelampe',
+      'snøskuffe',
+      'isfjerner',
+      'varmeovner',
+      'vifter',
+      'tepper',
+    ],
+  },
+  {
+    category: 'logistics',
+    keywords: ['tralle', 'dolly cart', 'lagerboks', 'flight case', 'låsbare skap', 'kabelkasse', 'sammenleggbare bord', 'sammenleggbare stoler'],
+  },
+];
+
+const inferItemTypeFromName = (name?: string): PropItemType | null => {
+  const normalized = normalizeItemText(name);
+  if (!normalized) return null;
+  if (includesAnyKeyword(normalized, PROP_NAME_HINTS)) return 'prop';
+  if (includesAnyKeyword(normalized, EQUIPMENT_NAME_HINTS)) return 'equipment';
+  return null;
+};
+
+const inferEquipmentCategoryFromName = (name?: string): string | null => {
+  const normalized = normalizeItemText(name);
+  if (!normalized) return null;
+  const match = EQUIPMENT_CATEGORY_HINTS.find((entry) => includesAnyKeyword(normalized, entry.keywords));
+  return match?.category || null;
+};
+
+const resolveItemTypeFromCategory = (category?: string): PropItemType => {
+  const normalized = normalizeCategoryKey(category);
+  if (normalized && CATEGORY_BY_KEY.has(normalized)) {
+    return CATEGORY_BY_KEY.get(normalized)!.itemType;
+  }
+  if (
+    normalized.includes('equip') ||
+    normalized.includes('kamera') ||
+    normalized.includes('lyd') ||
+    normalized.includes('light') ||
+    normalized.includes('vehicle') ||
+    normalized.includes('power') ||
+    normalized.includes('safety') ||
+    normalized.includes('weather') ||
+    normalized.includes('sanitation') ||
+    normalized.includes('admin') ||
+    normalized.includes('logistics')
+  ) {
+    return 'equipment';
+  }
+  return 'prop';
+};
 
 interface PropManagementPanelProps {
   projectId: string;
@@ -112,7 +295,6 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
-  const isDesktop = useMediaQuery(theme.breakpoints.up('lg'));
   const containerPadding = isMobile ? 2 : isTablet ? 3 : 4;
 
   // Toast notifications
@@ -146,7 +328,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   const [editingProp, setEditingProp] = useState<Prop | null>(null);
   const [formData, setFormData] = useState<Partial<Prop>>({
     name: '',
-    category: '',
+    itemType: 'prop',
+    category: 'prop',
     description: '',
     images: [],
     availability: {},
@@ -158,6 +341,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
+  const [itemTypeFilter, setItemTypeFilter] = useState<PropItemTypeFilter>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -167,7 +351,13 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
 
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [panelMode, setPanelMode] = useState<PanelMode>('standard');
   const [showStats, setShowStats] = useState(false);
+  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
+  const [warehouseIssueCount, setWarehouseIssueCount] = useState(0);
+  const [warehouseStockByItem, setWarehouseStockByItem] = useState<
+    Record<string, { quantity: number; reserved: number; available: number }>
+  >({});
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -248,41 +438,153 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     },
   };
 
-  const commonCategories = [
-    'furniture',
-    'decoration',
-    'costume',
-    'equipment',
-    'vehicle',
-    'food',
-    'other',
-  ];
+  const availableCategories = useMemo(() => {
+    const categories = new Set<string>();
 
-  const getCategoryLabel = (category: string): string => {
-    const labels: Record<string, string> = {
-      furniture: 'Møbler',
-      decoration: 'Dekorasjon',
-      costume: 'Kostyme',
-      equipment: 'Utstyr',
-      vehicle: 'Kjøretøy',
-      food: 'Mat',
-      other: 'Annet',
-    };
-    return labels[category] || category;
+    CATEGORY_DEFINITIONS.forEach((category) => {
+      if (itemTypeFilter === 'all' || category.itemType === itemTypeFilter) {
+        categories.add(category.key);
+      }
+    });
+
+    props.forEach((prop) => {
+      const effectiveType = getItemType(prop);
+      const effectiveCategory = getItemCategory(prop, effectiveType);
+      if (!effectiveCategory) return;
+      if (itemTypeFilter === 'all' || effectiveType === itemTypeFilter) {
+        categories.add(effectiveCategory);
+      }
+    });
+
+    return Array.from(categories);
+  }, [itemTypeFilter, props]);
+
+  const formItemType: PropItemType = formData.itemType === 'equipment' ? 'equipment' : 'prop';
+
+  const formCategoryOptions = useMemo(
+    () => CATEGORY_DEFINITIONS.filter((category) => category.itemType === formItemType).map((category) => category.key),
+    [formItemType]
+  );
+
+  const warehouseDialogItems = useMemo<WarehouseDialogItem[]>(
+    () =>
+      props.map((prop) => {
+        const itemType = getItemType(prop);
+        return {
+          id: prop.id,
+          itemType,
+          name: prop.name,
+          quantity: Number(prop.quantity || 0),
+          locationLabel: prop.location?.trim() || undefined,
+          category: getItemCategory(prop, itemType),
+        };
+      }),
+    [props]
+  );
+
+  const warehouseLocationSeeds = useMemo(() => {
+    const seen = new Set<string>();
+    const seeds: Array<{ id: string; name: string }> = [];
+
+    props.forEach((prop) => {
+      const label = prop.location?.trim();
+      if (!label) return;
+      const key = label.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      const slug = key.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'location';
+      seeds.push({
+        id: `prop-location-${slug}`,
+        name: label,
+      });
+    });
+
+    return seeds;
+  }, [props]);
+
+  const warehouseTotals = useMemo(() => {
+    return Object.values(warehouseStockByItem).reduce(
+      (acc, current) => ({
+        quantity: acc.quantity + current.quantity,
+        reserved: acc.reserved + current.reserved,
+        available: acc.available + current.available,
+      }),
+      { quantity: 0, reserved: 0, available: 0 }
+    );
+  }, [warehouseStockByItem]);
+
+  const refreshWarehouseSummary = useCallback(() => {
+    if (!projectId || warehouseDialogItems.length === 0) {
+      setWarehouseStockByItem({});
+      setWarehouseIssueCount(0);
+      return;
+    }
+
+    warehouseInventoryService.bootstrapProject(projectId, {
+      locations: warehouseLocationSeeds,
+      items: warehouseDialogItems,
+    });
+
+    const nextTotals: Record<string, { quantity: number; reserved: number; available: number }> = {};
+    warehouseDialogItems.forEach((item) => {
+      nextTotals[item.id] = warehouseInventoryService.getItemTotals(projectId, item.itemType, item.id);
+    });
+    setWarehouseStockByItem(nextTotals);
+
+    const issues = warehouseInventoryService.listConsistencyIssues(projectId, warehouseDialogItems);
+    setWarehouseIssueCount(issues.length);
+  }, [projectId, warehouseDialogItems, warehouseLocationSeeds]);
+
+  useEffect(() => {
+    refreshWarehouseSummary();
+  }, [refreshWarehouseSummary]);
+
+  const getCategoryLabel = (category?: string): string => {
+    const normalized = normalizeCategoryKey(category);
+    if (!normalized) return 'Annet';
+    return CATEGORY_BY_KEY.get(normalized)?.label || normalized;
   };
 
-  const getCategoryColor = (category: string): string => {
-    const colors: Record<string, string> = {
-      furniture: '#8b4513',
-      decoration: '#9c27b0',
-      costume: '#e91e63',
-      equipment: '#2196f3',
-      vehicle: '#607d8b',
-      food: '#4caf50',
-      other: '#9333ea',
-    };
-    return colors[category] || '#9333ea';
+  const getCategoryColor = (category?: string): string => {
+    const normalized = normalizeCategoryKey(category);
+    if (!normalized) return '#9333ea';
+    return CATEGORY_BY_KEY.get(normalized)?.color || '#9333ea';
   };
+
+  function getItemType(prop: Prop): PropItemType {
+    const inferredType = inferItemTypeFromName(prop.name);
+    if (inferredType) return inferredType;
+
+    const explicitType =
+      typeof prop.itemType === 'string' && (prop.itemType === 'equipment' || prop.itemType === 'prop')
+        ? prop.itemType
+        : null;
+    if (explicitType) return explicitType;
+    return resolveItemTypeFromCategory(prop.category);
+  }
+
+  function getItemCategory(prop: Prop, itemTypeOverride?: PropItemType): string {
+    const itemType = itemTypeOverride || getItemType(prop);
+    const normalizedCategory = normalizeCategoryKey(prop.category);
+    const mappedCategory = normalizedCategory ? CATEGORY_BY_KEY.get(normalizedCategory) : undefined;
+
+    if (mappedCategory && mappedCategory.itemType === itemType) {
+      return normalizedCategory;
+    }
+
+    if (itemType === 'equipment') {
+      const inferredEquipmentCategory = inferEquipmentCategoryFromName(prop.name);
+      if (inferredEquipmentCategory) return inferredEquipmentCategory;
+      if (mappedCategory?.itemType === 'equipment') return normalizedCategory;
+      return 'equipment';
+    }
+
+    if (mappedCategory?.itemType === 'prop') return normalizedCategory;
+    return 'prop';
+  }
+
+  const getItemTypeLabel = (itemType: PropItemType): string =>
+    itemType === 'equipment' ? 'Utstyr' : 'Rekvisitt';
 
   // Save favorites to localStorage
   useEffect(() => {
@@ -308,27 +610,42 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dialogOpen]);
 
+  useEffect(() => {
+    if (filterCategory === 'all') return;
+    if (!availableCategories.includes(filterCategory)) {
+      setFilterCategory('all');
+    }
+  }, [availableCategories, filterCategory]);
+
   // Filtered and sorted props
   const filteredAndSortedProps = useMemo(() => {
     let result = [...props];
+
+    if (itemTypeFilter !== 'all') {
+      result = result.filter((prop) => getItemType(prop) === itemTypeFilter);
+    }
 
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(query) ||
-          p.category.toLowerCase().includes(query) ||
-          getCategoryLabel(p.category).toLowerCase().includes(query) ||
-          p.description?.toLowerCase().includes(query) ||
-          p.location?.toLowerCase().includes(query) ||
-          p.notes?.toLowerCase().includes(query)
+        (p) => {
+          const effectiveCategory = getItemCategory(p);
+          return (
+            p.name.toLowerCase().includes(query) ||
+            effectiveCategory.toLowerCase().includes(query) ||
+            getCategoryLabel(effectiveCategory).toLowerCase().includes(query) ||
+            p.description?.toLowerCase().includes(query) ||
+            p.location?.toLowerCase().includes(query) ||
+            p.notes?.toLowerCase().includes(query)
+          );
+        }
       );
     }
 
     // Category filter
     if (filterCategory !== 'all') {
-      result = result.filter((p) => p.category === filterCategory);
+      result = result.filter((p) => getItemCategory(p) === filterCategory);
     }
 
     // Sort - favorites first
@@ -343,28 +660,32 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           comparison = a.name.localeCompare(b.name, 'nb');
           break;
         case 'category':
-          comparison = getCategoryLabel(a.category).localeCompare(getCategoryLabel(b.category), 'nb');
+          comparison = getCategoryLabel(getItemCategory(a)).localeCompare(getCategoryLabel(getItemCategory(b)), 'nb');
           break;
         case 'quantity':
           comparison = (a.quantity || 1) - (b.quantity || 1);
           break;
         case 'scenes':
-          comparison = a.assignedScenes.length - b.assignedScenes.length;
+          comparison = (a.assignedScenes?.length || 0) - (b.assignedScenes?.length || 0);
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
     return result;
-  }, [props, searchQuery, filterCategory, sortField, sortDirection, favorites]);
+  }, [props, searchQuery, itemTypeFilter, filterCategory, sortField, sortDirection, favorites]);
 
   // Statistics
   const stats = useMemo(() => {
     const categoryCount: Record<string, number> = {};
+    const itemTypeCount: Record<PropItemType, number> = { equipment: 0, prop: 0 };
     let totalQuantity = 0;
 
     props.forEach((prop) => {
-      categoryCount[prop.category] = (categoryCount[prop.category] || 0) + 1;
+      const itemType = getItemType(prop);
+      const categoryKey = getItemCategory(prop, itemType);
+      categoryCount[categoryKey] = (categoryCount[categoryKey] || 0) + 1;
+      itemTypeCount[itemType] += 1;
       totalQuantity += prop.quantity || 1;
     });
 
@@ -372,31 +693,79 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       total: props.length,
       totalQuantity,
       categoryCount,
+      itemTypeCount,
       favorites: favorites.size,
     };
   }, [props, favorites]);
 
+  const proMetrics = useMemo(() => {
+    const safeProps = filteredAndSortedProps;
+    const readyCount = safeProps.filter((prop) => {
+      const hasLocation = Boolean(prop.location?.trim());
+      const assignedScenes = Array.isArray(prop.assignedScenes) ? prop.assignedScenes : [];
+      return hasLocation && assignedScenes.length > 0 && (prop.quantity || 0) > 0;
+    }).length;
+    const missingLocationCount = safeProps.filter((prop) => !prop.location?.trim()).length;
+    const missingSceneCount = safeProps.filter((prop) => !Array.isArray(prop.assignedScenes) || prop.assignedScenes.length === 0).length;
+    const lowStockCount = safeProps.filter((prop) => (prop.quantity || 0) <= 1).length;
+
+    return {
+      readyCount,
+      missingLocationCount,
+      missingSceneCount,
+      lowStockCount,
+    };
+  }, [filteredAndSortedProps]);
+
   // Handlers
+  const openCreateDialogForType = (type: PropItemType) => {
+    setEditingProp(null);
+    setFormData({
+      name: '',
+      itemType: type,
+      category: type === 'equipment' ? 'equipment' : 'prop',
+      description: '',
+      images: [],
+      availability: {},
+      assignedScenes: [],
+      quantity: 1,
+      location: '',
+      notes: '',
+    });
+    setDialogOpen(true);
+  };
+
   const handleOpenDialog = (prop?: Prop) => {
+    blurFocusedElement();
     if (prop) {
+      const effectiveType = getItemType(prop);
       setEditingProp(prop);
-      setFormData(prop);
+      setFormData({ ...prop, itemType: effectiveType, category: getItemCategory(prop, effectiveType) });
     } else {
-      setEditingProp(null);
-      setFormData({
-        name: '',
-        category: '',
-        description: '',
-        images: [],
-        availability: {},
-        assignedScenes: [],
-        quantity: 1,
-        location: '',
-        notes: '',
-      });
+      const initialType: PropItemType = itemTypeFilter === 'all' ? 'prop' : itemTypeFilter;
+      openCreateDialogForType(initialType);
+      return;
     }
     setDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    const id = window.requestAnimationFrame(() => blurFocusedElement());
+    return () => window.cancelAnimationFrame(id);
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    const handleExternalCreateOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ itemType?: PropItemType }>;
+      const requestedType: PropItemType = customEvent.detail?.itemType === 'equipment' ? 'equipment' : 'prop';
+      setItemTypeFilter(requestedType);
+      openCreateDialogForType(requestedType);
+    };
+
+    window.addEventListener(OPEN_PROP_CREATE_MODAL_EVENT, handleExternalCreateOpen as EventListener);
+    return () => window.removeEventListener(OPEN_PROP_CREATE_MODAL_EVENT, handleExternalCreateOpen as EventListener);
+  }, []);
 
   const convertFileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -458,12 +827,17 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     }
 
     try {
+      const selectedItemType: PropItemType =
+        formData.itemType === 'equipment' ? 'equipment' : formData.itemType === 'prop' ? 'prop' : resolveItemTypeFromCategory(formData.category);
+      const fallbackCategory = selectedItemType === 'equipment' ? 'equipment' : 'prop';
+      const normalizedCategory = normalizeCategoryKey(formData.category) || fallbackCategory;
       const prop: Prop = editingProp
-        ? { ...editingProp, ...formData, updatedAt: new Date().toISOString() }
+        ? { ...editingProp, ...formData, itemType: selectedItemType, category: normalizedCategory, updatedAt: new Date().toISOString() }
         : {
             id: `prop-${Date.now()}`,
             name: formData.name || '',
-            category: formData.category || 'other',
+            itemType: selectedItemType,
+            category: normalizedCategory || 'other',
             description: formData.description,
             availability: formData.availability || {},
             assignedScenes: formData.assignedScenes || [],
@@ -641,7 +1015,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
     });
 
     const totalProps = props.length;
-    const propsWithScenes = props.filter(p => p.assignedScenes.length > 0).length;
+    const propsWithScenes = props.filter((p) => (p.assignedScenes?.length || 0) > 0).length;
 
     const propIconSVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9333ea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/>
@@ -754,11 +1128,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               const notes = prop.notes || '-';
               return `<tr>
               <td><strong>${prop.name}</strong></td>
-              <td>${getCategoryLabel(prop.category)}</td>
+              <td>${getCategoryLabel(getItemCategory(prop))}</td>
               <td style="font-size: 13px;">${description.length > 60 ? description.substring(0, 60) + '...' : description}</td>
               <td style="text-align: center;">${(prop.quantity || 1)}</td>
               <td style="font-size: 13px;">${prop.location || '-'}</td>
-              <td style="text-align: center;">${prop.assignedScenes.length}</td>
+              <td style="text-align: center;">${prop.assignedScenes?.length || 0}</td>
               <td style="font-size: 13px;">${notes.length > 50 ? notes.substring(0, 50) + '...' : notes}</td>
             </tr>`;
             }).join('')}
@@ -797,8 +1171,16 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
   return (
     <Box
       component="section"
+      id="role-room-prop-management-panel"
       aria-labelledby="prop-panel-title"
-      sx={{ p: { xs: 2, sm: 3, md: containerPadding } }}
+      sx={{
+        p: { xs: 2, sm: 3, md: containerPadding },
+        borderRadius: { xs: 2, sm: 3 },
+        border: '1px solid rgba(147,51,234,0.24)',
+        background:
+          'radial-gradient(1200px 380px at 10% -10%, rgba(147,51,234,0.16), transparent 55%), linear-gradient(180deg, rgba(23,15,44,0.74) 0%, rgba(12,10,26,0.64) 100%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.28)',
+      }}
     >
       {/* Header - Responsive */}
       <Box
@@ -878,7 +1260,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             >
               <CategoryIcon sx={{ fontSize: { xs: 14, sm: 16 }, opacity: 0.7 }} />
-              Administrer utstyr og rekvisitter
+              Role Room: operativ styring av utstyr og rekvisitter
             </Typography>
           </Box>
         </Box>
@@ -929,6 +1311,36 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </Button>
           </Tooltip>
 
+          <Tooltip title="Lagerstyring, reservasjoner og konsistens">
+            <Button
+              variant="outlined"
+              onClick={() => {
+                blurFocusedElement();
+                setWarehouseDialogOpen(true);
+              }}
+              aria-label="Åpne lagerstyring"
+              sx={{
+                minHeight: TOUCH_TARGET_SIZE,
+                minWidth: TOUCH_TARGET_SIZE,
+                color: warehouseIssueCount > 0 ? '#ef5350' : '#c084fc',
+                borderColor: warehouseIssueCount > 0 ? '#ef5350' : 'rgba(192,132,252,0.5)',
+                px: { xs: 1, sm: 2 },
+                ...focusVisibleStyles,
+                '&:hover': {
+                  borderColor: warehouseIssueCount > 0 ? '#ef5350' : '#d8b4fe',
+                  bgcolor: warehouseIssueCount > 0 ? 'rgba(239,83,80,0.1)' : 'rgba(192,132,252,0.1)',
+                },
+              }}
+            >
+              <Inventory2Icon />
+              {!isMobile && (
+                <Box component="span" sx={{ ml: 1 }}>
+                  {warehouseIssueCount > 0 ? `Lager (${warehouseIssueCount})` : 'Lager'}
+                </Box>
+              )}
+            </Button>
+          </Tooltip>
+
           <Tooltip title="Legg til utstyr (Ctrl+N)">
             <Button
               variant="contained"
@@ -943,11 +1355,116 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ...focusVisibleStyles,
                 '&:hover': { bgcolor: '#6d28d9' },
               }}
-            >
-              <AddIcon />
-              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Legg til</Box>}
+              >
+                <AddIcon />
+              {!isMobile && <Box component="span" sx={{ ml: 1 }}>Ny post</Box>}
             </Button>
           </Tooltip>
+        </Box>
+      </Box>
+
+      {/* Type + modus kontroll */}
+      <Box
+        sx={{
+          mb: 2,
+          p: { xs: 1.25, sm: 1.5 },
+          borderRadius: 2,
+          border: '1px solid rgba(147,51,234,0.24)',
+          bgcolor: 'rgba(18,14,38,0.55)',
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: { xs: 'stretch', md: 'center' },
+          justifyContent: 'space-between',
+          gap: 1.25,
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', fontWeight: 600 }}>
+            Type:
+          </Typography>
+          <Button
+            size="small"
+            variant={itemTypeFilter === 'all' ? 'contained' : 'outlined'}
+            onClick={() => setItemTypeFilter('all')}
+            sx={{
+              minHeight: 34,
+              bgcolor: itemTypeFilter === 'all' ? 'rgba(147,51,234,0.2)' : 'transparent',
+              borderColor: 'rgba(147,51,234,0.45)',
+              color: '#c084fc',
+              fontWeight: 700,
+              textTransform: 'none',
+            }}
+          >
+            Alle ({props.length})
+          </Button>
+          <Button
+            size="small"
+            variant={itemTypeFilter === 'equipment' ? 'contained' : 'outlined'}
+            startIcon={<BuildIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setItemTypeFilter('equipment')}
+            sx={{
+              minHeight: 34,
+              bgcolor: itemTypeFilter === 'equipment' ? 'rgba(33,150,243,0.24)' : 'transparent',
+              borderColor: 'rgba(33,150,243,0.5)',
+              color: '#64b5f6',
+              fontWeight: 700,
+              textTransform: 'none',
+            }}
+          >
+            Utstyr ({stats.itemTypeCount.equipment})
+          </Button>
+          <Button
+            size="small"
+            variant={itemTypeFilter === 'prop' ? 'contained' : 'outlined'}
+            startIcon={<PropsIcon sx={{ fontSize: 16 }} />}
+            onClick={() => setItemTypeFilter('prop')}
+            sx={{
+              minHeight: 34,
+              bgcolor: itemTypeFilter === 'prop' ? 'rgba(156,39,176,0.2)' : 'transparent',
+              borderColor: 'rgba(192,132,252,0.5)',
+              color: '#c084fc',
+              fontWeight: 700,
+              textTransform: 'none',
+            }}
+          >
+            Rekvisitter ({stats.itemTypeCount.prop})
+          </Button>
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', fontWeight: 600 }}>
+            Arbeidsmodus:
+          </Typography>
+          <Button
+            size="small"
+            variant={panelMode === 'standard' ? 'contained' : 'outlined'}
+            onClick={() => setPanelMode('standard')}
+            sx={{
+              minHeight: 34,
+              bgcolor: panelMode === 'standard' ? 'rgba(147,51,234,0.2)' : 'transparent',
+              borderColor: 'rgba(147,51,234,0.45)',
+              color: '#c084fc',
+              fontWeight: 700,
+              textTransform: 'none',
+            }}
+          >
+            Standard
+          </Button>
+          <Button
+            size="small"
+            variant={panelMode === 'pro' ? 'contained' : 'outlined'}
+            onClick={() => setPanelMode('pro')}
+            sx={{
+              minHeight: 34,
+              bgcolor: panelMode === 'pro' ? 'rgba(76,175,80,0.2)' : 'transparent',
+              borderColor: 'rgba(76,175,80,0.5)',
+              color: '#81c784',
+              fontWeight: 700,
+              textTransform: 'none',
+            }}
+          >
+            Pro-visning
+          </Button>
         </Box>
       </Box>
 
@@ -1141,7 +1658,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             >
               <MenuItem value="all">Alle kategorier</MenuItem>
-              {commonCategories.map((cat) => (
+              {availableCategories.map((cat) => (
                 <MenuItem key={cat} value={cat} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                   {getCategoryLabel(cat)}
                 </MenuItem>
@@ -1149,10 +1666,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             </Select>
           </FormControl>
 
-          {(filterCategory !== 'all' || searchQuery) && (
+          {(filterCategory !== 'all' || searchQuery || itemTypeFilter !== 'all') && (
             <Button
               variant="text"
               onClick={() => {
+                setItemTypeFilter('all');
                 setFilterCategory('all');
                 setSearchQuery('');
               }}
@@ -1164,8 +1682,62 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         </Box>
       </Collapse>
 
+      {panelMode === 'pro' && (
+        <Box
+          sx={{
+            mb: 2,
+            p: { xs: 1.5, sm: 2 },
+            borderRadius: 2,
+            border: '1px solid rgba(76,175,80,0.28)',
+            bgcolor: 'rgba(20,32,28,0.42)',
+          }}
+        >
+          <Typography sx={{ color: '#81c784', fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>
+            Pro-operasjoner
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: 'repeat(2, minmax(0, 1fr))', md: 'repeat(6, minmax(0, 1fr))' },
+              gap: 1,
+            }}
+          >
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(76,175,80,0.13)', border: '1px solid rgba(76,175,80,0.3)' }}>
+              <Typography sx={{ color: '#a5d6a7', fontSize: '0.72rem', fontWeight: 700 }}>Klar for opptak</Typography>
+              <Typography sx={{ color: '#4caf50', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.readyCount}</Typography>
+            </Box>
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,152,0,0.12)', border: '1px solid rgba(255,152,0,0.3)' }}>
+              <Typography sx={{ color: '#ffcc80', fontSize: '0.72rem', fontWeight: 700 }}>Mangler sted</Typography>
+              <Typography sx={{ color: '#ffb74d', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.missingLocationCount}</Typography>
+            </Box>
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(3,169,244,0.12)', border: '1px solid rgba(3,169,244,0.3)' }}>
+              <Typography sx={{ color: '#81d4fa', fontSize: '0.72rem', fontWeight: 700 }}>Mangler scenekobling</Typography>
+              <Typography sx={{ color: '#4fc3f7', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.missingSceneCount}</Typography>
+            </Box>
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(244,67,54,0.12)', border: '1px solid rgba(244,67,54,0.3)' }}>
+              <Typography sx={{ color: '#ef9a9a', fontSize: '0.72rem', fontWeight: 700 }}>
+                {'Lav beholdning (<=1)'}
+              </Typography>
+              <Typography sx={{ color: '#ef5350', fontWeight: 800, fontSize: '1.1rem' }}>{proMetrics.lowStockCount}</Typography>
+            </Box>
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(76,175,80,0.12)', border: '1px solid rgba(76,175,80,0.3)' }}>
+              <Typography sx={{ color: '#a5d6a7', fontSize: '0.72rem', fontWeight: 700 }}>
+                Lager tilgjengelig
+              </Typography>
+              <Typography sx={{ color: '#81c784', fontWeight: 800, fontSize: '1.1rem' }}>{warehouseTotals.available}</Typography>
+            </Box>
+            <Box sx={{ p: 1.25, borderRadius: 1.5, bgcolor: 'rgba(255,183,77,0.12)', border: '1px solid rgba(255,183,77,0.3)' }}>
+              <Typography sx={{ color: '#ffcc80', fontSize: '0.72rem', fontWeight: 700 }}>
+                Lageravvik
+              </Typography>
+              <Typography sx={{ color: '#ffb74d', fontWeight: 800, fontSize: '1.1rem' }}>{warehouseIssueCount}</Typography>
+            </Box>
+          </Box>
+        </Box>
+      )}
+
       {/* Results count */}
-      {(searchQuery || filterCategory !== 'all') && (
+      {(searchQuery || filterCategory !== 'all' || itemTypeFilter !== 'all') && (
         <Alert
           severity="info"
           sx={{
@@ -1175,7 +1747,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             '& .MuiAlert-icon': { color: '#9333ea' },
           }}
         >
-          Viser {filteredAndSortedProps.length} av {props.length} utstyr
+          Viser {filteredAndSortedProps.length} av {props.length} elementer
         </Alert>
       )}
 
@@ -1183,8 +1755,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
       {props.length === 0 ? (
         <RoleRoomEmptyState
           iconSrc={equipPng}
-          title="Ingen utstyr ennå"
-          subtitle="Legg til utstyr for å organisere produksjonselementer"
+          title="Ingen utstyr eller rekvisitter ennå"
+          subtitle="Legg til første post for å bygge en strukturert produksjonsliste"
           color="#9333ea"
         />
       ) : filteredAndSortedProps.length === 0 ? (
@@ -1246,6 +1818,8 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     Antall
                   </TableSortLabel>
                 </TableCell>
+                <TableCell>Lagerstatus</TableCell>
+                <TableCell>Type</TableCell>
                 <TableCell>Lagringssted</TableCell>
                 <TableCell>
                   <TableSortLabel
@@ -1261,7 +1835,11 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredAndSortedProps.map((prop) => (
+              {filteredAndSortedProps.map((prop) => {
+                const effectiveType = getItemType(prop);
+                const effectiveCategory = getItemCategory(prop, effectiveType);
+                const warehouseTotalsForItem = warehouseStockByItem[prop.id];
+                return (
                 <TableRow
                   key={prop.id}
                   sx={{
@@ -1284,9 +1862,9 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={getCategoryLabel(prop.category)}
+                      label={getCategoryLabel(effectiveCategory)}
                       size="small"
-                      sx={{ bgcolor: `${getCategoryColor(prop.category)}33`, color: getCategoryColor(prop.category) }}
+                      sx={{ bgcolor: `${getCategoryColor(effectiveCategory)}33`, color: getCategoryColor(effectiveCategory) }}
                     />
                   </TableCell>
                   <TableCell>
@@ -1295,13 +1873,56 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     </Typography>
                   </TableCell>
                   <TableCell>
+                    {warehouseTotalsForItem ? (
+                      <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                        <Chip
+                          label={`Tilg ${warehouseTotalsForItem.available}`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(76,175,80,0.15)',
+                            color: '#81c784',
+                            border: '1px solid rgba(76,175,80,0.35)',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                          }}
+                        />
+                        <Chip
+                          label={`Res ${warehouseTotalsForItem.reserved}`}
+                          size="small"
+                          sx={{
+                            bgcolor: 'rgba(255,183,77,0.15)',
+                            color: '#ffb74d',
+                            border: '1px solid rgba(255,183,77,0.35)',
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                          }}
+                        />
+                      </Stack>
+                    ) : (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                        -
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={getItemTypeLabel(effectiveType)}
+                      size="small"
+                      sx={{
+                        bgcolor: effectiveType === 'equipment' ? 'rgba(100,181,246,0.2)' : 'rgba(192,132,252,0.2)',
+                        color: effectiveType === 'equipment' ? '#64b5f6' : '#c084fc',
+                        border: `1px solid ${effectiveType === 'equipment' ? 'rgba(100,181,246,0.5)' : 'rgba(192,132,252,0.5)'}`,
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
                     <Typography sx={{ color: 'rgba(255,255,255,0.87)', fontSize: '0.875rem' }}>
                       {prop.location || '-'}
                     </Typography>
                   </TableCell>
                   <TableCell>
                     <Typography sx={{ color: 'rgba(255,255,255,0.87)' }}>
-                      {prop.assignedScenes.length}
+                      {prop.assignedScenes?.length || 0}
                     </Typography>
                   </TableCell>
                   <TableCell align="right">
@@ -1332,17 +1953,35 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     </Box>
                   </TableCell>
                 </TableRow>
-              ))}
+              );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
       ) : (
-        /* Grid View - Enhanced Responsive cards */
-        <Grid container spacing={{ xs: 2, sm: 2.5, md: 3, lg: 3.5 }} role="list" aria-label="Liste over rekvisitter">
+        /* Kortvisning - CSS Grid */
+        <Box
+          role="list"
+          aria-label="Liste over rekvisitter"
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              lg: panelMode === 'pro' ? 'repeat(4, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))',
+            },
+            gap: { xs: 2, sm: 2.5, md: 3 },
+            alignItems: 'stretch',
+          }}
+        >
           {filteredAndSortedProps.map((prop) => {
-            const categoryColor = getCategoryColor(prop.category);
+            const itemType = getItemType(prop);
+            const effectiveCategory = getItemCategory(prop, itemType);
+            const categoryColor = getCategoryColor(effectiveCategory);
+            const itemTypeColor = itemType === 'equipment' ? '#64b5f6' : '#c084fc';
+            const warehouseTotalsForItem = warehouseStockByItem[prop.id];
             return (
-            <Grid size={{ xs: 12, sm: 6, md: 4, lg: 4 }} key={prop.id} role="listitem">
+            <Box key={prop.id} role="listitem" sx={{ minWidth: 0 }}>
               <Card
                 component="article"
                 aria-labelledby={`prop-name-${prop.id}`}
@@ -1376,13 +2015,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                         justifyContent: 'center',
                       }}
                     >
-                      <GLB3DPreview
-                        modelUrl={prop.modelUrl}
-                        width="100%"
-                        height={200}
-                        autoRotate={true}
-                        backgroundColor="transparent"
-                      />
+                      <GLB3DPreview _src={prop.modelUrl} height={200} />
                     </Box>
                   ) : prop.images && prop.images.length > 0 ? (
                     <Box
@@ -1424,7 +2057,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     </Box>
                   )}
 
-                  {/* Overlay with category badge and favorite */}
+                  {/* Overlay with kategori/type og favoritt */}
                   <Box
                     sx={{
                       position: 'absolute',
@@ -1448,18 +2081,32 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           '&.Mui-checked': { color: '#9333ea' },
                         }}
                       />
-                      <Chip
-                        label={getCategoryLabel(prop.category)}
-                        size="small"
-                        sx={{
-                          bgcolor: `${categoryColor}dd`,
-                          color: '#fff',
-                          fontWeight: 700,
-                          fontSize: '0.7rem',
-                          height: 24,
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                        }}
-                      />
+                      <Stack direction="row" spacing={0.75}>
+                        <Chip
+                          label={getCategoryLabel(effectiveCategory)}
+                          size="small"
+                          sx={{
+                            bgcolor: `${categoryColor}dd`,
+                            color: '#fff',
+                            fontWeight: 700,
+                            fontSize: '0.7rem',
+                            height: 24,
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                          }}
+                        />
+                        <Chip
+                          label={getItemTypeLabel(itemType)}
+                          size="small"
+                          sx={{
+                            bgcolor: `${itemTypeColor}26`,
+                            color: itemTypeColor,
+                            border: `1px solid ${itemTypeColor}66`,
+                            fontWeight: 700,
+                            fontSize: '0.68rem',
+                            height: 24,
+                          }}
+                        />
+                      </Stack>
                     </Box>
                     <IconButton
                       onClick={() => toggleFavorite(prop.id)}
@@ -1538,6 +2185,33 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                     </Box>
                   )}
 
+                  {warehouseTotalsForItem && (
+                    <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, flexWrap: 'wrap', gap: 0.5 }}>
+                      <Chip
+                        label={`Tilgjengelig ${warehouseTotalsForItem.available}`}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(76,175,80,0.15)',
+                          color: '#81c784',
+                          border: '1px solid rgba(76,175,80,0.35)',
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      />
+                      <Chip
+                        label={`Reservert ${warehouseTotalsForItem.reserved}`}
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(255,183,77,0.15)',
+                          color: '#ffb74d',
+                          border: '1px solid rgba(255,183,77,0.35)',
+                          fontWeight: 700,
+                          fontSize: '0.7rem',
+                        }}
+                      />
+                    </Stack>
+                  )}
+
                   {/* Description */}
                   {prop.description && (
                     <Typography
@@ -1595,7 +2269,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   )}
 
                   {/* Assigned scenes badge */}
-                  {prop.assignedScenes.length > 0 && (
+                  {(prop.assignedScenes?.length || 0) > 0 && (
                     <Box
                       sx={{
                         display: 'flex',
@@ -1619,10 +2293,10 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                           justifyContent: 'center',
                         }}
                       >
-                        <Typography sx={{ fontSize: 14 }}>🎬</Typography>
+                        <CategoryIcon sx={{ fontSize: 16, color: '#c084fc' }} />
                       </Box>
                       <Typography sx={{ color: '#c084fc', fontSize: '0.8rem', fontWeight: 600 }}>
-                        {prop.assignedScenes.length} scene{prop.assignedScenes.length !== 1 ? 'r' : ''} tildelt
+                        {(prop.assignedScenes?.length || 0)} scene{(prop.assignedScenes?.length || 0) !== 1 ? 'r' : ''} tildelt
                       </Typography>
                     </Box>
                   )}
@@ -1791,10 +2465,10 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
-          );
+            </Box>
+            );
           })}
-        </Grid>
+        </Box>
       )}
 
       {/* Undo Delete Snackbar */}
@@ -1857,6 +2531,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         }}
       >
         <DialogTitle
+          component="div"
           id={dialogTitleId}
           sx={{
             color: '#fff',
@@ -1868,7 +2543,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             px: { xs: 2, sm: 3 },
           }}
         >
-          {editingProp ? 'Rediger utstyr' : 'Nytt utstyr'}
+          {editingProp ? 'Rediger post' : 'Ny post'}
           {isMobile && (
             <IconButton onClick={handleCloseDialog} aria-label="Lukk dialog" sx={{ color: 'rgba(255,255,255,0.87)', mr: -1 }}>
               <CloseIcon />
@@ -1877,9 +2552,16 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
         </DialogTitle>
         <DialogContent sx={{ pt: { xs: 2, sm: 3 }, px: { xs: 2, sm: 3 }, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <Typography id={dialogDescId} variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mb: 2 }}>
-            Fyll ut informasjon om utstyret. Felter merket med * er påkrevd.
+            Fyll ut informasjon om utstyr eller rekvisitt. Felter merket med * er påkrevd.
           </Typography>
-          <Stack spacing={2.5}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+              gap: 2.5,
+              alignItems: 'start',
+            }}
+          >
             <TextField
               label="Navn *"
               fullWidth
@@ -1894,6 +2576,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ),
               }}
               sx={{
+                gridColumn: '1 / -1',
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
@@ -1905,10 +2588,50 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               }}
             />
 
-            <FormControl fullWidth>
+            <FormControl
+              fullWidth
+              sx={{
+                gridColumn: { xs: '1 / -1', sm: '1 / span 1' },
+              }}
+            >
+              <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Type</InputLabel>
+              <Select
+                value={formItemType}
+                onChange={(e) => {
+                  const nextType = e.target.value as PropItemType;
+                  const nextOptions = CATEGORY_DEFINITIONS.filter((category) => category.itemType === nextType).map(
+                    (category) => category.key
+                  );
+                  const currentCategory = normalizeCategoryKey(formData.category);
+                  const nextCategory = nextOptions.includes(currentCategory) ? currentCategory : nextOptions[0] || '';
+                  setFormData({ ...formData, itemType: nextType, category: nextCategory });
+                }}
+                label="Type"
+                MenuProps={selectMenuProps}
+                sx={{
+                  color: '#fff',
+                  minHeight: TOUCH_TARGET_SIZE,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
+                }}
+              >
+                <MenuItem value="equipment" sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                  Utstyr
+                </MenuItem>
+                <MenuItem value="prop" sx={{ minHeight: TOUCH_TARGET_SIZE }}>
+                  Rekvisitt
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl
+              fullWidth
+              sx={{
+                gridColumn: { xs: '1 / -1', sm: '2 / span 1' },
+              }}
+            >
               <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kategori</InputLabel>
               <Select
-                value={formData.category || ''}
+                value={normalizeCategoryKey(formData.category)}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 label="Kategori"
                 MenuProps={selectMenuProps}
@@ -1918,7 +2641,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
                 }}
               >
-                {commonCategories.map((cat) => (
+                {formCategoryOptions.map((cat) => (
                   <MenuItem key={cat} value={cat} sx={{ minHeight: TOUCH_TARGET_SIZE }}>
                     {getCategoryLabel(cat)}
                   </MenuItem>
@@ -1941,6 +2664,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ),
               }}
               sx={{
+                gridColumn: '1 / -1',
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
@@ -1950,7 +2674,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
             />
 
             {/* Image Upload Section */}
-            <Box>
+            <Box sx={{ gridColumn: '1 / -1' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
                 <ImageIcon sx={{ color: '#9333ea', fontSize: { xs: '1.25rem', sm: '1.5rem' } }} />
                 <Typography variant="subtitle2" sx={{ color: '#9333ea', fontWeight: 600 }}>
@@ -1960,14 +2684,24 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
               
               {/* Existing images */}
               {formData.images && formData.images.length > 0 && (
-                <Box sx={{ display: 'flex', gap: 1.5, mb: 2, flexWrap: 'wrap' }}>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: {
+                      xs: 'repeat(2, minmax(0, 1fr))',
+                      sm: 'repeat(auto-fill, minmax(120px, 1fr))',
+                    },
+                    gap: 1.5,
+                    mb: 2,
+                  }}
+                >
                   {formData.images.map((image, index) => (
                     <Box
                       key={index}
                       sx={{
                         position: 'relative',
-                        width: { xs: 100, sm: 120 },
-                        height: { xs: 100, sm: 120 },
+                        width: '100%',
+                        aspectRatio: '1 / 1',
                         borderRadius: 2,
                         overflow: 'hidden',
                         border: '2px solid rgba(255,255,255,0.2)',
@@ -2050,6 +2784,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ),
               }}
               sx={{
+                gridColumn: { xs: '1 / -1', sm: '1 / span 1' },
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
@@ -2072,6 +2807,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ),
               }}
               sx={{
+                gridColumn: { xs: '1 / -1', sm: '2 / span 1' },
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   minHeight: TOUCH_TARGET_SIZE,
@@ -2096,6 +2832,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 ),
               }}
               sx={{
+                gridColumn: '1 / -1',
                 '& .MuiOutlinedInput-root': {
                   color: '#fff',
                   '& fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
@@ -2103,7 +2840,7 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
                 '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
               }}
             />
-          </Stack>
+          </Box>
         </DialogContent>
         <DialogActions
           sx={{
@@ -2142,7 +2879,24 @@ export function PropManagementPanel({ projectId, onUpdate }: PropManagementPanel
           </Button>
         </DialogActions>
       </Dialog>
+
+      <WarehouseInventoryDialog
+        open={warehouseDialogOpen}
+        onClose={() => {
+          setWarehouseDialogOpen(false);
+          refreshWarehouseSummary();
+        }}
+        projectId={projectId}
+        title="Lagerstyring - Utstyr & rekvisitter"
+        items={warehouseDialogItems}
+        locationSeeds={warehouseLocationSeeds}
+        onRequestEditItem={(item) => {
+          const target = props.find((entry) => entry.id === item.id);
+          if (!target) return;
+          setWarehouseDialogOpen(false);
+          handleOpenDialog(target);
+        }}
+      />
     </Box>
   );
 }
-

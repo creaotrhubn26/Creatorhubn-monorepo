@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { logger } from '../services/logger';
 
-const log = logger.module('VideoExport, ');
+const log = logger.module('VideoExport');
 
 // ============================================================================
 // Types
@@ -382,7 +382,7 @@ export class VideoExportService {
       const dataUrl = offscreenCanvas.toDataURL(mimeType, quality);
 
       // Convert to blob
-      const byteString = atob(dataUrl.split(', ')[1]);
+      const byteString = atob(dataUrl.split(',')[1]);
       const ab = new ArrayBuffer(byteString.length);
       const ia = new Uint8Array(ab);
       for (let i = 0; i < byteString.length; i++) {
@@ -504,7 +504,7 @@ export class VideoExportService {
 
       // Create download URL
       const url = URL.createObjectURL(zipBlob);
-      const optimizedFilename = filename.replace(/\.(webm|mp4)$/i'_optimized.zip');
+      const optimizedFilename = filename.replace(/\.(webm|mp4)$/i, '_optimized.zip');
 
       log.info(`Video optimized for streaming: ${this.formatFileSize(zipBlob.size)}`);
 
@@ -573,4 +573,3 @@ export class VideoExportService {
 export const videoExportService = new VideoExportService();
 
 export default videoExportService;
-

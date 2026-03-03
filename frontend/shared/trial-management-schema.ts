@@ -76,7 +76,7 @@ export const trialUsageTracking = pgTable('trial_usage_tracking', {
   userId: varchar('user_id').notNull(),
   subscriptionId: integer('subscription_id')
     .notNull()
-    .references(() => userSubscriptions.id, { onDelete: 'cascade' }),
+    .references(() => trialUserSubscriptions.id, { onDelete: 'cascade' }),
 
   // Usage metrics
   projectsCreated: integer('projects_created').default(0),
@@ -107,7 +107,7 @@ export const trialNotifications = pgTable('trial_notifications', {
   userId: varchar('user_id').notNull(),
   subscriptionId: integer('subscription_id')
     .notNull()
-    .references(() => userSubscriptions.id, { onDelete: 'cascade' }),
+    .references(() => trialUserSubscriptions.id, { onDelete: 'cascade' }),
 
   notificationType: varchar('notification_type')
     .$type<
@@ -154,7 +154,7 @@ export const subscriptionChangeHistory = pgTable('subscription_change_history', 
   userId: varchar('user_id').notNull(),
   subscriptionId: integer('subscription_id')
     .notNull()
-    .references(() => userSubscriptions.id, { onDelete: 'cascade' }),
+    .references(() => trialUserSubscriptions.id, { onDelete: 'cascade' }),
 
   changeType: varchar('change_type')
     .$type<
@@ -193,7 +193,7 @@ export const subscriptionChangeHistory = pgTable('subscription_change_history', 
 export const serviceActivations = pgTable('service_activations', {
   id: serial('id').primaryKey(),
   userId: varchar('user_id').notNull(),
-  subscriptionId: integer('subscription_id').references(() => userSubscriptions.id, {
+  subscriptionId: integer('subscription_id').references(() => trialUserSubscriptions.id, {
     onDelete: 'set null',
   }),
 
@@ -228,33 +228,33 @@ export const trialUserSubscriptionsRelations = relations(trialUserSubscriptions,
 }));
 
 export const trialUsageTrackingRelations = relations(trialUsageTracking, ({ one }) => ({
-  subscription: one(userSubscriptions, {
+  subscription: one(trialUserSubscriptions, {
     fields: [trialUsageTracking.subscriptionId],
-    references: [userSubscriptions.id],
+    references: [trialUserSubscriptions.id],
   }),
 }));
 
 export const trialNotificationsRelations = relations(trialNotifications, ({ one }) => ({
-  subscription: one(userSubscriptions, {
+  subscription: one(trialUserSubscriptions, {
     fields: [trialNotifications.subscriptionId],
-    references: [userSubscriptions.id],
+    references: [trialUserSubscriptions.id],
   }),
 }));
 
 export const subscriptionChangeHistoryRelations = relations(
   subscriptionChangeHistory,
   ({ one }) => ({
-    subscription: one(userSubscriptions, {
+    subscription: one(trialUserSubscriptions, {
       fields: [subscriptionChangeHistory.subscriptionId],
-      references: [userSubscriptions.id],
+      references: [trialUserSubscriptions.id],
     }),
   }),
 );
 
 export const serviceActivationsRelations = relations(serviceActivations, ({ one }) => ({
-  subscription: one(userSubscriptions, {
+  subscription: one(trialUserSubscriptions, {
     fields: [serviceActivations.subscriptionId],
-    references: [userSubscriptions.id],
+    references: [trialUserSubscriptions.id],
   }),
 }));
 

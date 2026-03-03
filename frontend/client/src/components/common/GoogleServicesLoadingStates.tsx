@@ -1,33 +1,29 @@
 /**
  * Enhanced Loading States for Google Services
- * Provides progressive loading feedback and status indicators
+ * Provides progressive loading feedback and status indicators.
  */
 
-import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
-import { apiRequest } from '@/lib/queryClient';
-import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import {
   Box,
-  LinearProgress,
-  Typography,
-  CircularProgress,
-  Chip,
   Card,
   CardContent,
+  Chip,
+  CircularProgress,
+  LinearProgress,
   Stack,
-  alpha,
-  useTheme,
+  Typography,
 } from '@mui/material';
 import {
+  CheckCircle,
   CloudDone,
   CloudSync,
   Error as ErrorIcon,
-  Warning,
-  CheckCircle,
   Refresh,
+  Warning,
 } from '@mui/icons-material';
+import { alpha, useTheme } from '@mui/material/styles';
+import { useTheming } from '../../utils/theming-helper';
 
 export interface SyncStatus {
   service: string;
@@ -36,14 +32,68 @@ export interface SyncStatus {
   message?: string;
   lastSync?: Date;
   itemsProcessed?: number;
-  totalItems?: number
+  totalItems?: number;
 }
 
 interface GoogleServicesLoadingStatesProps {
   syncStatuses: SyncStatus[];
   showDetailedProgress?: boolean;
-  compact?: boolean
+  compact?: boolean;
 }
+
+const getProgressLabel = (status: SyncStatus): string => {
+  if (typeof status.progress === 'number') {
+    return `${Math.round(status.progress)}%`;
+  }
+
+  if (typeof status.itemsProcessed === 'number' && typeof status.totalItems === 'number') {
+    return `${status.itemsProcessed}/${status.totalItems}`;
+  }
+
+  if (status.message?.trim()) {
+    return status.message;
+  }
+
+  switch (status.status) {
+    case 'loading':
+      return 'Initializing';
+    case 'syncing':
+      return 'Synchronizing';
+    case 'success':
+      return 'Up to date';
+    case 'warning':
+      return 'Needs attention';
+    case 'error':
+      return 'Sync failed';
+    default:
+      return 'Idle';
+  }
+};
+
+const formatLastSync = (lastSync?: Date): string => {
+  if (!lastSync) {
+    return 'Never';
+  }
+
+  const now = Date.now();
+  const diffMs = now - lastSync.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) {
+    return 'Just now';
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m ago`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
 
 export const GoogleServicesLoadingStates: React.FC<GoogleServicesLoadingStatesProps> = ({
   syncStatuses,
@@ -51,8 +101,6 @@ export const GoogleServicesLoadingStates: React.FC<GoogleServicesLoadingStatesPr
   compact = false,
 }) => {
   const theme = useTheme();
-  
-  // Theming system
   const theming = useTheming('photographer');
 
   const getStatusColor = (status: SyncStatus['status']) => {
@@ -68,190 +116,147 @@ export const GoogleServicesLoadingStates: React.FC<GoogleServicesLoadingStatesPr
         return theme.palette.info.main;
       default:
         return theme.palette.grey[500];
-}
-};
+    }
+  };
 
   const getStatusIcon = (status: SyncStatus['status']) => {
     switch (status) {
       case 'success':
-        return theming.getThemedIcon(', ');
+        return <CloudDone fontSize="small" />;
       case 'error':
-        return <ErrorIcon />;
+        return <ErrorIcon fontSize="small" />;
       case 'warning':
-        return theming.getThemedIcon('warning');
+        return <Warning fontSize="small" />;
       case 'loading':
       case 'syncing':
-        return <CloudSync />;
-      default: return theming.getThemedIcon(', ');
-  }
-};
-
-  const formatProgressText = (status: SyncStatus): string => {
-    if (status.status === 'syncing' && status.progress !== undefined) {
-      return `${Math.round(status.progress)}% complete`;
-  }
-    
-    if (status.itemsProcessed && status.totalItems) {
-      return `${status.itemsProcessed} of ${status.totalItems} items`;
-  }
-    
-    if (status.message) {
-      return status.message;
-  }
-    
-    switch (status.status) {
-      case 'loading':
-        return 'Initializing...';
-      case 'syncing':
-        return 'Synchronizing...';
-      case 'success':
-        return 'Up to date';
-      case 'error':
-        return 'Sync failed';
-      case 'warning':
-        return 'Partial sync';
-      default: return 'Ready';
-}
-};
-
-  const formatLastSync = (lastSync?: Date): string => {
-    if (!lastSync) return 'Never';
-    
-    const now = new Date();
-    const diffMs = now.getTime() - lastSync.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHours / 24);
-    
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-};
+        return <CloudSync fontSize="small" />;
+      default:
+        return <CheckCircle fontSize="small" />;
+    }
+  };
 
   if (compact) {
     return (
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap'}}>
-        {syncStatuses.map((status) => (
-          <Chip
-            key={status.service}
-            icon={getStatusIcon(status.status)}
-            label={`${status.service}: ${formatProgressText(status)}`}
-            size="small"
-            sx={{
-              bgcolor: alpha(getStatusColor(status.status), 0.1),
-              color: getStatusColor(status.status),
-              border: `1px solid ${alpha(getStatusColor(status.status), 0.3)}`}}
-          />
-        ))}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        {syncStatuses.map((status) => {
+          const color = getStatusColor(status.status);
+          return (
+            <Chip
+              key={status.service}
+              icon={getStatusIcon(status.status)}
+              label={`${status.service}: ${getProgressLabel(status)}`}
+              size="small"
+              sx={{
+                color,
+                border: `1px solid ${alpha(color, 0.35)}`,
+                backgroundColor: alpha(color, 0.1),
+              }}
+            />
+          );
+        })}
       </Box>
     );
-}
+  }
 
   return (
-    <Box sx={{ mb:  2 }}>
-      {syncStatuses.map((status) => (
-        <Card key={status.service} sx={{ mb:  1 ,  ...theming.getThemedCardSx() }}>
-          <CardContent sx={{ py:  2 ,  ...theming.getThemedCardSx() }}>
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box
-                sx={{
-                  color: getStatusColor(status.status),
-                  display: 'flex',
-                  alignItems: 'center'}}
-              >
-                {getStatusIcon(status.status)}
-              </Box>
-              
-              <Box sx={{ flex: 1, minWidth:  0 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600}>
-                  {status.service}
-                </Typography>
-                
-                <Typography variant="body2" color="text.secondary">
-                  {formatProgressText(status)}
-                </Typography>
-                
-                {showDetailedProgress && status.lastSync && (
-                  <Typography variant="caption" color="text.secondary">
-                    Last sync: {formatLastSync(status.lastSync)}
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+      {syncStatuses.map((status) => {
+        const color = getStatusColor(status.status);
+        return (
+          <Card key={status.service} variant="outlined" sx={theming.getThemedCardSx()}>
+            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 }, ...theming.getThemedCardSx() }}>
+              <Stack direction="row" spacing={1.5} alignItems="center">
+                <Box sx={{ color, display: 'flex', alignItems: 'center' }}>{getStatusIcon(status.status)}</Box>
+
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography variant="subtitle2">{status.service}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {getProgressLabel(status)}
                   </Typography>
-                )}
-              </Box>
-              
-              {status.status === 'syncing' && status.progress !== undefined && (
-                <Box sx={{ width: 100}}>
-                  <LinearProgress
-                    variant="determinate"
-                    value={status.progress}
-                    sx={{
-                      height:  6,
-                      borderRadius:  3,
-                      bgcolor: alpha(getStatusColor(status.status), 0.1)'& .MuiLinearProgress-bar': {
-                        bgcolor: getStatusColor(status.status),
-                        borderRadius:  3,
-                    }}}
-                  />
-                  <Typography variant="caption" sx={{ textAlign: 'center', display: 'block', mt: 0.5}}>
-                    {Math.round(status.progress)}%
-                  </Typography>
+                  {showDetailedProgress && status.lastSync && (
+                    <Typography variant="caption" color="text.secondary">
+                      Last sync: {formatLastSync(status.lastSync)}
+                    </Typography>
+                  )}
                 </Box>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-      ))}
+
+                {typeof status.progress === 'number' && (
+                  <Box sx={{ width: 120 }}>
+                    <LinearProgress
+                      variant="determinate"
+                      value={status.progress}
+                      sx={{
+                        height: 6,
+                        borderRadius: 4,
+                        backgroundColor: alpha(color, 0.2),
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: color,
+                        },
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ display: 'block', textAlign: 'right', mt: 0.25 }}>
+                      {Math.round(status.progress)}%
+                    </Typography>
+                  </Box>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        );
+      })}
     </Box>
   );
 };
 
-// Hook for managing sync statuses
 export const useGoogleServicesSyncStatus = () => {
   const [syncStatuses, setSyncStatuses] = React.useState<SyncStatus[]>([]);
 
-  const updateSyncStatus = React.useCallback((
-    service: string,
-    updates: Partial<Omit<SyncStatus, 'service'>>
-  ) => {
-    setSyncStatuses(prev => {
-      const existing = prev.find(s => s.service === service);
-      if (existing) {
-        return prev.map(s => s.service === service ? { ...s, ...updates } : s);
-    } else {
-        return [...prev, { service, ...updates }];
-    }
-  });
-}, []);
+  const updateSyncStatus = React.useCallback(
+    (service: string, updates: Partial<Omit<SyncStatus, 'service'>>) => {
+      setSyncStatuses((previousStatuses) => {
+        const index = previousStatuses.findIndex((entry) => entry.service === service);
+        if (index === -1) {
+          return [...previousStatuses, { service, status: 'idle', ...updates }];
+        }
 
-  const setSyncStatus = React.useCallback((service: string, status: SyncStatus['status'], message?: string) => {
-    updateSyncStatus(service, {
-      status,
-      message,
-      lastSync: status === 'success' ? new Date() : undefined,
-  });
-}, [updateSyncStatus]);
+        const nextStatuses = [...previousStatuses];
+        nextStatuses[index] = { ...nextStatuses[index], ...updates };
+        return nextStatuses;
+      });
+    },
+    [],
+  );
 
-  const setSyncProgress = React.useCallback((
-    service: string,
-    progress: number,
-    itemsProcessed?: number,
-    totalItems?: number
-  ) => {
-    updateSyncStatus(service, {
-      status: 'syncing',
-      progress,
-      itemsProcessed,
-      totalItems,
-  });
-}, [updateSyncStatus]);
+  const setSyncStatus = React.useCallback(
+    (service: string, status: SyncStatus['status'], message?: string) => {
+      updateSyncStatus(service, {
+        status,
+        message,
+        lastSync: status === 'success' ? new Date() : undefined,
+      });
+    },
+    [updateSyncStatus],
+  );
+
+  const setSyncProgress = React.useCallback(
+    (service: string, progress: number, itemsProcessed?: number, totalItems?: number) => {
+      updateSyncStatus(service, {
+        status: 'syncing',
+        progress,
+        itemsProcessed,
+        totalItems,
+      });
+    },
+    [updateSyncStatus],
+  );
 
   const clearSyncStatus = React.useCallback((service: string) => {
-    setSyncStatuses(prev => prev.filter(s => s.service !== service));
-}, []);
+    setSyncStatuses((previousStatuses) => previousStatuses.filter((entry) => entry.service !== service));
+  }, []);
 
   const clearAllSyncStatuses = React.useCallback(() => {
     setSyncStatuses([]);
-}, []);
+  }, []);
 
   return {
     syncStatuses,
@@ -260,10 +265,9 @@ export const useGoogleServicesSyncStatus = () => {
     setSyncProgress,
     clearSyncStatus,
     clearAllSyncStatuses,
-};
+  };
 };
 
-// Enhanced loading component for specific operations
 interface GoogleServiceOperationLoaderProps {
   service: string;
   operation: string;
@@ -271,7 +275,7 @@ interface GoogleServiceOperationLoaderProps {
   progress?: number;
   message?: string;
   error?: string;
-  onRetry?: () => void
+  onRetry?: () => void;
 }
 
 export const GoogleServiceOperationLoader: React.FC<GoogleServiceOperationLoaderProps> = ({
@@ -284,53 +288,60 @@ export const GoogleServiceOperationLoader: React.FC<GoogleServiceOperationLoader
   onRetry,
 }) => {
   const theme = useTheme();
+  const theming = useTheming('photographer');
 
-  if (!isLoading && !error) return null;
+  if (!isLoading && !error) {
+    return null;
+  }
 
   return (
-    <Card sx={{ mb:  2 ,  ...theming.getThemedCardSx() }}>
-      <CardContent sx={theming.getThemedCardSx()}>
-        <Stack direction="row" spacing={2} alignItems="center">
-          {isLoading ? (
-            <CircularProgress size={24} />
-          ) : (
-            <ErrorIcon color="error" />
-          )}
-          
-          <Box sx={{ flex:  1 }}>
+    <Card variant="outlined" sx={{ mb: 2, ...theming.getThemedCardSx() }}>
+      <CardContent sx={{ ...theming.getThemedCardSx() }}>
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          {isLoading ? <CircularProgress size={20} /> : <ErrorIcon color="error" fontSize="small" />}
+
+          <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="subtitle2">
               {service} - {operation}
             </Typography>
-            
-            {error ? (
-              <Typography variant="body2" color="error">
-                {error}
-              </Typography>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                {message || 'Processing...'}
-              </Typography>
-            )}
-            
-            {progress !== undefined && (
+            <Typography variant="body2" color={error ? 'error.main' : 'text.secondary'}>
+              {error ?? message ?? 'Processing'}
+            </Typography>
+            {typeof progress === 'number' && (
               <LinearProgress
                 variant="determinate"
                 value={progress}
-                sx={{ mt: 1, height:  4, borderRadius:  2 }}
+                sx={{
+                  mt: 0.75,
+                  height: 4,
+                  borderRadius: 4,
+                }}
               />
             )}
           </Box>
-          
+
           {error && onRetry && (
             <Box
               onClick={onRetry}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onRetry();
+                }
+              }}
               sx={{
+                p: 1,
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center',
                 cursor: 'pointer',
-                p:  1,
-                borderRadius: 1, '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.1),
-              }}}
+                color: theme.palette.primary.main,
+                '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.12) },
+              }}
             >
-              {theming.getThemedIcon('refresh')}
+              <Refresh fontSize="small" />
             </Box>
           )}
         </Stack>

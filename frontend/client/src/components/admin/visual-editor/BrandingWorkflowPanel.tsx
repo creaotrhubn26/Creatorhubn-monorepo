@@ -79,7 +79,9 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
 
   // Local state
   const [selectedTab, setSelectedTab] = useState(0);
-  const [brandingProfession, setBrandingProfession] = useState<'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise'>('photographer');
+  const [brandingProfession, setBrandingProfession] = useState<
+    'admin' | 'photographer' | 'videographer' | 'music_producer' | 'vendor'
+  >('photographer');
   const [confirmDeletePreset, setConfirmDeletePreset] = useState<{ id: string; name: string } | null>(null);
   const [brandingCategory, setBrandingCategory] = useState<ProjectCategoryType | undefined>(undefined);
   const [customBrandColor, setCustomBrandColor] = useState<string | undefined>(undefined);
@@ -159,7 +161,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
         type: 'success'
     });
       
-      onBrandingApplied?.(published);
+      onBrandingApplied?.({ ...published });
   }
 };
 
@@ -186,7 +188,7 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
       setDarkMode(config.mode === 'dark');
       
       setImportDialogOpen(false);
-      setImportJson(', ');
+      setImportJson('');
       
       onNotification?.({
         title: 'Config Imported',
@@ -1086,7 +1088,6 @@ const BrandingWorkflowPanel: React.FC<BrandingWorkflowPanelProps> = ({
 };
 
 export default BrandingWorkflowPanel;
-
 
 
 

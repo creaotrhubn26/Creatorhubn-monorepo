@@ -1,13 +1,11 @@
 /**
  * CreatorHub Norge - API Integration Process Monitor
- * Visuell monitor som viser hele 10-stegs API integration prosessen
+ * Visual monitor for 10-step API integration lifecycle + developer flow.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { auth } from '@/lib/auth';
 import {
   Box,
   Card,
@@ -19,7 +17,6 @@ import {
   StepContent,
   Chip,
   LinearProgress,
-  Grid,
   IconButton,
   Button,
   Collapse,
@@ -29,11 +26,14 @@ import {
   ListItemIcon,
   Alert,
   Divider,
-  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
+  FormControlLabel,
+  Switch,
+  Tooltip,
+  Stack,
 } from '@mui/material';
 import {
   Api as ApiIcon,
@@ -58,275 +58,606 @@ import {
   PlayArrow as PlayIcon,
   Stop as StopIcon,
   Timeline as TimelineIcon,
+  CloudDone as CloudDoneIcon,
 } from '@mui/icons-material';
 import { useToast } from '@/hooks/use-toast';
+import { useTheming } from '../../utils/theming-helper';
+
+type StepStatus = 'pending' | 'active' | 'completed' | 'error';
+type ProcessStatus = 'initializing' | 'processing' | 'completed' | 'failed';
 
 interface IntegrationStep {
   id: number;
   title: string;
   description: string;
   icon: React.ReactNode;
-  status: 'pending' | 'active' | 'completed' | 'error';
-  details?: string[];
+  status: StepStatus;
+  details: string[];
+  apiCalls: string[];
   duration?: number;
-  apiCalls?: string[];
 }
 
 interface ApiIntegrationProcess {
   service: string;
   totalSteps: number;
   currentStep: number;
-  status: 'initializing' | 'processing' | 'completed' | 'failed';
+  status: ProcessStatus;
   startTime: string;
   steps: IntegrationStep[];
-  devSteps?: IntegrationStep[];
+  devSteps: IntegrationStep[];
 }
 
+interface StepTemplate {
+  id: number;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  details: string[];
+  apiCalls: string[];
+}
+
+const STANDARD_STEP_TEMPLATES: StepTemplate[] = [
+  {
+    id: 1,
+    title: 'API Key Registration',
+    description: 'Register and validate API keys for the selected provider.',
+    icon: <ApiIcon />,
+    details: [
+      'API key validated and encrypted',
+      'Provider config persisted',
+      'Permissions and scopes verified',
+    ],
+    apiCalls: ['POST /api/admin/integrations/keys'],
+  },
+  {
+    id: 2,
+    title: 'Service Health Check',
+    description: 'Probe connectivity and health for provider endpoints.',
+    icon: <HealthIcon />,
+    details: [
+      'Connectivity checks passed',
+      'Health endpoint validated',
+      'Latency sampled',
+    ],
+    apiCalls: ['GET /api/admin/integrations/health/:service'],
+  },
+  {
+    id: 3,
+    title: 'Route Mapping',
+    description: 'Map provider routes and normalize payload contracts.',
+    icon: <MapIcon />,
+    details: [
+      'Inbound/outbound route map generated',
+      'Schema compatibility validated',
+      'Fallback route policy attached',
+    ],
+    apiCalls: ['POST /api/admin/integrations/routes/sync'],
+  },
+  {
+    id: 4,
+    title: 'Universal API Proxy',
+    description: 'Enable proxy routes for frontend/backend integration.',
+    icon: <ProxyIcon />,
+    details: [
+      'Proxy handlers registered',
+      'Request/response transformations active',
+      'Error mapping enabled',
+    ],
+    apiCalls: ['POST /api/integrations/:service/proxy/activate'],
+  },
+  {
+    id: 5,
+    title: 'Auto Discovery',
+    description: 'Discover capabilities and feature toggles from provider.',
+    icon: <VisibilityIcon />,
+    details: [
+      'Provider capabilities fetched',
+      'Feature metadata normalized',
+      'Compatibility mode assigned',
+    ],
+    apiCalls: ['GET /api/admin/integrations/:service/capabilities'],
+  },
+  {
+    id: 6,
+    title: 'Feature Availability',
+    description: 'Wire feature access rules into the UI runtime.',
+    icon: <BuildIcon />,
+    details: [
+      'Feature gate mappings loaded',
+      'UI conditionals applied',
+      'Progressive enhancement enabled',
+    ],
+    apiCalls: ['GET /api/integrations/features'],
+  },
+  {
+    id: 7,
+    title: 'Testing & Verification',
+    description: 'Run provider-specific contract and behavior tests.',
+    icon: <SecurityIcon />,
+    details: [
+      'Contract test suite executed',
+      'Response payloads validated',
+      'Error scenarios covered',
+    ],
+    apiCalls: ['POST /api/integrations/test-suite'],
+  },
+  {
+    id: 8,
+    title: 'Automatic Activation',
+    description: 'Activate integration runtime without service restart.',
+    icon: <SpeedIcon />,
+    details: [
+      'Zero-downtime activation confirmed',
+      'Hot reload applied',
+      'Runtime service registry updated',
+    ],
+    apiCalls: ['POST /api/admin/integrations/refresh'],
+  },
+  {
+    id: 9,
+    title: 'Security & Scaling',
+    description: 'Enable production controls (limits, audit, safeguards).',
+    icon: <ShieldIcon />,
+    details: [
+      'Rate limiting configured',
+      'Audit logging enabled',
+      'Security checks completed',
+    ],
+    apiCalls: ['GET /api/admin/security/audit'],
+  },
+  {
+    id: 10,
+    title: 'Business Intelligence',
+    description: 'Attach analytics and integration performance monitoring.',
+    icon: <AnalyticsIcon />,
+    details: [
+      'Usage events tracked',
+      'Cost metrics enabled',
+      'Performance telemetry online',
+    ],
+    apiCalls: ['GET /api/admin/analytics/integrations'],
+  },
+];
+
+const DEVELOPER_STEP_TEMPLATES: StepTemplate[] = [
+  {
+    id: 11,
+    title: 'Frontend Component Wiring',
+    description: 'Connect provider UI and state hooks into dashboard surface.',
+    icon: <CodeIcon />,
+    details: [
+      'Component props mapped',
+      'Feature flags wired',
+      'Error boundaries validated',
+    ],
+    apiCalls: ['client/src/components/admin/*'],
+  },
+  {
+    id: 12,
+    title: 'Proxy Contract Test',
+    description: 'Validate proxy behavior against target provider contracts.',
+    icon: <ScienceIcon />,
+    details: [
+      'Request transforms tested',
+      'Response schema assertions passed',
+      'Retry policies verified',
+    ],
+    apiCalls: ['POST /api/integrations/:service/test'],
+  },
+  {
+    id: 13,
+    title: 'Code Generation Sync',
+    description: 'Sync generated clients/types with integration templates.',
+    icon: <AutoIcon />,
+    details: [
+      'TypeScript contracts generated',
+      'Runtime client regenerated',
+      'Compatibility checks completed',
+    ],
+    apiCalls: ['POST /api/admin/integrations/templates/sync'],
+  },
+  {
+    id: 14,
+    title: 'WireMock / CI Sync',
+    description: 'Keep mock server and CI scenarios aligned with provider.',
+    icon: <SyncIcon />,
+    details: [
+      'Mock endpoints aligned',
+      'Regression scenarios exported',
+      'CI test matrix updated',
+    ],
+    apiCalls: ['POST /api/admin/integrations/mock/sync'],
+  },
+];
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
+const toProcessStatus = (value: unknown): ProcessStatus => {
+  if (value === 'initializing' || value === 'processing' || value === 'completed' || value === 'failed') {
+    return value;
+  }
+  return 'initializing';
+};
+
+const toStepStatus = (value: unknown): StepStatus | null => {
+  if (value === 'pending' || value === 'active' || value === 'completed' || value === 'error') {
+    return value;
+  }
+  return null;
+};
+
+const getDefaultStepStatus = (
+  stepId: number,
+  currentStep: number,
+  processStatus: ProcessStatus,
+): StepStatus => {
+  if (stepId < currentStep) {
+    return 'completed';
+  }
+  if (stepId === currentStep) {
+    if (processStatus === 'failed') {
+      return 'error';
+    }
+    if (processStatus === 'completed') {
+      return 'completed';
+    }
+    return 'active';
+  }
+  if (processStatus === 'completed') {
+    return 'completed';
+  }
+  return 'pending';
+};
+
+const coerceStep = (
+  template: StepTemplate,
+  currentStep: number,
+  processStatus: ProcessStatus,
+  sourceCandidate?: unknown,
+): IntegrationStep => {
+  const candidate = isRecord(sourceCandidate) ? sourceCandidate : null;
+  const candidateStatus = toStepStatus(candidate?.status);
+  const details =
+    Array.isArray(candidate?.details) && candidate.details.every((item) => typeof item === 'string')
+      ? candidate.details
+      : template.details;
+  const apiCalls =
+    Array.isArray(candidate?.apiCalls) && candidate.apiCalls.every((item) => typeof item === 'string')
+      ? candidate.apiCalls
+      : template.apiCalls;
+
+  return {
+    ...template,
+    status: candidateStatus ?? getDefaultStepStatus(template.id, currentStep, processStatus),
+    details,
+    apiCalls,
+    duration: typeof candidate?.duration === 'number' ? candidate.duration : undefined,
+  };
+};
+
+const buildFallbackProcess = (service: string): ApiIntegrationProcess => {
+  const processStatus: ProcessStatus = 'initializing';
+  const currentStep = 1;
+  return {
+    service,
+    totalSteps: STANDARD_STEP_TEMPLATES.length,
+    currentStep,
+    status: processStatus,
+    startTime: new Date().toISOString(),
+    steps: STANDARD_STEP_TEMPLATES.map((step) => coerceStep(step, currentStep, processStatus)),
+    devSteps: DEVELOPER_STEP_TEMPLATES.map((step) => ({ ...coerceStep(step, 0, 'initializing'), status: 'pending' })),
+  };
+};
+
+const normalizeProcessPayload = (payload: unknown, service: string): ApiIntegrationProcess => {
+  const fallback = buildFallbackProcess(service);
+  if (!isRecord(payload)) {
+    return fallback;
+  }
+
+  const rawTotal = typeof payload.totalSteps === 'number' ? payload.totalSteps : fallback.totalSteps;
+  const totalSteps = Math.max(rawTotal, fallback.totalSteps);
+  const rawCurrentStep = typeof payload.currentStep === 'number' ? payload.currentStep : 1;
+  const currentStep = Math.min(Math.max(rawCurrentStep, 1), totalSteps);
+  const processStatus = toProcessStatus(payload.status);
+  const startTime = typeof payload.startTime === 'string' ? payload.startTime : fallback.startTime;
+
+  const serverSteps = Array.isArray(payload.steps) ? payload.steps : [];
+  const serverDevSteps = Array.isArray(payload.devSteps) ? payload.devSteps : [];
+
+  const steps = STANDARD_STEP_TEMPLATES.map((template) => {
+    const serverStep = serverSteps.find((step) => isRecord(step) && step.id === template.id);
+    return coerceStep(template, currentStep, processStatus, serverStep);
+  });
+
+  const devSteps = DEVELOPER_STEP_TEMPLATES.map((template) => {
+    const serverStep = serverDevSteps.find((step) => isRecord(step) && step.id === template.id);
+    return coerceStep(template, currentStep, processStatus, serverStep);
+  });
+
+  return {
+    service: typeof payload.service === 'string' ? payload.service : service,
+    totalSteps,
+    currentStep,
+    status: processStatus,
+    startTime,
+    steps,
+    devSteps,
+  };
+};
+
+const normalizeOverviewPayload = (payload: unknown, service: string): ApiIntegrationProcess => {
+  if (isRecord(payload) && isRecord(payload[service])) {
+    return normalizeProcessPayload(payload[service], service);
+  }
+  return buildFallbackProcess(service);
+};
+
 export function ApiIntegrationProcessMonitor({ service }: { service?: string }) {
-  // Note: authHeaders would need to be loaded in a useEffect if needed
-  // const authHeaders = await auth.getAuthHeader();
-  // Standard 10-stegs prosess
-  const getStandardSteps = (currentProcess?: ApiIntegrationProcess): IntegrationStep[] => [
-    {
-      id: 1,
-      title: 'API Key Registration',
-      description: 'Admin panel registrering av API-nøkkel',
-      icon: <ApiIcon />,
-      status: currentProcess?.currentStep >= 1 ? 'completed' : 'pending',
-      details: [
-        'API-nøkkel validert og kryptert', 'Tjeneste-konfigurasjon opprettet','Tilgangspermissions satt',
-      ],
-      apiCalls: ['POST /api/admin/integrations/keys'],
-    },
-    {
-      id: 4,
-      title: 'Universal API Proxy',
-      description: 'Frontend API proxy aktivering',
-      icon: <ProxyIcon />,
-      status: currentProcess?.currentStep >= 5 ? 'completed' : 'pending',
-      details: [
-        'Proxy routes konfigurert','Request/response mapping','Error handling implementert',
-      ],
-      apiCalls: ['POST /api/integrations/{service}/*'],
-    },
-    {
-      id: 6,
-      title: 'Feature Availability U',
-      description: 'Kondisjonell UI logikk implementert',
-      icon: <VisibilityIcon />,
-      status: currentProcess?.currentStep >= 6 ? 'completed' : 'pending',
-      details: [
-        'Feature detection aktivert','UI komponenter tilgjengelige','Progressive enhancement',
-      ],
-      apiCalls: ['GET /api/integrations/features'],
-    },
-    {
-      id: 7,
-      title: 'Testing & Verification',
-      description: 'API validering og test suite',
-      icon: <SecurityIcon />,
-      status: currentProcess?.currentStep >= 7 ? 'completed' : 'pending',
-      details: ['Integration tests kjørt','API response validation','Error scenarios testet'],
-      apiCalls: ['POST /api/integrations/test-suite'],
-    },
-    {
-      id: 8,
-      title: 'Automatic Activation',
-      description: 'Hot-reload og auto-detection',
-      icon: <SpeedIcon />,
-      status: currentProcess?.currentStep >= 8 ? 'completed' : 'pending',
-      details: [
-        'Zero-downtime aktivering','Automatic service discovery','Configuration hot-reload',
-      ],
-      apiCalls: ['POST /api/admin/integrations/refresh'],
-    },
-    {
-      id: 9,
-      title: 'Security & Scaling',
-      description: 'Production-ready sikkerhet',
-      icon: <ShieldIcon />,
-      status: currentProcess?.currentStep >= 9 ? 'completed' : 'pending',
-      details: ['Rate limiting aktivert','GDPR compliance sjekket','Audit logging aktivert'],
-      apiCalls: ['GET /api/admin/security/audit'],
-    },
-    {
-      id: 10,
-      title: 'Business Intelligence',
-      description: 'Analytics og monitoring',
-      icon: <AnalyticsIcon />,
-      status: currentProcess?.currentStep >= 10 ? 'completed' : 'pending',
-      details: ['Usage analytics tracking','Cost monitoring aktiv','Performance metrics'],
-      apiCalls: ['GET /api/admin/analytics/integrations'],
-    },
-  ];
+  const targetService = (service || 'pexels').toLowerCase();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const theme = useTheming();
 
-  // Developer steps
-  const getDeveloperSteps = (): IntegrationStep[] => [
-    {
-      id: 11,
-      title: 'Frontend UI Component',
-      description: 'Lag service-spesifikk UI komponent',
-      icon: <CodeIcon />,
-      status: 'pending',
-      details: [
-        'React komponent generert','Material UI design system','Type-safe API integration',
-      ],
-    },
-    {
-      id: 12,
-      title: 'Universal Proxy Test',
-      description: 'Verifiser API-kall fungerer',
-      icon: <ScienceIcon />,
-      status: 'pending',
-      details: ['Proxy endpoints testet','Request/response validert','Error handling verifisert'],
-    },
-    {
-      id: 13,
-      title: 'Code Generator',
-      description: 'Auto-generering av komponenter',
-      icon: <AutoIcon />,
-      status: 'pending',
-      details: ['TypeScript types generert','React hooks generert','API client generert'],
-    },
-    {
-      id: 14,
-      title: 'WireMock Sync',
-      description: 'Automatisk testing infrastructure',
-      icon: <SyncIcon />,
-      status: 'pending',
-      details: ['Mock server konfigurert','Test scenarios definert','CI/CD pipeline integrert'],
-    },
-  ];
+  const [showDevSteps, setShowDevSteps] = useState(false);
+  const [realTimeUpdate, setRealTimeUpdate] = useState(true);
+  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+  const [selectedStep, setSelectedStep] = useState<IntegrationStep | null>(null);
 
-  const standardSteps = getStandardSteps(
-    processData ?? (undefined as unknown as ApiIntegrationProcess),
-  );
-  const devSteps = getDeveloperSteps();
+  const processQuery = useQuery({
+    queryKey: ['/api/admin/integrations/process-monitor', targetService],
+    queryFn: async (): Promise<ApiIntegrationProcess> => {
+      const candidateEndpoints = [
+        `/api/admin/integrations/${targetService}/process`,
+        `/api/admin/integrations/${targetService}/status`,
+        `/api/integrations/${targetService}/status`,
+      ];
+
+      for (const endpoint of candidateEndpoints) {
+        try {
+          const payload = await apiRequest(endpoint);
+          return normalizeProcessPayload(payload, targetService);
+        } catch {
+          // Try next endpoint.
+        }
+      }
+
+      try {
+        const overview = await apiRequest('/api/admin/integrations/status');
+        return normalizeOverviewPayload(overview, targetService);
+      } catch {
+        return buildFallbackProcess(targetService);
+      }
+    },
+    staleTime: 2_000,
+    refetchInterval: realTimeUpdate ? 5_000 : false,
+  });
+
+  const currentProcess = processQuery.data ?? buildFallbackProcess(targetService);
+
+  const progressPercentage = useMemo(() => {
+    if (!currentProcess.totalSteps) {
+      return 0;
+    }
+    return Math.round((currentProcess.currentStep / currentProcess.totalSteps) * 100);
+  }, [currentProcess.currentStep, currentProcess.totalSteps]);
+
+  const refreshProcess = async () => {
+    await processQuery.refetch();
+    await queryClient.invalidateQueries({ queryKey: ['/api/admin/integrations/status'] });
+  };
+
+  const startIntegrationMutation = useMutation({
+    mutationFn: async () => {
+      try {
+        return await apiRequest(`/api/admin/integrations/${targetService}/start`, {
+          method: 'POST',
+          body: { service: targetService },
+        });
+      } catch {
+        return apiRequest('/api/admin/integrations/refresh', {
+          method: 'POST',
+          body: { service: targetService },
+        });
+      }
+    },
+    onSuccess: async () => {
+      toast({
+        title: 'Integration started',
+        description: `${targetService.toUpperCase()} process has been restarted.`,
+        variant: 'success',
+      });
+      await refreshProcess();
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Could not start integration',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const runTestsMutation = useMutation({
+    mutationFn: async () => {
+      try {
+        return await apiRequest(`/api/integrations/${targetService}/test`, { method: 'POST' });
+      } catch {
+        return apiRequest(`/api/integrations/${targetService}/test`);
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Integration tests executed',
+        description: `Tests for ${targetService.toUpperCase()} completed.`,
+        variant: 'success',
+      });
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Integration tests failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest('/api/admin/integrations/refresh', {
+        method: 'POST',
+        body: { service: targetService },
+      });
+    },
+    onSuccess: async () => {
+      toast({
+        title: 'Integration refreshed',
+        description: `${targetService.toUpperCase()} refreshed successfully.`,
+        variant: 'success',
+      });
+      await refreshProcess();
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Refresh failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const getStepIcon = (step: IntegrationStep) => {
+    if (step.status === 'completed') {
+      return <CheckCircleIcon color="success" />;
+    }
+    if (step.status === 'error') {
+      return <ErrorIcon color="error" />;
+    }
+    if (step.status === 'active') {
+      return <CircularStepPulse icon={step.icon} />;
+    }
+    return step.icon;
+  };
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 120, mx: 'auto', p: 2 }}>
-      <Card elevation={3} sx={theme.getThemedCardSx()}>
-        <CardContent sx={theme.getThemedCardSx()}>
-          <Box
-            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}
-          >
-            <Typography
-              variant="h5"
-              component="h2"
-              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-              style={{ color: theme.colors.primary }}
-            >
-              <TimelineIcon sx={{ color: 'primary.main' }} />
-              API Integration Process Monitor
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
-                startIcon={showDevSteps ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                onClick={() => setShowDevSteps(!showDevSteps)}
-              >
-                Developer Steps
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={realTimeUpdate ? <StopIcon /> : <PlayIcon />}
-                onClick={() => setRealTimeUpdate(!realTimeUpdate)}
-              >
-                {realTimeUpdate ? 'Pause' : 'Start'} Live Updates
-              </Button>
-            </Box>
-          </Box>
-
-          {service && (
-            <Alert severity="info" sx={{ mb: 3 }}>
-              <Typography variant="subtitle1">
-                Monitoring integration for: <strong>{service.toUpperCase()}</strong>
+    <Box sx={{ width: '100%', maxWidth: 1200, mx: 'auto', p: 2 }}>
+      <Card elevation={2} sx={theme.getThemedCardSx()}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+            <Box>
+              <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TimelineIcon sx={{ color: theme.colors.primary }} />
+                API Integration Process Monitor
               </Typography>
-              {processData && (
-                <LinearProgress
-                  variant="determinate"
-                  value={getProgressPercentage()}
-                  sx={{ mt: 1, height: 8, borderRadius: 4 }}
-                />
-              )}
+              <Typography variant="body2" color="text.secondary">
+                Service: <strong>{targetService.toUpperCase()}</strong>
+              </Typography>
+            </Box>
+
+            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={showDevSteps}
+                    onChange={(event) => setShowDevSteps(event.target.checked)}
+                  />
+                }
+                label="Developer steps"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={realTimeUpdate}
+                    onChange={(event) => setRealTimeUpdate(event.target.checked)}
+                  />
+                }
+                label="Live updates"
+              />
+            </Stack>
+          </Stack>
+
+          <Alert severity={currentProcess.status === 'failed' ? 'error' : 'info'} sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              Status: <strong>{currentProcess.status.toUpperCase()}</strong> | Step{' '}
+              <strong>
+                {currentProcess.currentStep}/{currentProcess.totalSteps}
+              </strong>
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={progressPercentage}
+              sx={{ mt: 1.5, height: 8, borderRadius: 5 }}
+            />
+          </Alert>
+
+          {processQuery.isError && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Could not load live process data. Showing resilient fallback process model.
             </Alert>
           )}
 
-          <Typography variant="h6" gutterBottom style={{ color: theme.colors.primary }}>
-            MANDATORY FULLSTACK API PROTOCOL (10 Steg)
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Mandatory Fullstack Protocol (10 steps)
           </Typography>
-
-          <Stepper orientation="vertical" sx={{ mt: 2 }}>
-            {standardSteps.map((step) => (
-              <Step key={step.id} active expanded>
-                <StepLabel
-                  icon={getStepIcon(step)}
-                  sx={{
-                    '& .MuiStepLabel-label': {
-                      fontWeight: tep.status === 'completed' ? 'bold' : 'normal',
-                    }}}
-                >
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Stepper orientation="vertical">
+            {currentProcess.steps.map((step) => (
+              <Step key={step.id} active={step.status === 'active'} completed={step.status === 'completed'} expanded>
+                <StepLabel icon={getStepIcon(step)}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                     <Typography variant="subtitle1">{step.title}</Typography>
                     <Chip
-                      label={step.status.toUpperCase()}
                       size="small"
+                      label={step.status.toUpperCase()}
                       color={
                         step.status === 'completed'
                           ? 'success'
                           : step.status === 'active'
                             ? 'primary'
                             : step.status === 'error'
-                              ? 'error' : 'default'
+                              ? 'error'
+                              : 'default'
                       }
                     />
-                  </Box>
+                  </Stack>
                 </StepLabel>
                 <StepContent>
-                  <Typography variant="body2" color="textSecondary" style={{ mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                     {step.description}
                   </Typography>
 
-                  <IconButton
-                    size="small"
-                    onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
-                  >
-                    {expandedStep === step.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                  </IconButton>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <Button size="small" onClick={() => setSelectedStep(step)}>
+                      View details
+                    </Button>
+                    <Tooltip title={expandedStep === step.id ? 'Hide step details' : 'Expand step details'}>
+                      <IconButton
+                        size="small"
+                        onClick={() => setExpandedStep(expandedStep === step.id ? null : step.id)}
+                      >
+                        {expandedStep === step.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
 
                   <Collapse in={expandedStep === step.id}>
-                    <Box
-                      sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.light' }}
-                    >
-                      {step.details && (
-                        <List dense>
-                          {step.details.map((detail, index) => (
-                            <ListItem key={index}>
-                              <ListItemIcon>
-                                <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
-                              </ListItemIcon>
-                              <ListItemText primary={detail} />
-                            </ListItem>
-                          ))}
-                        </List>
-                      )}
-
-                      {step.apiCalls && (
-                        <>
-                          <Typography variant="subtitle2" style={{ mt: 2, mb: 1 }}>
-                            API Endpoints:{' '}
-                          </Typography>
-                          {step.apiCalls.map((apiCall, index) => (
-                            <Chip
-                              key={index}
-                              label={apiCall}
-                              variant="outlined"
-                              size="small"
-                              style={{ mr: 1, mb: 1, fontFamily: 'monospace' }}
-                            />
-                          ))}
-                        </>
-                      )}
+                    <Box sx={{ mt: 1, pl: 2, borderLeft: '2px solid', borderColor: 'primary.light' }}>
+                      <List dense>
+                        {step.details.map((detail) => (
+                          <ListItem key={`${step.id}-${detail}`} disableGutters>
+                            <ListItemIcon sx={{ minWidth: 28 }}>
+                              <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main' }} />
+                            </ListItemIcon>
+                            <ListItemText primary={detail} />
+                          </ListItem>
+                        ))}
+                      </List>
+                      <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+                        {step.apiCalls.map((apiCall) => (
+                          <Chip key={`${step.id}-${apiCall}`} label={apiCall} size="small" variant="outlined" />
+                        ))}
+                      </Stack>
                     </Box>
                   </Collapse>
                 </StepContent>
@@ -335,116 +666,146 @@ export function ApiIntegrationProcessMonitor({ service }: { service?: string }) 
           </Stepper>
 
           <Collapse in={showDevSteps}>
-            <Divider style={{ my: 3 }} />
-            <Typography variant="h6" gutterBottom style={{ color: theme.colors.primary }}>
-              DEVELOPER WORKFLOW (4 Steg)
+            <Divider sx={{ my: 3 }} />
+            <Typography variant="h6" sx={{ mb: 1 }}>
+              Developer Workflow (4 steps)
             </Typography>
-
-            <Stepper orientation="vertical" style={{ mt: 2 }}>
-              {devSteps.map((step) => (
-                <Step key={step.id} active expanded>
-                  <StepLabel icon={step.icon as React.ReactNode}>
-                    <Box style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Stepper orientation="vertical">
+              {currentProcess.devSteps.map((step) => (
+                <Step key={step.id} active={step.status === 'active'} completed={step.status === 'completed'} expanded>
+                  <StepLabel icon={getStepIcon(step)}>
+                    <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="subtitle1">{step.title}</Typography>
-                      <Chip label="DEVELOPER" size="small" color="secondary" />
-                    </Box>
+                      <Chip size="small" color="secondary" label="DEVELOPER" />
+                    </Stack>
                   </StepLabel>
                   <StepContent>
-                    <Typography variant="body2" color="textSecondary">
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                       {step.description}
                     </Typography>
-                    {step.details && step.details.length > 0 && (
-                      <Box
-                        sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.light' }}
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          style={{ mt: 2, mb: 1, color: theme.colors.primary }}
-                        >
-                          Details:{' '}
-                        </Typography>
-                        <List dense sx={{ mt: 1, color: theme.colors.primary }}>
-                          {step.details.map((detail, index) => (
-                            <ListItem key={index} sx={{ color: theme.colors.primary }}>
-                              <ListItemIcon>
-                                <CodeIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
-                              </ListItemIcon>
-                              <ListItemText primary={detail} sx={{ color: theme.colors.primary }} />
-                            </ListItem>
-                          ))}
-                        </List>
-                      </Box>
-                    )}
-                    {step.apiCalls && step.apiCalls.length > 0 && (
-                      <Box
-                        sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.light' }}
-                      >
-                        <Typography
-                          variant="subtitle2"
-                          style={{ mt: 2, mb: 1, color: theme.colors.primary }}
-                        >
-                          API Endpoints:{''}
-                        </Typography>
-                        <List dense sx={{ mt: 1, color: theme.colors.primary }}>
-                          {step.apiCalls.map((apiCall, index) => (
-                            <ListItem key={index} sx={{ color: theme.colors.primary }}>
-                              <ListItemText
-                                primary={apiCall}
-                                sx={{ color: theme.colors.primary }}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
-                      </Box>
-                    )}
+                    <List dense>
+                      {step.details.map((detail) => (
+                        <ListItem key={`${step.id}-${detail}`} disableGutters>
+                          <ListItemIcon sx={{ minWidth: 28 }}>
+                            <CodeIcon sx={{ fontSize: 16, color: 'secondary.main' }} />
+                          </ListItemIcon>
+                          <ListItemText primary={detail} />
+                        </ListItem>
+                      ))}
+                    </List>
                   </StepContent>
                 </Step>
               ))}
             </Stepper>
           </Collapse>
 
-          {service && (
-            <Box style={{ mt: 3, p: 2, bgcolor: theme.colors.primary, borderRadius: 1 }}>
-              <Typography variant="subtitle2" gutterBottom style={{ color: theme.colors.primary }}>
-                Quick Actions for {service}:
-              </Typography>
-              <Box
-                style={{
-                  display: 'flex',
-                  gap: 1,
-                  flexWrap: 'wrap',
-                  color: theme.colors.text.primary}}
-              >
-                <Button
-                  size="small"
-                  startIcon={<RefreshIcon />}
-                  style={{ color: theme.colors.primary }}
-                  onClick={() => startIntegrationMutation.mutate(service)}
-                  disabled={startIntegrationMutation.isPending}
-                >
-                  Restart Process
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={<ScienceIcon />}
-                  style={{ color: theme.colors.primary }}
-                  onClick={() => fetch(`/api/integrations/${service}/test`)}
-                >
-                  Run Tests
-                </Button>
-                <Button
-                  size="small"
-                  startIcon={<AnalyticsIcon />}
-                  style={{ color: theme.colors.primary }}
-                  onClick={() => window.open(`/admin/analytics/integrations/${service}`, '_blank')}
-                >
-                  View Analytics
-                </Button>
-              </Box>
-            </Box>
+          <Divider sx={{ my: 3 }} />
+          <Typography variant="subtitle2" gutterBottom>
+            Quick actions for {targetService.toUpperCase()}
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={() => startIntegrationMutation.mutate()}
+              disabled={startIntegrationMutation.isPending}
+            >
+              Restart process
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ScienceIcon />}
+              onClick={() => runTestsMutation.mutate()}
+              disabled={runTestsMutation.isPending}
+            >
+              Run tests
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<CloudDoneIcon />}
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+            >
+              Refresh integration
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              startIcon={realTimeUpdate ? <StopIcon /> : <PlayIcon />}
+              onClick={() => setRealTimeUpdate((value) => !value)}
+            >
+              {realTimeUpdate ? 'Pause live' : 'Resume live'}
+            </Button>
+          </Stack>
+
+          {processQuery.isLoading && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Loading integration process data...
+            </Alert>
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={Boolean(selectedStep)} onClose={() => setSelectedStep(null)} fullWidth maxWidth="md">
+        <DialogTitle>{selectedStep?.title ?? 'Step details'}</DialogTitle>
+        <DialogContent dividers>
+          {selectedStep && (
+            <Stack spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                {selectedStep.description}
+              </Typography>
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Checklist
+                </Typography>
+                <List dense>
+                  {selectedStep.details.map((detail) => (
+                    <ListItem key={`dialog-${selectedStep.id}-${detail}`} disableGutters>
+                      <ListItemText primary={detail} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  Endpoints
+                </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap">
+                  {selectedStep.apiCalls.map((apiCall) => (
+                    <Chip key={`dialog-${selectedStep.id}-${apiCall}`} label={apiCall} size="small" variant="outlined" />
+                  ))}
+                </Stack>
+              </Box>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSelectedStep(null)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+}
+
+function CircularStepPulse({ icon }: { icon: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: 'pulse-step 1.4s ease-in-out infinite',
+        '@keyframes pulse-step': {
+          '0%': { opacity: 0.6, transform: 'scale(0.96)' },
+          '50%': { opacity: 1, transform: 'scale(1.08)' },
+          '100%': { opacity: 0.6, transform: 'scale(0.96)' },
+        },
+      }}
+    >
+      {icon}
     </Box>
   );
 }

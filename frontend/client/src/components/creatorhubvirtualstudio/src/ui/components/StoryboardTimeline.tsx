@@ -408,7 +408,7 @@ export const StoryboardTimeline: React.FC<TimelineProps> = ({
       >
         <Box
           sx={{
-            width: Math.max(totalDuration * pixelsPerSecond + 100'100%'),
+            width: Math.max(totalDuration * pixelsPerSecond + 100, 100),
             height: 100,
             position: 'relative',
             py: 1,
@@ -439,4 +439,3 @@ export const StoryboardTimeline: React.FC<TimelineProps> = ({
 };
 
 export default StoryboardTimeline;
-

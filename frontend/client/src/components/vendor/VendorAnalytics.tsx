@@ -64,7 +64,7 @@ export default function VendorAnalytics({
   const updateVendorAnalytics = useMutation({
     mutationFn: async (data: any) => 
       apiRequest('/api/vendor/update', {
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
   }),
     onSuccess: () => {

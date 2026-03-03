@@ -26,6 +26,9 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig, NodePort } from './BaseNode';
 
+const getStringArrayValue = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
 // Event node types
 export type EventNodeType = 
   | 'OnClickNode'
@@ -68,8 +71,8 @@ export const OnClickNode = memo(function OnClickNode({
         icon: <TouchApp sx={{ fontSize: 18 }} />,
       }}
       onDataChange={onDataChange}
-      renderContent={(data, onChange) => (
-        <Box>
+	      renderContent={(data, onChange) => (
+	        <Box>
           <TextField
             fullWidth
             size="small"
@@ -426,25 +429,25 @@ export const OnKeyPressNode = memo(function OnKeyPressNode({
             placeholder="Enter, Escape, a, b..."
             sx={{ mb: 1 }}
           />
-          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-            {['Ctrl', 'Alt', 'Shift', 'Meta'].map((modifier) => (
-              <Chip
+	          <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+	            {['Ctrl', 'Alt', 'Shift', 'Meta'].map((modifier) => (
+	              <Chip
                 key={modifier}
                 size="small"
                 label={modifier}
-                onClick={() => {
-                  const modifiers = data.modifiers || [];
-                  const newModifiers = modifiers.includes(modifier)
-                    ? modifiers.filter((m: string) => m !== modifier)
-                    : [...modifiers, modifier];
-                  onChange('modifiers', newModifiers);
-                }}
-                variant={(data.modifiers || []).includes(modifier) ? 'filled' : 'outlined'}
-                sx={{
-                  bgcolor: (data.modifiers || []).includes(modifier)
-                    ? 'rgba(76,175,80,0.2)'
-                    : 'transparent',
-                  borderColor: '#4caf50',
+	                onClick={() => {
+	                  const modifiers = getStringArrayValue(data.modifiers);
+	                  const newModifiers = modifiers.includes(modifier)
+	                    ? modifiers.filter((m) => m !== modifier)
+	                    : [...modifiers, modifier];
+	                  onChange('modifiers', newModifiers);
+	                }}
+	                variant={getStringArrayValue(data.modifiers).includes(modifier) ? 'filled' : 'outlined'}
+	                sx={{
+	                  bgcolor: getStringArrayValue(data.modifiers).includes(modifier)
+	                    ? 'rgba(76,175,80,0.2)'
+	                    : 'transparent',
+	                  borderColor: '#4caf50',
                   color: '#4caf50',
                 }}
               />
@@ -576,4 +579,3 @@ export const EVENT_NODE_DEFINITIONS = [
 ];
 
 export default EVENT_NODE_DEFINITIONS;
-

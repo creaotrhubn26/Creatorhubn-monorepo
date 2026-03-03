@@ -78,6 +78,7 @@ import {
   MoreVert,
 } from '@mui/icons-material';
 import { usePageNodes, usePageConnections } from '@/hooks/usePageCustomizations';
+import type { WiringConnection as ApiWiringConnection } from '@/hooks/usePageCustomizations';
 
 // Node types enum
 export type NodeCategory = 
@@ -289,7 +290,7 @@ const NODE_LIBRARY: NodeDefinition[] = [
     icon: <DataObject />,
     inputs: [{ name: 'value', type: 'input', dataType: 'any' }],
     outputs: [{ name: 'formatted', type: 'output', dataType: 'string' }],
-    defaultData: { format: 'string', template: '' },
+    defaultData: { format: 'string', template: ', ' },
     color: '#2196f3',
   },
   
@@ -309,7 +310,7 @@ const NODE_LIBRARY: NodeDefinition[] = [
       { name: 'error', type: 'output', dataType: 'object' },
       { name: 'loading', type: 'output', dataType: 'boolean' },
     ],
-    defaultData: { method: 'GET', url: '', headers: {} },
+    defaultData: { method: 'GET', url: ', ', headers: {} },
     color: '#ff9800',
   },
   {
@@ -362,7 +363,7 @@ const NODE_LIBRARY: NodeDefinition[] = [
       { name: 'result', type: 'output', dataType: 'object' },
       { name: 'error', type: 'output', dataType: 'object' },
     ],
-    defaultData: { table: '' },
+    defaultData: { table: ', ' },
     color: '#00bcd4',
   },
   
@@ -465,23 +466,116 @@ export function ComponentWiringSystem({
   const { nodes: apiNodes, isLoading: nodesLoading } = usePageNodes(pageId);
   const { connections: apiConnections, isLoading: connectionsLoading } = usePageConnections(pageId);
 
+  const nodeCategories: NodeCategory[] = [
+    'events',
+    'logic',
+    'data',
+    'api',
+    'database',
+    'env',
+    'docs',
+    'animation',
+    'validation',
+    'state',
+    'utility',
+    'theme',
+    'i18n',
+    'ai',
+    'component',
+  ];
+
+  const isRecord = (value: unknown): value is Record<string, unknown> => {
+    return typeof value === 'object' && value !== null;
+  };
+
+  const toStringValue = (value: unknown, fallback = ''): string => {
+    return typeof value === 'string' ? value : fallback;
+  };
+
+  const toBooleanValue = (value: unknown, fallback = false): boolean => {
+    return typeof value === 'boolean' ? value : fallback;
+  };
+
+  const toNodeCategory = (value: unknown): NodeCategory => {
+    return typeof value === 'string' && nodeCategories.includes(value as NodeCategory)
+      ? (value as NodeCategory)
+      : 'logic';
+  };
+
+  const toPosition = (value: unknown): { x: number; y: number } => {
+    if (isRecord(value)) {
+      const x = typeof value.x === 'number' ? value.x : 100;
+      const y = typeof value.y === 'number' ? value.y : 100;
+      return { x, y };
+    }
+    return { x: 100, y: 100 };
+  };
+
+  const toPorts = (value: unknown, portType: 'input' | 'output'): NodePort[] => {
+    if (!Array.isArray(value)) return [];
+    const parsedPorts: NodePort[] = [];
+    value.forEach((port, index) => {
+      if (!isRecord(port)) {
+        return;
+      }
+        const dataType = toStringValue(port.dataType, 'any');
+        const validDataType =
+          dataType === 'any' ||
+          dataType === 'string' ||
+          dataType === 'number' ||
+          dataType === 'boolean' ||
+          dataType === 'object' ||
+          dataType === 'array' ||
+          dataType === 'event' ||
+          dataType === 'function'
+            ? dataType
+            : 'any';
+        parsedPorts.push({
+          id: toStringValue(port.id, `${portType}-${index}`),
+          name: toStringValue(port.name, `${portType}-${index}`),
+          type: portType,
+          dataType: validDataType,
+          connected: toBooleanValue(port.connected, false),
+          value: port.value,
+        });
+      });
+    return parsedPorts;
+  };
+
+  const toConnectionType = (value: ApiWiringConnection['type']): NodeConnection['type'] => {
+    if (value === 'event') return 'event';
+    if (value === 'style') return 'style';
+    return 'data';
+  };
+
   // Initialize from API data
   useEffect(() => {
     if (apiNodes.length > 0 && nodes.length === 0) {
       // Transform API nodes to WiringNode format
-      const transformedNodes = apiNodes.map((n: Record<string, unknown>) => ({
-        id: n.nodeId,
-        type: n.nodeType,
-        category: n.category as NodeCategory,
-        position: n.position || { x: 100, y: 100 },
-        data: n.config || {},
-        inputs: [],
-        outputs: [],
-        isSelected: false,
-        isLocked: n.isLocked,
-        width: n.width,
-        height: n.height,
-      }));
+      const transformedNodes: WiringNode[] = [];
+      apiNodes.forEach((n, index) => {
+          if (!isRecord(n)) {
+            return;
+          }
+          const id = toStringValue(n.nodeId, toStringValue(n.id, `node-${index}`));
+          const type = toStringValue(n.nodeType, toStringValue(n.type, 'CustomNode'));
+          const data = isRecord(n.config) ? n.config : {};
+          const width = typeof n.width === 'number' ? n.width : undefined;
+          const height = typeof n.height === 'number' ? n.height : undefined;
+          transformedNodes.push({
+            id,
+            type,
+            category: toNodeCategory(n.category),
+            position: toPosition(n.position),
+            data,
+            inputs: toPorts(n.inputs, 'input'),
+            outputs: toPorts(n.outputs, 'output'),
+            isSelected: false,
+            isLocked: toBooleanValue(n.isLocked, false),
+            width,
+            height,
+          });
+        });
       setNodes(transformedNodes);
     }
   }, [apiNodes, nodes.length]);
@@ -489,16 +583,21 @@ export function ComponentWiringSystem({
   // Initialize connections from API
   useEffect(() => {
     if (apiConnections && apiConnections.length > 0 && connections.length === 0) {
-      const transformedConnections = apiConnections.map((c: Record<string, unknown>) => ({
-        id: c.connectionId || c.id,
-        sourceNodeId: c.sourceNodeId,
-        sourcePortId: c.sourcePortId || 'output-0',
-        targetNodeId: c.targetNodeId,
-        targetPortId: c.targetPortId || 'input-0',
-        type: c.connectionType || 'data',
-        animated: c.animated,
-        label: c.label,
-      }));
+      const transformedConnections: NodeConnection[] = apiConnections.map((c: ApiWiringConnection) => {
+        const config = isRecord(c.config) ? c.config : {};
+        const animated = typeof config.animated === 'boolean' ? config.animated : false;
+        const label = typeof config.label === 'string' ? config.label : undefined;
+        return {
+          id: c.id,
+          sourceNodeId: c.from.nodeId,
+          sourcePortId: c.from.port || 'output-0',
+          targetNodeId: c.to.nodeId,
+          targetPortId: c.to.port || 'input-0',
+          type: toConnectionType(c.type),
+          animated,
+          label,
+        };
+      });
       setConnections(transformedConnections);
     }
   }, [apiConnections, connections.length]);
@@ -519,10 +618,9 @@ export function ComponentWiringSystem({
   const nodesByCategory = useMemo(() => {
     const grouped: Partial<Record<NodeCategory, NodeDefinition[]>> = {};
     filteredLibrary.forEach((node) => {
-      if (!grouped[node.category]) {
-        grouped[node.category] = [];
-      }
-      grouped[node.category].push(node);
+      const categoryNodes = grouped[node.category] ?? [];
+      categoryNodes.push(node);
+      grouped[node.category] = categoryNodes;
     });
     return grouped;
   }, [filteredLibrary]);
@@ -1725,4 +1823,3 @@ export function ComponentWiringSystem({
 }
 
 export default ComponentWiringSystem;
-

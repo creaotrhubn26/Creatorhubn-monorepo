@@ -2,9 +2,11 @@ import * as React from 'react';
 import * as ReactDOM from 'react-dom/client';
 
 const App = () => {
-  return React.createElement('div', null, 
-    React.createElement('h1', null'React is working!'),
-    React.createElement('p', null'This confirms React 18 is properly set up.')
+  return React.createElement(
+    'div',
+    null,
+    React.createElement('h1', null, 'React is working!'),
+    React.createElement('p', null, 'This confirms React 18 is properly set up.'),
   );
 };
 

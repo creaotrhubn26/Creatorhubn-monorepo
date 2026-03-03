@@ -1,48 +1,40 @@
 /**
- * AI Learning Assistant - Personalized learning recommendations and adaptive content
- * Provides intelligent suggestions based on user behavior and learning patterns
+ * AI Learning Assistant - adaptive recommendations for learning workflows.
  */
 
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Chip,
-  Stack,
-  Card,
-  CardContent,
-  CardActions,
-  LinearProgress,
   Alert,
   Avatar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  LinearProgress,
   List,
   ListItem,
-  ListItemText,
-  ListItemIcon,
   ListItemAvatar,
-  Divider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Badge,
-  Tooltip,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Slider,
-  Switch,
-  FormControlLabel,
+  ListItemText,
+  Paper,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
 } from '@mui/material';
-import { CREATOR_HUB_ICONS } from '../shared/CreatorHubIcons';
+import Grid from '@mui/material/Grid2';
+import {
+  AutoAwesome,
+  EmojiEvents,
+  Psychology,
+  School,
+  Timeline,
+} from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
 
 interface LearningProfile {
   id: string;
@@ -57,7 +49,7 @@ interface LearningProfile {
   totalTime: number;
   completedModules: string[];
   currentStreak: number;
-  achievements: Achievement[]
+  achievements: Achievement[];
 }
 
 interface Achievement {
@@ -66,7 +58,7 @@ interface Achievement {
   description: string;
   icon: React.ReactNode;
   unlockedAt: Date;
-  rarity: 'common' | 'rare' | 'epic' | 'legendary'
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
 }
 
 interface LearningRecommendation {
@@ -78,393 +70,254 @@ interface LearningRecommendation {
   estimatedTime: number;
   relevance: number;
   reason: string;
-  content: any;
-  priority: 'low' | 'medium' | 'high'
+  content: {
+    moduleId: string;
+    topic: string;
+    url: string;
+  };
+  priority: 'low' | 'medium' | 'high';
 }
 
 interface AILearningAssistantProps {
   userId: string;
   onRecommendationClick: (recommendation: LearningRecommendation) => void;
   onUpdateProfile: (profile: LearningProfile) => void;
-  className?: string
+  className?: string;
+}
+
+const RECOMMENDATIONS: LearningRecommendation[] = [
+  {
+    id: 'rec-1',
+    type: 'content',
+    title: 'Type-safe Timeline Actions',
+    description: 'Learn how to wire keyboard timeline actions with strict type safety.',
+    difficulty: 'medium',
+    estimatedTime: 25,
+    relevance: 0.94,
+    reason: 'Based on recent timeline commits and keyboard-map work.',
+    content: {
+      moduleId: 'mod-ts-timeline',
+      topic: 'TypeScript + Timeline',
+      url: '/academy/timeline-types',
+    },
+    priority: 'high',
+  },
+  {
+    id: 'rec-2',
+    type: 'exercise',
+    title: 'Refactor Parsing Hotspots',
+    description: 'Practice transforming malformed components into robust typed modules.',
+    difficulty: 'hard',
+    estimatedTime: 35,
+    relevance: 0.89,
+    reason: 'Detected recurring parser failures in notes and onboarding modules.',
+    content: {
+      moduleId: 'mod-refactor-hotspots',
+      topic: 'Refactoring',
+      url: '/academy/refactor-hotspots',
+    },
+    priority: 'high',
+  },
+  {
+    id: 'rec-3',
+    type: 'project',
+    title: 'Build an Editor Hard-pass Suite',
+    description: 'Create deterministic end-to-end tests for insert/overwrite and captions.',
+    difficulty: 'medium',
+    estimatedTime: 45,
+    relevance: 0.83,
+    reason: 'Aligned with active Story Arc regression goals.',
+    content: {
+      moduleId: 'mod-editor-hardpass',
+      topic: 'E2E Testing',
+      url: '/academy/editor-hardpass',
+    },
+    priority: 'medium',
+  },
+];
+
+function difficultyColor(value: LearningRecommendation['difficulty']): 'success' | 'warning' | 'error' {
+  if (value === 'easy') {
+    return 'success';
+  }
+  if (value === 'medium') {
+    return 'warning';
+  }
+  return 'error';
 }
 
 export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
-  userd,
+  userId,
   onRecommendationClick,
   onUpdateProfile,
   className,
 }) => {
-  const [profile, setProfile] = useState<LearningProfile | null>(null);
-  const [recommendations, setRecommendations] = useState<LearningRecommendation[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  
-  // Theming system
   const theming = useTheming('photographer');
-  const [showProfileDialog, setShowProfileDialog] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
 
-  // Mock learning profile data
-  const mockProfile: LearningProfile = {
-    id: userd,
+  const [activeTab, setActiveTab] = useState(0);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+
+  const [profile, setProfile] = useState<LearningProfile>({
+    id: userId,
     name: 'Alex Johnson',
     level: 'intermediate',
-    interests: ['React','TypeScript','UI/UX','AI/ML'],
+    interests: ['React', 'TypeScript', 'UI/UX', 'AI/ML'],
     learningStyle: 'visual',
-    strengths: ['Problem Solving','Code Organization','Team Collaboration'],
-    weaknesses: ['Testing','Performance Optimization','Security'],
-    progress:  68,
+    strengths: ['Problem Solving', 'Code Organization', 'Team Collaboration'],
+    weaknesses: ['Performance Tuning', 'Security Reviews'],
+    progress: 68,
     lastActive: new Date(),
-    totalTime: 120, // minutes
-    completedModules: ['react-basics','typescript-fundamentals''ui-design'],
-    currentStreak:  7,
+    totalTime: 120,
+    completedModules: ['react-basics', 'typescript-fundamentals', 'ui-design'],
+    currentStreak: 7,
     achievements: [
       {
-        id: '',
+        id: 'ach-1',
         title: 'First Steps',
         description: 'Completed your first module',
-        icon: <CREATOR_HUB_ICONS.checkCircle  />,
-        unlockedAt: new Date('2024-01-15', ),
-        rarity: 'common'
-  },
+        icon: <School fontSize="small" />,
+        unlockedAt: new Date('2026-02-12T10:00:00Z'),
+        rarity: 'common',
+      },
       {
-        id: '',
+        id: 'ach-2',
         title: 'Week Warrior',
-        description: '7-day learning streak',
-        icon: <CREATOR_HUB_ICONS.timeline  />,
-        unlockedAt: new Date('2024-01-22', ),
-        rarity: 'rare'
-  },
-      {
-        id: ', ',
-        title: 'Code Master',
-        description: 'Solved 50 coding challenges',
-        icon: <CREATOR_HUB_ICONS.code  />,
-        unlockedAt: new Date('2024-01-20', ),
-        rarity: 'epic'
-  }
-    ]
-};
+        description: 'Maintained a seven-day streak',
+        icon: <Timeline fontSize="small" />,
+        unlockedAt: new Date('2026-02-18T10:00:00Z'),
+        rarity: 'rare',
+      },
+    ],
+  });
 
-  // Mock recommendations
-  
+  const profileScore = useMemo(() => Math.round(profile.progress), [profile.progress]);
 
-  useEffect(() => {
-    // Load user profile and recommendations
-    setIsLoading(true);
-    setTimeout(() => {
-      setProfile(mockProfile);
-      setRecommendations(mockRecommendations);
-      setIsLoading(false);
-  }, 1000);
-}, [userId]);
-
-  const handleRecommendationClick = useCallback((recommendation: LearningRecommendation) => {
+  const applyRecommendation = (recommendation: LearningRecommendation): void => {
     onRecommendationClick(recommendation);
-}, [onRecommendationClick]);
-
-  const handleProfileUpdate = useCallback((updatedProfile: LearningProfile) => {
-    setProfile(updatedProfile);
-    onUpdateProfile(updatedProfile);
-}, [onUpdateProfile]);
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'easy': return 'success';
-      case 'medium': return 'warning';
-      case 'hard': return 'error';
-      default: return 'default';
-}
-};
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high': return 'error';
-      case 'medium': return 'warning';
-      case 'low': return 'info';
-      default: return 'default';
-}
-};
-
-  const getRarityColor = (rarity: string) => {
-    switch (rarity) {
-      case 'legendary': return 'error';
-      case 'epic': return 'secondary';
-      case 'rare': return 'primary';
-      case 'common': return 'default';
-      default: return 'default';
-}
-};
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'content': return <CREATOR_HUB_ICONS.article />;
-      case 'exercise': return <CREATOR_HUB_ICONS.code />;
-      case 'assessment': return <CREATOR_HUB_ICONS.assessment />;
-      case 'project': return <CREATOR_HUB_ICONS.build />;
-      default: return <CREATOR_HUB_ICONS.info />;
-}
-};
-
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-};
-
-  if (isLoading) {
-    return (
-      <Box className={className} sx={{ width: '100%'}}>
-        <Paper elevation={2} sx={{ p:  3 ,  ...theming.getThemedCardSx() }}>
-          <Stack spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.smartToy sx={{ fontSize:  48, color: 'primary.main'}} />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Loading your learning profile...</Typography>
-            <LinearProgress sx={{ width: '100%'}} />
-          </Stack>
-        </Paper>
-      </Box>
-    );
-}
-
-  if (!profile) {
-    return (
-      <Box className={className} sx={{ width: '100%'}}>
-        <Alert severity="error">
-          Failed to load learning profile. Please try again.
-        </Alert>
-      </Box>
-    );
-}
+    const updated = {
+      ...profile,
+      totalTime: profile.totalTime + recommendation.estimatedTime,
+      progress: Math.min(100, profile.progress + recommendation.relevance * 5),
+      lastActive: new Date(),
+    };
+    setProfile(updated);
+    onUpdateProfile(updated);
+  };
 
   return (
-    <Box className={className} sx={{ width: '100%'}}>
-      {/* Header */}
-      <Paper elevation={2} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-          <Stack direction="row" spacing={2} alignItems="center">
-            <Avatar sx={{ bgcolor: 'primary.main'}}>
-              <CREATOR_HUB_ICONS.smartToy />
-            </Avatar>
+    <Box className={className} sx={{ width: '100%' }}>
+      <Paper sx={{ ...theming.getThemedCardSx(), mb: 2, p: 2 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Psychology color="primary" />
             <Box>
-              <Typography variant="h6" sx={{ color: theming.colors.primary }}>AI Learning Assistant</Typography>
+              <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                AI Learning Assistant
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                Personalized learning recommendations for {profile.name}
+                Personalized learning recommendations based on your workflow.
               </Typography>
             </Box>
           </Stack>
-          
-          <Button
-            variant="outlined"
-            startIcon={<CREATOR_HUB_ICONS.settings />}
-            onClick={() => setShowProfileDialog(true)}
-          >
-            Edit Profile
-          </Button>
-        </Stack>
-      </Paper>
 
-      {/* Learning Progress */}
-      <Paper elevation={1} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Learning Progress
-        </Typography>
-        
-        <Stack spacing={2}>
-          <Box>
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb:  1 }}>
-              <Typography variant="body2">Overall Progress</Typography>
-              <Typography variant="body2">{profile.progress}%</Typography>
-            </Stack>
-            <LinearProgress 
-              variant="determinate" 
-              value={profile.progress}
-              sx={{ height:  8, borderRadius:  4 }}
-            />
-          </Box>
-          
-          <Stack direction="row" spacing={4}>
-            <Box>
-              <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                {profile.currentStreak}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Day Streak
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                {formatTime(profile.totalTime)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Time
-              </Typography>
-            </Box>
-            <Box>
-              <Typography variant="h4" color="primary" sx={{ color: theming.colors.primary }}>
-                {profile.completedModules.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Modules Completed
-              </Typography>
-            </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip label={`Streak: ${profile.currentStreak}d`} size="small" />
+            <Chip label={`Progress ${profileScore}%`} color="primary" size="small" />
+            <Button size="small" variant="outlined" onClick={() => setShowProfileDialog(true)}>
+              Profile
+            </Button>
           </Stack>
         </Stack>
+
+        <LinearProgress variant="determinate" value={profileScore} sx={{ mt: 1.5 }} />
       </Paper>
 
-      {/* Achievements */}
-      <Paper elevation={1} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Recent Achievements
-        </Typography>
-        
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap:  1 }}>
-          {profile.achievements.map((achievement) => (
-            <Tooltip key={achievement.id} title={achievement.description}>
-              <Chip
-                icon={achievement.icon}
-                label={achievement.title}
-                color={getRarityColor(achievement.rarity)}
-                variant="outlined"
-                size="small"
-              />
-            </Tooltip>
-          ))}
-        </Stack>
+      <Paper sx={{ p: 1, mb: 2 }}>
+        <Tabs value={activeTab} onChange={(_event, value) => setActiveTab(value)}>
+          <Tab icon={<AutoAwesome />} iconPosition="start" label="Recommendations" />
+          <Tab icon={<EmojiEvents />} iconPosition="start" label="Achievements" />
+        </Tabs>
       </Paper>
 
-      {/* Recommendations */}
-      <Paper elevation={1} sx={{ p: 2, mb: 2 ,  ...theming.getThemedCardSx() }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>
-          Recommended for You
-        </Typography>
-        
-        <Stack spacing={2}>
-          {recommendations.map((recommendation) => (
-            <Card key={recommendation.id} variant="outlined" sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Stack direction="row" spacing={2} alignItems="flex-start">
-                  <Box sx={{ mt: 0.5}}>
-                    {getTypeIcon(recommendation.type)}
-                  </Box>
-                  
-                  <Box sx={{ flex:  1 }}>
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb:  1 }}>
+      {activeTab === 0 ? (
+        <Grid container spacing={2}>
+          {RECOMMENDATIONS.map((recommendation) => (
+            <Grid key={recommendation.id} size={{ xs: 12, md: 6 }}>
+              <Card>
+                <CardContent>
+                  <Stack spacing={1}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
                       <Typography variant="subtitle1">{recommendation.title}</Typography>
-                      <Chip 
+                      <Chip
+                        size="small"
                         label={recommendation.difficulty}
-                        size="small" 
-                        color={getDifficultyColor(recommendation.difficulty)}
-                        variant="outlined"
-                      />
-                      <Chip 
-                        label={recommendation.priority}
-                        size="small" 
-                        color={getPriorityColor(recommendation.priority)}
-                        variant="outlined"
-                      />
-                      <Chip 
-                        label={`${Math.round(recommendation.relevance * 100)}% match`}
-                        size="small" 
-                        color="primary"
-                        variant="outlined"
+                        color={difficultyColor(recommendation.difficulty)}
                       />
                     </Stack>
-                    
-                    <Typography variant="body2" color="text.secondary" sx={{ mb:  1 }}>
+                    <Typography variant="body2" color="text.secondary">
                       {recommendation.description}
                     </Typography>
-                    
                     <Typography variant="caption" color="text.secondary">
-                      {recommendation.reason} • {formatTime(recommendation.estimatedTime)}
+                      {recommendation.estimatedTime} min • relevance {(recommendation.relevance * 100).toFixed(0)}%
                     </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-              
-              <CardActions sx={theming.getThemedCardSx()}>
-                <Button
-                  size="small"
-                  startIcon={<CREATOR_HUB_ICONS.visibility />}
-                  onClick={() => handleRecommendationClick(recommendation)}
-                >
-                  Start Learning
-                </Button>
-              </CardActions>
-            </Card>
+                    <Alert severity={recommendation.priority === 'high' ? 'warning' : 'info'}>
+                      {recommendation.reason}
+                    </Alert>
+                    <Button
+                      variant="contained"
+                      onClick={() => applyRecommendation(recommendation)}
+                      sx={theming.getThemedButtonSx()}
+                    >
+                      Open Recommendation
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
           ))}
-        </Stack>
-      </Paper>
+        </Grid>
+      ) : null}
 
-      {/* Profile Dialog */}
-      <Dialog 
-        open={showProfileDialog}
-        onClose={() => setShowProfileDialog(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>
-          <Stack direction="row" spacing={2} alignItems="center">
-            <CREATOR_HUB_ICONS.settings />
-            <Typography variant="h6" sx={{ color: theming.colors.primary }}>Edit Learning Profile</Typography>
-          </Stack>
-        </DialogTitle>
-        
+      {activeTab === 1 ? (
+        <Card>
+          <CardContent>
+            {profile.achievements.length === 0 ? (
+              <Alert severity="info">No achievements yet.</Alert>
+            ) : (
+              <List>
+                {profile.achievements.map((achievement) => (
+                  <ListItem key={achievement.id}>
+                    <ListItemAvatar>
+                      <Avatar>{achievement.icon}</Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={achievement.title}
+                      secondary={`${achievement.description} • ${achievement.unlockedAt.toLocaleDateString()}`}
+                    />
+                    <Chip size="small" label={achievement.rarity} />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      <Dialog open={showProfileDialog} onClose={() => setShowProfileDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Learning Profile</DialogTitle>
         <DialogContent>
-          <Stack spacing={3}>
-            <FormControl fullWidth>
-              <InputLabel>Learning Level</InputLabel>
-              <Select
-                value={profile.level}
-                onChange={(e) => setProfile(prev => prev ? { ...prev, level: e.target.value as any } : null)}
-              >
-                <MenuItem value="beginner">Beginner</MenuItem>
-                <MenuItem value="intermediate">Intermediate</MenuItem>
-                <MenuItem value="advanced">Advanced</MenuItem>
-              </Select>
-            </FormControl>
-            
-            <FormControl fullWidth>
-              <InputLabel>Learning Style</InputLabel>
-              <Select
-                value={profile.learningStyle}
-                onChange={(e) => setProfile(prev => prev ? { ...prev, learningStyle: e.target.value as any } : null)}
-              >
-                <MenuItem value="visual">Visual</MenuItem>
-                <MenuItem value="auditory">Auditory</MenuItem>
-                <MenuItem value="kinesthetic">Kinesthetic</MenuItem>
-                <MenuItem value="reading">Reading</MenuItem>
-              </Select>
-            </FormControl>
-            
-            <Box>
-              <Typography gutterBottom>Learning Progress</Typography>
-              <Slider
-                value={profile.progress}
-                onChange={(_, value) => setProfile(prev => prev ? { ...prev, progress: value as number } : null)}
-                min={0}
-                max={100}
-                step={1}
-                marks
-                valueLabelDisplay="auto"
-              />
-            </Box>
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <Typography variant="body2">Name: {profile.name}</Typography>
+            <Typography variant="body2">Level: {profile.level}</Typography>
+            <Typography variant="body2">Learning style: {profile.learningStyle}</Typography>
+            <Typography variant="body2">Interests: {profile.interests.join(', ')}</Typography>
+            <Typography variant="body2">Strengths: {profile.strengths.join(', ')}</Typography>
+            <Typography variant="body2">Areas to improve: {profile.weaknesses.join(', ')}</Typography>
+            <Typography variant="body2">Completed modules: {profile.completedModules.length}</Typography>
           </Stack>
         </DialogContent>
-        
         <DialogActions>
-          <Button onClick={() => setShowProfileDialog(false)}>
-            Cancel
-          </Button>
-          <Button variant="contained"
-            onClick={() => {
-              if (profile) {
-                handleProfileUpdate(profile);
-                setShowProfileDialog(false);
-            } sx={theming.getThemedButtonSx()}
-          }}
-          >
-            Save Changes
-          </Button>
+          <Button onClick={() => setShowProfileDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>
@@ -472,4 +325,3 @@ export const AILearningAssistant: React.FC<AILearningAssistantProps> = ({
 };
 
 export default AILearningAssistant;
-

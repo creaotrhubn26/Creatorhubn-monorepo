@@ -41,7 +41,9 @@ import {
   Extension,
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
-import Editor from '@monaco-editor/react';
+import type { EditorElement } from './VisualEditorContext';
+import Editor, { OnMount } from '@monaco-editor/react';
+import type * as MonacoEditor from 'monaco-editor';
 import prettier from 'prettier/standalone';
 import prettierBabel from 'prettier/parser-babel';
 import prettierHtml from 'prettier/parser-html';
@@ -59,6 +61,13 @@ interface VersionHistory {
   code: string;
   timestamp: number;
   message?: string;
+}
+
+interface CodeState {
+  html: string;
+  react: string;
+  css: string;
+  javascript: string;
 }
 
 interface TabPanelProps {
@@ -83,8 +92,8 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const { state, dispatch } = useVisualEditor();
   const [activeTab, setActiveTab] = useState(0);
   const [exportFormat, setExportFormat] = useState<'html' | 'react' | 'vue'>('react');
-  const [code, setCode] = useState({
-    html:  ',',
+  const [code, setCode] = useState<CodeState>({
+    html: '',
     react: '',
     css: '',
     javascript: '',
@@ -96,7 +105,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   const [versionHistory, setVersionHistory] = useState<VersionHistory[]>([]);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const editorRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
   const [autoSave, setAutoSave] = useState(true);
   const [liveSync, setLiveSync] = useState(true);
 
@@ -115,12 +124,17 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
       });
     } else if (exportFormat === 'react') {
       setCode({
-        html: ',',
+        html: '',
         react: generateReact(),
         css: generateCSS(),
         javascript: '',
       });
     }
+  };
+
+  const getStringProp = (props: Record<string, unknown>, key: string, fallback: string): string => {
+    const value = props[key];
+    return typeof value === 'string' ? value : fallback;
   };
 
   const generateHTML = () => {
@@ -146,29 +160,37 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     return html;
   };
 
-  const generateElementHTML = (element: unknown): string => {
+  const generateElementHTML = (element: EditorElement): string => {
     const styles = `style="position: absolute; left: ${element.x}px; top: ${element.y}px; width: ${element.width}px; height: ${element.height}px;"`;
+    const text = getStringProp(element.props, 'text', element.type === 'button' ? 'Button' : 'Text');
+    const src = getStringProp(element.props, 'src', 'placeholder.jpg');
+    const alt = getStringProp(element.props, 'alt', 'Image');
 
     switch (element.type) {
-      case 'button': return `  <button ${styles} class="btn-${element.id},">${element.props.text || 'Button'}</button>\n`;
-      case 'text': return `  <p ${styles} class="text-${element.id},">${element.props.text || 'Text'}</p>\n`;
-      case 'container': return `  <div ${styles} class="container-${element.id},">\n    <!-- Container content -->\n  </div>\n`;
-      case 'image': return `  <img ${styles} class="img-${element.id}" src="${element.props.src || 'placeholder.jpg'}" alt="${element.props.alt || 'Image'}">\n`;
-      default: return `  <div ${styles} class="element-${element.id}"></div>\n`;
+      case 'button':
+        return `  <button ${styles} class="btn-${element.id}">${text}</button>\n`;
+      case 'text':
+        return `  <p ${styles} class="text-${element.id}">${text}</p>\n`;
+      case 'container':
+        return `  <div ${styles} class="container-${element.id}">\n    <!-- Container content -->\n  </div>\n`;
+      case 'image':
+        return `  <img ${styles} class="img-${element.id}" src="${src}" alt="${alt}">\n`;
+      default:
+        return `  <div ${styles} class="element-${element.id}"></div>\n`;
     }
   };
 
   const generateReact = () => {
     if (state.elements.length === 0) {
-      return `import React from 'react';\nimport'./styles.css';\n\nexport default function GeneratedComponent() {\n  return (\n    <div className="container">\n      {/* Drag components to canvas to generate React code */}\n    </div>\n  );\n}`;
+      return `import React from 'react';\nimport './styles.css';\n\nexport default function GeneratedComponent() {\n  return (\n    <div className="container">\n      {/* Drag components to canvas to generate React code */}\n    </div>\n  );\n}`;
     }
 
-    let jsx = `import React, { useState } from 'react';\nimport'./styles.css';\n\n`;
+    let jsx = `import React, { useState } from 'react';\nimport './styles.css';\n\n`;
     jsx += `export default function GeneratedComponent() {\n`;
     jsx += `  // State management\n`;
-    jsx += `  const [state, setState] = useState({});\n\n`;
+    jsx += `  const [componentState, setComponentState] = useState({});\n\n`;
     jsx += `  // Event handlers\n`;
-    jsx += `  const handleClick = (id) => {\n    console.log('Clicked: ', id);\n  };\n\n`;
+    jsx += `  const handleClick = (id: string) => {\n    console.log('Clicked:', id);\n  };\n\n`;
     jsx += `  return (\n`;
     jsx += `    <div className="container" style={{ position: 'relative', width: '100%', height: '100%' }}>\n`;
 
@@ -183,29 +205,37 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     return jsx;
   };
 
-  const generateElementReact = (element: unknown): string => {
-    const style = `{{ position: 'absolute', left: ${element.x}, top: ${element.y}, width: ${element.width}, height: ${element.height} }`;
+  const generateElementReact = (element: EditorElement): string => {
+    const style = `{{ position: 'absolute', left: ${element.x}px, top: ${element.y}px, width: ${element.width}px, height: ${element.height}px }}`;
     const className = `"${element.type}-${element.id}"`;
+    const text = getStringProp(element.props, 'text', element.type === 'button' ? 'Button' : 'Text');
+    const src = getStringProp(element.props, 'src', 'placeholder.jpg');
+    const alt = getStringProp(element.props, 'alt', 'Image');
 
     switch (element.type) {
-      case 'button': return `      <button style=${style} className=${className} onClick={() => handleClick('${element.id},')}>\n        ${element.props.text || 'Button'}\n      </button>\n`;
-      case 'text': return `      <p style=${style} className=${className}>${element.props.text || 'Text'}</p>\n`;
-      case 'container': return `      <div style=${style} className=${className}>\n        {/* Container content */}\n      </div>\n`;
-      case 'image': return `      <img style=${style} className=${className} src="${element.props.src || 'placeholder.jpg'}" alt="${element.props.alt || 'Image'}" />\n`;
-      default: return `      <div style=${style} className=${className}></div>\n`;
+      case 'button':
+        return `      <button style=${style} className=${className} onClick={() => handleClick('${element.id}')}>\n        ${text}\n      </button>\n`;
+      case 'text':
+        return `      <p style=${style} className=${className}>${text}</p>\n`;
+      case 'container':
+        return `      <div style=${style} className=${className}>\n        {/* Container content */}\n      </div>\n`;
+      case 'image':
+        return `      <img style=${style} className=${className} src="${src}" alt="${alt}" />\n`;
+      default:
+        return `      <div style=${style} className=${className}></div>\n`;
     }
   };
 
   const generateCSS = () => {
     if (state.elements.length === 0) {
-      return '/* No elements on canvas */\n\n.container {\n  width: 100%;\n  height: 100vh;\n , background: #f5f5f5;\n}, ';
+      return '/* No elements on canvas */\n\n.container {\n  width: 100%;\n  height: 100vh;\n  background: #f5f5f5;\n}\n';
     }
 
     let css = '/* Generated Styles */\n\n';
-    css += '* {\n  margin: 0;\n , padding: 0;\n  box-sizing: border-box;\n}\n\n';
+    css += '* {\n  margin: 0;\n  padding: 0;\n  box-sizing: border-box;\n}\n\n';
     css +=
       'body {\n  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;\n}\n\n';
-    css += '.container {\n  width: 100%;\n  min-height: 100vh;\n , position: relative;\n}\n\n';
+    css += '.container {\n  width: 100%;\n  min-height: 100vh;\n  position: relative;\n}\n\n';
 
     state.elements.forEach((element) => {
       css += `.${element.type}-${element.id} {\n`;
@@ -238,7 +268,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     state.elements.forEach((element) => {
       if (element.type === 'button') {
         js += `  // Button: ${element.id}\n`;
-        js += `  document.querySelector('.btn-${element.id},')?.addEventListener('click', function() {\n`;
+        js += `  document.querySelector('.btn-${element.id}')?.addEventListener('click', function() {\n`;
         js += `    console.log('Button clicked: ${element.id}');\n`;
         js += `    // Add your custom logic here\n`;
         js += `  });\n\n`;
@@ -305,7 +335,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
             ? 'css'
             : 'babel';
 
-      const formatted = prettier.format(currentCode, {
+      const formatted = await prettier.format(currentCode, {
         parser,
         plugins: [prettierBabel, prettierHtml, prettierCss],
         semi: true,
@@ -329,7 +359,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     }
   };
 
-  const handleEditorMount = (editor: unknown) => {
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
 
     // Add custom keyboard shortcuts
@@ -338,7 +368,7 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
     });
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF, () => {
-      editor.trigger('keyboard', 'actions.find');
+      editor.trigger('keyboard', 'actions.find', null);
     });
   };
 
@@ -367,10 +397,9 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
 
     // Auto-save to history
     if (autoSave) {
-      const timeoutId = setTimeout(() => {
+      setTimeout(() => {
         handleSaveVersion('Auto-save');
       }, 2000);
-      return () => clearTimeout(timeoutId);
     }
   };
 
@@ -412,15 +441,15 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
   };
 
   const handleUndo = () => {
-    editorRef.current?.trigger('keyboard', 'undo');
+    editorRef.current?.trigger('keyboard', 'undo', null);
   };
 
   const handleRedo = () => {
-    editorRef.current?.trigger('keyboard', 'redo');
+    editorRef.current?.trigger('keyboard', 'redo', null);
   };
 
   const handleSearch = () => {
-    editorRef.current?.trigger('keyboard', 'actions.find');
+    editorRef.current?.trigger('keyboard', 'actions.find', null);
   };
 
   return (
@@ -759,12 +788,12 @@ export const CodeEditorPanel: React.FC<CodeEditorPanelProps> = ({
           alignItems: 'center',
           justifyContent: 'space-between',
           px: 2,
-          py: 0.5
-         , bgcolor: '#007ACC',
+          py: 0.5,
+          bgcolor: '#007ACC',
           color: 'white',
           fontSize: '0.75rem'}}>
         <Typography variant="caption" sx={{ color: 'white' }}>
-          {state.elements.length} element{state.elements.length !== 1 ? 's' : ','} •{''}
+          {state.elements.length} element{state.elements.length !== 1 ? 's' : ''} •{' '}
           {exportFormat.toUpperCase()}
         </Typography>
         <Typography variant="caption" sx={{ color: 'white' }}>

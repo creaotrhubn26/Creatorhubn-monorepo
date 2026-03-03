@@ -12,7 +12,7 @@ export interface CacheEntry<T = any> {
   lastAccessed: number;
   size: number; // Size in bytes
   tags: string[];
-  priority: 'low, ' | 'medium' | 'high' | 'critical';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   metadata: Record<string, any>;
 }
 
@@ -417,8 +417,7 @@ class CachingStrategy {
     const data = {
       config: this.config,
       metrics: this.metrics,
-      entries: Array.from(this.cache.entries()).map(([key, entry]) => ({
-        key,
+      entries: Array.from(this.cache.values()).map((entry) => ({
         ...entry
     })),
       timestamp: Date.now()
@@ -649,7 +648,6 @@ export const cachingStrategy = new CachingStrategy();
 // Export types and class
 export { CachingStrategy };
 export default cachingStrategy;
-
 
 
 

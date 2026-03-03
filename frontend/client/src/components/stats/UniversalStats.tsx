@@ -1,289 +1,313 @@
-import { useTheming } from '../../utils/theming-helper';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import {
+  Avatar,
   Box,
-  Card as MuiCard,
+  Card,
   CardContent,
-  Typography,
+  Chip,
   Grid,
   LinearProgress,
-  Chip,
-  Avatar,
+  Typography,
 } from '@mui/material';
 import {
-  TrendingUp,
-  TrendingDown,
-  PhotoCamera,
-  Videocam,
-  LibraryMusic,
-  Store,
-  Group,
-  AttachMoney,
   Assessment,
-  CalendarToday,
+  AttachMoney,
+  Group,
+  LibraryMusic,
+  PhotoCamera,
   Star,
+  Store,
+  TrendingDown,
+  TrendingUp,
+  Videocam,
   Visibility,
 } from '@mui/icons-material';
 
+type Profession = 'photographer' | 'videographer' | 'music_producer' | 'vendor';
+
 interface StatsProps {
-  profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
-  userId?: string
+  profession: Profession;
+  userId?: string;
 }
 
-interface StatItem {
+type StatFormat = 'number' | 'currency' | 'percentage' | 'rating';
+
+interface StatConfig {
   key: string;
   label: string;
-  value: number;
-  previousValue?: number;
-  target?: number;
-  format: 'number' | 'currency' | 'percentage' | 'rating';
-  icon: React.ComponentType;
-  color: string
+  format: StatFormat;
+  icon: React.ElementType;
+  color: string;
 }
 
-const professionStatsConfig = {
+interface StatSource {
+  current?: number;
+  previous?: number;
+}
+
+type StatsApiResponse = Record<string, StatSource> & {
+  totalRevenue?: StatSource;
+  activeClients?: StatSource;
+  avgProjectValue?: StatSource;
+};
+
+type GoalsApiResponse = Record<string, number | undefined>;
+
+interface RenderStat extends StatConfig {
+  value: number;
+  previousValue: number;
+  target?: number;
+  trend: { percentage: number; isPositive: boolean };
+}
+
+const professionStatsConfig: Record<Profession, { color: string; stats: StatConfig[] }> = {
   photographer: {
     color: '#ff8c00',
     stats: [
       { key: 'activeProjects', label: 'Aktive Prosjekter', icon: PhotoCamera, format: 'number', color: '#ff8c00' },
       { key: 'monthlyRevenue', label: 'Månedens Inntekt', icon: AttachMoney, format: 'currency', color: '#4caf50' },
       { key: 'newClients', label: 'Nye Kunder', icon: Group, format: 'number', color: '#2196f3' },
-      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#ff9800' },
-      { key: 'completedShoots', label: 'Fullførte Oppdrag', icon: PhotoCamera, format: 'number', color: '#9c27b0' },
-      { key: 'portfolioViews', label: 'Portfolio Visninger', icon: Visibility, format: 'number', color: '#607d8b' }
-    ]
-},
+      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#f59e0b' },
+      { key: 'completedShoots', label: 'Fullførte Oppdrag', icon: PhotoCamera, format: 'number', color: '#8b5cf6' },
+      { key: 'portfolioViews', label: 'Portfolio Visninger', icon: Visibility, format: 'number', color: '#64748b' },
+    ],
+  },
   videographer: {
-    color: '#e74c30',
+    color: '#ef4444',
     stats: [
-      { key: 'activeProjects', label: 'Aktive Prosjekter', icon: Videocam, format: 'number', color: '#e74c3c' },
+      { key: 'activeProjects', label: 'Aktive Prosjekter', icon: Videocam, format: 'number', color: '#ef4444' },
       { key: 'monthlyRevenue', label: 'Månedens Inntekt', icon: AttachMoney, format: 'currency', color: '#4caf50' },
       { key: 'newClients', label: 'Nye Kunder', icon: Group, format: 'number', color: '#2196f3' },
-      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#ff9800' },
-      { key: 'videoHours', label: 'Timer Produsert', icon: Videocam, format: 'number', color: '#9c27b0' },
-      { key: 'portfolioViews', label: 'Portfolio Visninger', icon: Visibility, format: 'number', color: '#607d8b' }
-    ]
-},
+      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#f59e0b' },
+      { key: 'videoHours', label: 'Timer Produsert', icon: Videocam, format: 'number', color: '#8b5cf6' },
+      { key: 'portfolioViews', label: 'Portfolio Visninger', icon: Visibility, format: 'number', color: '#64748b' },
+    ],
+  },
   music_producer: {
-    color: '#9b59b0',
+    color: '#8e24aa',
     stats: [
-      { key: 'activeTracks', label: 'Aktive Spor', icon: theming.getThemedIcon(','), format: 'number', color: '#9b59b6' },
+      { key: 'activeTracks', label: 'Aktive Spor', icon: LibraryMusic, format: 'number', color: '#8e24aa' },
       { key: 'monthlyRevenue', label: 'Månedens Inntekt', icon: AttachMoney, format: 'currency', color: '#4caf50' },
       { key: 'newArtists', label: 'Nye Artister', icon: Group, format: 'number', color: '#2196f3' },
-      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#ff9800' },
-      { key: 'releasedTracks', label: 'Utgitte Spor', icon: theming.getThemedIcon(', '), format: 'number', color: '#9c27b0' },
-      { key: 'streamingPlays', label: 'Streaming Avspillinger', icon: Visibility, format: 'number', color: '#607d8b' }
-    ]
-},
+      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#f59e0b' },
+      { key: 'releasedTracks', label: 'Utgitte Spor', icon: LibraryMusic, format: 'number', color: '#8b5cf6' },
+      { key: 'streamingPlays', label: 'Streaming Avspillinger', icon: Visibility, format: 'number', color: '#64748b' },
+    ],
+  },
   vendor: {
-    color: '#3498db',
+    color: '#0284c7',
     stats: [
-      { key: 'activeProducts', label: 'Aktive Produkter', icon: Store, format: 'number', color: '#3498db' },
+      { key: 'activeProducts', label: 'Aktive Produkter', icon: Store, format: 'number', color: '#0284c7' },
       { key: 'monthlyRevenue', label: 'Månedens Inntekt', icon: AttachMoney, format: 'currency', color: '#4caf50' },
       { key: 'newCustomers', label: 'Nye Kunder', icon: Group, format: 'number', color: '#2196f3' },
-      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#ff9800' },
-      { key: 'ordersCompleted', label: 'Fullførte Bestillinger', icon: Store, format: 'number', color: '#9c27b0' },
-      { key: 'inventoryTurnover', label: 'Lageromsetning', icon: Assessment, format: 'percentage', color: '#607d8b' }
-    ]
-}
+      { key: 'avgRating', label: 'Gj.snitt Vurdering', icon: Star, format: 'rating', color: '#f59e0b' },
+      { key: 'ordersCompleted', label: 'Fullførte Bestillinger', icon: Store, format: 'number', color: '#8b5cf6' },
+      { key: 'inventoryTurnover', label: 'Lageromsetning', icon: Assessment, format: 'percentage', color: '#64748b' },
+    ],
+  },
 };
 
-const formatValue = (
-  // Theming system
-  const theming = useTheming('photographer');value: number, format: string): string => {
+const formatValue = (value: number, format: StatFormat): string => {
   switch (format) {
     case 'currency':
-      return `${value.toLocaleString(', ')} kr`;
+      return `${value.toLocaleString('no-NO')} kr`;
     case 'percentage':
-      return `${value}%`;
+      return `${value.toFixed(1)}%`;
     case 'rating':
       return `${value.toFixed(1)}/5.0`;
-    default: return value.toLocaleString('no-NO');
-}
+    case 'number':
+    default:
+      return value.toLocaleString('no-NO');
+  }
 };
 
 const calculateTrend = (current: number, previous: number): { percentage: number; isPositive: boolean } => {
-  if (previous === 0) return { percentage: 0, isPositive: true };
-  const percentage = ((current - previous) / previous) * 100;
-  return { percentage: Math.abs(percentage), isPositive: percentage >= 0 };
+  if (previous <= 0) {
+    return { percentage: 0, isPositive: true };
+  }
+  const change = ((current - previous) / previous) * 100;
+  return { percentage: Math.abs(change), isPositive: change >= 0 };
 };
 
-export default function UniversalStats({ profession, userId }: StatsProps) {
+export default function UniversalStats({ profession, userId }: StatsProps): React.ReactElement {
   const config = professionStatsConfig[profession];
 
-  // Fetch stats data from API
-  const { data: statsData, isLoading } = useQuery({
+  const { data: statsData = {}, isLoading } = useQuery<StatsApiResponse>({
     queryKey: ['/api/stats', profession, userId],
-    queryFn: () => apiRequest(`/api/stats/${profession}?userId=${userId || 'guest'}`),
-    enabled: !!profession
-});
+    queryFn: async () => {
+      const response = await apiRequest(`/api/stats/${profession}?userId=${userId ?? 'guest'}`);
+      return (response as StatsApiResponse) ?? {};
+    },
+    enabled: Boolean(profession),
+  });
 
-  // Fetch goals/targets
-  const { data: goalsData } = useQuery({
+  const { data: goalsData = {} } = useQuery<GoalsApiResponse>({
     queryKey: ['/api/goals', profession, userId],
-    queryFn: () => apiRequest(`/api/goals/${profession}?userId=${userId || 'guest'}`),
-    enabled: !!profession && !!userId && userId !== 'guest'
-});
+    queryFn: async () => {
+      const response = await apiRequest(`/api/goals/${profession}?userId=${userId ?? 'guest'}`);
+      return (response as GoalsApiResponse) ?? {};
+    },
+    enabled: Boolean(profession),
+  });
+
+  const stats = useMemo<RenderStat[]>(() => {
+    return config.stats.map((statConfig) => {
+      const source = statsData[statConfig.key] ?? {};
+      const value = source.current ?? 0;
+      const previousValue = source.previous ?? 0;
+      return {
+        ...statConfig,
+        value,
+        previousValue,
+        target: goalsData[statConfig.key],
+        trend: calculateTrend(value, previousValue),
+      };
+    });
+  }, [config.stats, goalsData, statsData]);
 
   if (isLoading) {
     return (
-      <Box sx={{ p:  3 }}>
-        <Typography variant="h6" gutterBottom sx={{ color: theming.colors.primary }}>Statistikk</Typography>
-        <Grid container spacing={3}>
-          {config.stats.map((_, index) => (
-            <Grid size={{ xs: 12 }} md={6} lg={4} key={index}>
-              <MuiCard>
-                <CardContent sx={theming.getThemedCardSx()}>
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Statistikk
+        </Typography>
+        <Grid container spacing={2}>
+          {config.stats.map((stat) => (
+            <Grid item xs={12} md={6} lg={4} key={stat.key}>
+              <Card variant="outlined">
+                <CardContent>
                   <LinearProgress />
                 </CardContent>
-              </MuiCard>
+              </Card>
             </Grid>
           ))}
         </Grid>
       </Box>
     );
-}
-
-  const stats = config.stats.map(statConfig => {
-    const StatIcon = statConfig.icon;
-    const currentValue = statsData?.[statConfig.key]?.current || 0;
-    const previousValue = statsData?.[statConfig.key]?.previous || 0;
-    const target = goalsData?.[statConfig.key] || null;
-    const trend = calculateTrend(currentValue, previousValue);
-
-    return {
-      ...statConfig,
-      value: currentValue,
-      previousValue,
-      target,
-      trend,
-      IconComponent: StatIcon
-};
-});
+  }
 
   return (
-    <Box sx={{ p:  3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb:  3 }}>
-        <Assessment sx={{ mr: 2, color: config.color }} />
-        <Typography variant="h5" sx={{  fontWeight: 600, color: config.color  }}>
-          📊 Statistikk & Ytelse
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+        <Assessment sx={{ mr: 1.5, color: config.color }} />
+        <Typography variant="h5" sx={{ fontWeight: 700, color: config.color }}>
+          Statistikk & Ytelse
         </Typography>
       </Box>
 
-      <Grid container spacing={3}>
-        {stats.map((stat) => (
-          <Grid size={{ xs: 12 }} md={6} lg={4} key={stat.key}>
-            <Card
-              sx={{
-                height: '100%',
-                transition: 'all 0.3s ease', '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: 6 }
-            }}
-             sx={theming.getThemedCardSx()}>
-              <CardContent sx={theming.getThemedCardSx()}>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  2 }}>
-                  <Avatar
-                    sx={{
-                      bgcolor: `${stat.color}20`,
-                      color: stat.color,
-                      width:  48,
-                      height: 48 }}
-                  >
-                    <stat.IconComponent />
-                  </Avatar>
-                  
-                  {stat.trend && stat.previousValue > 0 && (
-                    <Chip
-                      icon={stat.trend.isPositive ? theming.getThemedIcon('trendingUp') : <TrendingDown />}
-                      label={`${stat.trend.isPositive ? '+' : '-'}${stat.trend.percentage.toFixed(1)}%`}
-                      size="small"
-                      color={stat.trend.isPositive ? "success" : "error"}
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
+      <Grid container spacing={2}>
+        {stats.map((stat) => {
+          const IconComponent = stat.icon;
+          const progressValue =
+            stat.target && stat.target > 0 ? Math.min(100, (stat.value / stat.target) * 100) : null;
 
-                <Typography variant="h4" sx={{  fontWeight: 700, color: stat.color, mb:  1  }}>
-                  {formatValue(stat.value, stat.format)}
-                </Typography>
-
-                <Typography variant="body2" color="text.secondary" sx={{ mb:  2 }}>
-                  {stat.label}
-                </Typography>
-
-                {stat.target && (
-                  <Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:  1 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Mål: {formatValue(stat.target, stat.format)}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {Math.min(100, (stat.value / stat.target) * 100).toFixed(0)}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={Math.min(100, (stat.value / stat.target) * 100)}
-                      sx={{
-                        height:  6,
-                        borderRadius:  3,
-                        bgcolor: `${stat.color}20`'& .MuiLinearProgress-bar': {
-                          bgcolor: stat.color,
-                          borderRadius: 3 }
-                    }}
-                    />
+          return (
+            <Grid item xs={12} md={6} lg={4} key={stat.key}>
+              <Card
+                variant="outlined"
+                sx={{
+                  height: '100%',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: 3,
+                  },
+                }}
+              >
+                <CardContent>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                    <Avatar sx={{ bgcolor: `${stat.color}20`, color: stat.color }}>
+                      <IconComponent fontSize="small" />
+                    </Avatar>
+                    {stat.previousValue > 0 ? (
+                      <Chip
+                        size="small"
+                        icon={stat.trend.isPositive ? <TrendingUp /> : <TrendingDown />}
+                        label={`${stat.trend.isPositive ? '+' : '-'}${stat.trend.percentage.toFixed(1)}%`}
+                        color={stat.trend.isPositive ? 'success' : 'error'}
+                        variant="outlined"
+                      />
+                    ) : null}
                   </Box>
-                )}
 
-                {stat.previousValue > 0 && (
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    Forrige periode: {formatValue(stat.previousValue, stat.format)}
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: stat.color }}>
+                    {formatValue(stat.value, stat.format)}
                   </Typography>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                    {stat.label}
+                  </Typography>
+
+                  {progressValue !== null ? (
+                    <Box sx={{ mt: 1 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Mål: {formatValue(stat.target ?? 0, stat.format)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {progressValue.toFixed(0)}%
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={progressValue}
+                        sx={{
+                          height: 6,
+                          borderRadius: 3,
+                          bgcolor: `${stat.color}20`,
+                          '& .MuiLinearProgress-bar': { bgcolor: stat.color },
+                        }}
+                      />
+                    </Box>
+                  ) : null}
+
+                  {stat.previousValue > 0 ? (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      Forrige periode: {formatValue(stat.previousValue, stat.format)}
+                    </Typography>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
       </Grid>
 
-      <Box sx={{ mt:  4 }}>
-        <MuiCard sx={{ bgcolor: `${config.color}10`, border: `1px solid ${config.color}30` }}>
-          <CardContent sx={theming.getThemedCardSx()}>
-            <Typography variant="h6" sx={{  color: config.color, mb:  2  }}>
-              📈 Ytelsessammendrag
+      <Box sx={{ mt: 3 }}>
+        <Card variant="outlined" sx={{ bgcolor: `${config.color}10`, borderColor: `${config.color}50` }}>
+          <CardContent>
+            <Typography variant="h6" sx={{ color: config.color, mb: 1.5 }}>
+              Ytelsessammendrag
             </Typography>
             <Grid container spacing={2}>
-              <Grid size={{ xs: 12 }} md={4}>
+              <Grid item xs={12} md={4}>
                 <Typography variant="body2" color="text.secondary">
                   Total aktiv omsetning
                 </Typography>
-                <Typography variant="h6" sx={{  color: config.color  }}>
-                  {formatValue(statsData?.totalRevenue?.current || 0'currency')}
+                <Typography variant="h6" sx={{ color: config.color }}>
+                  {formatValue(statsData.totalRevenue?.current ?? 0, 'currency')}
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }} md={4}>
+              <Grid item xs={12} md={4}>
                 <Typography variant="body2" color="text.secondary">
                   Aktive klienter/kunder
                 </Typography>
-                <Typography variant="h6" sx={{  color: config.color  }}>
-                  {statsData?.activeClients?.current || 0}
+                <Typography variant="h6" sx={{ color: config.color }}>
+                  {(statsData.activeClients?.current ?? 0).toLocaleString('no-NO')}
                 </Typography>
               </Grid>
-              <Grid size={{ xs: 12 }} md={4}>
+              <Grid item xs={12} md={4}>
                 <Typography variant="body2" color="text.secondary">
-                  Gjennomsnittlig prosjektverdi
+                  Gj.snitt prosjektverdi
                 </Typography>
-                <Typography variant="h6" sx={{  color: config.color  }}>
-                  {formatValue(statsData?.avgProjectValue?.current || 0'currency')}
+                <Typography variant="h6" sx={{ color: config.color }}>
+                  {formatValue(statsData.avgProjectValue?.current ?? 0, 'currency')}
                 </Typography>
               </Grid>
             </Grid>
           </CardContent>
-        </MuiCard>
+        </Card>
       </Box>
     </Box>
   );

@@ -29,6 +29,20 @@ import {
 } from '@mui/icons-material';
 import { BaseNode, NodeConfig } from './BaseNode';
 
+const getBooleanValue = (value: unknown, fallback = false): boolean =>
+  typeof value === 'boolean' ? value : fallback;
+
+const getNumberValue = (value: unknown, fallback = 0): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+};
+
 // Debug Node
 export const DebugNode = memo(function DebugNode({
   config,
@@ -90,7 +104,7 @@ export const DebugNode = memo(function DebugNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.breakpoint || false}
+                checked={getBooleanValue(data.breakpoint)}
                 onChange={(e) => onChange('breakpoint', e.target.checked)}
                 size="small"
               />
@@ -277,7 +291,7 @@ export const ThrottleNode = memo(function ThrottleNode({
           />
 
           <Typography variant="caption" color="rgba(255,255,255,0.5)" sx={{ mt: 1, display: 'block' }}>
-            Limits execution to once per {data.wait || 200}ms
+            {`Limits execution to once per ${getNumberValue(data.wait, 200)}ms`}
           </Typography>
         </Box>
       )}
@@ -320,7 +334,7 @@ export const DebounceNode = memo(function DebounceNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.immediate || false}
+                checked={getBooleanValue(data.immediate)}
                 onChange={(e) => onChange('immediate', e.target.checked)}
                 size="small"
               />
@@ -329,7 +343,7 @@ export const DebounceNode = memo(function DebounceNode({
           />
 
           <Typography variant="caption" color="rgba(255,255,255,0.5)" sx={{ mt: 1, display: 'block' }}>
-            Waits {data.wait || 300}ms after last call before executing
+            {`Waits ${getNumberValue(data.wait, 300)}ms after last call before executing`}
           </Typography>
 
           <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
@@ -454,7 +468,7 @@ export const LogNode = memo(function LogNode({
           <FormControlLabel
             control={
               <Switch
-                checked={data.sendToServer || false}
+                checked={getBooleanValue(data.sendToServer)}
                 onChange={(e) => onChange('sendToServer', e.target.checked)}
                 size="small"
               />
@@ -644,4 +658,3 @@ export const UTILITY_NODE_DEFINITIONS = [
 ];
 
 export default UTILITY_NODE_DEFINITIONS;
-

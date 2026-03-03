@@ -164,7 +164,7 @@ export class AnimationTemplateGenerator {
           );
           tracks.push(
             this.createTrack(nodeId, 'position', position),
-            this.createTrack(nodeId'focalLength', focalLength)
+            this.createTrack(nodeId, 'focalLength', focalLength)
           );
           break;
         }
@@ -178,8 +178,8 @@ export class AnimationTemplateGenerator {
             parameters.deepAperture ?? 2.8
           );
           tracks.push(
-            this.createTrack(nodeId'focusDistance', focusDistance),
-            this.createTrack(nodeId'aperture', aperture)
+            this.createTrack(nodeId, 'focusDistance', focusDistance),
+            this.createTrack(nodeId, 'aperture', aperture)
           );
           break;
         }
@@ -192,8 +192,8 @@ export class AnimationTemplateGenerator {
             parameters.breathingSpeed ?? 0.5
           );
           tracks.push(
-            this.createTrack(nodeId, 'position', position'additive'),
-            this.createTrack(nodeId'rotation', rotation'additive')
+            this.createTrack(nodeId, 'position', position, 'additive'),
+            this.createTrack(nodeId, 'rotation', rotation, 'additive')
           );
           break;
         }
@@ -218,7 +218,7 @@ export class AnimationTemplateGenerator {
               { time: 0, value: new THREE.Vector3(0, startHeight, 0), easing: 'easeInOutCubic' },
               { time: duration, value: new THREE.Vector3(0, endHeight, 0), easing: 'easeInOutCubic' },
             ]),
-            this.createTrack(nodeId'rotation', [
+            this.createTrack(nodeId, 'rotation', [
               { time: 0, value: new THREE.Euler(0.2, 0, 0), easing: 'easeInOutCubic' },
               { time: duration, value: new THREE.Euler(-0.2, 0, 0), easing: 'easeInOutCubic' },
             ])
@@ -228,7 +228,7 @@ export class AnimationTemplateGenerator {
 
         case 'crashZoom': {
           tracks.push(
-            this.createTrack(nodeId'focalLength', [
+            this.createTrack(nodeId, 'focalLength', [
               { time: 0, value: parameters.startFov ?? 60, easing: 'easeInQuart' },
               { time: duration, value: parameters.endFov ?? 20, easing: 'easeInQuart' },
             ])
@@ -239,7 +239,7 @@ export class AnimationTemplateGenerator {
         case 'whipPan': {
           const angle = parameters.panAngle ?? Math.PI / 2;
           tracks.push(
-            this.createTrack(nodeId'rotation', [
+            this.createTrack(nodeId, 'rotation', [
               { time: 0, value: new THREE.Euler(0, 0, 0), easing: 'easeInOutQuad' },
               { time: duration, value: new THREE.Euler(0, angle, 0), easing: 'easeInOutQuad' },
             ])
@@ -257,13 +257,13 @@ export class AnimationTemplateGenerator {
             parameters.maxIntensity ?? 1,
             parameters.frequency ?? 10
           );
-          tracks.push(this.createTrack(nodeId'lightPower', keyframes));
+          tracks.push(this.createTrack(nodeId, 'lightPower', keyframes));
           break;
         }
 
         case 'dimmerFade': {
           tracks.push(
-            this.createTrack(nodeId'lightPower', [
+            this.createTrack(nodeId, 'lightPower', [
               { time: 0, value: parameters.startPower ?? 1, easing: 'easeInOutCubic' },
               { time: duration, value: parameters.endPower ?? 0, easing: 'easeInOutCubic' },
             ])
@@ -276,13 +276,13 @@ export class AnimationTemplateGenerator {
           const middayK = parameters.middayKelvin ?? 5600;
           const endK = parameters.endKelvin ?? 2500;
           tracks.push(
-            this.createTrack(nodeId'colorTemperature', [
+            this.createTrack(nodeId, 'colorTemperature', [
               { time: 0, value: startK, easing: 'easeInOutCubic' },
               { time: duration * 0.3, value: middayK, easing: 'easeInOutCubic' },
               { time: duration * 0.7, value: middayK, easing: 'easeInOutCubic' },
               { time: duration, value: endK, easing: 'easeInOutCubic' },
             ]),
-            this.createTrack(nodeId'lightPower', [
+            this.createTrack(nodeId, 'lightPower', [
               { time: 0, value: 0.3, easing: 'easeInOutCubic' },
               { time: duration * 0.3, value: 1, easing: 'easeInOutCubic' },
               { time: duration * 0.7, value: 1, easing: 'easeInOutCubic' },
@@ -306,14 +306,14 @@ export class AnimationTemplateGenerator {
             });
           }
           
-          tracks.push(this.createTrack(nodeId'lightPower', keyframes));
+          tracks.push(this.createTrack(nodeId, 'lightPower', keyframes));
           break;
         }
 
         case 'lightSweep': {
           const sweepAngle = parameters.sweepAngle ?? Math.PI;
           tracks.push(
-            this.createTrack(nodeId'rotation', [
+            this.createTrack(nodeId, 'rotation', [
               { time: 0, value: new THREE.Euler(0, -sweepAngle / 2, 0), easing: 'easeInOutCubic' },
               { time: duration, value: new THREE.Euler(0, sweepAngle / 2, 0), easing: 'easeInOutCubic' },
             ])
@@ -325,7 +325,7 @@ export class AnimationTemplateGenerator {
           const base = parameters.baseIntensity ?? 0.5;
           const flash = parameters.flashIntensity ?? 5;
           tracks.push(
-            this.createTrack(nodeId'lightPower', [
+            this.createTrack(nodeId, 'lightPower', [
               { time: 0, value: base, easing: 'step' },
               { time: 0.05, value: flash, easing: 'step' },
               { time: 0.1, value: base, easing: 'step' },
@@ -774,4 +774,3 @@ export class AnimationTemplateService {
 export const animationTemplateService = new AnimationTemplateService();
 
 export default animationTemplateService;
-

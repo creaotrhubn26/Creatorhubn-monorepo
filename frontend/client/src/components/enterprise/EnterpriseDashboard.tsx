@@ -75,12 +75,13 @@ function TabPanel(props: TabPanelProps) {
 
 function a11yProps(index: number) {
   return {
-    id: `enterprise-tab-${index}`'aria-controls': `enterprise-tabpanel-${index}`,
-};
+    id: `enterprise-tab-${index}`,
+    'aria-controls': `enterprise-tabpanel-${index}`,
+  };
 }
 
 const EnterpriseDashboard: React.FC = () => {
-  const [activeT, absetActiveTab] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const [pushSettingsOpen, setPushSettingsOpen] = useState(false);
   const { profession } = useProfessionAdapter();
   

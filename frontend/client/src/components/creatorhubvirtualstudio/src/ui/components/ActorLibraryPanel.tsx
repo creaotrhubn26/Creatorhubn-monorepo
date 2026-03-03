@@ -68,7 +68,8 @@ const CATEGORY_ICONS: Record<string, React.ReactElement> = {
   commercial: <Business />,
   fitness: <FitnessCenter />,
   child: <ChildCare />,
-  elder: <Elderly />'film-character': <TheaterComedy />,
+  elder: <Elderly />,
+  'film-character': <TheaterComedy />,
 };
 
 export const ActorLibraryPanel: React.FC = () => {
@@ -708,4 +709,3 @@ export const ActorLibraryPanel: React.FC = () => {
 };
 
 export default ActorLibraryPanel;
-

@@ -1,17 +1,13 @@
-import { useTheming } from '../../utils/theming-helper';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { apiRequest } from '@/lib/queryClient';
+import { useQuery } from '@tanstack/react-query';
 import {
   Box,
   Typography,
-  Grid,
   Card as MuiCard,
   CardContent,
   LinearProgress,
   Chip,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Alert,
   Paper,
   Table,
@@ -23,24 +19,31 @@ import {
   Button,
   Tabs,
   Tab,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
+import type { ChipProps } from '@mui/material/Chip';
+import Grid from '@mui/material/Grid2';
 import {
   Computer,
   Storage,
-  Speed as Speed,
+  Speed as SpeedIcon,
   Security,
   CloudQueue,
   Error,
   CheckCircle,
   Warning,
   Info,
-  Refresh,
   Timeline,
   Monitor,
   Memory,
   NetworkCheck,
   Backup,
 } from '@mui/icons-material';
+import { useTheming } from '../../utils/theming-helper';
+import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import SystemBackupDashboard from './SystemBackupDashboard';
 import { GDPRCompliancePanel } from './GDPRCompliancePanel';
 
@@ -59,122 +62,163 @@ function TabPanel({ children, value, index, ...other }: TabPanelProps) {
       aria-labelledby={`system-health-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ py:  3 }}>{children}</Box>}
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
     </div>
   );
 }
 
 interface SystemHealthPanelProps {
-  onMeetingCreate?: (meeting: any) => void;
-  onProjectUpdate?: (project: any) => void;
-  onWorklogCreate?: (worklog: any) => void;
-  onClientSelect?: (client: any) => void;
-  onClientUpdate?: (client: any) => void;
-  onShowcaseCreate?: (showcase: any) => void;
-  onFileUpload?: (file: any) => void;
-  onFileDownload?: (file: any) => void;
-  selectedProject?: any;
-  onProjectSelect?: (project: any) => void;
-  selectedClient?: any;
-  onSettingsUpdate?: (settings: any) => void;
-  onNotificationCreate?: (notification: any) => void;
+  onMeetingCreate?: (meeting: unknown) => void;
+  onProjectUpdate?: (project: unknown) => void;
+  onWorklogCreate?: (worklog: unknown) => void;
+  onClientSelect?: (client: unknown) => void;
+  onClientUpdate?: (client: unknown) => void;
+  onShowcaseCreate?: (showcase: unknown) => void;
+  onFileUpload?: (file: unknown) => void;
+  onFileDownload?: (file: unknown) => void;
+  selectedProject?: unknown;
+  onProjectSelect?: (project: unknown) => void;
+  selectedClient?: unknown;
+  onSettingsUpdate?: (settings: unknown) => void;
+  onNotificationCreate?: (
+    notification: { type: 'success' | 'error' | 'info'; message: string; timestamp: string },
+  ) => void;
 }
 
-export default function SystemHealthPanel({
-  onMeetingCreate,
-  onProjectUpdate,
-  onWorklogCreate,
-  onClientSelect,
-  onClientUpdate,
-  onShowcaseCreate,
-  onFileUpload,
-  onFileDownload,
-  selectedProject,
-  onProjectSelect,
-  selectedClient,
-  onSettingsUpdate,
-  onNotificationCreate
-}: SystemHealthPanelProps) {
-  const [tabValue, setTabValue] = useState(false);
-  
-  // Theming system
+interface HealthMetrics {
+  uptime: number;
+  responseTime: number;
+  errorRate: number;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  databaseConnections: number;
+}
+
+interface HealthService {
+  name: string;
+  status: 'healthy' | 'warning' | 'error' | string;
+  uptime: number;
+  lastCheck?: string;
+}
+
+interface HealthResponse {
+  metrics?: Partial<HealthMetrics>;
+  services?: HealthService[];
+  overallStatus?: 'healthy' | 'warning' | 'error';
+}
+
+interface PerformanceEvent {
+  type: 'error' | 'warning' | 'success' | 'info' | string;
+  message: string;
+  time: string;
+}
+
+interface PerformanceResponse {
+  events?: PerformanceEvent[];
+}
+
+const EMPTY_METRICS: HealthMetrics = {
+  uptime: 0,
+  responseTime: 0,
+  errorRate: 0,
+  cpuUsage: 0,
+  memoryUsage: 0,
+  diskUsage: 0,
+  databaseConnections: 0,
+};
+
+export default function SystemHealthPanel(props: SystemHealthPanelProps) {
+  const [tabValue, setTabValue] = useState(0);
   const theming = useTheming('prototype_tester');
+  const { auth } = useEnhancedMasterIntegration();
   const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  // Fetch real system health data
-  const { data: healthData, isLoading, refetch } = useQuery({
-    queryKey: ['/api/admin/system-health', ],
-    refetchInterval: 3000, // Refresh every 30 seconds
-    retry:  1,
-});
+  const { data: healthData, isLoading, refetch } = useQuery<HealthResponse>({
+    queryKey: ['/api/admin/system-health'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/system-health', { headers });
+    },
+    refetchInterval: 30000,
+    retry: 1,
+  });
 
-  const { data: performanceData } = useQuery({
-    queryKey: ['/api/admin/performance-metrics', ],
-    refetchInterval: 6000, // Refresh every minute
-    retry:  1,
-});
+  const { data: performanceData } = useQuery<PerformanceResponse>({
+    queryKey: ['/api/admin/performance-metrics'],
+    queryFn: async () => {
+      const headers = await auth.getAuthHeader();
+      return apiRequest('/api/admin/performance-metrics', { headers });
+    },
+    refetchInterval: 60000,
+    retry: 1,
+  });
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
-};
+  };
 
   const handleRefresh = () => {
     refetch();
     setLastRefresh(new Date());
-};
+  };
 
   if (isLoading) {
     return (
-      <Box sx={{ p:  3 }}>
-        <Typography variant="h6" sx={{ color: theming.colors.primary }}>Laster system-status...</Typography>
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+          Laster system-status...
+        </Typography>
       </Box>
     );
-}
-
-  // Use REAL data from server - no fake fallbacks for a new system
-  const systemMetrics = healthData?.metrics || {
-    uptime:  0,
-    responseTime:  0,
-    errorRate:  0,
-    cpuUsage:  0,
-    memoryUsage:  0,
-    diskUsage:  0,
-    databaseConnections: 0 };
-
-  const services = healthData?.services || [];
-  const recentEvents = performanceData?.events || [];
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'healthy': return 'success';
-      case 'warning': return 'warning'; 
-      case 'error': return 'error';
-      default: return 'default';
-}
-};
-
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'error': return <Error color="error" />;
-      case 'warning': return <Warning color="warning" />;
-      case 'success': return <CheckCircle color="success" />;
-      case 'info': return <Info color="info" />;
-      default: return theming.getThemedIcon(', ');
   }
-};
+
+  const systemMetrics: HealthMetrics = { ...EMPTY_METRICS, ...(healthData?.metrics ?? {}) };
+  const services = healthData?.services ?? [];
+  const recentEvents = performanceData?.events ?? [];
+  const overallStatus = healthData?.overallStatus ?? 'healthy';
+
+  const getStatusColor = (status: string): ChipProps['color'] => {
+    switch (status) {
+      case 'healthy':
+        return 'success';
+      case 'warning':
+        return 'warning';
+      case 'error':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+
+  const getEventIcon = (type: string): React.ReactElement => {
+    switch (type) {
+      case 'error':
+        return <Error color="error" />;
+      case 'warning':
+        return <Warning color="warning" />;
+      case 'success':
+        return <CheckCircle color="success" />;
+      default:
+        return <Info color="info" />;
+    }
+  };
+
+  const statusAlertSeverity =
+    overallStatus === 'error' ? 'error' : overallStatus === 'warning' ? 'warning' : 'success';
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb:  3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
-          <Monitor color="primary" sx={{ fontSize: 32}} />
-          <Typography variant="h5" sx={{  fontWeight: 600}}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Monitor color="primary" sx={{ fontSize: 32 }} />
+          <Typography variant="h5" sx={{ fontWeight: 600 }}>
             Drift
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap:  2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            Sist oppdatert: {lastRefresh.toLocaleTimeString(', ')}
+            Sist oppdatert: {lastRefresh.toLocaleTimeString('no-NO')}
           </Typography>
           <Button
             variant="outlined"
@@ -187,47 +231,48 @@ export default function SystemHealthPanel({
         </Box>
       </Box>
 
-      {/* System Status Alert */}
-      <Alert 
-        severity="success" 
-        icon={theming.getThemedIcon('checkCircle')}
-        sx={{ mb:  3 }}
-      >
+      <Alert severity={statusAlertSeverity} icon={theming.getThemedIcon('checkCircle')} sx={{ mb: 3 }}>
         <Typography variant="body2">
-          <strong>System Status: Operasjonell</strong> - Alle hovedtjenester fungerer normalt
+          <strong>
+            System Status:{' '}
+            {overallStatus === 'healthy'
+              ? 'Operasjonell'
+              : overallStatus === 'warning'
+                ? 'Degradert'
+                : 'Feil'}
+          </strong>{' '}
+          - Overvåking oppdateres kontinuerlig.
         </Typography>
       </Alert>
 
-      {/* Key Metrics , *, /}
-      <Grid container spacing={3} sx={{ mb:  4 }}>
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Timeline color="success" />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Oppetid</Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  Oppetid
+                </Typography>
               </Box>
-              <Typography variant="h4" sx={{  fontWeight: 600, color: theming.colors.primary }}>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: theming.colors.primary }}>
                 {systemMetrics.uptime}%
               </Typography>
-              <LinearProgress 
-                variant="determinate" 
-                value={systemMetrics.uptime}
-                color="success"
-                sx={{ mt:  1 }}
-              />
+              <LinearProgress variant="determinate" value={systemMetrics.uptime} color="success" sx={{ mt: 1 }} />
             </CardContent>
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Speed color="info" />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Responstid</Typography>
+                <SpeedIcon color="info" />
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  Responstid
+                </Typography>
               </Box>
-              <Typography variant="h4" sx={{  fontWeight: 600}}>
+              <Typography variant="h4" sx={{ fontWeight: 600 }}>
                 {systemMetrics.responseTime}ms
               </Typography>
               <Typography variant="body2" color="text.secondary">
@@ -237,51 +282,49 @@ export default function SystemHealthPanel({
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Memory color="warning" />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Minnebruk</Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  Minnebruk
+                </Typography>
               </Box>
-              <Typography variant="h4" sx={{  fontWeight: 600}}>
+              <Typography variant="h4" sx={{ fontWeight: 600 }}>
                 {systemMetrics.memoryUsage}%
               </Typography>
-              <LinearProgress 
-                variant="determinate" 
+              <LinearProgress
+                variant="determinate"
                 value={systemMetrics.memoryUsage}
                 color={systemMetrics.memoryUsage > 80 ? 'error' : 'warning'}
-                sx={{ mt:  1 }}
+                sx={{ mt: 1 }}
               />
             </CardContent>
           </MuiCard>
         </Grid>
 
-        <Grid size={{ xs: 12 }} sm={6} md={3}>
+        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <MuiCard>
             <CardContent sx={theming.getThemedCardSx()}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                 <Storage color="primary" />
-                <Typography variant="h6" sx={{ color: theming.colors.primary }}>Diskplass</Typography>
+                <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                  Diskplass
+                </Typography>
               </Box>
-              <Typography variant="h4" sx={{  fontWeight: 600}}>
+              <Typography variant="h4" sx={{ fontWeight: 600 }}>
                 {systemMetrics.diskUsage}%
               </Typography>
-              <LinearProgress 
-                variant="determinate" 
-                value={systemMetrics.diskUsage}
-                color="primary"
-                sx={{ mt:  1 }}
-              />
+              <LinearProgress variant="determinate" value={systemMetrics.diskUsage} color="primary" sx={{ mt: 1 }} />
             </CardContent>
           </MuiCard>
         </Grid>
       </Grid>
 
-      {/* Tabs */}
       <MuiCard>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider'}}>
-          <Tabs 
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs
             value={tabValue}
             onChange={handleTabChange}
             sx={{
@@ -298,10 +341,10 @@ export default function SystemHealthPanel({
             }}
           >
             <Tab icon={<Computer />} label="Tjenester" />
-            <Tab icon={theming.getThemedIcon('timeline')} label="Ytelse" />
-            <Tab icon={theming.getThemedIcon('security')} label="Sikkerhet" />
+            <Tab icon={<Timeline />} label="Ytelse" />
+            <Tab icon={<Security />} label="Sikkerhet" />
             <Tab icon={<Backup />} label="System Backup" />
-            <Tab icon={theming.getThemedIcon('security')} label="GDPR & Personvern" />
+            <Tab icon={<Security />} label="GDPR & Personvern" />
           </Tabs>
         </Box>
 
@@ -311,30 +354,44 @@ export default function SystemHealthPanel({
               <Table>
                 <TableHead>
                   <TableRow>
-                    <TableCell><strong>Tjeneste</strong></TableCell>
-                    <TableCell><strong>Status</strong></TableCell>
-                    <TableCell><strong>Oppetid</strong></TableCell>
-                    <TableCell><strong>Siste Sjekk</strong></TableCell>
+                    <TableCell>
+                      <strong>Tjeneste</strong>
+                    </TableCell>
+                    <TableCell>
+                      <strong>Status</strong>
+                    </TableCell>
+                    <TableCell>
+                      <strong>Oppetid</strong>
+                    </TableCell>
+                    <TableCell>
+                      <strong>Siste Sjekk</strong>
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {services.map((service: any, index: number) => (
-                    <TableRow key={index}>
+                  {services.map((service, index) => (
+                    <TableRow key={`${service.name}-${index}`}>
                       <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap:  1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <NetworkCheck />
                           {service.name}
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Chip 
-                          label={service.status === 'healthy' ? 'Sunn' : service.status === 'warning' ? 'Advarsel' : 'Feil'}
+                        <Chip
+                          label={
+                            service.status === 'healthy'
+                              ? 'Sunn'
+                              : service.status === 'warning'
+                                ? 'Advarsel'
+                                : 'Feil'
+                          }
                           color={getStatusColor(service.status)}
                           size="small"
                         />
                       </TableCell>
                       <TableCell>{service.uptime}%</TableCell>
-                      <TableCell>{new Date().toLocaleTimeString('no-NO')}</TableCell>
+                      <TableCell>{service.lastCheck ?? new Date().toLocaleTimeString('no-NO')}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -344,45 +401,44 @@ export default function SystemHealthPanel({
 
           <TabPanel value={tabValue} index={1}>
             <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }} md={6}>
-                <Typography variant="h6" sx={{  mb:  2  }}>Ytelsesmålinger</Typography>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Ytelsesmålinger
+                </Typography>
                 <List>
                   <ListItem>
-                    <ListItemIcon><Computer /></ListItemIcon>
-                    <ListItemText 
-                      primary="CPU Bruk" 
-                      secondary={`${systemMetrics.cpuUsage}% - Normal`}
-                    />
+                    <ListItemIcon>
+                      <Computer />
+                    </ListItemIcon>
+                    <ListItemText primary="CPU Bruk" secondary={`${systemMetrics.cpuUsage}% - Normal`} />
                   </ListItem>
                   <ListItem>
-                    <ListItemIcon>{theming.getThemedIcon('storage')}</ListItemIcon>
-                    <ListItemText 
-                      primary="Database Tilkoblinger" 
+                    <ListItemIcon>
+                      {theming.getThemedIcon('storage')}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Database Tilkoblinger"
                       secondary={`${systemMetrics.databaseConnections} aktive`}
                     />
                   </ListItem>
                   <ListItem>
-                    <ListItemIcon><CloudQueue /></ListItemIcon>
-                    <ListItemText 
-                      primary="API Kall per minutt" 
-                      secondary="156 forespørsler"
-                    />
+                    <ListItemIcon>
+                      <CloudQueue />
+                    </ListItemIcon>
+                    <ListItemText primary="API Kall per minutt" secondary="156 forespørsler" />
                   </ListItem>
                 </List>
               </Grid>
-              
-              <Grid size={{ xs: 12 }} md={6}>
-                <Typography variant="h6" sx={{  mb:  2  }}>Siste Hendelser</Typography>
+
+              <Grid size={{ xs: 12, md: 6 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Siste Hendelser
+                </Typography>
                 <List>
-                  {recentEvents.map((event: any, index: number) => (
-                    <ListItem key={index}>
-                      <ListItemIcon>
-                        {getEventIcon(event.type)}
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary={event.message}
-                        secondary={`${event.time} - i dag`}
-                      />
+                  {recentEvents.map((event, index) => (
+                    <ListItem key={`${event.message}-${index}`}>
+                      <ListItemIcon>{getEventIcon(event.type)}</ListItemIcon>
+                      <ListItemText primary={event.message} secondary={`${event.time} - i dag`} />
                     </ListItem>
                   ))}
                 </List>
@@ -391,22 +447,22 @@ export default function SystemHealthPanel({
           </TabPanel>
 
           <TabPanel value={tabValue} index={2}>
-            <Box sx={{ textAlign: 'center', py:  4 }}>
-              <Security sx={{ fontSize:  48, color: 'text.secondary', mb:  2 }} />
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Security sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" sx={{ color: theming.colors.primary }}>
                 Sikkerhetsmonitorering
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb:  3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 Ingen sikkerhetstrusler detektert siste 24 timer
               </Typography>
-              <Alert severity="success" sx={{ maxWidth: 40, mx: 'auto'}}>
+              <Alert severity="success" sx={{ maxWidth: 400, mx: 'auto' }}>
                 Alle sikkerhetssystemer fungerer normalt
               </Alert>
             </Box>
           </TabPanel>
 
           <TabPanel value={tabValue} index={3}>
-            <SystemBackupDashboard />
+            <SystemBackupDashboard {...props} />
           </TabPanel>
 
           <TabPanel value={tabValue} index={4}>

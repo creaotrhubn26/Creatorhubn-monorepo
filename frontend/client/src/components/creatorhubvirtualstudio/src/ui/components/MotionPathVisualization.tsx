@@ -72,7 +72,7 @@ const DEFAULT_CONFIG: MotionPathConfig = {
 function getSpeedColor(speed: number): THREE.Color {
   // Map speed to color: slow=blue, medium=green, fast=red
   if (speed < 0.3) {
-    return new THREE.Color('#2196f3, '); // Blue (slow)
+    return new THREE.Color('#2196f3'); // Blue (slow)
   } else if (speed < 0.7) {
     return new THREE.Color('#4caf50,'); // Green (medium)
   } else {
@@ -99,7 +99,7 @@ function catmullRomSpline(
     return result;
   }
 
-  const curve = new THREE.CatmullRomCurve3(points, false'centripetal', 0.5);
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal', 0.5);
   return curve.getPoints(segments);
 }
 
@@ -570,4 +570,3 @@ export function CameraPreviewPath({
 }
 
 export default MotionPath;
-

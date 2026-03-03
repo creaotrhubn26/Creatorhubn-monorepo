@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
-import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import getProfessionIcon from '@/utils/profession-icons';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import {
   Box,
@@ -14,10 +11,7 @@ import {
   Button,
   Alert,
   Snackbar,
-  Grid,
   Chip,
-  IconButton,
-  Tooltip,
   Select,
   MenuItem,
   FormControl,
@@ -26,12 +20,9 @@ import {
   TextField,
   Tabs,
   Tab,
-  Paper,
   Stack,
-  RadioGroup,
-  Radio,
-  FormLabel,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import {
   Settings,
   Save,
@@ -44,13 +35,8 @@ import {
   CheckCircle,
   Fullscreen,
   ViewModule,
-  ViewList,
-  ViewComfy,
   Search,
-  FilterList,
   PhoneAndroid,
-  Computer,
-  Tablet,
   Speed as Speed,
   Palette,
   TouchApp,
@@ -61,7 +47,6 @@ import {
   Edit,
 } from '@mui/icons-material';
 import { useAuth } from '../../hooks/useAuth';
-import { useFeatureFlag } from '../../hooks/useFeatureFlag';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
 
@@ -170,6 +155,19 @@ interface ShowcaseSettings {
   professionSuiteAccess: 'all' | 'limited' | 'none';
 }
 
+interface ProjectShowcaseSettingsPayload {
+  downloadProtectionLevel: 'none' | 'watermark' | 'disabled';
+  accessLevel: 'public' | 'restricted' | 'private';
+  enableDownloadProtection: boolean;
+  pinRequired: boolean;
+  passwordRequired: boolean;
+  watermarkEnabled: boolean;
+  watermarkPosition: ShowcaseSettings['watermarkPosition'];
+  watermarkText: string;
+  watermarkOpacity: number;
+  watermarkSize: ShowcaseSettings['watermarkSize'];
+}
+
 const defaultSettings: ShowcaseSettings = {
   // Button Visibility
   showDownloadButton: true,
@@ -186,7 +184,7 @@ const defaultSettings: ShowcaseSettings = {
   cardSize: 'medium',
   gridColumns:  3,
   cardSpacing: 'normal',
-  imageAspectRatio: '16: ',
+  imageAspectRatio: '16:9',
   cardBorderRadius: 'medium',
   cardShadow: 'medium',
   
@@ -230,8 +228,8 @@ const defaultSettings: ShowcaseSettings = {
   // Performance
   imageQuality: 'high',
   thumbnailSize: 'medium',
-  cacheDuration: '1',
-  preloadImages: 'next',
+  cacheDuration: '1d',
+  preloadImages: 'next3',
   backgroundSync: true,
   
   // Security & Privacy
@@ -272,7 +270,7 @@ const defaultSettings: ShowcaseSettings = {
   enablePhotoEnhancementSuite: true,
   enableVideoEnhancementSuite: true,
   enableStoryArcStudio: true,
-  professionSuiteAccess: ''
+  professionSuiteAccess: 'all'
 };
 
 // Profession-specific watermark defaults
@@ -329,7 +327,7 @@ interface ShowcaseSettingsPanelProps {
   profession?: 'photographer' | 'videographer' | 'music_producer' | 'vendor' | 'enterprise';
 }
 
-export function ShowcaseSettingsPanel({ profession = 'photographer,' }: ShowcaseSettingsPanelProps) {
+export function ShowcaseSettingsPanel({ profession = 'photographer' }: ShowcaseSettingsPanelProps) {
   const { user } = useAuth();
   const [settings, setSettings] = useState<ShowcaseSettings>(defaultSettings);
   const [saved, setSaved] = useState(false);
@@ -340,23 +338,23 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
   const { features } = useEnhancedMasterIntegration();
   
   // Theming system
-  const theming = useTheming('prototype_tester,');
+  const theming = useTheming('prototype_tester');
   
   // Dynamic profession system
   const { getProfessionDisplayName } = useDynamicProfessions();
   
   // Comprehensive Feature System for profession suites
-  const audioSuiteAccess = features.checkFeatureAccess('audio-enhancement-suite, ');
+  const audioSuiteAccess = features.checkFeatureAccess('audio-enhancement-suite');
   const photoSuiteAccess = features.checkFeatureAccess('photo-enhancement-suite');
   const videoSuiteAccess = features.checkFeatureAccess('video-enhancement-suite');
   const storyArcAccess = features.checkFeatureAccess('story-arc-studio');
   const professionSuitesAccess = features.checkFeatureAccess('profession-suites');
   
-  const isAudioSuiteEnabled = audioSuiteAccess.isEnabled;
-  const isPhotoSuiteEnabled = photoSuiteAccess.isEnabled;
-  const isVideoSuiteEnabled = videoSuiteAccess.isEnabled;
-  const isStoryArcEnabled = storyArcAccess.isEnabled;
-  const isProfessionSuitesEnabled = professionSuitesAccess.isEnabled;
+  const isAudioSuiteEnabled = audioSuiteAccess.hasAccess;
+  const isPhotoSuiteEnabled = photoSuiteAccess.hasAccess;
+  const isVideoSuiteEnabled = videoSuiteAccess.hasAccess;
+  const isStoryArcEnabled = storyArcAccess.hasAccess;
+  const isProfessionSuitesEnabled = professionSuitesAccess.hasAccess;
   
   // Load project-level showcase settings as defaults
   const loadProjectShowcaseSettings = () => {
@@ -394,7 +392,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
       const professionDefaults = getProfessionWatermarkDefaults(profession);
 
       // Load project defaults server-first
-      let projectDefaults = defaultSettings;
+      let projectDefaults = loadProjectShowcaseSettings();
       try {
         const resProj = await fetch('/api/user/kv/project-showcase-settings', { credentials: 'include' });
         const jProj = resProj.ok ? await resProj.json().catch(() => null) : null;
@@ -408,7 +406,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
       }
 
       // Load user settings server-first
-      let userSettings: any = null;
+      let userSettings: Partial<ShowcaseSettings> | null = null;
       try {
         const res = await fetch('/api/user/kv/showcase-settings', { credentials: 'include' });
         const j = res.ok ? await res.json().catch(() => null) : null;
@@ -444,7 +442,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
     setLoading(true);
     try {
       // Sync showcase-specific settings back to project context
-      const projectShowcaseSettings = {
+      const projectShowcaseSettings: ProjectShowcaseSettingsPayload = {
         downloadProtectionLevel:
           settings.downloadProtection === 'none' ? 'none' :
           settings.downloadProtection === 'password' ? 'watermark' :
@@ -461,15 +459,15 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
         watermarkText: settings.watermarkText,
         watermarkOpacity: settings.watermarkOpacity,
         watermarkSize: settings.watermarkSize,
-      } as any;
+      };
 
       // Save to server KV
       await fetch('/api/user/kv', {
-        method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'showcase-settings', value: settings })
       }).catch(() => {});
       await fetch('/api/user/kv', {
-        method: 'POST', headers: { , 'Content-Type': 'application/json' }, credentials: 'include',
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
         body: JSON.stringify({ key: 'project-showcase-settings', value: projectShowcaseSettings })
       }).catch(() => {});
 
@@ -492,23 +490,26 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
 };
 
   // Update individual setting
-  const updateSetting = (key: keyof ShowcaseSettings, value: any) => {
+  const updateSetting = (
+    key: keyof ShowcaseSettings,
+    value: ShowcaseSettings[keyof ShowcaseSettings],
+  ) => {
     setSettings(prev => ({ ...prev, [key]: value }));
 };
 
   const tabs = [
-    { label: 'Knapper', icon: theming.getThemedIcon(','), value:  0 },
+    { label: 'Knapper', icon: <Tune />, value:  0 },
     { label: 'Layout', icon: <ViewModule />, value:  1 },
     { label: 'Mobil', icon: <PhoneAndroid />, value:  2 },
-    { label: 'Sø', icon: theming.getThemedIcon(','), value:  3 },
-    { label: 'Data', icon: theming.getThemedIcon(','), value:  4 },
-    { label: 'Design', icon: theming.getThemedIcon(','), value:  5 },
-    { label: 'Interaksjon', icon: theming.getThemedIcon(','), value:  6 },
-    { label: 'Ytelse', icon: theming.getThemedIcon(','), value:  7 },
-    { label: 'Sikkerhet', icon: theming.getThemedIcon(','), value:  8 },
-    { label: 'Varsler', icon: theming.getThemedIcon(','), value:  9 },
-    { label: 'Profesjons Suiter', icon: theming.getThemedIcon(', '), value: 10},
-    { label: 'Avansert', icon: theming.getThemedIcon(', '), value: 11}
+    { label: 'Søk', icon: <Search />, value:  3 },
+    { label: 'Data', icon: <DataUsage />, value:  4 },
+    { label: 'Design', icon: <Palette />, value:  5 },
+    { label: 'Interaksjon', icon: <TouchApp />, value:  6 },
+    { label: 'Ytelse', icon: <Speed />, value:  7 },
+    { label: 'Sikkerhet', icon: <Security />, value:  8 },
+    { label: 'Varsler', icon: <Notifications />, value:  9 },
+    { label: 'Profesjons Suiter', icon: <Settings />, value: 10},
+    { label: 'Avansert', icon: <Settings />, value: 11}
   ];
 
   return (
@@ -790,7 +791,9 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                     <InputLabel>Antall kolonner</InputLabel>
                     <Select
                       value={settings.gridColumns}
-                      onChange={(e) => updateSetting('gridColumns', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting('gridColumns', Number(e.target.value) as ShowcaseSettings['gridColumns'])
+                      }
                       label="Antall kolonner"
                     >
                       <MenuItem value={1}>1 kolonne</MenuItem>
@@ -881,7 +884,9 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                     <InputLabel>Mobil kolonner</InputLabel>
                     <Select
                       value={settings.mobileColumns}
-                      onChange={(e) => updateSetting('mobileColumns', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting('mobileColumns', Number(e.target.value) as ShowcaseSettings['mobileColumns'])
+                      }
                       label="Mobil kolonner"
                     >
                       <MenuItem value={1}>1 kolonne</MenuItem>
@@ -1123,7 +1128,9 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                     <InputLabel>Maks items per side</InputLabel>
                     <Select
                       value={settings.maxItemsPerPage}
-                      onChange={(e) => updateSetting('maxItemsPerPage', e.target.value)}
+                      onChange={(e) =>
+                        updateSetting('maxItemsPerPage', Number(e.target.value) as ShowcaseSettings['maxItemsPerPage'])
+                      }
                       label="Maks items per side"
                     >
                       <MenuItem value={10}>10 items</MenuItem>
@@ -1418,7 +1425,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                     Vannmerke-innstillingene er tilpasset for <strong>{profession === 'photographer' ? 'fotografer' : 
                     profession === 'videographer' ? 'videografer' :
                     profession === 'music_producer' ? 'musikprodusenter' :
-                    profession === 'vendor' ? 'leverage' : 'brukere'}</strong>. 
+                    profession === 'vendor' ? 'leverandører' : 'brukere'}</strong>. 
                     Standardinnstillingene er optimalisert for din profesjon, men du kan tilpasse dem etter behov.
                   </Typography>
                 </Alert>
@@ -1490,14 +1497,19 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                         </Typography>
                         <Slider
                           value={settings.watermarkOpacity}
-                          onChange={(e, value) => updateSetting('watermarkOpacity', value)}
+                          onChange={(_event, value) =>
+                            updateSetting(
+                              'watermarkOpacity',
+                              Array.isArray(value) ? value[0] : value,
+                            )
+                          }
                           min={10}
                           max={100}
                           step={10}
                           marks={[
                             { value:  10, label: '10%'},
                             { value:  50, label: '50%'},
-                            { value: 10, label: '100%'}
+                            { value: 100, label: '100%'}
                           ]}
                           valueLabelDisplay="auto"
                           valueLabelFormat={(value) => `${value}%`}
@@ -1510,7 +1522,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                         borderRadius:  1,
                         bgcolor: '#f5f5f0',
                         position: 'relative',
-                        height: 10,
+                        height: 120,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center'
@@ -1518,7 +1530,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                         <Typography variant="caption" color="text.secondary" sx={{ position: 'absolute', top:  8, left:  8 }}>
                           Forhåndsvisning: </Typography>
                         
-                        {/* Watermark Preview , *, /}
+                        {/* Watermark Preview */}
                         <Box sx={{
                           position: 'absolute',
                           [settings.watermarkPosition.includes('top') ? 'top' : 'bottom']: 8,
@@ -1527,9 +1539,9 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                             position: 'absolute',
                             top: '50%',
                             left: '50%',
-                            transform: 'translate(-5%, -50%)'
+                            transform: 'translate(-50%, -50%)'
                         }),
-                          bgcolor: `rgba(000,${settings.watermarkOpacity / 100})`,
+                          bgcolor: `rgba(0, 0, 0, ${settings.watermarkOpacity / 100})`,
                           color: '#fff',
                           px:  1,
                           py: 0.5,
@@ -1541,7 +1553,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                           zIndex: 2}}>
                           {settings.watermark === 'text' ? settings.watermarkText :
                            settings.watermark === 'logo' ? '🏢' :
-                           settings.watermark === 'both' ? `🏢 ${settings.watermarkText}` : ', '}
+                           settings.watermark === 'both' ? `🏢 ${settings.watermarkText}` : ''}
                         </Box>
                       </Box>
                     </>
@@ -1575,7 +1587,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                       />
 
                       {settings.audioWatermarkEnabled && (
-                        <Stack spacing={3}, sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.main'}}>
+                        <Stack spacing={3} sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.main'}}>
                           {/* Audio Watermark Method */}
                           <FormControl fullWidth>
                             <InputLabel>Vannmerke-metode</InputLabel>
@@ -1817,7 +1829,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                       borderRadius:  1,
                       bgcolor: '#f8f9fa'
                 }}>
-                      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600}>
+                      <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
                         Individuell Suite-kontroll
                       </Typography>
                       
@@ -1837,7 +1849,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                               <Box sx={{ 
                                 width:  20, 
                                 height:  20, 
-                                borderRadius: '50, %', 
+                                borderRadius: '50%', 
                                 bgcolor: isAudioSuiteEnabled ? '#3f51b5' : '#ccc',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1873,7 +1885,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                               <Box sx={{ 
                                 width:  20, 
                                 height:  20, 
-                                borderRadius: '50, %', 
+                                borderRadius: '50%', 
                                 bgcolor: isPhotoSuiteEnabled ? '#e74c3c' : '#ccc',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1909,7 +1921,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                               <Box sx={{ 
                                 width:  20, 
                                 height:  20, 
-                                borderRadius: '50, %', 
+                                borderRadius: '50%', 
                                 bgcolor: isVideoSuiteEnabled ? '#9b59b6' : '#ccc',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1945,7 +1957,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                               <Box sx={{ 
                                 width:  20, 
                                 height:  20, 
-                                borderRadius: '50, %', 
+                                borderRadius: '50%', 
                                 bgcolor: isStoryArcEnabled ? '#f39c12' : '#ccc',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -1974,7 +1986,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                       borderRadius:  1,
                       bgcolor: '#f1f8e9'
                 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1, color: '#2e7d30', fontWeight: 600}>
+                      <Typography variant="subtitle2" sx={{ mb: 1, color: '#2e7d30', fontWeight: 600 }}>
                         Aktuell Profesjon: {getProfessionDisplayName(profession)}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
@@ -2078,11 +2090,11 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
               </Typography>
               
               <Box sx={{ 
-                p: 2, bgcolor: 'rgba(6, 3, 1, 4, 6, 0.8)', 
+                p: 2, bgcolor: 'rgba(6, 13, 26, 0.8)', 
                 borderRadius: settings.cardBorderRadius === 'none' ? 0 : 
                            settings.cardBorderRadius === 'small' ? 1 : 
                            settings.cardBorderRadius === 'medium' ? 2 : 3,
-                border: '1px solid rgba(2, 5, 1, 075, 3, 0.1)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
                 boxShadow: settings.cardShadow === 'none' ? 'none' :
                           settings.cardShadow === 'subtle' ? '0 1px 3px rgba(0,0,0,0.12)' :
                           settings.cardShadow === 'medium' ? '0 4px 6px rgba(0,0,0,0.1)' :
@@ -2111,10 +2123,10 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                   </Typography>
                 </Box>
                 
-                <Box sx={{ display: 'flex', gap: 0,mb: 1, flexWrap: 'wrap'}}>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap'}}>
                   {settings.showSelectionButton && (
                     <Chip 
-                      icon={theming.getThemedIcon('checkCircle')}} 
+                      icon={<CheckCircle />} 
                       label="Valg" 
                       size="small" 
                       color="primary"
@@ -2123,7 +2135,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                   )}
                   {settings.showFavoriteButton && (
                     <Chip 
-                      icon={theming.getThemedIcon('favorite')}} 
+                      icon={<Favorite />} 
                       label="Favoritt" 
                       size="small" 
                       color="error"
@@ -2141,7 +2153,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                   )}
                   {settings.showDownloadButton && (
                     <Chip 
-                      icon={theming.getThemedIcon('download')}} 
+                      icon={<Download />} 
                       label="Last ned" 
                       size="small" 
                       color="success"
@@ -2150,7 +2162,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                   )}
                   {settings.showFullscreenButton && (
                     <Chip 
-                      icon={theming.getThemedIcon('fullscreen')}} 
+                      icon={<Fullscreen />} 
                       label="Fullskjerm" 
                       size="small" 
                       color="secondary"
@@ -2159,7 +2171,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                   )}
                   {settings.showEditButton && (
                     <Chip 
-                      icon={theming.getThemedIcon('edit')}} 
+                      icon={<Edit />} 
                       label="Rediger" 
                       size="small" 
                       color="warning"
@@ -2189,7 +2201,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
               
               <Stack spacing={1}>
                 <Button variant="contained"
-                  startIcon={theming.getThemedIcon('save')}
+                  startIcon={<Save />}
                   onClick={saveSettings}
                   disabled={loading}
                   fullWidth
@@ -2199,7 +2211,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                 
                 <Button
                   variant="outlined"
-                  startIcon={theming.getThemedIcon('refresh')}
+                  startIcon={<Refresh />}
                   onClick={resetSettings}
                   fullWidth
                 >
@@ -2208,7 +2220,7 @@ export function ShowcaseSettingsPanel({ profession = 'photographer,' }: Showcase
                 
                 <Button
                   variant="text"
-                  startIcon={theming.getThemedIcon('settings')}
+                  startIcon={<Settings />}
                   onClick={() => setActiveTab(0)}
                   fullWidth
                 >

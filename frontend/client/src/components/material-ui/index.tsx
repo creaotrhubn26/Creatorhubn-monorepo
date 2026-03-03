@@ -1,164 +1,176 @@
-import { useTheming } from '../../utils/theming-helper';
 import React from 'react';
 import {
-  Button,
-  Typography,
+  Alert,
+  AlertTitle,
+  Avatar,
   Box,
-  Paper,
-  Container,
+  Button,
   Card as MuiCard,
+  CardActions,
   CardContent,
   CardHeader,
-  CardActions,
-  Badge,
-  Alert,
-  AlertTitle,
   Chip,
-  Grid,
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Avatar,
-  Divider,
-  IconButton,
-  Menu,
-  MenuList,
-} from '@mui/material';
-
-// Material UI components for CreatorHub Norge
-export { 
-  Button, 
-  Typography, 
-  Box, 
-  Paper, 
   Container,
-  CardContent,
-  CardHeader,
-  CardActions,
-  Badge,
-  Alert,
-  AlertTitle,
-  Chip,
-  Grid,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Avatar,
   Divider,
+  FormControl,
+  Grid,
   IconButton,
+  InputLabel,
   Menu,
-  MenuList
+  MenuItem,
+  MenuList,
+  Paper,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { useTheming } from '../../utils/theming-helper';
+
+export {
+  Alert,
+  AlertTitle,
+  Avatar,
+  Box,
+  Button,
+  CardActions,
+  CardContent,
+  CardHeader,
+  Chip,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  Menu,
+  MenuItem,
+  MenuList,
+  Paper,
+  Select,
+  TextField,
+  Typography,
 };
 
-// Custom Material UI wrapper components
-export { MaterialBadge, Badge as CustomBadge } from'./MaterialBadge';
+export { MaterialBadge, Badge as CustomBadge } from './MaterialBadge';
 
-// Simple component wrappers without forwardRef to avoid circular references
-export const Sheet = ({ children, ...props }: { children: React.ReactNode }) => (
-  // Theming system
+export const Sheet: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Paper>> = ({
+  children,
+  ...props
+}) => {
   const theming = useTheming('photographer');
-  <Paper {...props} sx={theming.getThemedCardSx()}>
-    {children}
-  </Paper>
-);
+  return (
+    <Paper {...props} sx={{ ...theming.getThemedCardSx(), ...(props.sx ?? {}) }}>
+      {children}
+    </Paper>
+  );
+};
 
-export const SheetContent = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box sx={{ p:  2 }} {...props}>
+export const SheetContent: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => (
+  <Box sx={{ p: 2, ...(props.sx ?? {}) }} {...props}>
     {children}
   </Box>
 );
 
-export const SheetTrigger = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box {...props}>
-    {children}
-  </Box>
-);
+export const SheetTrigger: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => <Box {...props}>{children}</Box>;
 
-export const Separator = ({ ...props }) => <Divider {...props} />;
+export const Separator: React.FC<React.ComponentProps<typeof Divider>> = (props) => <Divider {...props} />;
 
-// Additional exports for compatibility
-export const CardTitle = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Typography variant="h6" component="h2" {...props} sx={{ color: theming.colors.primary }}>
-    {children}
-  </Typography>
-);
+export const CardTitle: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Typography>> = ({
+  children,
+  ...props
+}) => {
+  const theming = useTheming('photographer');
+  return (
+    <Typography variant="h6" component="h2" {...props} sx={{ color: theming.colors.primary, ...(props.sx ?? {}) }}>
+      {children}
+    </Typography>
+  );
+};
 
-export const CardDescription = ({ children, ...props }: { children: React.ReactNode }) => (
+export const CardDescription: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Typography>> = ({
+  children,
+  ...props
+}) => (
   <Typography variant="body2" color="textSecondary" {...props}>
     {children}
   </Typography>
 );
 
-export const DialogDescription = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2 }} {...props}>
+export const DialogDescription: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Typography>> = ({
+  children,
+  ...props
+}) => (
+  <Typography variant="body2" color="textSecondary" sx={{ mt: 1, mb: 2, ...(props.sx ?? {}) }} {...props}>
     {children}
   </Typography>
 );
 
-export const DialogHeader = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box sx={{ p: 2, pb: 1 }} {...props}>
+export const DialogHeader: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => (
+  <Box sx={{ p: 2, pb: 1, ...(props.sx ?? {}) }} {...props}>
     {children}
   </Box>
 );
 
-export const Input = ({ ...props }) => <TextField {...props} />;
+export const Input: React.FC<React.ComponentProps<typeof TextField>> = (props) => <TextField {...props} />;
 
-export const Label = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Typography variant="body2" component="label" sx={{ fontWeight: 600, mb:  1 }} {...props}>
+export const Label: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Typography>> = ({
+  children,
+  ...props
+}) => (
+  <Typography variant="body2" component="label" sx={{ fontWeight: 600, mb: 1, ...(props.sx ?? {}) }} {...props}>
     {children}
   </Typography>
 );
 
-export const Textarea = ({ ...props }) => <TextField multiline rows={4} {...props} />;
-
-// DropdownMenu components using Material UI Menu
-export const DropdownMenu = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box {...props}>
-    {children}
-  </Box>
+export const Textarea: React.FC<React.ComponentProps<typeof TextField>> = (props) => (
+  <TextField multiline rows={4} {...props} />
 );
 
-export const DropdownMenuTrigger = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box {...props}>
-    {children}
-  </Box>
-);
+export const DropdownMenu: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => <Box {...props}>{children}</Box>;
 
-export const DropdownMenuContent = ({ children, ...props }) => (
-  <Menu {...props}>
-    {children}
-  </Menu>
-);
+export const DropdownMenuTrigger: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => <Box {...props}>{children}</Box>;
 
-export const DropdownMenuItem = ({ children, ...props }) => (
-  <MenuItem {...props}>
-    {children}
-  </MenuItem>
-);
+export const DropdownMenuContent: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Menu>> = ({
+  children,
+  ...props
+}) => <Menu {...props}>{children}</Menu>;
 
-export const DropdownMenuSeparator = ({ ...props }) => <Divider {...props} />;
+export const DropdownMenuItem: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof MenuItem>> = ({
+  children,
+  ...props
+}) => <MenuItem {...props}>{children}</MenuItem>;
 
-// Card component
-export const Card = ({ children, ...props }: { children: React.ReactNode }) => (
-  <MuiCard {...props}>
-    {children}
-  </MuiCard>
-);
+export const DropdownMenuSeparator: React.FC<React.ComponentProps<typeof Divider>> = (props) => <Divider {...props} />;
 
-export const SelectTrigger = ({ children, ...props }: { children: React.ReactNode }) => (
-  <Box {...props}>
-    {children}
-  </Box>
-);
+export const Card: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof MuiCard>> = ({
+  children,
+  ...props
+}) => <MuiCard {...props}>{children}</MuiCard>;
+
+export const SelectTrigger: React.FC<{ children: React.ReactNode } & React.ComponentProps<typeof Box>> = ({
+  children,
+  ...props
+}) => <Box {...props}>{children}</Box>;

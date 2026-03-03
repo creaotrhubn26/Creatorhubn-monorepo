@@ -270,6 +270,12 @@ const ANIMATION_PRESETS: AnimationPreset[] = [
 interface AnimationDashboardProps {
   showDetails?: boolean;
   showSettings?: boolean;
+  showManagement?: boolean;
+  showMonitoring?: boolean;
+  showAnimations?: boolean;
+  showTimeline?: boolean;
+  showKeyframes?: boolean;
+  showPreview?: boolean;
   _showManagement?: boolean;
   _showMonitoring?: boolean;
   _showAnimations?: boolean;
@@ -279,6 +285,12 @@ interface AnimationDashboardProps {
   variant?: 'minimal' | 'detailed' | 'full';
   position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
   onSettingsClick?: () => void;
+  onManagementClick?: () => void;
+  onMonitoringClick?: () => void;
+  onAnimationsClick?: () => void;
+  onTimelineClick?: () => void;
+  onKeyframesClick?: () => void;
+  onPreviewClick?: () => void;
   _onManagementClick?: () => void;
   _onMonitoringClick?: () => void;
   _onAnimationsClick?: () => void;
@@ -289,27 +301,53 @@ interface AnimationDashboardProps {
   style?: React.CSSProperties;
 }
 
-const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
-  showDetails = true,
-  showSettings = true,
-  _showManagement = true,
-  _showMonitoring = true,
-  _showAnimations = true,
-  _showTimeline = true,
-  _showKeyframes = true,
-  _showPreview = true,
-  variant = 'minimal',
-  position = 'top-right',
-  onSettingsClick,
-  _onManagementClick,
-  _onMonitoringClick,
-  _onAnimationsClick,
-  _onTimelineClick,
-  _onKeyframesClick,
-  _onPreviewClick,
-  className,
-  style
-}) => {
+const AnimationDashboard: React.FC<AnimationDashboardProps> = memo((props) => {
+  const {
+    showDetails = true,
+    showSettings = true,
+    showManagement: showManagementProp,
+    showMonitoring: showMonitoringProp,
+    showAnimations: showAnimationsProp,
+    showTimeline: showTimelineProp,
+    showKeyframes: showKeyframesProp,
+    showPreview: showPreviewProp,
+    _showManagement,
+    _showMonitoring,
+    _showAnimations,
+    _showTimeline,
+    _showKeyframes,
+    _showPreview,
+    variant = 'minimal',
+    position = 'top-right',
+    onSettingsClick,
+    onManagementClick: onManagementClickProp,
+    onMonitoringClick: onMonitoringClickProp,
+    onAnimationsClick: onAnimationsClickProp,
+    onTimelineClick: onTimelineClickProp,
+    onKeyframesClick: onKeyframesClickProp,
+    onPreviewClick: onPreviewClickProp,
+    _onManagementClick,
+    _onMonitoringClick,
+    _onAnimationsClick,
+    _onTimelineClick,
+    _onKeyframesClick,
+    _onPreviewClick,
+    className,
+    style,
+  } = props;
+  const showManagement = showManagementProp ?? _showManagement ?? true;
+  const showMonitoring = showMonitoringProp ?? _showMonitoring ?? true;
+  const showAnimations = showAnimationsProp ?? _showAnimations ?? true;
+  const showTimeline = showTimelineProp ?? _showTimeline ?? true;
+  const showKeyframes = showKeyframesProp ?? _showKeyframes ?? true;
+  const showPreview = showPreviewProp ?? _showPreview ?? true;
+  const onManagementClick = onManagementClickProp ?? _onManagementClick;
+  const onMonitoringClick = onMonitoringClickProp ?? _onMonitoringClick;
+  const onAnimationsClick = onAnimationsClickProp ?? _onAnimationsClick;
+  const onTimelineClick = onTimelineClickProp ?? _onTimelineClick;
+  const onKeyframesClick = onKeyframesClickProp ?? _onKeyframesClick;
+  const onPreviewClick = onPreviewClickProp ?? _onPreviewClick;
+
   const [showAnimationDialog, setShowAnimationDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
@@ -393,6 +431,31 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
       setShowSettingsDialog(true);
   }
 }, [onSettingsClick]);
+
+  const openAnimationDialog = useCallback(() => {
+    onAnimationsClick?.();
+    setShowAnimationDialog(true);
+  }, [onAnimationsClick]);
+
+  const handleTabChange = useCallback(
+    (_event: React.SyntheticEvent, newValue: number) => {
+      setActiveTab(newValue);
+      if (newValue === 0) onMonitoringClick?.();
+      if (newValue === 1) onAnimationsClick?.();
+      if (newValue === 3) onTimelineClick?.();
+      if (newValue === 4) onKeyframesClick?.();
+      if (newValue === 5) onPreviewClick?.();
+      if (newValue === 6) onManagementClick?.();
+    },
+    [
+      onAnimationsClick,
+      onKeyframesClick,
+      onManagementClick,
+      onMonitoringClick,
+      onPreviewClick,
+      onTimelineClick,
+    ],
+  );
 
   // Handle create animation
   const handleCreateAnimation = useCallback(async () => {
@@ -638,7 +701,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
         label={totalAnimations}
         color={getStatusColor()}
         size="small"
-        onClick={() => setShowAnimationDialog(true)}
+        onClick={openAnimationDialog}
         sx={{ cursor: 'pointer'}}
       />
     </Tooltip>
@@ -650,13 +713,15 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
       <Box display="flex" alignItems="center" justifyContent="space-between">
         <Box display="flex" alignItems="center" gap={1}>
           {getStatusIcon()}
-          <Typography variant="body2" color={getStatusColor() + '.main'}>
-            {getStatusText()}
-          </Typography>
+          {showMonitoring && (
+            <Typography variant="body2" color={getStatusColor() + '.main'}>
+              {getStatusText()}
+            </Typography>
+          )}
         </Box>
         
         <Box display="flex" gap={1}>
-          <IconButton size="small" onClick={() => setShowAnimationDialog(true)}>
+          <IconButton size="small" onClick={openAnimationDialog}>
             <KeyboardArrowDown />
           </IconButton>
           
@@ -712,6 +777,22 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
           >
             Presets
           </Button>
+
+          {showMonitoring && (
+            <Tooltip title="Monitoring">
+              <IconButton onClick={onMonitoringClick}>
+                <TrendingUp />
+              </IconButton>
+            </Tooltip>
+          )}
+
+          {showManagement && (
+            <Tooltip title="Management">
+              <IconButton onClick={onManagementClick}>
+                <Edit />
+              </IconButton>
+            </Tooltip>
+          )}
           
           {showSettings && (
             <IconButton onClick={handleSettingsClick}>
@@ -761,21 +842,23 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
           </Card>
         </Grid>
         
-        <Grid item xs={6}>
-          <Card sx={theming.getThemedCardSx()}>
-            <CardContent sx={theming.getThemedCardSx()}>
-              <Typography variant="subtitle2" gutterBottom>
-                Status
-              </Typography>
-              <Box display="flex" alignItems="center" gap={1}>
-                {getStatusIcon()}
-                <Typography variant="body2" color={getStatusColor() + '.main'}>
-                  {getStatusText()}
+        {showMonitoring && (
+          <Grid item xs={6}>
+            <Card sx={theming.getThemedCardSx()}>
+              <CardContent sx={theming.getThemedCardSx()}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Status
                 </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+                <Box display="flex" alignItems="center" gap={1}>
+                  {getStatusIcon()}
+                  <Typography variant="body2" color={getStatusColor() + '.main'}>
+                    {getStatusText()}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
       
       <Box mt={2}>
@@ -821,14 +904,14 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
         </DialogTitle>
         
         <DialogContent>
-          <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
+          <Tabs value={activeTab} onChange={handleTabChange}>
             <Tab label="Overview" />
-            <Tab label="Animations" />
+            <Tab label="Animations" disabled={!showAnimations} />
             <Tab label="Presets" />
-            <Tab label="Timeline" />
-            <Tab label="Keyframes" />
-            <Tab label="Preview" />
-            <Tab label="Settings" />
+            <Tab label="Timeline" disabled={!showTimeline} />
+            <Tab label="Keyframes" disabled={!showKeyframes} />
+            <Tab label="Preview" disabled={!showPreview} />
+            <Tab label="Settings" disabled={!(showSettings || showManagement)} />
           </Tabs>
           
           {activeTab === 0 && (
@@ -890,7 +973,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
             </Grid>
           )}
           
-          {activeTab === 1 && (
+          {activeTab === 1 && showAnimations && (
             <Box sx={{ mt:  2 }}>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
                 <Typography variant="h6" sx={{ ...{}, color: theming.colors.primary }}>
@@ -1158,7 +1241,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
             </Box>
           )}
           
-          {activeTab === 3 && (
+          {activeTab === 3 && showTimeline && (
             <Box sx={{ mt:  2 }}>
               <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
                 Timeline Editor
@@ -1251,7 +1334,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
             </Box>
           )}
           
-          {activeTab === 4 && (
+          {activeTab === 4 && showKeyframes && (
             <Box sx={{ mt:  2 }}>
               <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
                 Keyframe Management
@@ -1262,7 +1345,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
             </Box>
           )}
           
-          {activeTab === 5 && (
+          {activeTab === 5 && showPreview && (
             <Box sx={{ mt:  2 }}>
               <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
                 Animation Preview
@@ -1284,7 +1367,7 @@ const AnimationDashboard: React.FC<AnimationDashboardProps> = memo(({
             </Box>
           )}
           
-          {activeTab === 6 && (
+          {activeTab === 6 && (showSettings || showManagement) && (
             <Box sx={{ mt:  2 }}>
               <Typography variant="h6" gutterBottom sx={{ ...{}, color: theming.colors.primary }}>
                 Animation Settings

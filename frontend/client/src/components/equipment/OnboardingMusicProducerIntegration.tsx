@@ -90,7 +90,7 @@ const OnboardingMusicProducerIntegration: React.FC<OnboardingMusicProducerIntegr
         headers: {
           "Content-Type" : "application/json"
     },
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify({
           userd,
           profession,
@@ -292,16 +292,25 @@ const OnboardingMusicProducerIntegration: React.FC<OnboardingMusicProducerIntegr
         ) : (
           <Button variant="contained"
             size="large"
-            startIcon={importEquipmentMutation.isPending ? <CircularProgress size={20} sx={theming.getThemedButtonSx()}> : theming.getThemedIcon('upload')}
+            startIcon={
+              importEquipmentMutation.isPending ? (
+                <CircularProgress size={20} sx={theming.getThemedButtonSx()} />
+              ) : (
+                theming.getThemedIcon('upload')
+              )
+            }
             onClick={() => importEquipmentMutation.mutate()}
             disabled={importEquipmentMutation.isPending}
             sx={{ 
-              bgcolor: professionColor'&:hover': {
+              bgcolor: professionColor,
+              '&:hover': {
                 bgcolor: professionColor,
-                opacity: 0.9 },
+                opacity: 0.9,
+              },
               mb:  2,
               px:  4,
-              py: 1.5 }}
+              py: 1.5,
+            }}
           >
             {importEquipmentMutation.isPending ? 'Importerer...' : 'Importer til Utstyrsadministrasjon'}
           </Button>

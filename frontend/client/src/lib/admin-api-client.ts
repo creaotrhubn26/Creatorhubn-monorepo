@@ -1,310 +1,346 @@
 import { apiRequest } from './queryClient';
 
+type JsonRecord = Record<string, unknown>;
+
+const toQueryString = (params?: JsonRecord): string => {
+  if (!params) return '';
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, String(value));
+    }
+  });
+  const query = searchParams.toString();
+  return query.length > 0 ? `?${query}` : '';
+};
+
 // Unified API client for admin components
 export class AdminAPIClient {
   // Feature Management
   async getFeatures() {
     return apiRequest('/api/admin/features');
-}
+  }
 
-  async updateFeature(id: string, updates: any) {
-    return apiRequest(`/api/admin/features/${d}`, {
-      method: 'PATC',
-      body: JSON.stringify(updates),
-  });
-}
+  async updateFeature(id: string, updates: JsonRecord) {
+    return apiRequest(`/api/admin/features/${id}`, {
+      method: 'PATCH',
+      body: updates,
+    });
+  }
 
-  async publishFeatures(environment: 'staging' | 'production', data: any) {
+  async publishFeatures(environment: 'staging' | 'production', data: JsonRecord) {
     return apiRequest(`/api/feature-flags/publish/${environment}`, {
-      method: 'POS',
-      body: JSON.stringify(data),
-  });
-}
+      method: 'POST',
+      body: data,
+    });
+  }
 
-  async revertFeatures(environment: 'staging' | 'production', data: any) {
+  async revertFeatures(environment: 'staging' | 'production', data: JsonRecord) {
     return apiRequest(`/api/feature-flags/revert/${environment}`, {
-      method: 'POS',
-      body: JSON.stringify(data),
-  });
-}
+      method: 'POST',
+      body: data,
+    });
+  }
 
   // User Management
   async getUsers() {
     return apiRequest('/api/admin-provisioning/users');
-}
+  }
 
-  async createUser(userData: any) {
+  async createUser(userData: JsonRecord) {
     return apiRequest('/api/admin-provisioning/create-user', {
-      method: 'POS',
-      body: JSON.stringify(userData),
-  });
-}
+      method: 'POST',
+      body: userData,
+    });
+  }
 
-  async updateUser(id: string, updates: any) {
-    return apiRequest(`/api/admin-provisioning/users/${d}`, {
-      method: 'PATC',
-      body: JSON.stringify(updates),
-  });
-}
+  async updateUser(id: string, updates: JsonRecord) {
+    return apiRequest(`/api/admin-provisioning/users/${id}`, {
+      method: 'PATCH',
+      body: updates,
+    });
+  }
 
   async approveUser(userId: string, userType: string, enableIntegrations: boolean) {
     return apiRequest('/api/admin-provisioning/approve-music-producer', {
-      method: 'POS',
-      body: JSON.stringify({ userd, userType, enableIntegrations }),
-  });
-}
+      method: 'POST',
+      body: { userId, userType, enableIntegrations },
+    });
+  }
 
   async rejectUser(userId: string, reason: string) {
     return apiRequest('/api/admin-provisioning/reject-user', {
-      method: 'POS',
-      body: JSON.stringify({ userd, reason }),
-  });
-}
+      method: 'POST',
+      body: { userId, reason },
+    });
+  }
 
   // Profession Type Management
   async getProfessionTypes() {
     return apiRequest('/api/admin/profession-types');
-}
+  }
 
-  async createProfessionType(data: any) {
-    return apiRequest('POS', '/api/admin/profession-types', data);
-}
+  async createProfessionType(data: JsonRecord) {
+    return apiRequest('/api/admin/profession-types', {
+      method: 'POST',
+      body: data,
+    });
+  }
 
-  async updateProfessionType(id: string, updates: any) {
-    return apiRequest('PATC', `/api/admin/profession-types/${id}`, updates);
-}
+  async updateProfessionType(id: string, updates: JsonRecord) {
+    return apiRequest(`/api/admin/profession-types/${id}`, {
+      method: 'PATCH',
+      body: updates,
+    });
+  }
 
   async deleteProfessionType(id: string) {
-    return apiRequest('DELET', `/api/admin/profession-types/${id}`);
-}
+    return apiRequest(`/api/admin/profession-types/${id}`, {
+      method: 'DELETE',
+    });
+  }
 
   // Profession Type Deployment
   async createProfessionTypeFeatureFlags(id: string) {
-    return apiRequest(`/api/admin/profession-types/${d}/create-feature-flags`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/admin/profession-types/${id}/create-feature-flags`, {
+      method: 'POST',
+    });
+  }
 
   async deployProfessionTypeComponents(id: string) {
-    return apiRequest(`/api/admin/profession-types/${d}/deploy-components`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/admin/profession-types/${id}/deploy-components`, {
+      method: 'POST',
+    });
+  }
 
   async updateProfessionTypePermissions(id: string) {
-    return apiRequest(`/api/admin/profession-types/${d}/update-permissions`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/admin/profession-types/${id}/update-permissions`, {
+      method: 'POST',
+    });
+  }
 
   async configureProfessionTypeIntegrations(id: string) {
-    return apiRequest(`/api/admin/profession-types/${d}/configure-integrations`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/admin/profession-types/${id}/configure-integrations`, {
+      method: 'POST',
+    });
+  }
 
   async setupProfessionTypeAnalytics(id: string) {
-    return apiRequest(`/api/admin/profession-types/${d}/setup-analytics`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/admin/profession-types/${id}/setup-analytics`, {
+      method: 'POST',
+    });
+  }
 
   // Product Management
-  async getProducts(params?: any) {
-    const queryString = params ? new URLSearchParams(params).toString() : '';
-    return apiRequest(`/api/admin/products${queryString ? `?${queryString}` : ''}`);
-}
+  async getProducts(params?: JsonRecord) {
+    return apiRequest(`/api/admin/products${toQueryString(params)}`);
+  }
 
-  async createProduct(data: any) {
-    return apiRequest('POS','/api/admin/products', data);
-}
+  async createProduct(data: JsonRecord) {
+    return apiRequest('/api/admin/products', {
+      method: 'POST',
+      body: data,
+    });
+  }
 
-  async updateProduct(id: string, updates: any) {
-    return apiRequest('PU', `/api/admin/products/${id}`, updates);
-}
+  async updateProduct(id: string, updates: JsonRecord) {
+    return apiRequest(`/api/admin/products/${id}`, {
+      method: 'PUT',
+      body: updates,
+    });
+  }
 
   async deleteProduct(id: string) {
-    return apiRequest('DELET', `/api/admin/products/${id}`);
-}
+    return apiRequest(`/api/admin/products/${id}`, {
+      method: 'DELETE',
+    });
+  }
 
   // Vendor Type Management
   async getVendorTypes() {
     return apiRequest('/api/vendor-types');
-}
+  }
 
-  async createVendorType(data: any) {
-    return apiRequest('POS', '/api/vendor-types', data);
-}
+  async createVendorType(data: JsonRecord) {
+    return apiRequest('/api/vendor-types', {
+      method: 'POST',
+      body: data,
+    });
+  }
 
-  async updateVendorType(id: string, updates: any) {
-    return apiRequest('PATC', `/api/vendor-types/${id}`, updates);
-}
+  async updateVendorType(id: string, updates: JsonRecord) {
+    return apiRequest(`/api/vendor-types/${id}`, {
+      method: 'PATCH',
+      body: updates,
+    });
+  }
 
   async deleteVendorType(id: string) {
-    return apiRequest('DELET', `/api/vendor-types/${id}`);
-}
+    return apiRequest(`/api/vendor-types/${id}`, {
+      method: 'DELETE',
+    });
+  }
 
   // Vendor Type Deployment
   async createVendorTypeFeatureFlags(id: string) {
-    return apiRequest(`/api/vendor-types/${d}/create-feature-flags`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/vendor-types/${id}/create-feature-flags`, {
+      method: 'POST',
+    });
+  }
 
   async deployVendorTypeComponents(id: string) {
-    return apiRequest(`/api/vendor-types/${d}/deploy-components`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/vendor-types/${id}/deploy-components`, {
+      method: 'POST',
+    });
+  }
 
   async updateVendorTypeBilling(id: string) {
-    return apiRequest(`/api/vendor-types/${d}/update-billing`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/vendor-types/${id}/update-billing`, {
+      method: 'POST',
+    });
+  }
 
   async configureVendorTypeIntegrations(id: string) {
-    return apiRequest(`/api/vendor-types/${d}/configure-integrations`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/vendor-types/${id}/configure-integrations`, {
+      method: 'POST',
+    });
+  }
 
   async setupVendorTypeAnalytics(id: string) {
-    return apiRequest(`/api/vendor-types/${d}/setup-analytics`, {
-      method: 'POS',
-  });
-}
+    return apiRequest(`/api/vendor-types/${id}/setup-analytics`, {
+      method: 'POST',
+    });
+  }
 
   // Analytics
   async getUnifiedAnalytics() {
     return apiRequest('/api/admin/analytics/unified');
-}
+  }
 
   async getFeatureAnalytics() {
     return apiRequest('/api/admin/analytics/features');
-}
+  }
 
   async getUserAnalytics() {
     return apiRequest('/api/admin/analytics/users');
-}
+  }
 
   async getProductAnalytics() {
     return apiRequest('/api/admin/analytics/products');
-}
+  }
 
   async getProfessionTypeAnalytics() {
     return apiRequest('/api/admin/analytics/profession-types');
-}
+  }
 
   async getVendorTypeAnalytics() {
     return apiRequest('/api/admin/analytics/vendor-types');
-}
+  }
 
   // Analytics Tracking
   async trackEvent(event: {
     action: string;
     component: string;
     targetId?: string;
-    metadata?: any;
-}) {
+    metadata?: JsonRecord;
+  }) {
     return apiRequest('/api/admin/analytics/track', {
-      method: 'POS',
-      body: JSON.stringify({
+      method: 'POST',
+      body: {
         ...event,
         timestamp: Date.now(),
-    }),
-  });
-}
+      },
+    });
+  }
 
   // Bulk Operations
-  async bulkUpdateFeatures(updates: Array<{ id: string; updates: any }>) {
+  async bulkUpdateFeatures(updates: Array<{ id: string; updates: JsonRecord }>) {
     return apiRequest('/api/admin/features/bulk-update', {
-      method: 'POS',
-      body: JSON.stringify({ updates }),
-  });
-}
+      method: 'POST',
+      body: { updates },
+    });
+  }
 
-  async bulkCreateUsers(users: any[]) {
+  async bulkCreateUsers(users: JsonRecord[]) {
     return apiRequest('/api/admin-provisioning/bulk-create-users', {
-      method: 'POS',
-      body: JSON.stringify({ users }),
-  });
-}
+      method: 'POST',
+      body: { users },
+    });
+  }
 
-  async bulkUpdateProfessionTypes(updates: Array<{ id: string; updates: any }>) {
+  async bulkUpdateProfessionTypes(updates: Array<{ id: string; updates: JsonRecord }>) {
     return apiRequest('/api/admin/profession-types/bulk-update', {
-      method: 'POS',
-      body: JSON.stringify({ updates }),
-  });
-}
+      method: 'POST',
+      body: { updates },
+    });
+  }
 
   // System Operations
   async getSystemHealth() {
     return apiRequest('/api/admin/system/health');
-}
+  }
 
   async getSystemMetrics() {
     return apiRequest('/api/admin/system/metrics');
-}
+  }
 
   async triggerSystemRefresh() {
     return apiRequest('/api/admin/system/refresh', {
-      method: 'POS',
-  });
-}
+      method: 'POST',
+    });
+  }
 
   // Audit Logs
-  async getAuditLogs(params?: any) {
-    const queryString = params ? new URLSearchParams(params).toString() : ', ';
-    return apiRequest(`/api/admin/audit/logs${queryString ? `?${queryString}` : ', '}`);
-}
+  async getAuditLogs(params?: JsonRecord) {
+    return apiRequest(`/api/admin/audit/logs${toQueryString(params)}`);
+  }
 
   async getAuditLog(id: string) {
-    return apiRequest(`/api/admin/audit/logs/${d}`);
-}
+    return apiRequest(`/api/admin/audit/logs/${id}`);
+  }
 
   // Notifications
   async getNotifications() {
     return apiRequest('/api/admin/notifications');
-}
+  }
 
   async markNotificationAsRead(id: string) {
-    return apiRequest(`/api/admin/notifications/${d}/read`, {
-      method: 'PATC',
-  });
-}
+    return apiRequest(`/api/admin/notifications/${id}/read`, {
+      method: 'PATCH',
+    });
+  }
 
   async markAllNotificationsAsRead() {
     return apiRequest('/api/admin/notifications/read-all', {
-      method: 'PATC',
-  });
-}
+      method: 'PATCH',
+    });
+  }
 
   // Settings
   async getSettings() {
     return apiRequest('/api/admin/settings');
-}
+  }
 
-  async updateSettings(settings: any) {
+  async updateSettings(settings: JsonRecord) {
     return apiRequest('/api/admin/settings', {
-      method: 'PATC',
-      body: JSON.stringify(settings),
-  });
-}
+      method: 'PATCH',
+      body: settings,
+    });
+  }
 
   // Export/Import
   async exportData(type: 'features' | 'users' | 'profession-types' | 'products', format: 'json' | 'csv') {
     return apiRequest(`/api/admin/export/${type}?format=${format}`);
-}
+  }
 
   async importData(type: 'features' | 'users' | 'profession-types' | 'products', file: File) {
     const formData = new FormData();
     formData.append('file', file);
     return apiRequest(`/api/admin/import/${type}`, {
-      method: 'POS',
+      method: 'POST',
       body: formData,
-  });
-}
+    });
+  }
 }
 
 // Create singleton instance
@@ -350,6 +386,3 @@ export const {
 } = adminAPI;
 
 export default adminAPI;
-
-
-

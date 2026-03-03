@@ -59,7 +59,7 @@ export default function InboxIntegrationUI({
         headers: auth,
         headers: {},
         
-        method: 'POS',
+        method: 'POST',
         body: JSON.stringify(data)
     ,}),
     onSuccess: () => {
@@ -215,7 +215,7 @@ export default function InboxIntegrationUI({
                             sx={{
                               width:  8,
                               height:  8,
-                              borderRadius: '50, %',
+                              borderRadius: '50%',
                               bgcolor: getPriorityColor(message.priority)
                           }}
                           />
