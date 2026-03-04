@@ -32,8 +32,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyAssignmentsStudioProps {
   courseId?: string;
@@ -297,7 +298,8 @@ const toNok = (value: number): string =>
 function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignmentsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('assignments');
   const [selectedCourseId, setSelectedCourseId] = useState(courseId || 'all');
@@ -551,15 +553,15 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
   );
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'enrollment', label: 'Enrollment', route: '/academy/enrollment' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -583,21 +585,20 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -680,7 +681,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                 CREATOR STUDIO
               </Typography>
               <Chip
-                label={activeCourse?.isPublished ? 'Published' : 'Draft'}
+                label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
                 size="small"
                 sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
               />
@@ -718,7 +719,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
                 <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  Assignments
+                  {tt('Oppgaver', 'Assignments')}
                 </Typography>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -732,7 +733,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       borderRadius: 1,
                     }}
                   >
-                    Export
+                    {tt('Eksporter', 'Export')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -744,7 +745,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       borderRadius: 1,
                     }}
                   >
-                    Reports
+                    {tt('Rapporter', 'Reports')}
                   </Button>
                   <Button
                     variant="contained"
@@ -758,7 +759,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                     }}
                   >
-                    Create Assignment
+                    {tt('Opprett oppgave', 'Create Assignment')}
                   </Button>
                 </Stack>
               </Stack>
@@ -798,7 +799,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">All Courses</MenuItem>
+                      <MenuItem value="all">{tt('Alle kurs', 'All Courses')}</MenuItem>
                       {courseItems.map((course) => (
                         <MenuItem key={course.id} value={course.id}>
                           {course.title}
@@ -816,12 +817,12 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">All Status</MenuItem>
-                      <MenuItem value="active">Active</MenuItem>
-                      <MenuItem value="in_review">In Review</MenuItem>
-                      <MenuItem value="completed">Completed</MenuItem>
-                      <MenuItem value="overdue">Overdue</MenuItem>
-                      <MenuItem value="draft">Draft</MenuItem>
+                      <MenuItem value="all">{tt('Alle statuser', 'All Status')}</MenuItem>
+                      <MenuItem value="active">{tt('Aktiv', 'Active')}</MenuItem>
+                      <MenuItem value="in_review">{tt('Under vurdering', 'In Review')}</MenuItem>
+                      <MenuItem value="completed">{tt('Fullført', 'Completed')}</MenuItem>
+                      <MenuItem value="overdue">{tt('Forfalt', 'Overdue')}</MenuItem>
+                      <MenuItem value="draft">{tt('Utkast', 'Draft')}</MenuItem>
                     </Select>
                     <Select
                       size="small"
@@ -834,9 +835,9 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="7d">Last 7 days</MenuItem>
-                      <MenuItem value="30d">Last 30 days</MenuItem>
-                      <MenuItem value="90d">Last 90 days</MenuItem>
+                      <MenuItem value="7d">{tt('Siste 7 dager', 'Last 7 days')}</MenuItem>
+                      <MenuItem value="30d">{tt('Siste 30 dager', 'Last 30 days')}</MenuItem>
+                      <MenuItem value="90d">{tt('Siste 90 dager', 'Last 90 days')}</MenuItem>
                     </Select>
                   </Stack>
 
@@ -898,7 +899,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                   </Box>
                   <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
                     <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>{totals.completed}</Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>Completed</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Fullført', 'Completed')}</Typography>
                     <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.6)' }}>Team participants</Typography>
                   </Box>
                   <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
@@ -1189,7 +1190,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>In Review</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Under vurdering', 'In Review')}</Typography>
                         <Typography>{distribution.inReviewPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1204,7 +1205,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Completed</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Fullført', 'Completed')}</Typography>
                         <Typography>{distribution.completedPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1219,7 +1220,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Overdue</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Forfalt', 'Overdue')}</Typography>
                         <Typography>{distribution.overduePct}%</Typography>
                       </Stack>
                       <LinearProgress

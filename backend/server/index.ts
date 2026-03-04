@@ -11,12 +11,12 @@ const pdfParseModule: any = _require('pdf-parse');
 import mammoth from 'mammoth';
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '../migrations/schema.js';
@@ -466,78 +466,345 @@ const COMPAT_EQUIPMENT_CATALOG: CompatCatalogItem[] = [
   },
 ];
 
-const COMPAT_GEAR_NEWS = [
+type CompatGearNewsItem = {
+  id: string;
+  title: string;
+  summary?: string;
+  category?: string;
+  brand?: string;
+  url?: string;
+  rating?: number;
+  isNew?: boolean;
+  isTrending?: boolean;
+  tags?: string[];
+  professions?: string[];
+  isNorwegian?: boolean;
+  publishedAt?: string;
+  source?: string;
+};
+
+type GearNewsSourceDefinition = {
+  id: string;
+  name: string;
+  feedUrl: string;
+  defaultCategory: string;
+  tags?: string[];
+  professions?: string[];
+  isNorwegian?: boolean;
+};
+
+const COMPAT_GEAR_NEWS: CompatGearNewsItem[] = [
   {
-    id: 'news-1',
-    title: 'Canon lanserer ny autofokus-pipeline for hybridproduksjon',
-    summary: 'Bedre ansikts- og objektsporing i krevende lysforhold.',
-    category: 'Firmware',
-    brand: 'Canon',
-    url: 'https://example.com/canon-firmware-update',
-    rating: 4.5,
+    id: 'fallback-cined',
+    title: 'CineD nyhetsstrom',
+    summary: 'Direkte nyhetskilde for cine/video-utstyr.',
+    category: 'Video',
+    brand: 'Multi-brand',
+    url: 'https://www.cined.com/feed/',
+    rating: 4.2,
     isNew: true,
     isTrending: true,
-    tags: ['firmware', 'review'],
-    professions: ['photographer', 'videographer'],
+    tags: ['rss', 'video', 'cine'],
+    professions: ['videographer', 'photographer'],
     isNorwegian: false,
+    source: 'CineD',
   },
   {
-    id: 'news-2',
-    title: 'Norsk utleiemarked presser priser pa telezoom i vinter',
-    summary: 'Flere utleiehus rapporterer hoy ettersporsel etter 70-200-klassen.',
-    category: 'Marked',
-    brand: 'Sony',
-    url: 'https://example.com/no-rental-telezoom',
+    id: 'fallback-newsshooter',
+    title: 'Newsshooter nyhetsstrom',
+    summary: 'Produksjonsnyheter for film, kamera og workflow.',
+    category: 'Produksjon',
+    brand: 'Multi-brand',
+    url: 'https://www.newsshooter.com/feed/',
     rating: 4.1,
     isNew: true,
     isTrending: false,
-    tags: ['deal'],
-    professions: ['photographer', 'videographer', 'vendor'],
-    isNorwegian: true,
-  },
-  {
-    id: 'news-3',
-    title: 'Rode forbedrer internopptak i Wireless PRO',
-    summary: 'Ny firmware reduserer clipping pa hoye signalnivaer.',
-    category: 'Audio',
-    brand: 'Rode',
-    url: 'https://example.com/rode-wireless-pro',
-    rating: 4.4,
-    isNew: false,
-    isTrending: true,
-    tags: ['firmware'],
-    professions: ['videographer', 'music_producer'],
-    isNorwegian: false,
-  },
-  {
-    id: 'news-4',
-    title: 'Aputure oppdaterer kontrollapp med raskere scene-presets',
-    summary: 'Lysrigg kan sync-es raskere mellom flere armaturer.',
-    category: 'Lys',
-    brand: 'Aputure',
-    url: 'https://example.com/aputure-lighting-update',
-    rating: 4.0,
-    isNew: false,
-    isTrending: false,
-    tags: ['software'],
+    tags: ['rss', 'production'],
     professions: ['videographer', 'photographer'],
     isNorwegian: false,
+    source: 'Newsshooter',
   },
   {
-    id: 'news-5',
-    title: 'DJI RS-serien far ny stabilitetsprofil for lange telelinser',
-    summary: 'Bedre yaw-kontroll ved handholdt run-and-gun.',
-    category: 'Video',
-    brand: 'DJI',
-    url: 'https://example.com/dji-rs-update',
-    rating: 4.3,
+    id: 'fallback-petapixel',
+    title: 'PetaPixel nyhetsstrom',
+    summary: 'Foto- og videonyheter fra internasjonalt marked.',
+    category: 'Foto/Video',
+    brand: 'Multi-brand',
+    url: 'https://petapixel.com/feed/',
+    rating: 4.0,
     isNew: true,
-    isTrending: true,
-    tags: ['firmware', 'review'],
-    professions: ['videographer'],
+    isTrending: false,
+    tags: ['rss', 'photo', 'video'],
+    professions: ['photographer', 'videographer'],
     isNorwegian: false,
+    source: 'PetaPixel',
   },
 ];
+
+const LIVE_GEAR_NEWS_SOURCES: GearNewsSourceDefinition[] = [
+  {
+    id: 'cined',
+    name: 'CineD',
+    feedUrl: 'https://www.cined.com/feed/',
+    defaultCategory: 'Video',
+    tags: ['cine', 'video'],
+    professions: ['videographer', 'photographer'],
+  },
+  {
+    id: 'newsshooter',
+    name: 'Newsshooter',
+    feedUrl: 'https://www.newsshooter.com/feed/',
+    defaultCategory: 'Produksjon',
+    tags: ['cine', 'production'],
+    professions: ['videographer', 'photographer'],
+  },
+  {
+    id: 'petapixel',
+    name: 'PetaPixel',
+    feedUrl: 'https://petapixel.com/feed/',
+    defaultCategory: 'Foto/Video',
+    tags: ['photo', 'video'],
+    professions: ['photographer', 'videographer'],
+  },
+  {
+    id: 'nofilmschool',
+    name: 'No Film School',
+    feedUrl: 'https://nofilmschool.com/rss.xml',
+    defaultCategory: 'Film',
+    tags: ['film', 'workflow'],
+    professions: ['videographer'],
+  },
+];
+
+const GEAR_NEWS_FETCH_TIMEOUT_MS = 7000;
+const GEAR_NEWS_CACHE_TTL_MS = 10 * 60 * 1000;
+let gearNewsCache: { expiresAt: number; source: 'live-rss' | 'compat-news'; data: CompatGearNewsItem[] } | null = null;
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizeWhitespace = (value: string): string => value.replace(/\s+/g, ' ').trim();
+
+const decodeHtmlEntities = (value: string): string =>
+  value
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#x2F;/gi, '/');
+
+const stripHtml = (value: string): string => normalizeWhitespace(decodeHtmlEntities(value.replace(/<[^>]+>/g, ' ')));
+
+const extractTagValue = (raw: string, tagName: string): string => {
+  const escapedTag = escapeRegex(tagName).replace(/:/g, '\\:');
+  const cdataMatch = raw.match(new RegExp(`<${escapedTag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${escapedTag}>`, 'i'));
+  if (cdataMatch?.[1]) return normalizeWhitespace(cdataMatch[1]);
+
+  const directMatch = raw.match(new RegExp(`<${escapedTag}[^>]*>([\\s\\S]*?)<\\/${escapedTag}>`, 'i'));
+  if (directMatch?.[1]) return normalizeWhitespace(directMatch[1]);
+
+  return '';
+};
+
+const extractLink = (raw: string): string => {
+  const atomLink = raw.match(/<link[^>]*href=["']([^"']+)["'][^>]*\/?>(?:<\/link>)?/i)?.[1];
+  if (atomLink) return atomLink.trim();
+
+  const rssLink = extractTagValue(raw, 'link');
+  if (rssLink) return rssLink.trim();
+
+  return '';
+};
+
+const extractPublishedAt = (raw: string): string | undefined => {
+  const candidates = [
+    extractTagValue(raw, 'pubDate'),
+    extractTagValue(raw, 'published'),
+    extractTagValue(raw, 'updated'),
+    extractTagValue(raw, 'dc:date'),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    const date = new Date(candidate);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+
+  return undefined;
+};
+
+const buildSummary = (rawDescription: string, fallback = ''): string => {
+  const cleaned = stripHtml(rawDescription || fallback || '');
+  if (!cleaned) return '';
+  return cleaned.length > 220 ? `${cleaned.slice(0, 217)}...` : cleaned;
+};
+
+const guessCategory = (title: string, fallbackCategory: string): string => {
+  const lower = title.toLowerCase();
+  if (lower.includes('firmware') || lower.includes('update')) return 'Firmware';
+  if (lower.includes('lens') || lower.includes('optic') || lower.includes('objektiv')) return 'Objektiv';
+  if (lower.includes('audio') || lower.includes('mic') || lower.includes('lyd')) return 'Lyd';
+  if (lower.includes('drone')) return 'Drone';
+  if (lower.includes('camera') || lower.includes('kamera') || lower.includes('cine')) return 'Kamera';
+  return fallbackCategory;
+};
+
+const BRAND_KEYWORDS = [
+  'ARRI',
+  'Aputure',
+  'Blackmagic',
+  'Canon',
+  'DJI',
+  'Fujifilm',
+  'GoPro',
+  'Leica',
+  'Nikon',
+  'Panasonic',
+  'RED',
+  'RODE',
+  'Sigma',
+  'Sony',
+  'Tascam',
+  'Zoom',
+];
+
+const guessBrand = (title: string): string | undefined => {
+  const hit = BRAND_KEYWORDS.find((brand) => new RegExp(`\\b${escapeRegex(brand)}\\b`, 'i').test(title));
+  return hit;
+};
+
+const isRecentNews = (publishedAt?: string): boolean => {
+  if (!publishedAt) return false;
+  const published = new Date(publishedAt);
+  if (Number.isNaN(published.getTime())) return false;
+  return Date.now() - published.getTime() <= 14 * 24 * 60 * 60 * 1000;
+};
+
+async function fetchFeedXml(feedUrl: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEAR_NEWS_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(feedUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5',
+        'User-Agent': 'CreatorHub/1.0 (+https://creatorhub.local)',
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Feed request failed (${response.status})`);
+    }
+
+    return await response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const parseFeedItems = (xml: string, source: GearNewsSourceDefinition): CompatGearNewsItem[] => {
+  const rssItems = xml.match(/<item[\s\S]*?<\/item>/gi) ?? [];
+  const atomItems = xml.match(/<entry[\s\S]*?<\/entry>/gi) ?? [];
+  const entries = rssItems.length > 0 ? rssItems : atomItems;
+
+  return entries
+    .slice(0, 20)
+    .map((entry, index) => {
+      const titleRaw = extractTagValue(entry, 'title');
+      const link = extractLink(entry);
+      if (!titleRaw || !link) return null;
+
+      const summaryRaw =
+        extractTagValue(entry, 'description') ||
+        extractTagValue(entry, 'content:encoded') ||
+        extractTagValue(entry, 'summary') ||
+        extractTagValue(entry, 'content');
+      const publishedAt = extractPublishedAt(entry);
+      const title = stripHtml(titleRaw);
+      const summary = buildSummary(summaryRaw, title);
+      const category = guessCategory(title, source.defaultCategory);
+      const brand = guessBrand(title);
+      const idSeed = `${source.id}|${link}|${title}|${index}`;
+
+      return {
+        id: `live-${source.id}-${crypto.createHash('sha1').update(idSeed).digest('hex').slice(0, 12)}`,
+        title,
+        summary,
+        category,
+        brand,
+        url: link,
+        rating: 4.0,
+        isNew: isRecentNews(publishedAt),
+        isTrending: index < 3,
+        tags: source.tags ?? ['rss', 'news'],
+        professions: source.professions ?? ['photographer', 'videographer', 'vendor', 'music_producer'],
+        isNorwegian: Boolean(source.isNorwegian),
+        publishedAt,
+        source: source.name,
+      } as CompatGearNewsItem;
+    })
+    .filter((item): item is CompatGearNewsItem => Boolean(item));
+};
+
+async function buildLiveGearNewsFeed(): Promise<CompatGearNewsItem[]> {
+  const settled = await Promise.allSettled(
+    LIVE_GEAR_NEWS_SOURCES.map(async (source) => {
+      const xml = await fetchFeedXml(source.feedUrl);
+      return parseFeedItems(xml, source);
+    })
+  );
+
+  const merged = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
+  if (merged.length === 0) {
+    return [];
+  }
+
+  const deduped = new Map<string, CompatGearNewsItem>();
+  for (const item of merged) {
+    const key = `${String(item.url ?? '').trim().toLowerCase()}::${String(item.title ?? '').trim().toLowerCase()}`;
+    if (!key || key === '::') continue;
+    if (!deduped.has(key)) {
+      deduped.set(key, item);
+    }
+  }
+
+  return Array.from(deduped.values())
+    .sort((a, b) => {
+      const aTime = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+      const bTime = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+      return bTime - aTime;
+    })
+    .slice(0, 60);
+}
+
+async function loadGearNewsFeed(): Promise<{ source: 'live-rss' | 'compat-news'; data: CompatGearNewsItem[] }> {
+  if (gearNewsCache && gearNewsCache.expiresAt > Date.now()) {
+    return { source: gearNewsCache.source, data: gearNewsCache.data };
+  }
+
+  try {
+    const liveData = await buildLiveGearNewsFeed();
+    if (liveData.length > 0) {
+      gearNewsCache = {
+        expiresAt: Date.now() + GEAR_NEWS_CACHE_TTL_MS,
+        source: 'live-rss',
+        data: liveData,
+      };
+      return { source: 'live-rss', data: liveData };
+    }
+  } catch (error) {
+    console.warn('Live gear news fetch failed, using compat fallback:', error);
+  }
+
+  gearNewsCache = {
+    expiresAt: Date.now() + GEAR_NEWS_CACHE_TTL_MS,
+    source: 'compat-news',
+    data: COMPAT_GEAR_NEWS,
+  };
+  return { source: 'compat-news', data: COMPAT_GEAR_NEWS };
+}
 
 const COMPAT_VENDOR_LINKS = [
   {
@@ -3420,23 +3687,45 @@ app.get('/api/equipment/search', (req, res) => {
   });
 });
 
-app.get('/api/gear-news', (req, res) => {
+app.get('/api/gear-news', async (req, res) => {
   const profession = typeof req.query.profession === 'string' ? req.query.profession : '';
   const normalizedProfession = profession.trim().toLowerCase();
 
-  const filtered = normalizedProfession
-    ? COMPAT_GEAR_NEWS.filter((item) =>
-        Array.isArray(item.professions)
-          ? item.professions.map((entry) => entry.toLowerCase()).includes(normalizedProfession)
-          : true
-      )
-    : COMPAT_GEAR_NEWS;
+  try {
+    const payload = await loadGearNewsFeed();
 
-  res.json({
-    success: true,
-    source: 'compat-news',
-    data: filtered,
-  });
+    const filtered = normalizedProfession
+      ? payload.data.filter((item) =>
+          Array.isArray(item.professions)
+            ? item.professions.map((entry) => String(entry).toLowerCase()).includes(normalizedProfession)
+            : true
+        )
+      : payload.data;
+
+    res.json({
+      success: true,
+      source: payload.source,
+      data: filtered,
+      total: filtered.length,
+    });
+  } catch (error) {
+    console.error('Failed to load /api/gear-news feed, returning fallback:', error);
+
+    const filtered = normalizedProfession
+      ? COMPAT_GEAR_NEWS.filter((item) =>
+          Array.isArray(item.professions)
+            ? item.professions.map((entry) => String(entry).toLowerCase()).includes(normalizedProfession)
+            : true
+        )
+      : COMPAT_GEAR_NEWS;
+
+    res.json({
+      success: true,
+      source: 'compat-news',
+      data: filtered,
+      total: filtered.length,
+    });
+  }
 });
 
 app.get('/api/gear-news/:profession/firmware', (_req, res) => {
@@ -5159,6 +5448,10 @@ app.post('/api/casting/demo/troll/offers-contracts', (_req, res) => {
   res.json({ success: true, created: 0 });
 });
 
+app.get('/api/casting/demo/troll/offers-contracts', (_req, res) => {
+  res.json({ success: true, offers: [], contracts: [] });
+});
+
 app.post('/api/demo/troll/initialize-all', (_req, res) => {
   const fallbackProject = {
     id: 'troll-project-2026',
@@ -5824,7 +6117,12 @@ async function storeAudioFile(buffer: Buffer, name: string, mime: string) {
 }
 
 async function getAudioBufferFromUrl(audioUrl: string) {
-  const storedMatch = audioUrl.match(/\/api\/audio\/file\/(.+)$/);
+  const normalizedSource = normalizeVideoSourcePath(audioUrl);
+  if (!normalizedSource) {
+    throw new Error('Missing audio source');
+  }
+
+  const storedMatch = normalizedSource.match(/\/api\/audio\/file\/(.+)$/);
   if (storedMatch) {
     const stored = audioFileStore.get(storedMatch[1]);
     if (stored) {
@@ -5833,13 +6131,42 @@ async function getAudioBufferFromUrl(audioUrl: string) {
     }
   }
 
-  const response = await fetch(audioUrl);
-  if (!response.ok) {
-    throw new Error('Failed to fetch audio');
+  if (isHttpUrl(normalizedSource)) {
+    const response = await fetch(normalizedSource);
+    if (!response.ok) {
+      throw new Error('Failed to fetch audio');
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return {
+      buffer,
+      size: buffer.length,
+      mime: response.headers.get('content-type') || 'audio/mpeg',
+    };
   }
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  return { buffer, size: buffer.length, mime: response.headers.get('content-type') || 'audio/mpeg' };
+
+  let localPath = normalizedSource;
+  if (localPath.startsWith('file://')) {
+    localPath = fileURLToPath(localPath);
+  }
+  if (!path.isAbsolute(localPath)) {
+    localPath = path.resolve(process.cwd(), localPath);
+  }
+
+  const buffer = await fs.readFile(localPath);
+  const extension = path.extname(localPath).toLowerCase();
+  const mimeByExtension: Record<string, string> = {
+    '.wav': 'audio/wav',
+    '.wave': 'audio/wav',
+    '.mp3': 'audio/mpeg',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.flac': 'audio/flac',
+    '.ogg': 'audio/ogg',
+    '.webm': 'audio/webm',
+  };
+  const mime = mimeByExtension[extension] || 'audio/mpeg';
+  return { buffer, size: buffer.length, mime };
 }
 
 function seedFromString(value: string) {
@@ -20158,8 +20485,1583 @@ app.post('/api/video-sync/jobs/:jobId/cancel', (req, res) => {
   });
 });
 
+type StoryArcAutoEditPreset = 'reel-30' | 'story-60' | 'interview';
+type StoryArcAutoEditJobStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+interface StoryArcAutoEditClipInput {
+  id: string;
+  name: string;
+  start: number;
+  duration: number;
+  trackId: string;
+  tags: string[];
+  metadata: Record<string, unknown>;
+}
+
+interface StoryArcAutoEditTrackInput {
+  id: string;
+  name: string;
+  type: string;
+}
+
+interface StoryArcAutoEditOptionsInput {
+  preset: StoryArcAutoEditPreset;
+  targetDurationSeconds: number;
+  includeAssemble: boolean;
+  includePolish: boolean;
+  addMarkers: boolean;
+  addAudioBed: boolean;
+  transitionDensity: number;
+}
+
+interface StoryArcAutoEditClipContextInput {
+  scene: string | null;
+  shotName: string | null;
+  camera: string | null;
+  syncGroup: string | null;
+  tags: string[];
+  markerLabels: string[];
+  transcriptKeywords: string[];
+  transcriptText: string | null;
+  transcriptPhrases: string[];
+  speakerName: string | null;
+  moodHints: string[];
+}
+
+interface StoryArcAutoEditContextInput {
+  storyTitle: string | null;
+  storyType: string | null;
+  goalKeywords: string[];
+  avoidKeywords: string[];
+  culturalMoments: string[];
+  beatHints: string[];
+  intentProfileId: string | null;
+  intentProfileName: string | null;
+  intentGoalKeywords: string[];
+  intentAvoidKeywords: string[];
+  forbiddenPatterns: string[];
+  feedbackByClipId: Record<string, 'approved' | 'rejected'>;
+  clipContextById: Record<string, StoryArcAutoEditClipContextInput>;
+}
+
+type StoryArcNarrativeBeat = 'hook' | 'build' | 'climax' | 'resolution' | 'bridge';
+
+interface StoryArcAutoEditBeatClassification {
+  beat: StoryArcNarrativeBeat;
+  confidence: number;
+  reason: string;
+  source: 'llm' | 'heuristic';
+}
+
+interface StoryArcAutoEditRankingResult {
+  clipScores: Record<string, number>;
+  rankedClipIds: string[];
+  confidence: number;
+  summary: string[];
+  modelUsed: string;
+  analyzerAvailable: boolean;
+  analyzerReason: string | null;
+  beatByClipId: Record<string, StoryArcAutoEditBeatClassification>;
+  beatDistribution: Record<StoryArcNarrativeBeat, number>;
+  llmBeatClassificationUsed: boolean;
+  clipSignalsById: Record<string, StoryArcAutoEditContextSignals>;
+}
+
+interface StoryArcAutoEditJobInput {
+  storyArcId: string | null;
+  clips: StoryArcAutoEditClipInput[];
+  tracks: StoryArcAutoEditTrackInput[];
+  options: StoryArcAutoEditOptionsInput;
+  frameRate: number;
+  context: StoryArcAutoEditContextInput;
+}
+
+interface StoryArcAutoEditJob {
+  id: string;
+  status: StoryArcAutoEditJobStatus;
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+  input: StoryArcAutoEditJobInput;
+  result: StoryArcAutoEditRankingResult | null;
+  error: string | null;
+}
+
+interface StoryArcAutoEditPresetConfig {
+  duration: number;
+  minClipDuration: number;
+  idealClipDuration: number;
+  maxClipDuration: number;
+}
+
+const STORY_ARC_AUTO_EDIT_PRESET_CONFIG: Record<
+  StoryArcAutoEditPreset,
+  StoryArcAutoEditPresetConfig
+> = {
+  'reel-30': {
+    duration: 30,
+    minClipDuration: 0.8,
+    idealClipDuration: 2.1,
+    maxClipDuration: 4,
+  },
+  'story-60': {
+    duration: 60,
+    minClipDuration: 1.2,
+    idealClipDuration: 3.1,
+    maxClipDuration: 5.6,
+  },
+  interview: {
+    duration: 120,
+    minClipDuration: 2,
+    idealClipDuration: 5.6,
+    maxClipDuration: 11,
+  },
+};
+
+const storyArcAutoEditJobs = new Map<string, StoryArcAutoEditJob>();
+const storyArcAutoEditJobControllers = new Map<string, AbortController>();
+const STORY_ARC_AUTO_EDIT_JOB_TTL_MS = 30 * 60 * 1000;
+
+const isUnknownRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object';
+
+const clampAutoEditValue = (value: number, minValue: number, maxValue: number): number =>
+  Math.max(minValue, Math.min(maxValue, value));
+
+const normalizeAutoEditPreset = (value: unknown): StoryArcAutoEditPreset => {
+  const normalized = normalizeModelLookupValue(readString(value) || '') || 'story-60';
+  if (normalized === 'reel30' || normalized === 'reel-30') {
+    return 'reel-30';
+  }
+  if (normalized === 'interview' || normalized === 'intervju') {
+    return 'interview';
+  }
+  return 'story-60';
+};
+
+const normalizeAutoEditOptions = (value: unknown): StoryArcAutoEditOptionsInput => {
+  const source = isUnknownRecord(value) ? value : {};
+  const preset = normalizeAutoEditPreset(source.preset);
+  const presetDefaults = STORY_ARC_AUTO_EDIT_PRESET_CONFIG[preset];
+  const targetDurationRaw = readNumber(source.targetDurationSeconds);
+  const transitionDensityRaw = readNumber(source.transitionDensity);
+
+  return {
+    preset,
+    targetDurationSeconds: Number(
+      clampAutoEditValue(
+        targetDurationRaw ?? presetDefaults.duration,
+        6,
+        20 * 60
+      ).toFixed(3)
+    ),
+    includeAssemble: readBoolean(source.includeAssemble) ?? true,
+    includePolish: readBoolean(source.includePolish) ?? true,
+    addMarkers: readBoolean(source.addMarkers) ?? true,
+    addAudioBed: readBoolean(source.addAudioBed) ?? true,
+    transitionDensity: Number(
+      clampAutoEditValue(transitionDensityRaw ?? 0.65, 0, 1).toFixed(3)
+    ),
+  };
+};
+
+const normalizeAutoEditClipInput = (
+  value: unknown,
+  index: number
+): StoryArcAutoEditClipInput | null => {
+  if (!isUnknownRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id) || `clip-${index + 1}`;
+  const start = readNumber(value.start);
+  const duration = readNumber(value.duration);
+  const trackId = readString(value.trackId) || 'video-1';
+  const sourceTags = Array.isArray(value.tags) ? value.tags : [];
+  const tags = sourceTags
+    .map((entry) => readString(entry))
+    .filter((entry): entry is string => Boolean(entry))
+    .slice(0, 24);
+  const metadata = isUnknownRecord(value.metadata)
+    ? { ...value.metadata }
+    : {};
+
+  if (duration === null || duration <= 0) {
+    return null;
+  }
+
+  return {
+    id,
+    name: readString(value.name) || id,
+    start: Number(clampAutoEditValue(start ?? 0, 0, 24 * 3600).toFixed(3)),
+    duration: Number(clampAutoEditValue(duration, 0.04, 24 * 3600).toFixed(3)),
+    trackId,
+    tags,
+    metadata,
+  };
+};
+
+const normalizeAutoEditTrackInput = (
+  value: unknown,
+  index: number
+): StoryArcAutoEditTrackInput | null => {
+  if (!isUnknownRecord(value)) {
+    return null;
+  }
+  const id = readString(value.id) || `track-${index + 1}`;
+  const name = readString(value.name) || id;
+  const type = readString(value.type) || 'video';
+  return { id, name, type };
+};
+
+const normalizeAutoEditKeywordToken = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
+const normalizeAutoEditKeywordList = (value: unknown, maxItems = 24): string[] => {
+  const values: string[] = [];
+  if (Array.isArray(value)) {
+    value.forEach((entry) => {
+      const normalized = readString(entry);
+      if (normalized) {
+        values.push(normalized);
+      }
+    });
+  } else {
+    const single = readString(value);
+    if (single) {
+      values.push(single);
+    }
+  }
+
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((entry) => {
+    entry
+      .split(/[\s,;|/]+/)
+      .map((token) => normalizeAutoEditKeywordToken(token))
+      .filter((token) => token.length >= 3)
+      .forEach((token) => {
+        if (seen.has(token) || unique.length >= maxItems) {
+          return;
+        }
+        seen.add(token);
+        unique.push(token);
+      });
+  });
+
+  return unique;
+};
+
+const normalizeAutoEditNarrativeText = (value: unknown, maxLength = 1600): string | null => {
+  const raw = readString(value);
+  if (!raw) {
+    return null;
+  }
+  const normalized = raw
+    .replace(/\s+/g, ' ')
+    .replace(/\u0000/g, '')
+    .trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized.slice(0, maxLength);
+};
+
+const normalizeAutoEditPhraseList = (
+  value: unknown,
+  maxItems = 12,
+  maxLength = 160
+): string[] => {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  const appendPhrase = (entry: unknown) => {
+    const normalized = normalizeAutoEditNarrativeText(entry, maxLength);
+    if (!normalized) {
+      return;
+    }
+    const dedupeKey = normalized.toLowerCase();
+    if (seen.has(dedupeKey) || unique.length >= maxItems) {
+      return;
+    }
+    seen.add(dedupeKey);
+    unique.push(normalized);
+  };
+
+  if (Array.isArray(value)) {
+    value.forEach(appendPhrase);
+    return unique;
+  }
+
+  appendPhrase(value);
+  return unique;
+};
+
+const normalizeAutoEditClipContextInput = (
+  value: unknown
+): StoryArcAutoEditClipContextInput | null => {
+  if (!isUnknownRecord(value)) {
+    return null;
+  }
+  const transcriptText = normalizeAutoEditNarrativeText(value.transcriptText, 1800);
+  const transcriptPhrases = normalizeAutoEditPhraseList(value.transcriptPhrases, 16, 180);
+  const transcriptKeywords = normalizeAutoEditKeywordList(
+    [value.transcriptKeywords, transcriptText, ...transcriptPhrases],
+    36
+  );
+  const speakerName = normalizeAutoEditNarrativeText(value.speakerName, 100);
+
+  return {
+    scene: readString(value.scene),
+    shotName: readString(value.shotName),
+    camera: readString(value.camera),
+    syncGroup: readString(value.syncGroup),
+    tags: normalizeAutoEditKeywordList(value.tags, 36),
+    markerLabels: normalizeAutoEditKeywordList(value.markerLabels, 24),
+    transcriptKeywords,
+    transcriptText,
+    transcriptPhrases,
+    speakerName,
+    moodHints: normalizeAutoEditKeywordList(value.moodHints, 24),
+  };
+};
+
+const normalizeAutoEditContextInput = (value: unknown): StoryArcAutoEditContextInput => {
+  const source = isUnknownRecord(value) ? value : {};
+  const clipContextById: Record<string, StoryArcAutoEditClipContextInput> = {};
+  const feedbackByClipId: Record<string, 'approved' | 'rejected'> = {};
+  const rawClipContextById = isUnknownRecord(source.clipContextById)
+    ? source.clipContextById
+    : {};
+  Object.entries(rawClipContextById).forEach(([clipId, clipContext]) => {
+    const normalizedId = readString(clipId);
+    if (!normalizedId) {
+      return;
+    }
+    const normalizedContext = normalizeAutoEditClipContextInput(clipContext);
+    if (normalizedContext) {
+      clipContextById[normalizedId] = normalizedContext;
+    }
+  });
+  const rawFeedbackByClipId = isUnknownRecord(source.feedbackByClipId)
+    ? source.feedbackByClipId
+    : {};
+  Object.entries(rawFeedbackByClipId).forEach(([clipId, feedbackValue]) => {
+    const normalizedId = readString(clipId);
+    if (!normalizedId) {
+      return;
+    }
+    const normalizedFeedback = normalizeModelLookupValue(readString(feedbackValue) || '');
+    if (normalizedFeedback === 'approved' || normalizedFeedback === 'rejected') {
+      feedbackByClipId[normalizedId] = normalizedFeedback;
+    }
+  });
+
+  return {
+    storyTitle: readString(source.storyTitle),
+    storyType: readString(source.storyType),
+    goalKeywords: normalizeAutoEditKeywordList(source.goalKeywords, 48),
+    avoidKeywords: normalizeAutoEditKeywordList(source.avoidKeywords, 24),
+    culturalMoments: normalizeAutoEditKeywordList(source.culturalMoments, 24),
+    beatHints: normalizeAutoEditKeywordList(source.beatHints, 32),
+    intentProfileId: readString(source.intentProfileId),
+    intentProfileName: readString(source.intentProfileName),
+    intentGoalKeywords: normalizeAutoEditKeywordList(source.intentGoalKeywords, 36),
+    intentAvoidKeywords: normalizeAutoEditKeywordList(source.intentAvoidKeywords, 24),
+    forbiddenPatterns: normalizeAutoEditKeywordList(source.forbiddenPatterns, 24),
+    feedbackByClipId,
+    clipContextById,
+  };
+};
+
+const isAutoEditAudioTrack = (
+  trackId: string,
+  tracks: StoryArcAutoEditTrackInput[]
+): boolean => {
+  const normalizedTrackId = trackId.trim().toLowerCase();
+  if (normalizedTrackId.startsWith('audio') || /^a\d+$/.test(normalizedTrackId)) {
+    return true;
+  }
+  const matchingTrack = tracks.find((track) => track.id === trackId);
+  if (!matchingTrack) {
+    return false;
+  }
+  const normalizedType = matchingTrack.type.trim().toLowerCase();
+  const normalizedName = matchingTrack.name.trim().toLowerCase();
+  return normalizedType === 'audio' || normalizedName.includes('audio');
+};
+
+interface StoryArcAutoEditContextSignals {
+  boost: number;
+  penalty: number;
+  beatAlignmentBoost: number;
+  feedbackBoost: number;
+  goalHits: number;
+  avoidHits: number;
+  culturalHits: number;
+  beatHits: number;
+  markerHits: number;
+  forbiddenHits: number;
+  transcriptCoverage: number;
+  narrativeConnectorHits: number;
+  impactPhraseHits: number;
+  fillerHits: number;
+}
+
+const AUTO_EDIT_BEAT_VALUES: StoryArcNarrativeBeat[] = [
+  'hook',
+  'build',
+  'climax',
+  'resolution',
+  'bridge',
+];
+
+const AUTO_EDIT_CONTEXT_MARKER_KEYWORDS = new Set([
+  'scene',
+  'highlight',
+  'hook',
+  'climax',
+  'beat',
+  'emotion',
+]);
+
+const AUTO_EDIT_NARRATIVE_CONNECTOR_KEYWORDS = new Set([
+  'because',
+  'when',
+  'then',
+  'after',
+  'before',
+  'until',
+  'finally',
+  'therefore',
+  'meanwhile',
+  'suddenly',
+  'fordi',
+  'nar',
+  'sa',
+  'etter',
+  'for',
+  'tilslutt',
+  'plutselig',
+  'derfor',
+]);
+
+const AUTO_EDIT_IMPACT_KEYWORDS = new Set([
+  'love',
+  'promise',
+  'grateful',
+  'grace',
+  'forever',
+  'family',
+  'journey',
+  'dream',
+  'proud',
+  'thank',
+  'heart',
+  'together',
+  'blessed',
+  'cherish',
+  'legacy',
+  'impact',
+  'elsker',
+  'kjarlighet',
+  'takknemlig',
+  'familie',
+  'evig',
+  'hjerte',
+  'sammen',
+  'stolt',
+  'takk',
+  'betyr',
+]);
+
+const AUTO_EDIT_FILLER_KEYWORDS = new Set([
+  'um',
+  'uh',
+  'erm',
+  'ah',
+  'like',
+  'youknow',
+  'sortof',
+  'kindof',
+  'actually',
+  'basically',
+  'eh',
+  'liksom',
+  'altsa',
+  'paenmate',
+]);
+
+const AUTO_EDIT_BEAT_KEYWORDS: Record<StoryArcNarrativeBeat, string[]> = {
+  hook: ['hook', 'intro', 'opening', 'teaser', 'establish', 'arrival', 'drone'],
+  build: ['build', 'story', 'setup', 'prep', 'process', 'dialogue', 'detail', 'reaction'],
+  climax: ['climax', 'peak', 'vows', 'kiss', 'dance', 'drop', 'cheer', 'celebration'],
+  resolution: ['resolution', 'ending', 'outro', 'closing', 'farewell', 'sunset', 'credits'],
+  bridge: ['bridge', 'transition', 'broll', 'establishing', 'cutaway', 'montage'],
+};
+
+const deriveDefaultAutoEditGoalKeywords = (
+  preset: StoryArcAutoEditPreset,
+  storyType: string | null
+): string[] => {
+  const presetDefaults: Record<StoryArcAutoEditPreset, string[]> = {
+    'reel-30': ['highlight', 'hero', 'impact', 'energy', 'emotion'],
+    'story-60': ['story', 'build', 'reaction', 'detail', 'progression'],
+    interview: ['dialogue', 'speech', 'face', 'closeup', 'clarity'],
+  };
+  const typeDefaults: Record<string, string[]> = {
+    wedding: ['ceremony', 'vows', 'family', 'kiss', 'ring', 'dance'],
+    documentary: ['context', 'authentic', 'detail', 'reaction'],
+    corporate: ['speaker', 'team', 'brand', 'presentation'],
+    music_video: ['rhythm', 'performance', 'beat', 'energy'],
+    event: ['crowd', 'reaction', 'highlight', 'moment'],
+  };
+  const normalizedStoryType = normalizeModelLookupValue(storyType || '') || 'event';
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  [...presetDefaults[preset], ...(typeDefaults[normalizedStoryType] || typeDefaults.event)].forEach(
+    (token) => {
+      const normalizedToken = normalizeAutoEditKeywordToken(token);
+      if (!normalizedToken || seen.has(normalizedToken)) {
+        return;
+      }
+      seen.add(normalizedToken);
+      unique.push(normalizedToken);
+    }
+  );
+  return unique;
+};
+
+const resolveExpectedNarrativeBeat = (
+  preset: StoryArcAutoEditPreset,
+  normalizedStart: number
+): StoryArcNarrativeBeat => {
+  const t = clampAutoEditValue(normalizedStart, 0, 1);
+  if (preset === 'reel-30') {
+    if (t < 0.2) return 'hook';
+    if (t < 0.55) return 'build';
+    if (t < 0.82) return 'climax';
+    return 'resolution';
+  }
+  if (preset === 'interview') {
+    if (t < 0.18) return 'hook';
+    if (t < 0.7) return 'build';
+    if (t < 0.9) return 'climax';
+    return 'resolution';
+  }
+  if (t < 0.18) return 'hook';
+  if (t < 0.58) return 'build';
+  if (t < 0.84) return 'climax';
+  return 'resolution';
+};
+
+const computeBeatAlignmentBoost = (
+  actualBeat: StoryArcNarrativeBeat,
+  expectedBeat: StoryArcNarrativeBeat,
+  confidence: number
+): number => {
+  if (actualBeat === expectedBeat) {
+    return clampAutoEditValue(0.06 + confidence * 0.03, 0, 0.11);
+  }
+  if (
+    (actualBeat === 'bridge' && (expectedBeat === 'build' || expectedBeat === 'resolution')) ||
+    (expectedBeat === 'bridge' && (actualBeat === 'build' || actualBeat === 'resolution'))
+  ) {
+    return 0.015;
+  }
+  if (
+    (actualBeat === 'hook' && expectedBeat === 'build') ||
+    (actualBeat === 'build' && (expectedBeat === 'hook' || expectedBeat === 'climax')) ||
+    (actualBeat === 'climax' && expectedBeat === 'build') ||
+    (actualBeat === 'resolution' && (expectedBeat === 'climax' || expectedBeat === 'bridge'))
+  ) {
+    return 0.01;
+  }
+  return -0.028;
+};
+
+const classifyClipBeatHeuristic = (
+  clip: StoryArcAutoEditClipInput,
+  clipContext: StoryArcAutoEditClipContextInput | null,
+  preset: StoryArcAutoEditPreset,
+  normalizedStart: number
+): StoryArcAutoEditBeatClassification => {
+  const keywordSet = buildAutoEditClipKeywordSet(clip, clipContext);
+  const hitCounts: Record<StoryArcNarrativeBeat, number> = {
+    hook: 0,
+    build: 0,
+    climax: 0,
+    resolution: 0,
+    bridge: 0,
+  };
+  AUTO_EDIT_BEAT_VALUES.forEach((beat) => {
+    AUTO_EDIT_BEAT_KEYWORDS[beat].forEach((keyword) => {
+      const normalizedKeyword = normalizeAutoEditKeywordToken(keyword);
+      if (keywordSet.has(normalizedKeyword)) {
+        hitCounts[beat] += 1;
+      }
+    });
+  });
+
+  const expectedBeat = resolveExpectedNarrativeBeat(preset, normalizedStart);
+  let selectedBeat: StoryArcNarrativeBeat = expectedBeat;
+  let maxHits = -1;
+  AUTO_EDIT_BEAT_VALUES.forEach((beat) => {
+    const hits = hitCounts[beat];
+    if (hits > maxHits) {
+      maxHits = hits;
+      selectedBeat = beat;
+    }
+  });
+
+  if (maxHits <= 0) {
+    selectedBeat = expectedBeat;
+  }
+
+  const confidence = Number(
+    clampAutoEditValue(
+      maxHits > 0 ? 0.62 + Math.min(maxHits, 3) * 0.08 : 0.55,
+      0.5,
+      0.93
+    ).toFixed(3)
+  );
+
+  const reason =
+    maxHits > 0
+      ? `keywords suggest ${selectedBeat}`
+      : `timeline phase suggests ${selectedBeat}`;
+
+  return {
+    beat: selectedBeat,
+    confidence,
+    reason,
+    source: 'heuristic',
+  };
+};
+
+const parseNarrativeBeat = (value: unknown): StoryArcNarrativeBeat | null => {
+  const normalized = normalizeModelLookupValue(readString(value) || '');
+  if (normalized === 'hook' || normalized === 'build' || normalized === 'climax') {
+    return normalized;
+  }
+  if (normalized === 'resolution' || normalized === 'resolve' || normalized === 'ending') {
+    return 'resolution';
+  }
+  if (normalized === 'bridge' || normalized === 'transition') {
+    return 'bridge';
+  }
+  return null;
+};
+
+const classifyClipBeatsWithLlm = async (
+  clips: StoryArcAutoEditClipInput[],
+  context: StoryArcAutoEditContextInput,
+  preset: StoryArcAutoEditPreset,
+  signal: AbortSignal
+): Promise<Record<string, StoryArcAutoEditBeatClassification> | null> => {
+  const apiKey = readString(process.env.OPENAI_API_KEY);
+  if (!apiKey) {
+    return null;
+  }
+  if (signal.aborted) {
+    throw createJobAbortError();
+  }
+
+  const model = readString(process.env.STORY_ARC_BEAT_MODEL) || 'gpt-4o-mini';
+  const maxClips = Math.min(clips.length, 80);
+  const payloadClips = clips.slice(0, maxClips).map((clip) => {
+    const clipContext = context.clipContextById[clip.id];
+    return {
+      id: clip.id,
+      name: clip.name,
+      start: clip.start,
+      duration: clip.duration,
+      tags: clip.tags.slice(0, 16),
+      transcriptKeywords: (clipContext?.transcriptKeywords || []).slice(0, 16),
+      transcriptText: clipContext?.transcriptText?.slice(0, 420) || null,
+      transcriptPhrases: (clipContext?.transcriptPhrases || []).slice(0, 8),
+      speakerName: clipContext?.speakerName || null,
+      moodHints: (clipContext?.moodHints || []).slice(0, 12),
+      markerLabels: (clipContext?.markerLabels || []).slice(0, 10),
+      scene: clipContext?.scene || null,
+      shotName: clipContext?.shotName || null,
+      camera: clipContext?.camera || null,
+    };
+  });
+
+  const body = {
+    model,
+    temperature: 0.1,
+    response_format: { type: 'json_object' as const },
+    messages: [
+      {
+        role: 'system' as const,
+        content:
+          'Classify each clip into one narrative beat: hook, build, climax, resolution, bridge. Return strict JSON { "clips": [{ "id": "...", "beat": "...", "confidence": 0-1, "reason": "short" }] }.',
+      },
+      {
+        role: 'user' as const,
+        content: JSON.stringify({
+          preset,
+          storyTitle: context.storyTitle,
+          storyType: context.storyType,
+          goalKeywords: context.goalKeywords.slice(0, 24),
+          avoidKeywords: context.avoidKeywords.slice(0, 12),
+          beatHints: context.beatHints.slice(0, 20),
+          clips: payloadClips,
+        }),
+      },
+    ],
+  };
+
+  try {
+    const timeoutSignal = AbortSignal.timeout(20_000);
+    const requestSignal =
+      typeof (AbortSignal as { any?: (signals: AbortSignal[]) => AbortSignal }).any ===
+      'function'
+        ? (AbortSignal as { any: (signals: AbortSignal[]) => AbortSignal }).any([
+            signal,
+            timeoutSignal,
+          ])
+        : timeoutSignal;
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: requestSignal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      console.warn('Auto Edit beat LLM classification failed:', response.status, errorBody);
+      return null;
+    }
+
+    const parsed = (await response.json()) as Record<string, unknown>;
+    const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+    const firstChoice = choices[0] as Record<string, unknown> | undefined;
+    const message = isUnknownRecord(firstChoice?.message) ? firstChoice.message : null;
+    const contentRaw = readString(message?.content);
+    if (!contentRaw) {
+      return null;
+    }
+    let contentPayload: unknown = null;
+    try {
+      contentPayload = JSON.parse(contentRaw);
+    } catch {
+      return null;
+    }
+    if (!isUnknownRecord(contentPayload) || !Array.isArray(contentPayload.clips)) {
+      return null;
+    }
+
+    const beatByClipId: Record<string, StoryArcAutoEditBeatClassification> = {};
+    contentPayload.clips.forEach((entry: unknown) => {
+      if (!isUnknownRecord(entry)) {
+        return;
+      }
+      const id = readString(entry.id);
+      const beat = parseNarrativeBeat(entry.beat);
+      if (!id || !beat) {
+        return;
+      }
+      const confidence = Number(
+        clampAutoEditValue(readNumber(entry.confidence) ?? 0.67, 0, 1).toFixed(3)
+      );
+      const reason = readString(entry.reason) || 'llm semantic narrative classification';
+      beatByClipId[id] = {
+        beat,
+        confidence,
+        reason,
+        source: 'llm',
+      };
+    });
+
+    return Object.keys(beatByClipId).length > 0 ? beatByClipId : null;
+  } catch (error) {
+    if (isAbortLikeError(error)) {
+      throw error;
+    }
+    console.warn('Auto Edit beat LLM classification error:', error);
+    return null;
+  }
+};
+
+const buildAutoEditClipKeywordSet = (
+  clip: StoryArcAutoEditClipInput,
+  clipContext: StoryArcAutoEditClipContextInput | null
+): Set<string> => {
+  const values: string[] = [
+    clip.name,
+    ...clip.tags,
+    ...(clipContext?.tags || []),
+    ...(clipContext?.transcriptKeywords || []),
+    clipContext?.transcriptText || '',
+    ...(clipContext?.transcriptPhrases || []),
+    clipContext?.speakerName || '',
+    ...(clipContext?.moodHints || []),
+    ...(clipContext?.markerLabels || []),
+    clipContext?.scene || '',
+    clipContext?.shotName || '',
+    clipContext?.camera || '',
+    clipContext?.syncGroup || '',
+  ];
+  return new Set(
+    normalizeAutoEditKeywordList(values, 128).filter((token) => token.length >= 3)
+  );
+};
+
+const countAutoEditTokenHits = (tokens: string[], keywordSet: Set<string>): number => {
+  if (tokens.length === 0 || keywordSet.size === 0) {
+    return 0;
+  }
+  let hits = 0;
+  const seen = new Set<string>();
+  tokens.forEach((token) => {
+    if (!token || seen.has(token)) {
+      return;
+    }
+    seen.add(token);
+    if (keywordSet.has(token)) {
+      hits += 1;
+    }
+  });
+  return hits;
+};
+
+const computeAutoEditContextSignals = (
+  clip: StoryArcAutoEditClipInput,
+  clipContext: StoryArcAutoEditClipContextInput | null,
+  beatClassification: StoryArcAutoEditBeatClassification,
+  preset: StoryArcAutoEditPreset,
+  normalizedStart: number,
+  goalKeywords: Set<string>,
+  avoidKeywords: Set<string>,
+  culturalKeywords: Set<string>,
+  beatHintKeywords: Set<string>,
+  forbiddenKeywords: Set<string>,
+  feedback: 'approved' | 'rejected' | undefined
+): StoryArcAutoEditContextSignals => {
+  const clipKeywordSet = buildAutoEditClipKeywordSet(clip, clipContext);
+  const transcriptTokens = normalizeAutoEditKeywordList(
+    [clipContext?.transcriptText || '', ...(clipContext?.transcriptPhrases || [])],
+    220
+  );
+
+  let goalHits = 0;
+  goalKeywords.forEach((keyword) => {
+    if (clipKeywordSet.has(keyword)) {
+      goalHits += 1;
+    }
+  });
+
+  let avoidHits = 0;
+  avoidKeywords.forEach((keyword) => {
+    if (clipKeywordSet.has(keyword)) {
+      avoidHits += 1;
+    }
+  });
+
+  let culturalHits = 0;
+  culturalKeywords.forEach((keyword) => {
+    if (clipKeywordSet.has(keyword)) {
+      culturalHits += 1;
+    }
+  });
+
+  let beatHits = 0;
+  beatHintKeywords.forEach((keyword) => {
+    if (clipKeywordSet.has(keyword)) {
+      beatHits += 1;
+    }
+  });
+
+  const markerTokens = clipContext?.markerLabels || [];
+  const markerHits = markerTokens.reduce((count, token) => {
+    return AUTO_EDIT_CONTEXT_MARKER_KEYWORDS.has(token) ? count + 1 : count;
+  }, 0);
+  let forbiddenHits = 0;
+  forbiddenKeywords.forEach((keyword) => {
+    if (clipKeywordSet.has(keyword)) {
+      forbiddenHits += 1;
+    }
+  });
+
+  const transcriptCoverage = clampAutoEditValue(
+    (clipContext?.transcriptText || '').length / 420,
+    0,
+    1
+  );
+  const narrativeConnectorHits = countAutoEditTokenHits(
+    transcriptTokens,
+    AUTO_EDIT_NARRATIVE_CONNECTOR_KEYWORDS
+  );
+  const impactPhraseHits = countAutoEditTokenHits(transcriptTokens, AUTO_EDIT_IMPACT_KEYWORDS);
+  const fillerHits = countAutoEditTokenHits(transcriptTokens, AUTO_EDIT_FILLER_KEYWORDS);
+  const feedbackBoost = feedback === 'approved' ? 0.12 : feedback === 'rejected' ? -0.2 : 0;
+
+  const narrativeBoost = clampAutoEditValue(
+    transcriptCoverage * 0.05 + narrativeConnectorHits * 0.012 + impactPhraseHits * 0.02,
+    0,
+    0.2
+  );
+  const fillerPenalty = clampAutoEditValue(fillerHits * 0.018, 0, 0.14);
+
+  const boost = clampAutoEditValue(
+    goalHits * 0.035 +
+      culturalHits * 0.03 +
+      beatHits * 0.026 +
+      markerHits * 0.02 +
+      narrativeBoost,
+    0,
+    0.36
+  );
+  const penalty = clampAutoEditValue(
+    avoidHits * 0.055 + forbiddenHits * 0.07 + fillerPenalty,
+    0,
+    0.46
+  );
+  const expectedBeat = resolveExpectedNarrativeBeat(preset, normalizedStart);
+  const beatAlignmentBoost = computeBeatAlignmentBoost(
+    beatClassification.beat,
+    expectedBeat,
+    beatClassification.confidence
+  );
+
+  return {
+    boost,
+    penalty,
+    beatAlignmentBoost,
+    feedbackBoost,
+    goalHits,
+    avoidHits,
+    culturalHits,
+    beatHits,
+    markerHits,
+    forbiddenHits,
+    transcriptCoverage,
+    narrativeConnectorHits,
+    impactPhraseHits,
+    fillerHits,
+  };
+};
+
+const scoreAutoEditClip = (
+  clip: StoryArcAutoEditClipInput,
+  tracks: StoryArcAutoEditTrackInput[],
+  presetConfig: StoryArcAutoEditPresetConfig,
+  contextSignals: StoryArcAutoEditContextSignals
+): number => {
+  let score = 0.38;
+
+  const duration = clip.duration;
+  if (duration >= presetConfig.minClipDuration && duration <= presetConfig.maxClipDuration * 1.5) {
+    score += 0.14;
+  }
+  const durationDelta = Math.abs(duration - presetConfig.idealClipDuration);
+  score += clampAutoEditValue(0.2 - durationDelta * 0.035, -0.08, 0.2);
+
+  if (!isAutoEditAudioTrack(clip.trackId, tracks)) {
+    score += 0.08;
+  }
+
+  const syncConfidence = readNumber(clip.metadata.syncConfidence);
+  if (syncConfidence !== null) {
+    score += clampAutoEditValue(syncConfidence, 0, 1) * 0.13;
+  }
+
+  const rating = readNumber(clip.metadata.rating) ?? readNumber(clip.metadata.aiRating);
+  if (rating !== null) {
+    const normalizedRating = rating > 1 ? rating / 5 : rating;
+    score += clampAutoEditValue(normalizedRating, 0, 1) * 0.14;
+  }
+
+  if (isUnknownRecord(clip.metadata.faceDetection)) {
+    const faceDetection = clip.metadata.faceDetection;
+    const hasFace = faceDetection.hasFace === true;
+    const faceConfidence = readNumber(faceDetection.confidence);
+    const faceCount = readNumber(faceDetection.faceCount);
+    if (hasFace) {
+      score += 0.11;
+    }
+    if (faceConfidence !== null) {
+      score += clampAutoEditValue(faceConfidence, 0, 1) * 0.1;
+    }
+    if (faceCount !== null && faceCount > 1) {
+      score += 0.04;
+    }
+  }
+
+  for (const tag of clip.tags) {
+    const normalizedTag = tag.trim().toLowerCase();
+    if (!normalizedTag) continue;
+    if (
+      normalizedTag.includes('hero') ||
+      normalizedTag.includes('best') ||
+      normalizedTag.includes('highlight')
+    ) {
+      score += 0.07;
+      continue;
+    }
+    if (
+      normalizedTag.includes('closeup') ||
+      normalizedTag.includes('emotion') ||
+      normalizedTag.includes('reaction')
+    ) {
+      score += 0.045;
+      continue;
+    }
+    if (normalizedTag.includes('broll') || normalizedTag.includes('filler')) {
+      score -= 0.03;
+    }
+  }
+
+  const normalizedName = clip.name.trim().toLowerCase();
+  if (normalizedName.includes('intro') || normalizedName.includes('opening')) {
+    score += 0.04;
+  }
+
+  score += contextSignals.boost;
+  score -= contextSignals.penalty;
+  score += contextSignals.beatAlignmentBoost;
+  score += contextSignals.feedbackBoost;
+
+  return Number(clampAutoEditValue(score, 0, 1).toFixed(4));
+};
+
+const cleanupStoryArcAutoEditJobs = () => {
+  const now = Date.now();
+  for (const [jobId, job] of storyArcAutoEditJobs.entries()) {
+    const ageMs = now - new Date(job.updatedAt).getTime();
+    if (ageMs > STORY_ARC_AUTO_EDIT_JOB_TTL_MS) {
+      storyArcAutoEditJobs.delete(jobId);
+      const controller = storyArcAutoEditJobControllers.get(jobId);
+      if (controller) {
+        controller.abort();
+      }
+      storyArcAutoEditJobControllers.delete(jobId);
+    }
+  }
+};
+
+setInterval(cleanupStoryArcAutoEditJobs, 5 * 60 * 1000).unref();
+
+const createStoryArcAutoEditJob = (
+  input: StoryArcAutoEditJobInput
+): StoryArcAutoEditJob => {
+  const nowIso = new Date().toISOString();
+  const job: StoryArcAutoEditJob = {
+    id: crypto.randomUUID(),
+    status: 'queued',
+    progress: 0,
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    input,
+    result: null,
+    error: null,
+  };
+  storyArcAutoEditJobs.set(job.id, job);
+  storyArcAutoEditJobControllers.set(job.id, new AbortController());
+  return job;
+};
+
+const patchStoryArcAutoEditJob = (
+  jobId: string,
+  updates: Partial<
+    Pick<StoryArcAutoEditJob, 'status' | 'progress' | 'result' | 'error'>
+  >
+): StoryArcAutoEditJob | null => {
+  const current = storyArcAutoEditJobs.get(jobId);
+  if (!current) {
+    return null;
+  }
+
+  const next: StoryArcAutoEditJob = {
+    ...current,
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  storyArcAutoEditJobs.set(jobId, next);
+  return next;
+};
+
+const buildStoryArcAutoEditRanking = async (
+  input: StoryArcAutoEditJobInput,
+  signal: AbortSignal
+): Promise<StoryArcAutoEditRankingResult> => {
+  if (signal.aborted) {
+    throw createJobAbortError();
+  }
+
+  let analyzerAvailable = false;
+  let analyzerReason: string | null = null;
+  let modelUsed = 'story-arc-analyzer:fallback';
+
+  try {
+    const modelStatus = await getAiModelStatusPayload(false);
+    const analyzer = findModelStatus(modelStatus.models, 'story-arc-analyzer');
+    analyzerAvailable = Boolean(analyzer?.available);
+    analyzerReason = analyzer?.reason || null;
+    if (analyzer?.id) {
+      modelUsed = analyzer.id;
+    }
+  } catch (error) {
+    analyzerReason = error instanceof Error ? error.message : 'Unable to read model status';
+  }
+
+  const presetConfig =
+    STORY_ARC_AUTO_EDIT_PRESET_CONFIG[input.options.preset] ||
+    STORY_ARC_AUTO_EDIT_PRESET_CONFIG['story-60'];
+  const clipTimelineStart = input.clips.reduce((minValue, clip) => {
+    return Math.min(minValue, clip.start);
+  }, Number.POSITIVE_INFINITY);
+  const clipTimelineEnd = input.clips.reduce((maxValue, clip) => {
+    return Math.max(maxValue, clip.start + clip.duration);
+  }, 0);
+  const safeTimelineStart = Number.isFinite(clipTimelineStart) ? clipTimelineStart : 0;
+  const timelineSpanSeconds = Math.max(1, clipTimelineEnd - safeTimelineStart);
+
+  const heuristicBeatByClipId: Record<string, StoryArcAutoEditBeatClassification> = {};
+  input.clips.forEach((clip) => {
+    const normalizedStart = clampAutoEditValue(
+      (clip.start - safeTimelineStart) / timelineSpanSeconds,
+      0,
+      1
+    );
+    heuristicBeatByClipId[clip.id] = classifyClipBeatHeuristic(
+      clip,
+      input.context.clipContextById[clip.id] || null,
+      input.options.preset,
+      normalizedStart
+    );
+  });
+
+  let llmBeatClassificationUsed = false;
+  let llmBeatByClipId: Record<string, StoryArcAutoEditBeatClassification> | null = null;
+  llmBeatByClipId = await classifyClipBeatsWithLlm(
+    input.clips,
+    input.context,
+    input.options.preset,
+    signal
+  );
+  llmBeatClassificationUsed = Boolean(
+    llmBeatByClipId && Object.keys(llmBeatByClipId).length > 0
+  );
+  const beatByClipId: Record<string, StoryArcAutoEditBeatClassification> = {
+    ...heuristicBeatByClipId,
+    ...(llmBeatByClipId || {}),
+  };
+
+  const defaultGoalKeywords = deriveDefaultAutoEditGoalKeywords(
+    input.options.preset,
+    input.context.storyType
+  );
+  const goalKeywordSet = new Set<string>([
+    ...defaultGoalKeywords,
+    ...input.context.goalKeywords,
+    ...input.context.intentGoalKeywords,
+  ]);
+  const avoidKeywordSet = new Set<string>([
+    ...input.context.avoidKeywords,
+    ...input.context.intentAvoidKeywords,
+  ]);
+  const culturalKeywordSet = new Set<string>(input.context.culturalMoments);
+  const beatHintKeywordSet = new Set<string>(input.context.beatHints);
+  const forbiddenKeywordSet = new Set<string>(input.context.forbiddenPatterns);
+  const feedbackByClipId = input.context.feedbackByClipId || {};
+  const clipScores: Record<string, number> = {};
+  const clipSignalsById: Record<string, StoryArcAutoEditContextSignals> = {};
+  let totalContextGoalHits = 0;
+  let totalContextAvoidHits = 0;
+  let totalContextCulturalHits = 0;
+  let totalContextBeatHits = 0;
+  let totalBeatAlignmentBoost = 0;
+  let totalForbiddenHits = 0;
+  let totalFeedbackBoost = 0;
+  let totalTranscriptCoverage = 0;
+  let totalNarrativeConnectorHits = 0;
+  let totalImpactPhraseHits = 0;
+  let totalFillerHits = 0;
+
+  input.clips.forEach((clip) => {
+    const clipContext = input.context.clipContextById[clip.id] || null;
+    const normalizedStart = clampAutoEditValue(
+      (clip.start - safeTimelineStart) / timelineSpanSeconds,
+      0,
+      1
+    );
+    const beatClassification =
+      beatByClipId[clip.id] ||
+      classifyClipBeatHeuristic(
+        clip,
+        clipContext,
+        input.options.preset,
+        normalizedStart
+      );
+    const contextSignals = computeAutoEditContextSignals(
+      clip,
+      clipContext,
+      beatClassification,
+      input.options.preset,
+      normalizedStart,
+      goalKeywordSet,
+      avoidKeywordSet,
+      culturalKeywordSet,
+      beatHintKeywordSet,
+      forbiddenKeywordSet,
+      feedbackByClipId[clip.id]
+    );
+    clipSignalsById[clip.id] = contextSignals;
+    totalContextGoalHits += contextSignals.goalHits;
+    totalContextAvoidHits += contextSignals.avoidHits;
+    totalContextCulturalHits += contextSignals.culturalHits;
+    totalContextBeatHits += contextSignals.beatHits;
+    totalBeatAlignmentBoost += contextSignals.beatAlignmentBoost;
+    totalForbiddenHits += contextSignals.forbiddenHits;
+    totalFeedbackBoost += contextSignals.feedbackBoost;
+    totalTranscriptCoverage += contextSignals.transcriptCoverage;
+    totalNarrativeConnectorHits += contextSignals.narrativeConnectorHits;
+    totalImpactPhraseHits += contextSignals.impactPhraseHits;
+    totalFillerHits += contextSignals.fillerHits;
+
+    const heuristicScore = scoreAutoEditClip(
+      clip,
+      input.tracks,
+      presetConfig,
+      contextSignals
+    );
+    const modelNoise = analyzerAvailable
+      ? (seededRandom(seedFromString(`${input.storyArcId || ''}:${clip.id}:${clip.start}`))() - 0.5) *
+        0.08
+      : 0;
+    const score = clampAutoEditValue(heuristicScore + modelNoise, 0, 1);
+    clipScores[clip.id] = Number(score.toFixed(4));
+  });
+
+  const rankedClipIds = [...input.clips]
+    .sort((left, right) => {
+      const rightScore = clipScores[right.id] ?? 0;
+      const leftScore = clipScores[left.id] ?? 0;
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return left.start - right.start;
+    })
+    .map((clip) => clip.id);
+
+  const targetCount = Math.max(
+    1,
+    Math.min(
+      rankedClipIds.length,
+      Math.round(
+        input.options.targetDurationSeconds /
+          Math.max(presetConfig.minClipDuration, presetConfig.idealClipDuration * 0.9)
+      )
+    )
+  );
+  const topScores = rankedClipIds.slice(0, targetCount).map((clipId) => clipScores[clipId] || 0);
+  const averageTopScore =
+    topScores.length > 0
+      ? topScores.reduce((sum, score) => sum + score, 0) / topScores.length
+      : 0.5;
+  const coverageScore = clampAutoEditValue(targetCount / Math.max(1, rankedClipIds.length), 0, 1);
+  const confidence = Number(
+    clampAutoEditValue(
+      averageTopScore * 0.68 + coverageScore * 0.18 + (analyzerAvailable ? 0.14 : 0.07),
+      0,
+      1
+    ).toFixed(3)
+  );
+  const topRankedForContext = rankedClipIds
+    .slice(0, Math.max(1, Math.min(targetCount, 8)))
+    .map((clipId) => clipSignalsById[clipId])
+    .filter((signals): signals is StoryArcAutoEditContextSignals => Boolean(signals));
+  const topGoalHitAverage =
+    topRankedForContext.length > 0
+      ? topRankedForContext.reduce((sum, signals) => sum + signals.goalHits, 0) /
+        topRankedForContext.length
+      : 0;
+  const beatDistribution: Record<StoryArcNarrativeBeat, number> = {
+    hook: 0,
+    build: 0,
+    climax: 0,
+    resolution: 0,
+    bridge: 0,
+  };
+  Object.values(beatByClipId).forEach((classification) => {
+    beatDistribution[classification.beat] += 1;
+  });
+  const dominantBeat = (Object.entries(beatDistribution).sort(
+    (left, right) => right[1] - left[1]
+  )[0]?.[0] || 'build') as StoryArcNarrativeBeat;
+
+  const averageTranscriptCoverage =
+    input.clips.length > 0 ? totalTranscriptCoverage / input.clips.length : 0;
+
+  const summary = [
+    `Ranked ${rankedClipIds.length} clips for ${input.options.preset} preset.`,
+    input.context.intentProfileName
+      ? `Intent profile: ${input.context.intentProfileName}.`
+      : 'Intent profile: default.',
+    analyzerAvailable
+      ? `Story arc analyzer is available and contributed to ranking confidence (${modelUsed}).`
+      : 'Story arc analyzer is unavailable; ranking used heuristic fallback signals.',
+    llmBeatClassificationUsed
+      ? 'Semantic beat classifier active (LLM).'
+      : 'Semantic beat classifier fallback (heuristic).',
+    `Top clip confidence avg ${(averageTopScore * 100).toFixed(0)}% with target coverage ${(coverageScore * 100).toFixed(0)}%.`,
+    `Context matching: ${totalContextGoalHits} goal hits, ${totalContextCulturalHits} cultural hits, ${totalContextBeatHits} beat hits, ${totalContextAvoidHits} avoid hits, ${totalForbiddenHits} forbidden hits.`,
+    `Narrative speech signal: ${(averageTranscriptCoverage * 100).toFixed(0)}% transcript coverage, ${totalNarrativeConnectorHits} connector hits, ${totalImpactPhraseHits} impact hits, ${totalFillerHits} filler hits.`,
+    `Beat alignment boost total ${totalBeatAlignmentBoost.toFixed(2)} (dominant beat: ${dominantBeat}).`,
+    `Human feedback influence ${totalFeedbackBoost.toFixed(2)} across ranked clips.`,
+    `Top picks average ${topGoalHitAverage.toFixed(1)} goal-hit signals per clip.`,
+  ];
+
+  return {
+    clipScores,
+    rankedClipIds,
+    confidence,
+    summary,
+    modelUsed,
+    analyzerAvailable,
+    analyzerReason,
+    beatByClipId,
+    beatDistribution,
+    llmBeatClassificationUsed,
+    clipSignalsById,
+  };
+};
+
+const runStoryArcAutoEditJob = async (jobId: string): Promise<void> => {
+  const job = storyArcAutoEditJobs.get(jobId);
+  if (!job) {
+    return;
+  }
+
+  const controller = storyArcAutoEditJobControllers.get(jobId) || new AbortController();
+  storyArcAutoEditJobControllers.set(jobId, controller);
+  const signal = controller.signal;
+
+  patchStoryArcAutoEditJob(jobId, {
+    status: 'processing',
+    progress: 14,
+    error: null,
+  });
+
+  try {
+    await waitWithAbort(350, signal);
+    patchStoryArcAutoEditJob(jobId, { progress: 42 });
+    await waitWithAbort(450, signal);
+    patchStoryArcAutoEditJob(jobId, { progress: 72 });
+
+    const latest = storyArcAutoEditJobs.get(jobId);
+    if (!latest || latest.status === 'cancelled' || signal.aborted) {
+      patchStoryArcAutoEditJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
+
+    const result = await buildStoryArcAutoEditRanking(latest.input, signal);
+    if (signal.aborted) {
+      throw createJobAbortError();
+    }
+
+    patchStoryArcAutoEditJob(jobId, {
+      status: 'completed',
+      progress: 100,
+      result,
+      error: null,
+    });
+  } catch (error) {
+    if (isAbortLikeError(error) || signal.aborted) {
+      patchStoryArcAutoEditJob(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        error: 'Cancelled by user',
+      });
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : 'Auto Edit ranking failed';
+    patchStoryArcAutoEditJob(jobId, {
+      status: 'failed',
+      progress: 100,
+      error: message,
+    });
+  } finally {
+    storyArcAutoEditJobControllers.delete(jobId);
+  }
+};
+
+app.post('/api/story-arc/auto-edit/start', (req, res) => {
+  const clipsRaw = Array.isArray(req.body?.clips) ? req.body.clips : [];
+  const tracksRaw = Array.isArray(req.body?.tracks) ? req.body.tracks : [];
+  const clips = clipsRaw
+    .map((clip: unknown, index: number) => normalizeAutoEditClipInput(clip, index))
+    .filter(
+      (clip: StoryArcAutoEditClipInput | null): clip is StoryArcAutoEditClipInput =>
+        clip !== null
+    );
+  const tracks = tracksRaw
+    .map((track: unknown, index: number) => normalizeAutoEditTrackInput(track, index))
+    .filter(
+      (track: StoryArcAutoEditTrackInput | null): track is StoryArcAutoEditTrackInput =>
+        track !== null
+    );
+
+  if (clips.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least one valid clip is required',
+    });
+  }
+
+  const options = normalizeAutoEditOptions(req.body?.options);
+  const frameRate = Number(
+    clampAutoEditValue(readNumber(req.body?.frameRate) ?? 30, 1, 120).toFixed(3)
+  );
+  const context = normalizeAutoEditContextInput(req.body?.context);
+
+  const job = createStoryArcAutoEditJob({
+    storyArcId: readString(req.body?.storyArcId),
+    clips,
+    tracks,
+    options,
+    frameRate,
+    context,
+  });
+  void runStoryArcAutoEditJob(job.id);
+
+  return res.status(202).json({
+    success: true,
+    job_id: job.id,
+    status: job.status,
+    progress: job.progress,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+  });
+});
+
+app.get('/api/story-arc/auto-edit/jobs/:jobId', (req, res) => {
+  const job = storyArcAutoEditJobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Auto Edit job not found',
+    });
+  }
+
+  return res.json({
+    success: true,
+    job_id: job.id,
+    status: job.status,
+    progress: job.progress,
+    result: job.result,
+    error: job.error,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+  });
+});
+
+app.post('/api/story-arc/auto-edit/jobs/:jobId/cancel', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = storyArcAutoEditJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Auto Edit job not found',
+    });
+  }
+
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    return res.json({
+      success: true,
+      job_id: job.id,
+      status: job.status,
+      progress: job.progress,
+    });
+  }
+
+  const controller = storyArcAutoEditJobControllers.get(jobId);
+  if (controller) {
+    controller.abort();
+  }
+  patchStoryArcAutoEditJob(jobId, {
+    status: 'cancelled',
+    progress: 100,
+    error: 'Cancelled by user',
+  });
+
+  return res.json({
+    success: true,
+    job_id: job.id,
+    status: 'cancelled',
+    progress: 100,
+  });
+});
+
+app.post('/api/story-arc/auto-edit/jobs/:jobId/retry', (req, res) => {
+  const jobId = req.params.jobId;
+  const job = storyArcAutoEditJobs.get(jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Auto Edit job not found',
+    });
+  }
+
+  if (job.status === 'queued' || job.status === 'processing') {
+    return res.json({
+      success: true,
+      job_id: job.id,
+      status: job.status,
+      progress: job.progress,
+    });
+  }
+
+  storyArcAutoEditJobControllers.set(jobId, new AbortController());
+  patchStoryArcAutoEditJob(jobId, {
+    status: 'queued',
+    progress: 0,
+    result: null,
+    error: null,
+  });
+  void runStoryArcAutoEditJob(jobId);
+
+  return res.status(202).json({
+    success: true,
+    job_id: jobId,
+    status: 'queued',
+    progress: 0,
+  });
+});
+
 type VideoAnalysisJobType = 'transcribe' | 'scene-detection';
 type VideoAnalysisJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+type VideoAnalysisTranscribeStage =
+  | 'queued'
+  | 'staging_source'
+  | 'extracting_audio'
+  | 'transcribing'
+  | 'diarizing'
+  | 'aligning'
+  | 'ocr'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 interface VideoAnalysisCaptionSegment {
   id: number;
@@ -20167,6 +22069,24 @@ interface VideoAnalysisCaptionSegment {
   end: number;
   text: string;
   confidence: number;
+  speaker?: string | null;
+  speaker_confidence?: number | null;
+}
+
+interface VideoAnalysisWordTimestamp {
+  word: string;
+  start: number;
+  end: number;
+  confidence: number | null;
+  speaker?: string | null;
+}
+
+interface VideoAnalysisDiarizationSegment {
+  start: number;
+  end: number;
+  speaker: string;
+  duration: number;
+  confidence: number | null;
 }
 
 interface VideoAnalysisTranscriptionResult {
@@ -20174,7 +22094,7 @@ interface VideoAnalysisTranscriptionResult {
   language: string;
   duration: number | null;
   segments: VideoAnalysisCaptionSegment[];
-  words: unknown[];
+  words: VideoAnalysisWordTimestamp[];
 }
 
 interface VideoAnalysisScene {
@@ -20188,6 +22108,7 @@ interface VideoAnalysisJobResultTranscribe {
   transcription: VideoAnalysisTranscriptionResult;
   detected_text: string[];
   warnings: string[];
+  diarization_segments: VideoAnalysisDiarizationSegment[];
 }
 
 interface VideoAnalysisJobResultSceneDetection {
@@ -20214,6 +22135,10 @@ interface VideoAnalysisJob {
   type: VideoAnalysisJobType;
   status: VideoAnalysisJobStatus;
   progress: number;
+  stage: VideoAnalysisTranscribeStage;
+  attempts: number;
+  maxAttempts: number;
+  resumed: boolean;
   createdAt: string;
   updatedAt: string;
   input: VideoAnalysisJobInput;
@@ -20227,6 +22152,27 @@ const videoAnalysisJobControllers = new Map<string, AbortController>();
 const VIDEO_ANALYSIS_JOB_TTL_MS = 30 * 60 * 1000;
 const MAX_VIDEO_SOURCE_BYTES = 512 * 1024 * 1024;
 const VIDEO_ANALYSIS_UPLOAD_DIR = path.join(os.tmpdir(), 'storyarc-video-analysis-uploads');
+const VIDEO_ANALYSIS_STATE_PATH =
+  readString(process.env.VIDEO_ANALYSIS_STATE_PATH) ||
+  path.join(os.tmpdir(), 'storyarc-video-analysis-jobs.json');
+const VIDEO_ANALYSIS_TRANSCRIBE_MAX_ATTEMPTS = Math.max(
+  1,
+  Math.min(4, Math.round(readNumber(process.env.VIDEO_ANALYSIS_TRANSCRIBE_MAX_ATTEMPTS) ?? 2))
+);
+const VIDEO_ANALYSIS_TRANSCRIBE_RETRY_DELAY_MS = Math.max(
+  200,
+  Math.round(readNumber(process.env.VIDEO_ANALYSIS_TRANSCRIBE_RETRY_DELAY_MS) ?? 1_400)
+);
+const PYANNOTE_DIARIZATION_URL =
+  readString(process.env.PYANNOTE_DIARIZATION_URL) || 'http://localhost:5001';
+const VIDEO_ANALYSIS_DIARIZATION_TIMEOUT_MS = Math.max(
+  30_000,
+  Math.round(readNumber(process.env.VIDEO_ANALYSIS_DIARIZATION_TIMEOUT_MS) ?? 180_000)
+);
+const VIDEO_ANALYSIS_DIARIZATION_ENABLED = !['0', 'false', 'off', 'no'].includes(
+  (readString(process.env.VIDEO_ANALYSIS_DIARIZATION_ENABLED) || 'true').toLowerCase()
+);
+let videoAnalysisStateWritePromise: Promise<void> = Promise.resolve();
 const VIDEO_SOURCE_ALLOWED_EXTENSIONS = new Set([
   '.mp4',
   '.mov',
@@ -20311,6 +22257,7 @@ const TESSERACT_BINARY = readString(process.env.TESSERACT_PATH) || 'tesseract';
 
 const cleanupVideoAnalysisJobs = () => {
   const now = Date.now();
+  let removed = false;
   for (const [jobId, job] of videoAnalysisJobs.entries()) {
     const ageMs = now - new Date(job.updatedAt).getTime();
     if (ageMs > VIDEO_ANALYSIS_JOB_TTL_MS) {
@@ -20320,11 +22267,42 @@ const cleanupVideoAnalysisJobs = () => {
         controller.abort();
       }
       videoAnalysisJobControllers.delete(jobId);
+      removed = true;
     }
+  }
+  if (removed) {
+    void persistVideoAnalysisJobsToDisk();
   }
 };
 
 setInterval(cleanupVideoAnalysisJobs, 5 * 60 * 1000).unref();
+
+const persistVideoAnalysisJobsToDisk = (): Promise<void> => {
+  const snapshot = Array.from(videoAnalysisJobs.values()).map((job) => ({
+    ...job,
+    input: { ...job.input },
+    warnings: [...job.warnings],
+    result: job.result,
+  }));
+  const payload = {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    jobs: snapshot,
+  };
+
+  videoAnalysisStateWritePromise = videoAnalysisStateWritePromise
+    .catch(() => undefined)
+    .then(async () => {
+      await fs.mkdir(path.dirname(VIDEO_ANALYSIS_STATE_PATH), { recursive: true });
+      await fs.writeFile(VIDEO_ANALYSIS_STATE_PATH, JSON.stringify(payload, null, 2));
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('[video-analysis] failed to persist job state:', message);
+    });
+
+  return videoAnalysisStateWritePromise;
+};
 
 const isHttpUrl = (value: string): boolean => {
   try {
@@ -20392,6 +22370,10 @@ const createVideoAnalysisJob = (
     type,
     status: 'queued',
     progress: 0,
+    stage: 'queued',
+    attempts: 0,
+    maxAttempts: type === 'transcribe' ? VIDEO_ANALYSIS_TRANSCRIBE_MAX_ATTEMPTS : 1,
+    resumed: false,
     createdAt: nowIso,
     updatedAt: nowIso,
     input,
@@ -20401,12 +22383,18 @@ const createVideoAnalysisJob = (
   };
   videoAnalysisJobs.set(job.id, job);
   videoAnalysisJobControllers.set(job.id, new AbortController());
+  void persistVideoAnalysisJobsToDisk();
   return job;
 };
 
 const patchVideoAnalysisJob = (
   jobId: string,
-  updates: Partial<Pick<VideoAnalysisJob, 'status' | 'progress' | 'warnings' | 'result' | 'error'>>
+  updates: Partial<
+    Pick<
+      VideoAnalysisJob,
+      'status' | 'progress' | 'stage' | 'attempts' | 'maxAttempts' | 'resumed' | 'warnings' | 'result' | 'error'
+    >
+  >
 ): VideoAnalysisJob | null => {
   const current = videoAnalysisJobs.get(jobId);
   if (!current) return null;
@@ -20416,6 +22404,7 @@ const patchVideoAnalysisJob = (
     updatedAt: new Date().toISOString(),
   };
   videoAnalysisJobs.set(jobId, next);
+  void persistVideoAnalysisJobsToDisk();
   return next;
 };
 
@@ -20596,6 +22585,267 @@ const probeVideoDurationSeconds = async (
   return Number.isFinite(durationValue) && durationValue > 0 ? durationValue : 0;
 };
 
+const normalizeWordToken = (value: unknown): string => {
+  const raw = readString(value);
+  if (!raw) {
+    return '';
+  }
+  return raw.replace(/\s+/g, ' ').trim();
+};
+
+const buildWordTimestampsFromSegments = (
+  segments: VideoAnalysisCaptionSegment[]
+): VideoAnalysisWordTimestamp[] => {
+  const words: VideoAnalysisWordTimestamp[] = [];
+  segments.forEach((segment) => {
+    const tokens = segment.text
+      .split(/\s+/)
+      .map((token) => normalizeWordToken(token))
+      .filter(Boolean);
+    if (tokens.length === 0) {
+      return;
+    }
+    const span = Math.max(0.04, segment.end - segment.start);
+    const wordDuration = span / tokens.length;
+    tokens.forEach((word, index) => {
+      const start = Number((segment.start + wordDuration * index).toFixed(3));
+      const end =
+        index === tokens.length - 1
+          ? Number(segment.end.toFixed(3))
+          : Number((segment.start + wordDuration * (index + 1)).toFixed(3));
+      words.push({
+        word,
+        start,
+        end: end >= start ? end : start,
+        confidence: segment.confidence,
+        speaker: segment.speaker || null,
+      });
+    });
+  });
+  return words;
+};
+
+const normalizeTranscriptionWords = (
+  rawWords: unknown,
+  segments: VideoAnalysisCaptionSegment[]
+): VideoAnalysisWordTimestamp[] => {
+  if (!Array.isArray(rawWords)) {
+    return buildWordTimestampsFromSegments(segments);
+  }
+  const normalized: VideoAnalysisWordTimestamp[] = [];
+  rawWords.forEach((entry) => {
+    if (!isRecord(entry)) {
+      return;
+    }
+    const word = normalizeWordToken(entry.word || entry.text || entry.token);
+    const startRaw = readNumber(entry.start ?? entry.start_time ?? entry.begin ?? null);
+    const endRaw = readNumber(entry.end ?? entry.end_time ?? entry.stop ?? null);
+    if (!word || startRaw === null) {
+      return;
+    }
+    const fallbackDuration = 0.16;
+    const endCandidate = endRaw !== null ? endRaw : startRaw + fallbackDuration;
+    const confidence = readNumber(entry.confidence);
+    const speaker = readString(entry.speaker ?? entry.speakerName ?? null);
+    normalized.push({
+      word,
+      start: Number(Math.max(0, startRaw).toFixed(3)),
+      end: Number(Math.max(startRaw, endCandidate).toFixed(3)),
+      confidence: confidence === null ? null : Number(Math.max(0, Math.min(1, confidence)).toFixed(3)),
+      speaker: speaker || null,
+    });
+  });
+  normalized.sort((left, right) => left.start - right.start);
+
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  return buildWordTimestampsFromSegments(segments);
+};
+
+interface VideoAnalysisTranscriptionApiResponse {
+  transcription: VideoAnalysisTranscriptionResult;
+  warnings: string[];
+  diarizationSegments: VideoAnalysisDiarizationSegment[];
+}
+
+const normalizeDiarizationSegments = (payload: unknown): VideoAnalysisDiarizationSegment[] => {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const data = isRecord(payload.data) ? payload.data : payload;
+  const sourceSegments = Array.isArray(data.segments) ? data.segments : [];
+
+  return sourceSegments
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const start = readNumber(entry.start ?? entry.start_time ?? null);
+      const end = readNumber(entry.end ?? entry.end_time ?? null);
+      const speaker = readString(entry.speaker ?? entry.speakerName ?? null);
+      if (start === null || end === null || !speaker) return null;
+      const confidence = readNumber(entry.confidence ?? entry.speech_confidence ?? null);
+      return {
+        start: Number(Math.max(0, start).toFixed(3)),
+        end: Number(Math.max(start, end).toFixed(3)),
+        speaker,
+        duration: Number(Math.max(0, end - start).toFixed(3)),
+        confidence:
+          confidence === null ? null : Number(Math.max(0, Math.min(1, confidence)).toFixed(3)),
+      };
+    })
+    .filter((entry): entry is VideoAnalysisDiarizationSegment => Boolean(entry))
+    .sort((left, right) => left.start - right.start);
+};
+
+const calculateIntervalOverlap = (
+  leftStart: number,
+  leftEnd: number,
+  rightStart: number,
+  rightEnd: number
+): number => {
+  const overlap = Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart);
+  return overlap > 0 ? overlap : 0;
+};
+
+const getBestSpeakerMatch = (
+  start: number,
+  end: number,
+  diarizationSegments: VideoAnalysisDiarizationSegment[]
+): { speaker: string; confidence: number } | null => {
+  if (!(end > start) || diarizationSegments.length === 0) {
+    return null;
+  }
+
+  const intervalDuration = Math.max(0.001, end - start);
+  let bestScore = 0;
+  let bestMatch: { speaker: string; confidence: number } | null = null;
+
+  for (const segment of diarizationSegments) {
+    const overlap = calculateIntervalOverlap(start, end, segment.start, segment.end);
+    if (overlap <= 0) {
+      continue;
+    }
+    const overlapRatio = Math.max(0, Math.min(1, overlap / intervalDuration));
+    const baseConfidence = segment.confidence === null ? 0.75 : segment.confidence;
+    const score = overlapRatio * 0.7 + baseConfidence * 0.3;
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = {
+        speaker: segment.speaker,
+        confidence: Number(Math.max(0, Math.min(1, score)).toFixed(3)),
+      };
+    }
+  }
+
+  return bestMatch;
+};
+
+const applyDiarizationToTranscription = (
+  transcription: VideoAnalysisTranscriptionResult,
+  diarizationSegments: VideoAnalysisDiarizationSegment[]
+): VideoAnalysisTranscriptionResult => {
+  if (diarizationSegments.length === 0) {
+    return transcription;
+  }
+
+  const nextSegments: VideoAnalysisCaptionSegment[] = transcription.segments.map((segment) => {
+    const match = getBestSpeakerMatch(segment.start, segment.end, diarizationSegments);
+    if (!match) {
+      return segment;
+    }
+    return {
+      ...segment,
+      speaker: match.speaker,
+      speaker_confidence: match.confidence,
+    };
+  });
+
+  const nextWords: VideoAnalysisWordTimestamp[] = transcription.words.map((word) => {
+    const match = getBestSpeakerMatch(word.start, word.end, diarizationSegments);
+    if (!match) {
+      return word;
+    }
+    return {
+      ...word,
+      speaker: match.speaker,
+      confidence:
+        word.confidence === null
+          ? match.confidence
+          : Number(Math.max(0, Math.min(1, (word.confidence + match.confidence) / 2)).toFixed(3)),
+    };
+  });
+
+  return {
+    ...transcription,
+    segments: nextSegments,
+    words: nextWords,
+  };
+};
+
+const createAbortSignalWithTimeout = (
+  timeoutMs: number,
+  parentSignal?: AbortSignal
+): { signal: AbortSignal; cleanup: () => void } => {
+  const controller = new AbortController();
+  const timeoutRef = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  const abortFromParent = () => controller.abort();
+
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener('abort', abortFromParent, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeoutRef);
+      if (parentSignal) {
+        parentSignal.removeEventListener('abort', abortFromParent);
+      }
+    },
+  };
+};
+
+const requestDiarizationViaLocalApi = async (
+  audioPath: string,
+  signal?: AbortSignal
+): Promise<VideoAnalysisDiarizationSegment[]> => {
+  if (!VIDEO_ANALYSIS_DIARIZATION_ENABLED) {
+    return [];
+  }
+
+  const audioBuffer = await fs.readFile(audioPath);
+  const fileName = path.basename(audioPath);
+  const form = new FormData();
+  form.append('file', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
+
+  const { signal: requestSignal, cleanup } = createAbortSignalWithTimeout(
+    VIDEO_ANALYSIS_DIARIZATION_TIMEOUT_MS,
+    signal
+  );
+  try {
+    const response = await fetch(`${PYANNOTE_DIARIZATION_URL}/v1/audio/diarization`, {
+      method: 'POST',
+      body: form,
+      signal: requestSignal,
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Diarization failed (${response.status}): ${body}`);
+    }
+    const payload = await response.json();
+    return normalizeDiarizationSegments(payload);
+  } finally {
+    cleanup();
+  }
+};
+
 const normalizeTranscriptionResult = (
   payload: unknown,
   fallbackLanguage: string
@@ -20611,33 +22861,39 @@ const normalizeTranscriptionResult = (
   const duration = Number.isFinite(durationRaw) && durationRaw >= 0 ? durationRaw : null;
 
   const sourceSegments = Array.isArray(data.segments) ? data.segments : [];
-  const segments: VideoAnalysisCaptionSegment[] = sourceSegments
-    .map((segment, index) => {
-      if (!isRecord(segment)) return null;
-      const start = Number(segment.start);
-      const end = Number(segment.end);
-      const segText = readString(segment.text) || '';
-      if (!Number.isFinite(start) || !Number.isFinite(end) || !segText) return null;
+  const segments: VideoAnalysisCaptionSegment[] = [];
+  sourceSegments.forEach((segment, index) => {
+    if (!isRecord(segment)) return;
+    const start = Number(segment.start);
+    const end = Number(segment.end);
+    const segText = readString(segment.text) || '';
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !segText) return;
 
-      const confidenceRaw = Number(segment.confidence);
-      const confidence = Number.isFinite(confidenceRaw)
-        ? Math.max(0, Math.min(1, confidenceRaw))
-        : 1;
+    const confidenceRaw = Number(segment.confidence);
+    const confidence = Number.isFinite(confidenceRaw)
+      ? Math.max(0, Math.min(1, confidenceRaw))
+      : 1;
+    const speaker =
+      readString(segment.speaker) ||
+      readString(segment.speakerName) ||
+      null;
 
-      return {
-        id: Number.isFinite(Number(segment.id)) ? Number(segment.id) : index + 1,
-        start,
-        end: end >= start ? end : start,
-        text: segText,
-        confidence,
-      };
-    })
-    .filter((segment): segment is VideoAnalysisCaptionSegment => Boolean(segment));
+    segments.push({
+      id: Number.isFinite(Number(segment.id)) ? Number(segment.id) : index + 1,
+      start,
+      end: end >= start ? end : start,
+      text: segText,
+      confidence,
+      speaker,
+      speaker_confidence: speaker ? confidence : null,
+    });
+  });
 
-  const words = Array.isArray(data.words) ? data.words : [];
+  const words = normalizeTranscriptionWords(data.words, segments);
+  const normalizedText = text || segments.map((segment) => segment.text).join(' ').trim();
 
   return {
-    text,
+    text: normalizedText,
     language,
     duration,
     segments,
@@ -20647,8 +22903,10 @@ const normalizeTranscriptionResult = (
 
 const requestTranscriptionViaLocalApi = async (
   audioPath: string,
-  language: string
-): Promise<VideoAnalysisTranscriptionResult> => {
+  language: string,
+  signal?: AbortSignal
+): Promise<VideoAnalysisTranscriptionApiResponse> => {
+  const warnings: string[] = [];
   const audioBuffer = await fs.readFile(audioPath);
   const fileName = path.basename(audioPath);
 
@@ -20656,42 +22914,91 @@ const requestTranscriptionViaLocalApi = async (
   whisperForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
   whisperForm.append('language', language);
   whisperForm.append('response_format', 'verbose_json');
+  whisperForm.append('timestamp_granularities', 'word,segment');
 
-  const whisperResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/whisper-transcribe`, {
-    method: 'POST',
-    body: whisperForm,
-    signal: AbortSignal.timeout(240_000),
-  });
+  let transcription: VideoAnalysisTranscriptionResult | null = null;
+  const whisperSignal = createAbortSignalWithTimeout(240_000, signal);
+  let whisperResponse: Response | null = null;
+  try {
+    whisperResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/whisper-transcribe`, {
+      method: 'POST',
+      body: whisperForm,
+      signal: whisperSignal.signal,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown whisper request error';
+    appendWarning(warnings, `Whisper request error: ${message}; attempting fallback transcriber`);
+  } finally {
+    whisperSignal.cleanup();
+  }
 
-  if (whisperResponse.ok) {
+  if (whisperResponse?.ok) {
     const whisperPayload = await whisperResponse.json();
     const normalizedWhisper = normalizeTranscriptionResult(whisperPayload, language);
     const whisperHasText = normalizedWhisper.text.trim().length > 0;
     const whisperHasSegments = normalizedWhisper.segments.length > 0;
 
     if (whisperHasText || whisperHasSegments) {
-      return normalizedWhisper;
+      transcription = normalizedWhisper;
+    } else {
+      appendWarning(warnings, 'Whisper returned empty transcription; attempting fallback transcriber');
+    }
+  } else {
+    appendWarning(
+      warnings,
+      whisperResponse
+        ? `Whisper request failed (${whisperResponse.status}); attempting fallback transcriber`
+        : 'Whisper request unavailable; attempting fallback transcriber'
+    );
+  }
+
+  if (!transcription) {
+    const fallbackForm = new FormData();
+    fallbackForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
+    fallbackForm.append('language', language);
+    const fallbackSignal = createAbortSignalWithTimeout(240_000, signal);
+
+    const fallbackResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/transcribe`, {
+      method: 'POST',
+      body: fallbackForm,
+      signal: fallbackSignal.signal,
+    }).finally(() => {
+      fallbackSignal.cleanup();
+    });
+
+    if (!fallbackResponse.ok) {
+      const fallbackError = await fallbackResponse.text().catch(() => '');
+      throw new Error(`Transcription failed (${fallbackResponse.status}): ${fallbackError}`);
     }
 
-    console.warn('Whisper returned empty transcription; attempting fallback transcriber');
+    const fallbackPayload = await fallbackResponse.json();
+    transcription = normalizeTranscriptionResult(fallbackPayload, language);
   }
 
-  const fallbackForm = new FormData();
-  fallbackForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
-
-  const fallbackResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/transcribe`, {
-    method: 'POST',
-    body: fallbackForm,
-    signal: AbortSignal.timeout(240_000),
-  });
-
-  if (!fallbackResponse.ok) {
-    const fallbackError = await fallbackResponse.text().catch(() => '');
-    throw new Error(`Transcription failed (${fallbackResponse.status}): ${fallbackError}`);
+  if (!transcription) {
+    throw new Error('Transcription pipeline returned no result');
   }
 
-  const fallbackPayload = await fallbackResponse.json();
-  return normalizeTranscriptionResult(fallbackPayload, language);
+  let diarizationSegments: VideoAnalysisDiarizationSegment[] = [];
+  if (transcription.segments.length > 0 && VIDEO_ANALYSIS_DIARIZATION_ENABLED) {
+    try {
+      diarizationSegments = await requestDiarizationViaLocalApi(audioPath, signal);
+      if (diarizationSegments.length > 0) {
+        transcription = applyDiarizationToTranscription(transcription, diarizationSegments);
+      } else {
+        appendWarning(warnings, 'Diarization returned no speaker segments');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Diarization unavailable';
+      appendWarning(warnings, `Speaker diarization unavailable: ${message}`);
+    }
+  }
+
+  return {
+    transcription,
+    warnings,
+    diarizationSegments,
+  };
 };
 
 const sanitizeOcrLine = (line: string): string => {
@@ -21038,13 +23345,15 @@ const exportCaptionsToVtt = (segments: VideoAnalysisCaptionSegment[]): string =>
 
 const transcribeVideoSource = async (
   videoPath: string,
-  language: string
+  language: string,
+  signal?: AbortSignal
 ): Promise<VideoAnalysisJobResultTranscribe> => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-transcribe-'));
   const warnings: string[] = [];
+  let diarizationSegments: VideoAnalysisDiarizationSegment[] = [];
 
   try {
-    const stagedVideoPath = await stageVideoSource(videoPath, tempDir);
+    const stagedVideoPath = await stageVideoSource(videoPath, tempDir, signal);
     const audioPath = path.join(tempDir, 'audio.mp3');
     let transcription: VideoAnalysisTranscriptionResult = {
       text: '',
@@ -21071,7 +23380,8 @@ const transcribeVideoSource = async (
         'mp3',
         audioPath,
       ],
-      180_000
+      180_000,
+      signal
     );
 
     if (extractAudioResult.timedOut) {
@@ -21091,7 +23401,10 @@ const transcribeVideoSource = async (
       appendWarning(warnings, 'Video has no audio track; using OCR-only analysis');
     } else {
       try {
-        transcription = await requestTranscriptionViaLocalApi(audioPath, language);
+        const transcriptionResult = await requestTranscriptionViaLocalApi(audioPath, language, signal);
+        transcription = transcriptionResult.transcription;
+        diarizationSegments = transcriptionResult.diarizationSegments;
+        transcriptionResult.warnings.forEach((warning) => appendWarning(warnings, warning));
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Transcription service unavailable';
@@ -21106,6 +23419,7 @@ const transcribeVideoSource = async (
       transcription,
       detected_text: ocrResult.detectedText,
       warnings,
+      diarization_segments: diarizationSegments,
     };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -21245,15 +23559,16 @@ const runTranscriptionJob = async (jobId: string) => {
   const controller = videoAnalysisJobControllers.get(jobId) || new AbortController();
   videoAnalysisJobControllers.set(jobId, controller);
 
-  patchVideoAnalysisJob(jobId, { status: 'processing', progress: 10 });
+  patchVideoAnalysisJob(jobId, { status: 'processing', progress: 10, stage: 'staging_source' });
 
   try {
-    const result = await transcribeVideoSource(job.input.videoPath, job.input.language);
+    const result = await transcribeVideoSource(job.input.videoPath, job.input.language, controller.signal);
     const latest = videoAnalysisJobs.get(jobId);
     if (!latest || latest.status === 'cancelled' || controller.signal.aborted) {
       patchVideoAnalysisJob(jobId, {
         status: 'cancelled',
         progress: 100,
+        stage: 'cancelled',
         error: 'Cancelled by user',
       });
       return;
@@ -21261,6 +23576,7 @@ const runTranscriptionJob = async (jobId: string) => {
     patchVideoAnalysisJob(jobId, {
       status: 'completed',
       progress: 100,
+      stage: 'completed',
       warnings: result.warnings,
       result,
       error: null,
@@ -21270,6 +23586,7 @@ const runTranscriptionJob = async (jobId: string) => {
       patchVideoAnalysisJob(jobId, {
         status: 'cancelled',
         progress: 100,
+        stage: 'cancelled',
         error: 'Cancelled by user',
       });
       return;
@@ -21278,6 +23595,7 @@ const runTranscriptionJob = async (jobId: string) => {
     patchVideoAnalysisJob(jobId, {
       status: 'failed',
       progress: 100,
+      stage: 'failed',
       error: message,
     });
   } finally {
@@ -22151,25 +24469,2922 @@ app.get('/api/ai/tts/status', async (_req, res) => {
   res.json(status);
 });
 
-app.post('/api/audio/mix', async (req, res) => {
+type AudioMixTrackType = 'dialogue' | 'music' | 'sfx';
+
+interface AudioMixTrackTimeline {
+  startSeconds: number;
+  durationSeconds: number | null;
+  inPointSeconds: number;
+  outPointSeconds: number | null;
+  effectiveStartSeconds: number;
+  effectiveInPointSeconds: number;
+  effectiveDurationSeconds: number | null;
+  jCutDurationSeconds: number;
+  lCutDurationSeconds: number;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+  autoEditDuckingEnabled: boolean;
+  autoEditDuckingAmountDb: number | null;
+  autoEditDuckingAttackSeconds: number | null;
+  autoEditDuckingReleaseSeconds: number | null;
+  autoEditDuckingThresholdDb: number | null;
+}
+
+interface AudioMixTrackEntry {
+  id: string;
+  name: string;
+  sourceFile: string;
+  type: AudioMixTrackType;
+  volumePercent: number;
+  muted: boolean;
+  solo: boolean;
+  targetLUFS: number;
+  eq: {
+    enabled: boolean;
+    lowGain: number;
+    midGain: number;
+    highGain: number;
+  };
+  timeline: AudioMixTrackTimeline;
+  stagedPath: string | null;
+  sourceDurationSeconds: number | null;
+  signalRmsThroughDb: number | null;
+  signalNoiseFloorDb: number | null;
+  signalSpeechBandRmsDb: number | null;
+  signalSpeechPresenceDb: number | null;
+}
+
+interface AudioMixDuckingSettings {
+  enabled: boolean;
+  amountDb: number;
+  thresholdDb: number;
+  attackSeconds: number;
+  releaseSeconds: number;
+}
+
+interface AudioMixGraphResult {
+  filterComplex: string;
+  mapLabel: string;
+  duckingApplied: boolean;
+  autoEditDuckingTracks: number;
+  jlCutsApplied: number;
+  fadesApplied: number;
+}
+
+type AudioMixDeliveryProfile =
+  | 'adaptive'
+  | 'netflix'
+  | 'ebu_r128'
+  | 'atsc_a85'
+  | 'streaming_spotify'
+  | 'streaming_youtube'
+  | 'streaming_prime_video'
+  | 'streaming_apple_music'
+  | 'streaming_tidal'
+  | 'podcast';
+
+interface AudioMixQualityTarget {
+  deliveryProfile: AudioMixDeliveryProfile;
+  integratedLufs: number;
+  truePeakDbtp: number;
+  loudnessRange: number;
+  rationale: string[];
+}
+
+interface AudioMixLoudnormStats {
+  inputI: number;
+  inputTp: number;
+  inputLra: number;
+  inputThresh: number;
+  targetOffset: number;
+  outputI: number | null;
+  outputTp: number | null;
+  outputLra: number | null;
+}
+
+interface AudioMixPlan {
+  quality: AudioMixQualityTarget;
+  ducking: AudioMixDuckingSettings;
+}
+
+interface AudioMixMasteringStage {
+  highpassHz: number;
+  lowpassHz: number;
+  compressorThresholdDb: number;
+  compressorRatio: number;
+  compressorAttackMs: number;
+  compressorReleaseMs: number;
+  limiterCeilingDbfs: number;
+}
+
+type AudioMixNoiseReductionProfile = 'off' | 'light' | 'standard' | 'aggressive';
+type AudioMixNoiseReductionEngine = 'ffmpeg' | 'demucs';
+
+interface AudioMixNoiseReductionStage {
+  enabled: boolean;
+  profile: AudioMixNoiseReductionProfile;
+  engine?: AudioMixNoiseReductionEngine;
+  reductionDb: number;
+  noiseFloorDb: number;
+  applyTo: 'dialogue' | 'all';
+  rationale: string;
+  safetyMode: 'default' | 'safe_light' | 'safe_off';
+  safetyReason: string | null;
+}
+
+interface AudioMixSafetyDecision {
+  mode: 'default' | 'safe_light' | 'safe_off';
+  reason: string;
+}
+
+interface AudioMixComplianceCheck {
+  id: string;
+  target: string;
+  measured: number | null;
+  tolerance: string;
+  passed: boolean | null;
+  note?: string;
+}
+
+interface AudioMixComplianceResult {
+  profile: AudioMixDeliveryProfile;
+  passed: boolean | null;
+  checks: AudioMixComplianceCheck[];
+  notes: string[];
+}
+
+interface AudioMixCalibrationQualityOverride {
+  integratedLufs?: number;
+  truePeakDbtp?: number;
+  loudnessRange?: number;
+}
+
+interface AudioMixCalibrationMasteringOverride {
+  highpassHz?: number;
+  lowpassHz?: number;
+  compressorThresholdDb?: number;
+  compressorRatio?: number;
+  compressorAttackMs?: number;
+  compressorReleaseMs?: number;
+  limiterCeilingDbfs?: number;
+}
+
+interface AudioMixCalibrationNoiseReductionOverride {
+  profile?: AudioMixNoiseReductionProfile;
+  enabled?: boolean;
+  reductionDb?: number;
+  noiseFloorDb?: number;
+  applyTo?: 'dialogue' | 'all';
+}
+
+interface AudioMixCalibrationDuckingOverride {
+  enabled?: boolean;
+  amountDb?: number;
+  thresholdDb?: number;
+  attackSeconds?: number;
+  releaseSeconds?: number;
+}
+
+interface AudioMixCalibrationProfile {
+  qualityTarget?: AudioMixCalibrationQualityOverride;
+  masteringStage?: AudioMixCalibrationMasteringOverride;
+  noiseReductionStage?: AudioMixCalibrationNoiseReductionOverride;
+  duckingDefaults?: AudioMixCalibrationDuckingOverride;
+}
+
+interface AudioMixCalibrationConfig {
+  version: number;
+  generatedAt: string;
+  source?: string;
+  profiles: Partial<Record<AudioMixDeliveryProfile, AudioMixCalibrationProfile>>;
+}
+
+const AUDIO_MIX_CALIBRATION_PATH =
+  readString(process.env.AUDIO_MIX_CALIBRATION_PATH) ||
+  path.join(process.cwd(), 'config', 'storyarc-audio-calibration.json');
+const AUDIO_MIX_ARNNDN_MODEL_PATH =
+  readString(process.env.AUDIO_MIX_ARNNDN_MODEL_PATH) ||
+  path.join(process.cwd(), 'config', 'models', 'rnnoise', 'lq.rnnn');
+const AUDIO_MIX_ARNNDN_MODEL_R2_KEY =
+  readString(process.env.AUDIO_MIX_ARNNDN_MODEL_R2_KEY) ||
+  'models/audio/rnnoise/leavened-quisling-2018-08-31-lq.rnnn';
+const AUDIO_MIX_ARNNDN_MODEL_CACHE_DIR =
+  readString(process.env.AUDIO_MIX_ARNNDN_MODEL_CACHE_DIR) ||
+  path.join(os.tmpdir(), 'storyarc-audio-model-cache');
+const AUDIO_MIX_ARNNDN_R2_RETRY_MS = Math.max(
+  1_000,
+  Math.round(readNumber(process.env.AUDIO_MIX_ARNNDN_R2_RETRY_MS) ?? 60_000)
+);
+const AUDIO_MIX_DEMUCS_PYTHON_BIN =
+  readString(process.env.AUDIO_MIX_DEMUCS_PYTHON_BIN) || 'python3';
+const AUDIO_MIX_DEMUCS_SCRIPT_PATH =
+  readString(process.env.AUDIO_MIX_DEMUCS_SCRIPT_PATH) ||
+  path.join(process.cwd(), 'scripts', 'audio_demucs_denoise.py');
+const AUDIO_MIX_DEMUCS_MODEL = readString(process.env.AUDIO_MIX_DEMUCS_MODEL) || 'htdemucs';
+const AUDIO_MIX_DEMUCS_DEVICE = readString(process.env.AUDIO_MIX_DEMUCS_DEVICE) || 'auto';
+const AUDIO_MIX_DEMUCS_TIMEOUT_MS = Math.max(
+  30_000,
+  Math.round(readNumber(process.env.AUDIO_MIX_DEMUCS_TIMEOUT_MS) ?? 180_000)
+);
+const AUDIO_MIX_DEMUCS_TARGET_SR = Math.max(
+  8_000,
+  Math.round(readNumber(process.env.AUDIO_MIX_DEMUCS_TARGET_SR) ?? 48_000)
+);
+
+let AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = existsSync(AUDIO_MIX_ARNNDN_MODEL_PATH)
+  ? AUDIO_MIX_ARNNDN_MODEL_PATH
+  : null;
+let AUDIO_MIX_ARNNDN_MODEL_SOURCE: 'r2' | 'local' | 'none' = AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE
+  ? 'local'
+  : 'none';
+let AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT: { bucket: string; key: string } | null = null;
+let audioMixArnndnInitPromise: Promise<void> | null = null;
+let audioMixArnndnLastR2AttemptMs = 0;
+
+let audioMixCalibrationConfig: AudioMixCalibrationConfig | null = null;
+
+function clampAudioMixNumber(
+  value: number,
+  minValue: number,
+  maxValue: number,
+  fallback: number
+): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(minValue, Math.min(maxValue, value));
+}
+
+function formatAudioMixNumber(value: number): string {
+  return Number(value.toFixed(6)).toString();
+}
+
+function summarizeAudioMixStderr(stderr: string, maxLength = 400): string {
+  const trimmed = stderr.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const lines = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const actionableLine = [...lines].reverse().find((line) =>
+    /(error|invalid|failed|unable|cannot|not found|unsupported)/i.test(line)
+  );
+  if (actionableLine) {
+    return actionableLine.slice(0, maxLength);
+  }
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `...${trimmed.slice(-maxLength)}`;
+}
+
+function escapeAudioMixFilterValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/,/g, '\\,')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .replace(/'/g, "\\'");
+}
+
+function buildAudioMixArnndnCachePath(key: string): string {
+  const normalizedKey = normalizeModelKey(key).replace(/\//g, '__');
+  const fileName = normalizedKey || 'audio-mix-arnndn.rnnn';
+  return path.join(AUDIO_MIX_ARNNDN_MODEL_CACHE_DIR, fileName);
+}
+
+async function readAudioMixArnndnBody(body: unknown): Promise<Buffer> {
+  if (!body) {
+    throw new Error('arnndn model download returned an empty response body');
+  }
+  if (Buffer.isBuffer(body)) {
+    return body;
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body);
+  }
+  if (typeof body === 'string') {
+    return Buffer.from(body);
+  }
+  if (
+    typeof (body as { transformToByteArray?: unknown }).transformToByteArray === 'function'
+  ) {
+    const bytes = await (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    return Buffer.from(bytes);
+  }
+  if (
+    typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function'
+  ) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array | Buffer | string>) {
+      if (typeof chunk === 'string') {
+        chunks.push(Buffer.from(chunk));
+      } else if (chunk instanceof Uint8Array || Buffer.isBuffer(chunk)) {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+    return Buffer.concat(chunks);
+  }
+  throw new Error('Unsupported arnndn model response body type');
+}
+
+function resolveAudioMixArnndnLocalFallback(): string | null {
+  return existsSync(AUDIO_MIX_ARNNDN_MODEL_PATH) ? AUDIO_MIX_ARNNDN_MODEL_PATH : null;
+}
+
+function shouldAttemptAudioMixArnndnR2(force = false): boolean {
+  if (!AUDIO_MIX_ARNNDN_MODEL_R2_KEY) {
+    return false;
+  }
+  if (AUDIO_MIX_ARNNDN_MODEL_SOURCE === 'r2') {
+    return false;
+  }
+  if (force) {
+    return true;
+  }
+  const elapsedMs = Date.now() - audioMixArnndnLastR2AttemptMs;
+  return elapsedMs >= AUDIO_MIX_ARNNDN_R2_RETRY_MS;
+}
+
+async function initializeAudioMixArnndnModel(force = false): Promise<void> {
+  if (audioMixArnndnInitPromise) {
+    return audioMixArnndnInitPromise;
+  }
+
+  if (!shouldAttemptAudioMixArnndnR2(force)) {
+    if (!AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE) {
+      const fallbackPath = resolveAudioMixArnndnLocalFallback();
+      AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = fallbackPath;
+      AUDIO_MIX_ARNNDN_MODEL_SOURCE = fallbackPath ? 'local' : 'none';
+      AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT = null;
+    }
+    return;
+  }
+
+  audioMixArnndnInitPromise = (async () => {
+    audioMixArnndnLastR2AttemptMs = Date.now();
+    const resolution = await resolveR2Object([AUDIO_MIX_ARNNDN_MODEL_R2_KEY]);
+
+    if (!resolution.found || !resolution.bucket || !resolution.key) {
+      const fallbackPath = resolveAudioMixArnndnLocalFallback();
+      AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = fallbackPath;
+      AUDIO_MIX_ARNNDN_MODEL_SOURCE = fallbackPath ? 'local' : 'none';
+      AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT = null;
+      console.warn(
+        `[audio-mix] arnndn R2 lookup failed (${resolution.reason}); ${fallbackPath ? `using local fallback ${fallbackPath}` : 'no local fallback available, using afftdn-only denoise'}`
+      );
+      return;
+    }
+
+    const r2Config = buildR2Config();
+    const client = getR2Client(r2Config);
+    if (!client) {
+      const fallbackPath = resolveAudioMixArnndnLocalFallback();
+      AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = fallbackPath;
+      AUDIO_MIX_ARNNDN_MODEL_SOURCE = fallbackPath ? 'local' : 'none';
+      AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT = null;
+      console.warn(
+        `[audio-mix] arnndn R2 client unavailable; ${fallbackPath ? `using local fallback ${fallbackPath}` : 'no local fallback available, using afftdn-only denoise'}`
+      );
+      return;
+    }
+
+    const response = await client.send(
+      new GetObjectCommand({
+        Bucket: resolution.bucket,
+        Key: resolution.key,
+      })
+    );
+    const modelBody = await readAudioMixArnndnBody(response.Body);
+    if (!modelBody.length) {
+      throw new Error('arnndn model download was empty');
+    }
+
+    const cachedModelPath = buildAudioMixArnndnCachePath(resolution.key);
+    await fs.mkdir(path.dirname(cachedModelPath), { recursive: true });
+    await fs.writeFile(cachedModelPath, modelBody);
+
+    AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = cachedModelPath;
+    AUDIO_MIX_ARNNDN_MODEL_SOURCE = 'r2';
+    AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT = {
+      bucket: resolution.bucket,
+      key: resolution.key,
+    };
+    console.log(
+      `[audio-mix] arnndn model synced from r2://${resolution.bucket}/${resolution.key} to ${cachedModelPath}`
+    );
+  })()
+    .catch((error) => {
+      const fallbackPath = resolveAudioMixArnndnLocalFallback();
+      AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE = fallbackPath;
+      AUDIO_MIX_ARNNDN_MODEL_SOURCE = fallbackPath ? 'local' : 'none';
+      AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT = null;
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message.trim()
+          : 'unknown error';
+      console.warn(
+        `[audio-mix] arnndn R2 sync failed (${message}); ${fallbackPath ? `using local fallback ${fallbackPath}` : 'no local fallback available, using afftdn-only denoise'}`
+      );
+    })
+    .finally(() => {
+      audioMixArnndnInitPromise = null;
+    });
+
+  return audioMixArnndnInitPromise;
+}
+
+function buildAudioMixDenoiseFilter(stage: AudioMixNoiseReductionStage): string {
+  const safeLightMode = stage.safetyMode === 'safe_light';
+  const reductionDb = clampAudioMixNumber(
+    safeLightMode ? Math.min(stage.reductionDb, 2.5) : stage.reductionDb,
+    0.01,
+    16,
+    safeLightMode ? 1.8 : 8
+  );
+  const noiseFloorDb = clampAudioMixNumber(
+    safeLightMode ? Math.min(stage.noiseFloorDb, -48) : stage.noiseFloorDb,
+    -60,
+    -30,
+    safeLightMode ? -52 : -42
+  );
+  const adaptivity = safeLightMode
+    ? 0.35
+    : stage.profile === 'aggressive'
+      ? 0.7
+      : stage.profile === 'light'
+        ? 0.55
+        : 0.65;
+  const gainSmooth = safeLightMode
+    ? 14
+    : stage.profile === 'aggressive'
+      ? 8
+      : stage.profile === 'light'
+        ? 10
+        : 9;
+  const afftdnFilter = `afftdn=nr=${formatAudioMixNumber(reductionDb)}:nf=${formatAudioMixNumber(noiseFloorDb)}:tn=${safeLightMode ? '0' : '1'}:tr=${safeLightMode ? '0' : '1'}:ad=${formatAudioMixNumber(adaptivity)}:fo=1:nl=${safeLightMode ? 'none' : 'average'}:gs=${Math.round(gainSmooth)}`;
+
+  if (!AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE) {
+    return afftdnFilter;
+  }
+
+  const arnndnMix = safeLightMode
+    ? 0.2
+    : stage.profile === 'aggressive'
+      ? 0.8
+      : stage.profile === 'light'
+        ? 0.55
+        : 0.68;
+  const escapedModelPath = escapeAudioMixFilterValue(AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE);
+  if (safeLightMode) {
+    return `arnndn=m=${escapedModelPath}:mix=${formatAudioMixNumber(arnndnMix)}`;
+  }
+  return `arnndn=m=${escapedModelPath}:mix=${formatAudioMixNumber(arnndnMix)},${afftdnFilter}`;
+}
+
+function normalizeAudioMixDeliveryProfile(
+  value: unknown
+): AudioMixDeliveryProfile {
+  const normalized = normalizeModelLookupValue(readString(value) || '') || '';
+  if (normalized === 'netflix') return 'netflix';
+  if (normalized === 'ebur128' || normalized === 'ebu-r128') return 'ebu_r128';
+  if (normalized === 'atsca85' || normalized === 'atsc-a85') return 'atsc_a85';
+  if (
+    normalized === 'streamingspotify' ||
+    normalized === 'spotify' ||
+    normalized === 'musicstreaming'
+  ) {
+    return 'streaming_spotify';
+  }
+  if (normalized === 'youtube' || normalized === 'streamingyoutube') {
+    return 'streaming_youtube';
+  }
+  if (
+    normalized === 'primevideo' ||
+    normalized === 'amazonprime' ||
+    normalized === 'streamingprimevideo'
+  ) {
+    return 'streaming_prime_video';
+  }
+  if (normalized === 'applemusic' || normalized === 'streamingapplemusic') {
+    return 'streaming_apple_music';
+  }
+  if (normalized === 'tidal' || normalized === 'streamingtidal') {
+    return 'streaming_tidal';
+  }
+  if (normalized === 'podcast' || normalized === 'spokenword') return 'podcast';
+  return 'adaptive';
+}
+
+function normalizeAudioMixNoiseReductionProfile(
+  value: unknown
+): AudioMixNoiseReductionProfile {
+  const normalized = normalizeModelLookupValue(readString(value) || '') || '';
+  if (normalized === 'off' || normalized === 'none') return 'off';
+  if (normalized === 'light' || normalized === 'mild') return 'light';
+  if (normalized === 'aggressive' || normalized === 'heavy' || normalized === 'strong') {
+    return 'aggressive';
+  }
+  return 'standard';
+}
+
+function normalizeAudioMixNoiseReductionEngine(
+  value: unknown
+): AudioMixNoiseReductionEngine {
+  const normalized = normalizeModelLookupValue(readString(value) || '') || '';
+  if (normalized === 'demucs' || normalized === 'htdemucs' || normalized === 'demucsht') {
+    return 'demucs';
+  }
+  return 'ffmpeg';
+}
+
+function parseAudioMixDeliveryProfileKey(rawKey: string): AudioMixDeliveryProfile | null {
+  const normalizedLookup = normalizeModelLookupValue(rawKey) || '';
+  const normalizedProfile = normalizeAudioMixDeliveryProfile(rawKey);
+  if (normalizedProfile === 'adaptive') {
+    return normalizedLookup === 'adaptive' ? 'adaptive' : null;
+  }
+  return normalizedProfile;
+}
+
+function loadAudioMixCalibrationConfig(): AudioMixCalibrationConfig | null {
+  if (!existsSync(AUDIO_MIX_CALIBRATION_PATH)) {
+    return null;
+  }
   try {
-    const tracks = Array.isArray(req.body?.tracks) ? req.body.tracks : [];
-    const firstTrack = tracks[0];
-    if (!firstTrack?.sourceFile) {
+    const rawJson = readFileSync(AUDIO_MIX_CALIBRATION_PATH, 'utf8');
+    if (!rawJson.trim()) {
+      return null;
+    }
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!isRecord(parsed)) {
+      return null;
+    }
+    const profilesRaw = isRecord(parsed.profiles) ? parsed.profiles : {};
+    const profiles: Partial<Record<AudioMixDeliveryProfile, AudioMixCalibrationProfile>> = {};
+    for (const [rawProfileKey, rawProfileValue] of Object.entries(profilesRaw)) {
+      const profileKey = parseAudioMixDeliveryProfileKey(rawProfileKey);
+      if (!profileKey || !isRecord(rawProfileValue)) {
+        continue;
+      }
+      const qualityTargetRaw = isRecord(rawProfileValue.qualityTarget)
+        ? rawProfileValue.qualityTarget
+        : null;
+      const masteringRaw = isRecord(rawProfileValue.masteringStage)
+        ? rawProfileValue.masteringStage
+        : null;
+      const noiseReductionRaw = isRecord(rawProfileValue.noiseReductionStage)
+        ? rawProfileValue.noiseReductionStage
+        : null;
+      const duckingRaw = isRecord(rawProfileValue.duckingDefaults)
+        ? rawProfileValue.duckingDefaults
+        : null;
+      const qualityTarget: AudioMixCalibrationQualityOverride | undefined = qualityTargetRaw
+        ? {
+            integratedLufs: readNumber(qualityTargetRaw.integratedLufs) ?? undefined,
+            truePeakDbtp: readNumber(qualityTargetRaw.truePeakDbtp) ?? undefined,
+            loudnessRange: readNumber(qualityTargetRaw.loudnessRange) ?? undefined,
+          }
+        : undefined;
+      const masteringStage: AudioMixCalibrationMasteringOverride | undefined = masteringRaw
+        ? {
+            highpassHz: readNumber(masteringRaw.highpassHz) ?? undefined,
+            lowpassHz: readNumber(masteringRaw.lowpassHz) ?? undefined,
+            compressorThresholdDb: readNumber(masteringRaw.compressorThresholdDb) ?? undefined,
+            compressorRatio: readNumber(masteringRaw.compressorRatio) ?? undefined,
+            compressorAttackMs: readNumber(masteringRaw.compressorAttackMs) ?? undefined,
+            compressorReleaseMs: readNumber(masteringRaw.compressorReleaseMs) ?? undefined,
+            limiterCeilingDbfs: readNumber(masteringRaw.limiterCeilingDbfs) ?? undefined,
+          }
+        : undefined;
+      const noiseReductionStage: AudioMixCalibrationNoiseReductionOverride | undefined = noiseReductionRaw
+        ? {
+            profile: normalizeAudioMixNoiseReductionProfile(noiseReductionRaw.profile),
+            enabled: readBoolean(noiseReductionRaw.enabled) ?? undefined,
+            reductionDb: readNumber(noiseReductionRaw.reductionDb) ?? undefined,
+            noiseFloorDb: readNumber(noiseReductionRaw.noiseFloorDb) ?? undefined,
+            applyTo:
+              normalizeModelLookupValue(readString(noiseReductionRaw.applyTo) || '') === 'all'
+                ? 'all'
+                : 'dialogue',
+          }
+        : undefined;
+      const duckingDefaults: AudioMixCalibrationDuckingOverride | undefined = duckingRaw
+        ? {
+            enabled: readBoolean(duckingRaw.enabled) ?? undefined,
+            amountDb: readNumber(duckingRaw.amountDb) ?? undefined,
+            thresholdDb: readNumber(duckingRaw.thresholdDb) ?? undefined,
+            attackSeconds: readNumber(duckingRaw.attackSeconds) ?? undefined,
+            releaseSeconds: readNumber(duckingRaw.releaseSeconds) ?? undefined,
+          }
+        : undefined;
+
+      profiles[profileKey] = {
+        qualityTarget,
+        masteringStage,
+        noiseReductionStage,
+        duckingDefaults,
+      };
+    }
+    if (Object.keys(profiles).length === 0) {
+      return null;
+    }
+    const version = readNumber(parsed.version) ?? 1;
+    const generatedAt = readString(parsed.generatedAt) || new Date().toISOString();
+    const source = readString(parsed.source) || undefined;
+    return {
+      version: Math.max(1, Math.round(version)),
+      generatedAt,
+      source,
+      profiles,
+    };
+  } catch (error) {
+    console.warn('Failed to load audio mix calibration config:', error);
+    return null;
+  }
+}
+
+function getAudioMixCalibrationProfile(
+  profile: AudioMixDeliveryProfile
+): AudioMixCalibrationProfile | null {
+  return audioMixCalibrationConfig?.profiles?.[profile] || null;
+}
+
+audioMixCalibrationConfig = loadAudioMixCalibrationConfig();
+if (audioMixCalibrationConfig) {
+  console.log(
+    `[audio-mix] loaded calibration v${audioMixCalibrationConfig.version} from ${AUDIO_MIX_CALIBRATION_PATH}`
+  );
+}
+if (AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE) {
+  console.log(`[audio-mix] arnndn local fallback available at ${AUDIO_MIX_ARNNDN_MODEL_PATH}`);
+} else {
+  console.warn(`[audio-mix] arnndn local fallback not found at ${AUDIO_MIX_ARNNDN_MODEL_PATH}`);
+}
+if (AUDIO_MIX_ARNNDN_MODEL_R2_KEY) {
+  console.log(`[audio-mix] arnndn primary source configured: r2://${AUDIO_MIX_ARNNDN_MODEL_R2_KEY}`);
+  void initializeAudioMixArnndnModel(true);
+} else if (!AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE) {
+  console.warn('[audio-mix] arnndn unavailable; using afftdn-only denoise fallback');
+}
+
+if (existsSync(AUDIO_MIX_DEMUCS_SCRIPT_PATH)) {
+  console.log(`[audio-mix] demucs helper available at ${AUDIO_MIX_DEMUCS_SCRIPT_PATH}`);
+} else {
+  console.warn(`[audio-mix] demucs helper missing at ${AUDIO_MIX_DEMUCS_SCRIPT_PATH}`);
+}
+
+function normalizeAudioMixTrackType(value: unknown): AudioMixTrackType {
+  const normalized = (readString(value) || '').toLowerCase();
+  if (normalized === 'dialogue') return 'dialogue';
+  if (normalized === 'music') return 'music';
+  if (normalized === 'sfx' || normalized === 'effects' || normalized === 'ambience') return 'sfx';
+  return 'dialogue';
+}
+
+function normalizeAudioMixTrackEntry(entry: unknown, index: number): AudioMixTrackEntry | null {
+  if (!isRecord(entry)) {
+    return null;
+  }
+
+  const sourceFile = readString(entry.sourceFile);
+  if (!sourceFile) {
+    return null;
+  }
+
+  const timeline = isRecord(entry.timeline) ? entry.timeline : {};
+  const duckingMeta = isRecord(timeline.autoEditDucking)
+    ? timeline.autoEditDucking
+    : isRecord(entry.autoEditDucking)
+      ? entry.autoEditDucking
+      : {};
+  const jCutMeta = isRecord(timeline.autoEditJCut)
+    ? timeline.autoEditJCut
+    : isRecord(entry.autoEditJCut)
+      ? entry.autoEditJCut
+      : {};
+  const lCutMeta = isRecord(timeline.autoEditLCut)
+    ? timeline.autoEditLCut
+    : isRecord(entry.autoEditLCut)
+      ? entry.autoEditLCut
+      : {};
+  const fadeInMeta = isRecord(timeline.audioFadeIn)
+    ? timeline.audioFadeIn
+    : isRecord(entry.audioFadeIn)
+      ? entry.audioFadeIn
+      : {};
+  const fadeOutMeta = isRecord(timeline.audioFadeOut)
+    ? timeline.audioFadeOut
+    : isRecord(entry.audioFadeOut)
+      ? entry.audioFadeOut
+      : {};
+
+  const baseStart = clampAudioMixNumber(readNumber(timeline.start) ?? 0, 0, 24 * 60 * 60, 0);
+  const baseDurationRaw = readNumber(timeline.duration) ?? readNumber(entry.duration);
+  const baseDuration =
+    baseDurationRaw !== null && baseDurationRaw > 0
+      ? clampAudioMixNumber(baseDurationRaw, 0.02, 24 * 60 * 60, baseDurationRaw)
+      : null;
+  const inPoint = clampAudioMixNumber(readNumber(timeline.inPoint) ?? 0, 0, 24 * 60 * 60, 0);
+  const outPointRaw = readNumber(timeline.outPoint);
+  const outPoint =
+    outPointRaw !== null && outPointRaw > inPoint
+      ? clampAudioMixNumber(outPointRaw, inPoint, 24 * 60 * 60, outPointRaw)
+      : null;
+
+  const jCutDuration = clampAudioMixNumber(readNumber(jCutMeta.duration) ?? 0, 0, 2, 0);
+  const lCutDuration = clampAudioMixNumber(readNumber(lCutMeta.duration) ?? 0, 0, 2, 0);
+  const effectiveStart = Math.max(0, baseStart - jCutDuration);
+  const effectiveInPoint = Math.max(0, inPoint - jCutDuration);
+
+  let effectiveDuration: number | null = null;
+  if (outPoint !== null && outPoint > effectiveInPoint) {
+    effectiveDuration = outPoint - effectiveInPoint;
+  } else if (baseDuration !== null) {
+    effectiveDuration = baseDuration + jCutDuration;
+  }
+  if (effectiveDuration !== null) {
+    effectiveDuration = Math.max(0.02, effectiveDuration + lCutDuration);
+  }
+
+  const fadeInSeconds = clampAudioMixNumber(readNumber(fadeInMeta.duration) ?? 0, 0, 10, 0);
+  const fadeOutSeconds = clampAudioMixNumber(readNumber(fadeOutMeta.duration) ?? 0, 0, 10, 0);
+
+  const autoEditDuckingEnabled = readBoolean(duckingMeta.enabled) === true;
+
+  return {
+    id: readString(entry.id) || `track-${index + 1}`,
+    name: readString(entry.name) || `Track ${index + 1}`,
+    sourceFile,
+    type: normalizeAudioMixTrackType(entry.type),
+    volumePercent: clampAudioMixNumber(readNumber(entry.volume) ?? 100, 0, 200, 100),
+    muted: readBoolean(entry.muted) === true,
+    solo: readBoolean(entry.solo) === true,
+    targetLUFS: clampAudioMixNumber(readNumber(entry.targetLUFS) ?? -16, -30, -8, -16),
+    eq: {
+      enabled: readBoolean(isRecord(entry.eq) ? entry.eq.enabled : null) === true,
+      lowGain: clampAudioMixNumber(
+        readNumber(isRecord(entry.eq) ? entry.eq.lowGain : null) ?? 0,
+        -12,
+        12,
+        0
+      ),
+      midGain: clampAudioMixNumber(
+        readNumber(isRecord(entry.eq) ? entry.eq.midGain : null) ?? 0,
+        -12,
+        12,
+        0
+      ),
+      highGain: clampAudioMixNumber(
+        readNumber(isRecord(entry.eq) ? entry.eq.highGain : null) ?? 0,
+        -12,
+        12,
+        0
+      ),
+    },
+    timeline: {
+      startSeconds: baseStart,
+      durationSeconds: baseDuration,
+      inPointSeconds: inPoint,
+      outPointSeconds: outPoint,
+      effectiveStartSeconds: effectiveStart,
+      effectiveInPointSeconds: effectiveInPoint,
+      effectiveDurationSeconds: effectiveDuration,
+      jCutDurationSeconds: jCutDuration,
+      lCutDurationSeconds: lCutDuration,
+      fadeInSeconds,
+      fadeOutSeconds,
+      autoEditDuckingEnabled,
+      autoEditDuckingAmountDb: readNumber(duckingMeta.amountDb),
+      autoEditDuckingAttackSeconds: readNumber(duckingMeta.attack),
+      autoEditDuckingReleaseSeconds: readNumber(duckingMeta.release),
+      autoEditDuckingThresholdDb: readNumber(duckingMeta.threshold),
+    },
+    stagedPath: null,
+    sourceDurationSeconds: null,
+    signalRmsThroughDb: null,
+    signalNoiseFloorDb: null,
+    signalSpeechBandRmsDb: null,
+    signalSpeechPresenceDb: null,
+  };
+}
+
+function resolveAudioMixDuckingSettings(
+  rawSettings: unknown,
+  tracks: AudioMixTrackEntry[],
+  deliveryProfile: AudioMixDeliveryProfile
+): AudioMixDuckingSettings {
+  const settings = isRecord(rawSettings) ? rawSettings : {};
+  const profileCalibration = getAudioMixCalibrationProfile(deliveryProfile);
+  const calibrationDucking = profileCalibration?.duckingDefaults;
+  const metadataDuckingTracks = tracks.filter((track) => track.timeline.autoEditDuckingEnabled);
+  const resolveMetaAverage = (selector: (track: AudioMixTrackEntry) => number | null): number | null => {
+    const values = metadataDuckingTracks
+      .map((track) => selector(track))
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    if (values.length === 0) {
+      return null;
+    }
+    const total = values.reduce((sum, value) => sum + value, 0);
+    return total / values.length;
+  };
+
+  const explicitEnabled = readBoolean(settings.enabled);
+  const enabled =
+    explicitEnabled === true ||
+    metadataDuckingTracks.length > 0 ||
+    (explicitEnabled === null && calibrationDucking?.enabled === true);
+  const amountDb = clampAudioMixNumber(
+    readNumber(settings.amount) ??
+      readNumber(settings.amountDb) ??
+      resolveMetaAverage((track) => track.timeline.autoEditDuckingAmountDb) ??
+      calibrationDucking?.amountDb ??
+      -6,
+    -18,
+    -1,
+    -6
+  );
+  const thresholdDb = clampAudioMixNumber(
+    readNumber(settings.threshold) ??
+      readNumber(settings.thresholdDb) ??
+      resolveMetaAverage((track) => track.timeline.autoEditDuckingThresholdDb) ??
+      calibrationDucking?.thresholdDb ??
+      -36,
+    -70,
+    -6,
+    -36
+  );
+  const attackSeconds = clampAudioMixNumber(
+    readNumber(settings.attack) ??
+      readNumber(settings.attackSeconds) ??
+      resolveMetaAverage((track) => track.timeline.autoEditDuckingAttackSeconds) ??
+      calibrationDucking?.attackSeconds ??
+      0.1,
+    0.01,
+    2,
+    0.1
+  );
+  const releaseSeconds = clampAudioMixNumber(
+    readNumber(settings.release) ??
+      readNumber(settings.releaseSeconds) ??
+      resolveMetaAverage((track) => track.timeline.autoEditDuckingReleaseSeconds) ??
+      calibrationDucking?.releaseSeconds ??
+      0.35,
+    0.05,
+    5,
+    0.35
+  );
+
+  return {
+    enabled,
+    amountDb,
+    thresholdDb,
+    attackSeconds,
+    releaseSeconds,
+  };
+}
+
+function resolveAudioMixQualityTarget(
+  deliveryProfile: AudioMixDeliveryProfile,
+  tracks: AudioMixTrackEntry[]
+): AudioMixQualityTarget {
+  let quality: AudioMixQualityTarget;
+  if (deliveryProfile === 'netflix') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -24,
+      truePeakDbtp: -1,
+      loudnessRange: 7,
+      rationale: [
+        'Netflix full-program QC commonly references -24 LKFS (BS.1770 full-program).',
+        'Netflix true-peak guidance commonly targets <= -1 dBTP for print masters.',
+        'Dialogue-gated target (-27 LKFS) is checked as an additional estimate.',
+      ],
+    };
+  } else if (deliveryProfile === 'ebu_r128') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -23,
+      truePeakDbtp: -1,
+      loudnessRange: 7,
+      rationale: [
+        'EBU R 128 loudness target: -23 LUFS.',
+        'Short-form EBU guidance commonly caps true peak near -1 dBTP.',
+      ],
+    };
+  } else if (deliveryProfile === 'atsc_a85') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -24,
+      truePeakDbtp: -2,
+      loudnessRange: 7,
+      rationale: [
+        'ATSC A/85 target loudness: -24 LKFS.',
+        'ATSC A/85 annex guidance references true peak limit around -2 dBTP.',
+      ],
+    };
+  } else if (deliveryProfile === 'streaming_spotify') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -14,
+      truePeakDbtp: -1,
+      loudnessRange: 10,
+      rationale: [
+        'Spotify normalization reference level is -14 LUFS.',
+        'Spotify recommends keeping true peak at or below -1 dBTP for lossy encode headroom.',
+      ],
+    };
+  } else if (deliveryProfile === 'streaming_youtube') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -14,
+      truePeakDbtp: -1,
+      loudnessRange: 10,
+      rationale: [
+        'YouTube playback normalization is typically around -14 LUFS in practice.',
+        'Using <= -1 dBTP reduces encoder overs and preserves headroom.',
+      ],
+    };
+  } else if (deliveryProfile === 'streaming_prime_video') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -24,
+      truePeakDbtp: -2,
+      loudnessRange: 7,
+      rationale: [
+        'Prime Video public docs are less explicit on open loudness target.',
+        'Broadcast-safe fallback profile used: -24 LKFS / <= -2 dBTP.',
+      ],
+    };
+  } else if (deliveryProfile === 'streaming_apple_music') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -16,
+      truePeakDbtp: -1,
+      loudnessRange: 10,
+      rationale: [
+        'Apple Sound Check is normalization-based; pragmatic delivery target set to -16 LUFS.',
+      ],
+    };
+  } else if (deliveryProfile === 'streaming_tidal') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -14,
+      truePeakDbtp: -1,
+      loudnessRange: 10,
+      rationale: ['Streaming-optimized profile with -14 LUFS / <= -1 dBTP headroom.'],
+    };
+  } else if (deliveryProfile === 'podcast') {
+    quality = {
+      deliveryProfile,
+      integratedLufs: -16,
+      truePeakDbtp: -1,
+      loudnessRange: 9,
+      rationale: ['Speech-forward profile with tighter dynamic window for intelligibility.'],
+    };
+  } else {
+    const lufsValues = tracks
+      .map((track) => track.targetLUFS)
+      .filter((value) => Number.isFinite(value));
+    const averageLufs =
+      lufsValues.length > 0
+        ? lufsValues.reduce((sum, value) => sum + value, 0) / lufsValues.length
+        : -16;
+    const integratedLufs = clampAudioMixNumber(averageLufs, -24, -12, -16);
+    quality = {
+      deliveryProfile: 'adaptive',
+      integratedLufs,
+      truePeakDbtp: integratedLufs <= -20 ? -2 : -1.5,
+      loudnessRange: integratedLufs <= -20 ? 7 : 9,
+      rationale: ['Adaptive target from track-level LUFS requests.'],
+    };
+  }
+
+  const qualityCalibration = getAudioMixCalibrationProfile(quality.deliveryProfile)?.qualityTarget;
+  if (!qualityCalibration) {
+    return quality;
+  }
+  const calibratedIntegratedLufs = clampAudioMixNumber(
+    qualityCalibration.integratedLufs ?? quality.integratedLufs,
+    -30,
+    -8,
+    quality.integratedLufs
+  );
+  const calibratedTruePeak = clampAudioMixNumber(
+    qualityCalibration.truePeakDbtp ?? quality.truePeakDbtp,
+    -3,
+    -0.1,
+    quality.truePeakDbtp
+  );
+  const calibratedLra = clampAudioMixNumber(
+    qualityCalibration.loudnessRange ?? quality.loudnessRange,
+    3,
+    20,
+    quality.loudnessRange
+  );
+  return {
+    ...quality,
+    integratedLufs: calibratedIntegratedLufs,
+    truePeakDbtp: calibratedTruePeak,
+    loudnessRange: calibratedLra,
+    rationale: [
+      ...quality.rationale,
+      `Calibration override applied (${audioMixCalibrationConfig?.generatedAt || 'unknown run'}).`,
+    ],
+  };
+}
+
+function resolveAudioMixPlan(
+  reqBody: unknown,
+  tracks: AudioMixTrackEntry[]
+): AudioMixPlan {
+  const body = isRecord(reqBody) ? reqBody : {};
+  const mixContext = isRecord(body.mixContext) ? body.mixContext : {};
+  const deliveryProfile = normalizeAudioMixDeliveryProfile(mixContext.deliveryProfile);
+  const quality = resolveAudioMixQualityTarget(deliveryProfile, tracks);
+  const ducking = resolveAudioMixDuckingSettings(body.duckingSettings, tracks, deliveryProfile);
+  return {
+    quality,
+    ducking,
+  };
+}
+
+function parseAudioMixAstatsMetric(logOutput: string, metricLabel: string): number | null {
+  const escapedLabel = metricLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`${escapedLabel}:\\s*(-?(?:\\d+(?:\\.\\d+)?)|inf|-inf|nan|-nan)`, 'g');
+  let value: string | null = null;
+  for (const match of logOutput.matchAll(regex)) {
+    value = match[1] || null;
+  }
+  if (!value) {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function averageAudioMixSignal(values: Array<number | null | undefined>): number | null {
+  const finiteValues = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (finiteValues.length === 0) {
+    return null;
+  }
+  return finiteValues.reduce((sum, value) => sum + value, 0) / finiteValues.length;
+}
+
+function evaluateAudioMixCandidateQuality(
+  inputRmsThroughDb: number | null,
+  inputNoiseFloorDb: number | null,
+  inputSpeechBandRmsDb: number | null,
+  inputSpeechPresenceDb: number | null,
+  outputRmsThroughDb: number | null,
+  outputNoiseFloorDb: number | null,
+  outputSpeechBandRmsDb: number | null,
+  outputSpeechPresenceDb: number | null,
+  warningsCount: number
+): {
+  score: number;
+  suppressionDb: number | null;
+  noiseImprovementDb: number | null;
+  speechBandRetentionDb: number | null;
+  speechPresenceDeltaDb: number | null;
+  hardFail: boolean;
+  hardFailReasons: string[];
+} {
+  const suppressionDb =
+    inputRmsThroughDb !== null && outputRmsThroughDb !== null
+      ? inputRmsThroughDb - outputRmsThroughDb
+      : null;
+  const noiseImprovementDb =
+    inputNoiseFloorDb !== null && outputNoiseFloorDb !== null
+      ? inputNoiseFloorDb - outputNoiseFloorDb
+      : null;
+  const speechBandRetentionDb =
+    inputSpeechBandRmsDb !== null && outputSpeechBandRmsDb !== null
+      ? outputSpeechBandRmsDb - inputSpeechBandRmsDb
+      : null;
+  const speechPresenceDeltaDb =
+    inputSpeechPresenceDb !== null && outputSpeechPresenceDb !== null
+      ? outputSpeechPresenceDb - inputSpeechPresenceDb
+      : null;
+
+  let score = 100;
+  if (suppressionDb !== null) {
+    score -= Math.max(0, suppressionDb - 14) * 4.5;
+    score -= Math.max(0, suppressionDb - 20) * 8;
+  }
+  if (noiseImprovementDb !== null) {
+    score += Math.min(Math.max(noiseImprovementDb, 0), 12) * 1.5;
+    score -= Math.max(0, noiseImprovementDb - 18) * 3;
+  }
+  if (outputRmsThroughDb !== null) {
+    score -= Math.max(0, -46 - outputRmsThroughDb) * 3;
+  }
+  if (speechBandRetentionDb !== null) {
+    if (speechBandRetentionDb >= 0) {
+      score += Math.min(speechBandRetentionDb, 3) * 1.2;
+    } else {
+      score -= Math.abs(speechBandRetentionDb) * 2.6;
+      score -= Math.max(0, -speechBandRetentionDb - 6) * 2.8;
+    }
+  }
+  if (speechPresenceDeltaDb !== null) {
+    if (speechPresenceDeltaDb >= 0) {
+      score += Math.min(speechPresenceDeltaDb, 2) * 1.5;
+    } else {
+      score -= Math.abs(speechPresenceDeltaDb) * 3;
+      score -= Math.max(0, -speechPresenceDeltaDb - 4) * 3.2;
+    }
+  }
+  score -= warningsCount * 1.5;
+
+  const hardFailReasons: string[] = [];
+  if (suppressionDb !== null && suppressionDb > 18) {
+    hardFailReasons.push(`suppression ${formatAudioMixNumber(suppressionDb)} dB exceeds 18 dB guardrail`);
+  }
+  if (
+    noiseImprovementDb !== null &&
+    noiseImprovementDb > 24 &&
+    outputNoiseFloorDb !== null &&
+    outputNoiseFloorDb < -95
+  ) {
+    hardFailReasons.push('extreme denoise profile detected (very low floor with high noise delta)');
+  }
+  if (outputRmsThroughDb !== null && outputRmsThroughDb < -52) {
+    hardFailReasons.push(`output RMS through ${formatAudioMixNumber(outputRmsThroughDb)} dB is too low`);
+  }
+  if (speechBandRetentionDb !== null && speechBandRetentionDb < -9) {
+    hardFailReasons.push(
+      `speech-band retention ${formatAudioMixNumber(speechBandRetentionDb)} dB is below -9 dB guardrail`
+    );
+  }
+  if (speechPresenceDeltaDb !== null && speechPresenceDeltaDb < -6) {
+    hardFailReasons.push(
+      `speech-presence delta ${formatAudioMixNumber(speechPresenceDeltaDb)} dB is below -6 dB guardrail`
+    );
+  }
+
+  return {
+    score,
+    suppressionDb,
+    noiseImprovementDb,
+    speechBandRetentionDb,
+    speechPresenceDeltaDb,
+    hardFail: hardFailReasons.length > 0,
+    hardFailReasons,
+  };
+}
+
+async function probeAudioMixTrackSignal(
+  stagedPath: string,
+  inPointSeconds: number,
+  durationSeconds: number | null
+): Promise<{
+  rmsThroughDb: number | null;
+  noiseFloorDb: number | null;
+  speechBandRmsDb: number | null;
+  speechPresenceDb: number | null;
+}> {
+  const trimParts: string[] = [];
+  if (inPointSeconds > 0) {
+    trimParts.push(`start=${formatAudioMixNumber(inPointSeconds)}`);
+  }
+  if (durationSeconds !== null && durationSeconds > 0) {
+    trimParts.push(`duration=${formatAudioMixNumber(durationSeconds)}`);
+  }
+  const trimFilter = trimParts.length > 0 ? `atrim=${trimParts.join(':')},asetpts=PTS-STARTPTS,` : '';
+  const probeResult = await runBinaryCommand(
+    FFMPEG_BINARY,
+    ['-hide_banner', '-i', stagedPath, '-af', `${trimFilter}astats=metadata=0:reset=0`, '-f', 'null', '-'],
+    60_000
+  );
+  const mergedLog = `${probeResult.stdout}\n${probeResult.stderr}`;
+  const rmsThroughDb =
+    parseAudioMixAstatsMetric(mergedLog, 'RMS through dB') ??
+    parseAudioMixAstatsMetric(mergedLog, 'RMS level dB');
+  const noiseFloorDb =
+    parseAudioMixAstatsMetric(mergedLog, 'Noise floor dB') ??
+    (rmsThroughDb !== null ? rmsThroughDb - 10 : null);
+
+  const speechProbeResult = await runBinaryCommand(
+    FFMPEG_BINARY,
+    [
+      '-hide_banner',
+      '-i',
+      stagedPath,
+      '-af',
+      `${trimFilter}highpass=f=140,lowpass=f=4200,astats=metadata=0:reset=0`,
+      '-f',
+      'null',
+      '-',
+    ],
+    60_000
+  );
+  const speechLog = `${speechProbeResult.stdout}\n${speechProbeResult.stderr}`;
+  const speechBandRmsDb =
+    parseAudioMixAstatsMetric(speechLog, 'RMS through dB') ??
+    parseAudioMixAstatsMetric(speechLog, 'RMS level dB');
+  const speechPresenceDb =
+    speechBandRmsDb !== null && rmsThroughDb !== null ? speechBandRmsDb - rmsThroughDb : null;
+
+  return {
+    rmsThroughDb,
+    noiseFloorDb,
+    speechBandRmsDb,
+    speechPresenceDb,
+  };
+}
+
+
+interface AudioMixDemucsRunResult {
+  applied: boolean;
+  demucsUsed: boolean;
+  model: string;
+  device: string;
+  warning: string | null;
+  meta: Record<string, unknown> | null;
+}
+
+function parseAudioMixJsonObject(stdout: string): Record<string, unknown> | null {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  for (let idx = lines.length - 1; idx >= 0; idx -= 1) {
+    const line = lines[idx];
+    if (!line.startsWith('{') || !line.endsWith('}')) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(line) as unknown;
+      if (isRecord(parsed)) {
+        return parsed;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function runAudioMixDemucsDenoise(
+  inputPath: string,
+  outputPath: string,
+  mixContext: Record<string, unknown>
+): Promise<AudioMixDemucsRunResult> {
+  const model = readString(mixContext.demucsModel) || AUDIO_MIX_DEMUCS_MODEL;
+  const normalizedDevice = normalizeModelLookupValue(
+    readString(mixContext.demucsDevice) || AUDIO_MIX_DEMUCS_DEVICE
+  );
+  const device = normalizedDevice === 'cpu' || normalizedDevice === 'cuda' ? normalizedDevice : 'auto';
+
+  if (!existsSync(AUDIO_MIX_DEMUCS_SCRIPT_PATH)) {
+    return {
+      applied: false,
+      demucsUsed: false,
+      model,
+      device,
+      warning: `demucs script not found at ${AUDIO_MIX_DEMUCS_SCRIPT_PATH}`,
+      meta: null,
+    };
+  }
+
+  const alpha = clampAudioMixNumber(
+    readNumber(mixContext.preEmphasisAlpha) ?? 0.97,
+    0,
+    0.999,
+    0.97
+  );
+  const wienerFloor = clampAudioMixNumber(
+    readNumber(mixContext.wienerFloor) ?? 0.05,
+    0.001,
+    0.8,
+    0.05
+  );
+  const args = [
+    AUDIO_MIX_DEMUCS_SCRIPT_PATH,
+    '--input',
+    inputPath,
+    '--output',
+    outputPath,
+    '--model',
+    model,
+    '--device',
+    device,
+    '--target-sr',
+    String(AUDIO_MIX_DEMUCS_TARGET_SR),
+    '--alpha',
+    formatAudioMixNumber(alpha),
+    '--wiener-floor',
+    formatAudioMixNumber(wienerFloor),
+  ];
+  if (readBoolean(mixContext.demucsDisableModel) === true) {
+    args.push('--disable-demucs');
+  }
+
+  const commandResult = await runBinaryCommand(
+    AUDIO_MIX_DEMUCS_PYTHON_BIN,
+    args,
+    AUDIO_MIX_DEMUCS_TIMEOUT_MS
+  );
+
+  if (commandResult.code !== 0 || !existsSync(outputPath)) {
+    const detail = summarizeAudioMixStderr(commandResult.stderr, 500);
+    return {
+      applied: false,
+      demucsUsed: false,
+      model,
+      device,
+      warning: `demucs denoise failed (${detail || `exit code ${commandResult.code}`})`,
+      meta: null,
+    };
+  }
+
+  const payload = parseAudioMixJsonObject(commandResult.stdout);
+  const demucsUsed =
+    readBoolean(payload?.demucs_used) === true ||
+    readBoolean(payload?.demucsUsed) === true;
+
+  return {
+    applied: true,
+    demucsUsed,
+    model,
+    device,
+    warning: null,
+    meta: payload,
+  };
+}
+
+function resolveAudioMixSafetyDecision(
+  tracks: AudioMixTrackEntry[],
+  quality: AudioMixQualityTarget
+): AudioMixSafetyDecision {
+  const focusTracks = tracks.filter((track) => track.type === 'dialogue');
+  const evaluatedTracks = focusTracks.length > 0 ? focusTracks : tracks;
+  if (evaluatedTracks.length === 0) {
+    return { mode: 'default', reason: 'No tracks for safety analysis.' };
+  }
+
+  const durations = evaluatedTracks.map((track) =>
+    track.timeline.effectiveDurationSeconds ?? track.timeline.durationSeconds ?? track.sourceDurationSeconds ?? 0
+  );
+  const avgDuration = durations.reduce((sum, value) => sum + Math.max(0, value), 0) / durations.length;
+  const shortRatio = durations.filter((value) => value > 0 && value < 0.9).length / durations.length;
+
+  const rmsValues = evaluatedTracks
+    .map((track) => track.signalRmsThroughDb)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const avgRmsThroughDb =
+    rmsValues.length > 0
+      ? rmsValues.reduce((sum, value) => sum + value, 0) / rmsValues.length
+      : null;
+  const veryQuietRatio =
+    rmsValues.length > 0
+      ? rmsValues.filter((value) => value <= -47).length / rmsValues.length
+      : 0;
+  const quietRatio =
+    rmsValues.length > 0
+      ? rmsValues.filter((value) => value <= -40).length / rmsValues.length
+      : 0;
+
+  if (evaluatedTracks.length === 1) {
+    if (avgRmsThroughDb !== null && avgRmsThroughDb <= -56) {
+      return {
+        mode: 'safe_off',
+        reason: `Safety guard: ultra-low-energy single clip detected (avgRms=${formatAudioMixNumber(avgRmsThroughDb)} dB).`,
+      };
+    }
+    if (avgRmsThroughDb !== null && avgRmsThroughDb <= -42) {
+      return {
+        mode: 'safe_light',
+        reason: `Safety guard: low-energy single clip detected (avgRms=${formatAudioMixNumber(avgRmsThroughDb)} dB).`,
+      };
+    }
+    return {
+      mode: 'default',
+      reason: 'Single clip with sufficient energy; using standard denoise profile.',
+    };
+  }
+
+  if (
+    avgDuration < 0.35 ||
+    (evaluatedTracks.length >= 3 && shortRatio >= 0.9) ||
+    (avgRmsThroughDb !== null && avgRmsThroughDb <= -56) ||
+    veryQuietRatio >= 0.8
+  ) {
+    return {
+      mode: 'safe_off',
+      reason: `Safety guard: ultra-low-energy speech detected (avgDuration=${formatAudioMixNumber(avgDuration)}s, avgRms=${avgRmsThroughDb === null ? 'n/a' : formatAudioMixNumber(avgRmsThroughDb)} dB).`,
+    };
+  }
+
+  if (
+    avgDuration < 1.2 ||
+    shortRatio >= 0.5 ||
+    (avgRmsThroughDb !== null && avgRmsThroughDb <= -40) ||
+    quietRatio >= 0.3
+  ) {
+    return {
+      mode: 'safe_light',
+      reason: `Safety guard: low-energy dialogue detected (avgDuration=${formatAudioMixNumber(avgDuration)}s, avgRms=${avgRmsThroughDb === null ? 'n/a' : formatAudioMixNumber(avgRmsThroughDb)} dB).`,
+    };
+  }
+
+  if (quality.deliveryProfile === 'podcast') {
+    return {
+      mode: 'safe_light',
+      reason: 'Podcast default now uses conservative denoise to preserve speech texture.',
+    };
+  }
+
+  return {
+    mode: 'default',
+    reason: 'Signal energy supports standard denoise and mastering.',
+  };
+}
+
+function resolveAudioMixMasteringStage(
+  quality: AudioMixQualityTarget,
+  tracks: AudioMixTrackEntry[]
+): AudioMixMasteringStage {
+  let stage: AudioMixMasteringStage;
+  if (quality.deliveryProfile === 'netflix' || quality.deliveryProfile === 'ebu_r128') {
+    stage = {
+      highpassHz: 25,
+      lowpassHz: 19500,
+      compressorThresholdDb: -18,
+      compressorRatio: 1.8,
+      compressorAttackMs: 20,
+      compressorReleaseMs: 240,
+      limiterCeilingDbfs: 0.89,
+    };
+  } else if (
+    quality.deliveryProfile === 'atsc_a85' ||
+    quality.deliveryProfile === 'streaming_prime_video'
+  ) {
+    stage = {
+      highpassHz: 25,
+      lowpassHz: 19000,
+      compressorThresholdDb: -20,
+      compressorRatio: 1.7,
+      compressorAttackMs: 25,
+      compressorReleaseMs: 260,
+      limiterCeilingDbfs: 0.86,
+    };
+  } else if (
+    quality.deliveryProfile === 'streaming_spotify' ||
+    quality.deliveryProfile === 'streaming_youtube' ||
+    quality.deliveryProfile === 'streaming_tidal'
+  ) {
+    stage = {
+      highpassHz: 30,
+      lowpassHz: 18500,
+      compressorThresholdDb: -16,
+      compressorRatio: 2.1,
+      compressorAttackMs: 12,
+      compressorReleaseMs: 200,
+      limiterCeilingDbfs: 0.9,
+    };
+  } else if (quality.deliveryProfile === 'streaming_apple_music') {
+    stage = {
+      highpassHz: 28,
+      lowpassHz: 19000,
+      compressorThresholdDb: -17,
+      compressorRatio: 1.9,
+      compressorAttackMs: 16,
+      compressorReleaseMs: 220,
+      limiterCeilingDbfs: 0.9,
+    };
+  } else if (quality.deliveryProfile === 'podcast') {
+    stage = {
+      highpassHz: 60,
+      lowpassHz: 18000,
+      compressorThresholdDb: -16.5,
+      compressorRatio: 1.45,
+      compressorAttackMs: 20,
+      compressorReleaseMs: 260,
+      limiterCeilingDbfs: 0.94,
+    };
+  } else {
+    stage = {
+      highpassHz: 28,
+      lowpassHz: 19000,
+      compressorThresholdDb: -18,
+      compressorRatio: 1.9,
+      compressorAttackMs: 14,
+      compressorReleaseMs: 220,
+      limiterCeilingDbfs: 0.9,
+    };
+  }
+
+  const masteringCalibration = getAudioMixCalibrationProfile(quality.deliveryProfile)?.masteringStage;
+  if (masteringCalibration) {
+    stage = {
+      highpassHz: clampAudioMixNumber(
+        masteringCalibration.highpassHz ?? stage.highpassHz,
+        15,
+        180,
+        stage.highpassHz
+      ),
+      lowpassHz: clampAudioMixNumber(
+        masteringCalibration.lowpassHz ?? stage.lowpassHz,
+        4000,
+        22000,
+        stage.lowpassHz
+      ),
+      compressorThresholdDb: clampAudioMixNumber(
+        masteringCalibration.compressorThresholdDb ?? stage.compressorThresholdDb,
+        -40,
+        -4,
+        stage.compressorThresholdDb
+      ),
+      compressorRatio: clampAudioMixNumber(
+        masteringCalibration.compressorRatio ?? stage.compressorRatio,
+        1,
+        20,
+        stage.compressorRatio
+      ),
+      compressorAttackMs: clampAudioMixNumber(
+        masteringCalibration.compressorAttackMs ?? stage.compressorAttackMs,
+        1,
+        500,
+        stage.compressorAttackMs
+      ),
+      compressorReleaseMs: clampAudioMixNumber(
+        masteringCalibration.compressorReleaseMs ?? stage.compressorReleaseMs,
+        20,
+        5000,
+        stage.compressorReleaseMs
+      ),
+      limiterCeilingDbfs: clampAudioMixNumber(
+        masteringCalibration.limiterCeilingDbfs ?? stage.limiterCeilingDbfs,
+        0.5,
+        0.99,
+        stage.limiterCeilingDbfs
+      ),
+    };
+  }
+
+  const safetyDecision = resolveAudioMixSafetyDecision(tracks, quality);
+  if (safetyDecision.mode !== 'default') {
+    stage = {
+      ...stage,
+      compressorThresholdDb: Math.max(stage.compressorThresholdDb, -13.5),
+      compressorRatio: Math.min(stage.compressorRatio, 1.25),
+      compressorAttackMs: Math.max(stage.compressorAttackMs, 28),
+      compressorReleaseMs: Math.max(stage.compressorReleaseMs, 320),
+      limiterCeilingDbfs: Math.max(stage.limiterCeilingDbfs, 0.965),
+    };
+  }
+
+  return stage;
+}
+
+function buildAudioMixMasteringPrefixFilter(
+  stage: AudioMixMasteringStage
+): string {
+  const thresholdLinear = clampAudioMixNumber(
+    Math.pow(10, stage.compressorThresholdDb / 20),
+    0.001,
+    1,
+    0.12
+  );
+  return [
+    `highpass=f=${formatAudioMixNumber(stage.highpassHz)}`,
+    `lowpass=f=${formatAudioMixNumber(stage.lowpassHz)}`,
+    `acompressor=threshold=${formatAudioMixNumber(
+      thresholdLinear
+    )}:ratio=${formatAudioMixNumber(
+      stage.compressorRatio
+    )}:attack=${formatAudioMixNumber(
+      stage.compressorAttackMs
+    )}:release=${formatAudioMixNumber(stage.compressorReleaseMs)}:makeup=1`,
+    `alimiter=limit=${formatAudioMixNumber(stage.limiterCeilingDbfs)}:level=disabled`,
+  ].join(',');
+}
+
+function resolveAudioMixNoiseReductionStage(
+  reqBody: unknown,
+  quality: AudioMixQualityTarget,
+  tracks: AudioMixTrackEntry[]
+): AudioMixNoiseReductionStage {
+  const body = isRecord(reqBody) ? reqBody : {};
+  const mixContext = isRecord(body.mixContext) ? body.mixContext : {};
+  const requestedProfile = normalizeAudioMixNoiseReductionProfile(
+    mixContext.noiseReductionProfile
+  );
+  const requestedEngine = normalizeAudioMixNoiseReductionEngine(mixContext.noiseReductionEngine);
+  const applyToRaw = normalizeModelLookupValue(readString(mixContext.noiseReductionApplyTo) || '');
+  const applyTo: 'dialogue' | 'all' =
+    applyToRaw === 'all' || applyToRaw === 'fullmix' ? 'all' : 'dialogue';
+
+  let stage: AudioMixNoiseReductionStage;
+  if (requestedProfile === 'off') {
+    stage = {
+      enabled: false,
+      profile: 'off',
+      reductionDb: 0,
+      noiseFloorDb: -70,
+      applyTo,
+      rationale: 'Noise reduction disabled by mix context.',
+      safetyMode: 'default',
+      safetyReason: null,
+    };
+  } else if (requestedProfile === 'light') {
+    stage = {
+      enabled: true,
+      profile: 'light',
+      reductionDb: 4.2,
+      noiseFloorDb: -49,
+      applyTo,
+      rationale: 'Light denoise for preserving ambience and transients.',
+      safetyMode: 'default',
+      safetyReason: null,
+    };
+  } else if (requestedProfile === 'aggressive') {
+    stage = {
+      enabled: true,
+      profile: 'aggressive',
+      reductionDb: 9.5,
+      noiseFloorDb: -41,
+      applyTo,
+      rationale: 'High denoise intensity with speech-preservation guardrails.',
+      safetyMode: 'default',
+      safetyReason: null,
+    };
+  } else {
+    stage = {
+      enabled: true,
+      profile: 'standard',
+      reductionDb: quality.deliveryProfile === 'podcast' ? 5.2 : 6.2,
+      noiseFloorDb: quality.deliveryProfile === 'podcast' ? -47 : -45,
+      applyTo: 'dialogue',
+      rationale:
+        quality.deliveryProfile === 'podcast'
+          ? 'Podcast speech profile defaults to conservative denoise to avoid mushy artifacts.'
+          : 'Standard dialogue-first denoise for cleaner speech bed.',
+      safetyMode: 'default',
+      safetyReason: null,
+    };
+  }
+
+  const noiseCalibration = getAudioMixCalibrationProfile(quality.deliveryProfile)?.noiseReductionStage;
+  if (noiseCalibration && requestedProfile !== 'off') {
+    const calibratedProfile = noiseCalibration.profile ?? stage.profile;
+    const calibratedEnabled =
+      noiseCalibration.enabled === undefined ? stage.enabled : noiseCalibration.enabled;
+    const calibratedReduction = clampAudioMixNumber(
+      noiseCalibration.reductionDb ?? stage.reductionDb,
+      0,
+      16,
+      stage.reductionDb
+    );
+    const calibratedNoiseFloor = clampAudioMixNumber(
+      noiseCalibration.noiseFloorDb ?? stage.noiseFloorDb,
+      -60,
+      -30,
+      stage.noiseFloorDb
+    );
+    const calibratedApplyTo = noiseCalibration.applyTo || stage.applyTo;
+    stage = {
+      ...stage,
+      enabled: calibratedEnabled,
+      profile: calibratedProfile,
+      reductionDb: calibratedReduction,
+      noiseFloorDb: calibratedNoiseFloor,
+      applyTo: calibratedApplyTo,
+      rationale: `${stage.rationale} Calibration override applied.`,
+    };
+  }
+
+  const safetyDecision = resolveAudioMixSafetyDecision(tracks, quality);
+  if (stage.enabled && requestedProfile !== 'off') {
+    if (safetyDecision.mode === 'safe_off') {
+      stage = {
+        ...stage,
+        enabled: false,
+        profile: 'off',
+        reductionDb: 0,
+        noiseFloorDb: -70,
+        safetyMode: 'safe_off',
+        safetyReason: safetyDecision.reason,
+        rationale: `${stage.rationale} ${safetyDecision.reason} Denoise disabled to avoid over-suppression artifacts.`,
+      };
+    } else if (safetyDecision.mode === 'safe_light') {
+      stage = {
+        ...stage,
+        enabled: true,
+        profile: 'light',
+        reductionDb: clampAudioMixNumber(stage.reductionDb, 0, 4.6, 4),
+        noiseFloorDb: clampAudioMixNumber(stage.noiseFloorDb, -55, -44, -49),
+        safetyMode: 'safe_light',
+        safetyReason: safetyDecision.reason,
+        rationale: `${stage.rationale} ${safetyDecision.reason} Denoise softened to preserve speech texture.`,
+      };
+    } else {
+      stage = {
+        ...stage,
+        safetyMode: 'default',
+        safetyReason: safetyDecision.reason,
+      };
+    }
+  }
+
+  stage = {
+    ...stage,
+    engine: requestedEngine,
+  };
+
+  return stage;
+}
+
+
+function parseAudioMixLoudnormStats(logOutput: string): AudioMixLoudnormStats | null {
+  const match = logOutput.match(/\{[\s\S]*?"input_i"[\s\S]*?\}/g);
+  if (!match || match.length === 0) {
+    return null;
+  }
+  const lastBlock = match[match.length - 1];
+  try {
+    const payload = JSON.parse(lastBlock) as Record<string, unknown>;
+    const inputI = readNumber(payload.input_i);
+    const inputTp = readNumber(payload.input_tp);
+    const inputLra = readNumber(payload.input_lra);
+    const inputThresh = readNumber(payload.input_thresh);
+    const targetOffset = readNumber(payload.target_offset);
+    if (
+      inputI === null ||
+      inputTp === null ||
+      inputLra === null ||
+      inputThresh === null ||
+      targetOffset === null
+    ) {
+      return null;
+    }
+    return {
+      inputI,
+      inputTp,
+      inputLra,
+      inputThresh,
+      targetOffset,
+      outputI: readNumber(payload.output_i),
+      outputTp: readNumber(payload.output_tp),
+      outputLra: readNumber(payload.output_lra),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildAudioMixDialogueReferenceFilter(
+  tracks: AudioMixTrackEntry[],
+  noiseReduction: AudioMixNoiseReductionStage
+): { filterComplex: string; mapLabel: string } | null {
+  const filters: string[] = [];
+  const dialogueLabels: string[] = [];
+
+  tracks.forEach((track, index) => {
+    if (track.type !== 'dialogue') {
+      return;
+    }
+    const timeline = track.timeline;
+    const inputLabel = `[${index}:a]`;
+    const outputLabel = `[dialogue_track_${index}]`;
+    const chain: string[] = [
+      `${inputLabel}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo`,
+    ];
+
+    const resolvedDuration = timeline.effectiveDurationSeconds;
+    const trimParts: string[] = [];
+    if (timeline.effectiveInPointSeconds > 0) {
+      trimParts.push(`start=${formatAudioMixNumber(timeline.effectiveInPointSeconds)}`);
+    }
+    if (resolvedDuration !== null) {
+      trimParts.push(`duration=${formatAudioMixNumber(resolvedDuration)}`);
+    }
+    if (trimParts.length > 0) {
+      chain.push(`atrim=${trimParts.join(':')}`);
+      chain.push('asetpts=PTS-STARTPTS');
+    }
+
+    if (noiseReduction.enabled && (noiseReduction.applyTo === 'all' || track.type === 'dialogue')) {
+      chain.push(buildAudioMixDenoiseFilter(noiseReduction));
+    }
+
+    if (track.eq.enabled) {
+      if (Math.abs(track.eq.lowGain) > 0.01) {
+        chain.push(
+          `equalizer=f=120:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.lowGain)}`
+        );
+      }
+      if (Math.abs(track.eq.midGain) > 0.01) {
+        chain.push(
+          `equalizer=f=1000:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.midGain)}`
+        );
+      }
+      if (Math.abs(track.eq.highGain) > 0.01) {
+        chain.push(
+          `equalizer=f=6000:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.highGain)}`
+        );
+      }
+    }
+
+    const gainLinear = clampAudioMixNumber(track.volumePercent / 100, 0, 2, 1);
+    if (Math.abs(gainLinear - 1) > 0.0001) {
+      chain.push(`volume=${formatAudioMixNumber(gainLinear)}`);
+    }
+    const delayMs = Math.max(0, Math.round(timeline.effectiveStartSeconds * 1000));
+    if (delayMs > 0) {
+      chain.push(`adelay=${delayMs}|${delayMs}`);
+    }
+    filters.push(finalizeAudioMixFilterChain(chain, outputLabel));
+    dialogueLabels.push(outputLabel);
+  });
+
+  if (dialogueLabels.length === 0) {
+    return null;
+  }
+  if (dialogueLabels.length === 1) {
+    filters.push(`${dialogueLabels[0]}anull[dialogue_ref]`);
+  } else {
+    filters.push(
+      `${dialogueLabels.join('')}amix=inputs=${dialogueLabels.length}:normalize=0:dropout_transition=0[dialogue_ref]`
+    );
+  }
+  return {
+    filterComplex: filters.join(';'),
+    mapLabel: '[dialogue_ref]',
+  };
+}
+
+function evaluateAudioMixCompliance(
+  quality: AudioMixQualityTarget,
+  measuredOutputLufs: number | null,
+  measuredOutputTp: number | null,
+  measuredOutputLra: number | null,
+  measuredDialogueLufsEstimate: number | null
+): AudioMixComplianceResult {
+  const checks: AudioMixComplianceCheck[] = [];
+  const notes: string[] = [];
+  const pushIntegratedCheck = (tolerance: number, note?: string) => {
+    const passed =
+      measuredOutputLufs === null
+        ? null
+        : Math.abs(measuredOutputLufs - quality.integratedLufs) <= tolerance;
+    checks.push({
+      id: 'integrated_lufs',
+      target: `${quality.integratedLufs} LUFS`,
+      measured: measuredOutputLufs,
+      tolerance: `±${tolerance} LU`,
+      passed,
+      note,
+    });
+  };
+  const pushTruePeakCheck = (note?: string) => {
+    const passed = measuredOutputTp === null ? null : measuredOutputTp <= quality.truePeakDbtp;
+    checks.push({
+      id: 'true_peak',
+      target: `<= ${quality.truePeakDbtp} dBTP`,
+      measured: measuredOutputTp,
+      tolerance: 'hard ceiling',
+      passed,
+      note,
+    });
+  };
+  const pushLraCheck = (tolerance: number, note?: string) => {
+    const passed =
+      measuredOutputLra === null
+        ? null
+        : Math.abs(measuredOutputLra - quality.loudnessRange) <= tolerance;
+    checks.push({
+      id: 'lra',
+      target: `${quality.loudnessRange} LU`,
+      measured: measuredOutputLra,
+      tolerance: `±${tolerance} LU`,
+      passed,
+      note,
+    });
+  };
+
+  if (quality.deliveryProfile === 'netflix') {
+    pushIntegratedCheck(2, 'Full-program BS.1770 loudness check.');
+    pushTruePeakCheck('Netflix print masters typically cap true peak at -1 dBTP.');
+    const dialoguePassed =
+      measuredDialogueLufsEstimate === null
+        ? null
+        : Math.abs(measuredDialogueLufsEstimate - -27) <= 2;
+    checks.push({
+      id: 'dialogue_loudness_estimate',
+      target: '-27 LKFS (dialogue-gated)',
+      measured: measuredDialogueLufsEstimate,
+      tolerance: '±2 LU (estimate)',
+      passed: dialoguePassed,
+      note: 'Estimated from dialogue stem; not a certified dialogue-gated meter.',
+    });
+    notes.push('For delivery, verify final masters with approved dialogue-gated QC tooling.');
+  } else if (quality.deliveryProfile === 'ebu_r128') {
+    pushIntegratedCheck(0.5);
+    pushTruePeakCheck();
+    pushLraCheck(3, 'Program-dependent; tolerance here is advisory.');
+  } else if (quality.deliveryProfile === 'atsc_a85') {
+    pushIntegratedCheck(2);
+    pushTruePeakCheck();
+  } else if (
+    quality.deliveryProfile === 'streaming_spotify' ||
+    quality.deliveryProfile === 'streaming_youtube' ||
+    quality.deliveryProfile === 'streaming_tidal'
+  ) {
+    pushIntegratedCheck(2);
+    pushTruePeakCheck('Headroom check for lossy transcode safety.');
+  } else if (quality.deliveryProfile === 'streaming_prime_video') {
+    pushIntegratedCheck(2, 'Broadcast-safe fallback because open Prime loudness spec is limited.');
+    pushTruePeakCheck();
+  } else if (quality.deliveryProfile === 'streaming_apple_music') {
+    pushIntegratedCheck(2, 'Pragmatic Sound Check alignment profile.');
+    pushTruePeakCheck();
+  } else if (quality.deliveryProfile === 'podcast') {
+    pushIntegratedCheck(1.5);
+    pushTruePeakCheck();
+    pushLraCheck(4);
+  } else {
+    pushIntegratedCheck(3, 'Adaptive profile is advisory, not strict delivery QC.');
+    pushTruePeakCheck();
+  }
+
+  const checkResults = checks
+    .map((check) => check.passed)
+    .filter((value): value is boolean => typeof value === 'boolean');
+  const passed =
+    checkResults.length === 0
+      ? null
+      : checkResults.every((value) => value === true);
+
+  return {
+    profile: quality.deliveryProfile,
+    passed,
+    checks,
+    notes,
+  };
+}
+
+function mixAudioStem(
+  labels: string[],
+  outputLabel: string,
+  filters: string[]
+): string | null {
+  if (labels.length === 0) {
+    return null;
+  }
+  if (labels.length === 1) {
+    filters.push(`${labels[0]}anull[${outputLabel}]`);
+    return `[${outputLabel}]`;
+  }
+  filters.push(
+    `${labels.join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0[${outputLabel}]`
+  );
+  return `[${outputLabel}]`;
+}
+
+function finalizeAudioMixFilterChain(chain: string[], outputLabel: string): string {
+  if (chain.length === 0) {
+    throw new Error('Audio filter chain cannot be empty');
+  }
+  const finalized = [...chain];
+  finalized[finalized.length - 1] = `${finalized[finalized.length - 1]}${outputLabel}`;
+  return finalized.join(',');
+}
+
+function buildAudioMixFilterGraph(
+  tracks: AudioMixTrackEntry[],
+  duckingSettings: AudioMixDuckingSettings,
+  noiseReduction: AudioMixNoiseReductionStage
+): AudioMixGraphResult {
+  const filters: string[] = [];
+  const dialogueLabels: string[] = [];
+  const musicLabels: string[] = [];
+  const sfxLabels: string[] = [];
+
+  const autoEditDuckingTracks = tracks.filter((track) => track.timeline.autoEditDuckingEnabled).length;
+  let jlCutsApplied = 0;
+  let fadesApplied = 0;
+
+  tracks.forEach((track, index) => {
+    const timeline = track.timeline;
+    const inputLabel = `[${index}:a]`;
+    const outputLabel = `[track_${index}]`;
+    const chain: string[] = [
+      `${inputLabel}aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo`,
+    ];
+
+    const resolvedDuration = timeline.effectiveDurationSeconds;
+    const trimParts: string[] = [];
+    if (timeline.effectiveInPointSeconds > 0) {
+      trimParts.push(`start=${formatAudioMixNumber(timeline.effectiveInPointSeconds)}`);
+    }
+    if (resolvedDuration !== null) {
+      trimParts.push(`duration=${formatAudioMixNumber(resolvedDuration)}`);
+    }
+    if (trimParts.length > 0) {
+      chain.push(`atrim=${trimParts.join(':')}`);
+      chain.push('asetpts=PTS-STARTPTS');
+    }
+
+    if (noiseReduction.enabled && (noiseReduction.applyTo === 'all' || track.type === 'dialogue')) {
+      chain.push(buildAudioMixDenoiseFilter(noiseReduction));
+    }
+
+    if (track.eq.enabled) {
+      if (Math.abs(track.eq.lowGain) > 0.01) {
+        chain.push(
+          `equalizer=f=120:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.lowGain)}`
+        );
+      }
+      if (Math.abs(track.eq.midGain) > 0.01) {
+        chain.push(
+          `equalizer=f=1000:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.midGain)}`
+        );
+      }
+      if (Math.abs(track.eq.highGain) > 0.01) {
+        chain.push(
+          `equalizer=f=6000:width_type=o:width=2:g=${formatAudioMixNumber(track.eq.highGain)}`
+        );
+      }
+    }
+
+    const fadeInSeconds =
+      timeline.fadeInSeconds > 0
+        ? timeline.fadeInSeconds
+        : timeline.jCutDurationSeconds > 0
+          ? Math.min(0.2, timeline.jCutDurationSeconds)
+          : 0;
+    if (fadeInSeconds > 0) {
+      chain.push(`afade=t=in:st=0:d=${formatAudioMixNumber(fadeInSeconds)}`);
+      fadesApplied += 1;
+    }
+
+    const fadeOutCandidate =
+      timeline.fadeOutSeconds > 0
+        ? timeline.fadeOutSeconds
+        : timeline.lCutDurationSeconds > 0
+          ? Math.min(0.25, timeline.lCutDurationSeconds)
+          : 0;
+    if (fadeOutCandidate > 0 && resolvedDuration !== null && resolvedDuration > 0.05) {
+      const fadeOutDuration = Math.min(fadeOutCandidate, Math.max(0.02, resolvedDuration - 0.01));
+      const fadeOutStart = Math.max(0, resolvedDuration - fadeOutDuration);
+      chain.push(
+        `afade=t=out:st=${formatAudioMixNumber(fadeOutStart)}:d=${formatAudioMixNumber(fadeOutDuration)}`
+      );
+      fadesApplied += 1;
+    }
+
+    const gainLinear = clampAudioMixNumber(track.volumePercent / 100, 0, 2, 1);
+    if (Math.abs(gainLinear - 1) > 0.0001) {
+      chain.push(`volume=${formatAudioMixNumber(gainLinear)}`);
+    }
+
+    const delayMs = Math.max(0, Math.round(timeline.effectiveStartSeconds * 1000));
+    if (delayMs > 0) {
+      chain.push(`adelay=${delayMs}|${delayMs}`);
+    }
+
+    filters.push(finalizeAudioMixFilterChain(chain, outputLabel));
+
+    if (timeline.jCutDurationSeconds > 0 || timeline.lCutDurationSeconds > 0) {
+      jlCutsApplied += 1;
+    }
+
+    if (track.type === 'music') {
+      musicLabels.push(outputLabel);
+    } else if (track.type === 'sfx') {
+      sfxLabels.push(outputLabel);
+    } else {
+      dialogueLabels.push(outputLabel);
+    }
+  });
+
+  const dialogueStem = mixAudioStem(dialogueLabels, 'dialogue_stem', filters);
+  let musicStem = mixAudioStem(musicLabels, 'music_stem', filters);
+  let sfxStem = mixAudioStem(sfxLabels, 'sfx_stem', filters);
+
+  let duckingApplied = false;
+  if (duckingSettings.enabled && dialogueStem) {
+    const thresholdLinear = clampAudioMixNumber(
+      Math.pow(10, duckingSettings.thresholdDb / 20),
+      0.0001,
+      1,
+      0.02
+    );
+    const ratio = clampAudioMixNumber(1 + Math.abs(duckingSettings.amountDb) * 1.2, 2, 20, 8);
+    const attackMs = clampAudioMixNumber(duckingSettings.attackSeconds * 1000, 10, 3000, 100);
+    const releaseMs = clampAudioMixNumber(duckingSettings.releaseSeconds * 1000, 50, 8000, 350);
+
+    if (musicStem) {
+      filters.push(
+        `${musicStem}${dialogueStem}sidechaincompress=threshold=${formatAudioMixNumber(thresholdLinear)}:ratio=${formatAudioMixNumber(ratio)}:attack=${formatAudioMixNumber(attackMs)}:release=${formatAudioMixNumber(releaseMs)}:makeup=1[music_ducked]`
+      );
+      musicStem = '[music_ducked]';
+      duckingApplied = true;
+    }
+    if (sfxStem) {
+      filters.push(
+        `${sfxStem}${dialogueStem}sidechaincompress=threshold=${formatAudioMixNumber(thresholdLinear)}:ratio=${formatAudioMixNumber(ratio)}:attack=${formatAudioMixNumber(attackMs)}:release=${formatAudioMixNumber(releaseMs)}:makeup=1[sfx_ducked]`
+      );
+      sfxStem = '[sfx_ducked]';
+      duckingApplied = true;
+    }
+  }
+
+  const finalInputs = [dialogueStem, musicStem, sfxStem].filter(
+    (label): label is string => typeof label === 'string' && label.length > 0
+  );
+
+  if (finalInputs.length === 0) {
+    throw new Error('No active audio stems available for mixing');
+  }
+
+  if (finalInputs.length === 1) {
+    filters.push(`${finalInputs[0]}anull[mix_pre]`);
+  } else {
+    filters.push(
+      `${finalInputs.join('')}amix=inputs=${finalInputs.length}:normalize=0:dropout_transition=0[mix_pre]`
+    );
+  }
+
+  return {
+    filterComplex: filters.join(';'),
+    mapLabel: '[mix_pre]',
+    duckingApplied,
+    autoEditDuckingTracks,
+    jlCutsApplied,
+    fadesApplied,
+  };
+}
+
+app.post('/api/audio/mix', async (req, res) => {
+  let tempDir = '';
+  try {
+    await initializeAudioMixArnndnModel();
+
+    const rawTracks: unknown[] = Array.isArray(req.body?.tracks)
+      ? (req.body.tracks as unknown[])
+      : [];
+    const normalizedTracks: AudioMixTrackEntry[] = rawTracks
+      .map((entry: unknown, index: number) => normalizeAudioMixTrackEntry(entry, index))
+      .filter((entry): entry is AudioMixTrackEntry => entry !== null);
+
+    if (normalizedTracks.length === 0) {
       return res.status(400).json({ error: 'Missing tracks' });
     }
-    const { buffer, mime } = await getAudioBufferFromUrl(firstTrack.sourceFile);
-    const stored = await storeAudioFile(buffer, 'mixed-output', mime);
-    res.json({
+
+    const hasSolo = normalizedTracks.some((track: AudioMixTrackEntry) => track.solo);
+    const activeTracks = normalizedTracks.filter(
+      (track: AudioMixTrackEntry) => !track.muted && (!hasSolo || track.solo)
+    );
+    const mixContext = isRecord(req.body?.mixContext) ? req.body.mixContext : {};
+    const strictCompliance = readBoolean(mixContext.strictCompliance) === true;
+    const autoAbTestEnabled = readBoolean(mixContext.autoAbTest) !== false;
+
+    if (activeTracks.length === 0) {
+      return res.status(400).json({ error: 'No active tracks selected for mixing' });
+    }
+
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-audio-mix-'));
+
+    await Promise.all(
+      activeTracks.map(async (track: AudioMixTrackEntry) => {
+        const stagedPath = await stageVideoSource(track.sourceFile, tempDir);
+        track.stagedPath = stagedPath;
+        try {
+          track.sourceDurationSeconds = await probeVideoDurationSeconds(stagedPath);
+        } catch {
+          track.sourceDurationSeconds = null;
+        }
+
+        const maxAvailableDuration =
+          track.sourceDurationSeconds !== null
+            ? Math.max(0.02, track.sourceDurationSeconds - track.timeline.effectiveInPointSeconds)
+            : null;
+        if (track.timeline.effectiveDurationSeconds === null && maxAvailableDuration !== null) {
+          track.timeline.effectiveDurationSeconds = maxAvailableDuration;
+        } else if (
+          track.timeline.effectiveDurationSeconds !== null &&
+          maxAvailableDuration !== null
+        ) {
+          track.timeline.effectiveDurationSeconds = Math.max(
+            0.02,
+            Math.min(track.timeline.effectiveDurationSeconds, maxAvailableDuration)
+          );
+        }
+
+        try {
+          const signal = await probeAudioMixTrackSignal(
+            stagedPath,
+            track.timeline.effectiveInPointSeconds,
+            track.timeline.effectiveDurationSeconds
+          );
+          track.signalRmsThroughDb = signal.rmsThroughDb;
+          track.signalNoiseFloorDb = signal.noiseFloorDb;
+          track.signalSpeechBandRmsDb = signal.speechBandRmsDb;
+          track.signalSpeechPresenceDb = signal.speechPresenceDb;
+        } catch {
+          track.signalRmsThroughDb = null;
+          track.signalNoiseFloorDb = null;
+          track.signalSpeechBandRmsDb = null;
+          track.signalSpeechPresenceDb = null;
+        }
+      })
+    );
+
+    const mixPlan = resolveAudioMixPlan(req.body, activeTracks);
+    const inputRmsThroughDb = averageAudioMixSignal(
+      activeTracks.map((track) => track.signalRmsThroughDb)
+    );
+    const inputNoiseFloorDb = averageAudioMixSignal(
+      activeTracks.map((track) => track.signalNoiseFloorDb)
+    );
+    const inputSpeechBandRmsDb = averageAudioMixSignal(
+      activeTracks.map((track) => track.signalSpeechBandRmsDb)
+    );
+    const inputSpeechPresenceDb = averageAudioMixSignal(
+      activeTracks.map((track) => track.signalSpeechPresenceDb)
+    );
+    const baseNoiseReductionStage = resolveAudioMixNoiseReductionStage(req.body, mixPlan.quality, activeTracks);
+    const baseMasteringStage = resolveAudioMixMasteringStage(mixPlan.quality, activeTracks);
+    let selectedNoiseReductionStage = baseNoiseReductionStage;
+    let selectedMasteringStage = baseMasteringStage;
+    let selectedGraph = buildAudioMixFilterGraph(
+      activeTracks,
+      mixPlan.ducking,
+      selectedNoiseReductionStage
+    );
+    const demucsRequested =
+      selectedNoiseReductionStage.engine === 'demucs' && selectedNoiseReductionStage.enabled;
+    let demucsApplied = false;
+    let demucsUsedModel = false;
+    let demucsAppliedTracks = 0;
+    let demucsMetaSamples: Array<Record<string, unknown>> = [];
+    const demucsRuntimeWarnings: string[] = [];
+    let demucsModel = readString(mixContext.demucsModel) || AUDIO_MIX_DEMUCS_MODEL;
+    const demucsDeviceNormalized = normalizeModelLookupValue(
+      readString(mixContext.demucsDevice) || AUDIO_MIX_DEMUCS_DEVICE
+    );
+    let demucsDevice =
+      demucsDeviceNormalized === 'cpu' || demucsDeviceNormalized === 'cuda'
+        ? demucsDeviceNormalized
+        : 'auto';
+
+    if (demucsRequested) {
+      for (const track of activeTracks) {
+        if (track.type !== 'dialogue' || !track.stagedPath) {
+          continue;
+        }
+        const demucsOutputPath = path.join(
+          tempDir,
+          `demucs-${track.id.replace(/[^a-z0-9_-]/gi, '_')}-${Date.now()}.wav`
+        );
+        const demucsResult = await runAudioMixDemucsDenoise(
+          track.stagedPath,
+          demucsOutputPath,
+          mixContext
+        );
+        demucsModel = demucsResult.model;
+        demucsDevice = demucsResult.device;
+        if (!demucsResult.applied) {
+          if (demucsResult.warning) {
+            demucsRuntimeWarnings.push(`[demucs] ${track.id}: ${demucsResult.warning}`);
+          }
+          continue;
+        }
+
+        track.stagedPath = demucsOutputPath;
+        demucsAppliedTracks += 1;
+        demucsApplied = true;
+        if (demucsResult.demucsUsed) {
+          demucsUsedModel = true;
+        }
+        if (demucsResult.meta) {
+          demucsMetaSamples.push(demucsResult.meta);
+        }
+      }
+
+      if (demucsAppliedTracks > 0) {
+        selectedNoiseReductionStage = {
+          ...selectedNoiseReductionStage,
+          enabled: false,
+          profile: 'off',
+          reductionDb: 0,
+          noiseFloorDb: -70,
+          safetyMode: 'default',
+          safetyReason: 'demucs_preprocessed',
+          rationale: `${selectedNoiseReductionStage.rationale} Demucs preprocessing applied to ${demucsAppliedTracks} dialogue track(s); ffmpeg denoise bypassed.`,
+        };
+        selectedGraph = buildAudioMixFilterGraph(
+          activeTracks,
+          mixPlan.ducking,
+          selectedNoiseReductionStage
+        );
+      } else {
+        demucsRuntimeWarnings.push('[demucs] no dialogue tracks were processed; falling back to ffmpeg denoise chain.');
+      }
+    }
+
+    let selectedCandidateLabel: 'primary' | 'quality_gate' = 'primary';
+    let qualityGateRerendered = false;
+    let qualityGatePrimaryScore: number | null = null;
+    let qualityGateFallbackScore: number | null = null;
+    const estimatedDurationSeconds = activeTracks.reduce((maxValue: number, track: AudioMixTrackEntry) => {
+      const trackDuration =
+        track.timeline.effectiveDurationSeconds ??
+        (track.sourceDurationSeconds !== null
+          ? Math.max(0, track.sourceDurationSeconds - track.timeline.effectiveInPointSeconds)
+          : 0);
+      return Math.max(maxValue, track.timeline.effectiveStartSeconds + Math.max(0, trackDuration));
+    }, 0);
+
+    const preMixPath = path.join(tempDir, `premix-${Date.now()}.wav`);
+    const preMixArgs: string[] = ['-y'];
+    activeTracks.forEach((track: AudioMixTrackEntry) => {
+      if (!track.stagedPath) {
+        throw new Error(`Missing staged path for ${track.id}`);
+      }
+      preMixArgs.push('-i', track.stagedPath);
+    });
+    preMixArgs.push('-filter_complex', selectedGraph.filterComplex);
+    preMixArgs.push('-map', selectedGraph.mapLabel);
+    preMixArgs.push('-c:a', 'pcm_s24le', '-ar', '48000', '-ac', '2');
+    if (estimatedDurationSeconds > 0) {
+      preMixArgs.push('-t', formatAudioMixNumber(estimatedDurationSeconds + 0.05));
+    }
+    preMixArgs.push(preMixPath);
+
+    const ffmpegResult = await runBinaryCommand(FFMPEG_BINARY, preMixArgs, 240_000);
+
+    let ffmpegApplied = false;
+    let twoPassLoudnorm = false;
+    const warnings: string[] = [...demucsRuntimeWarnings];
+    let masteringPrefixFilter = buildAudioMixMasteringPrefixFilter(selectedMasteringStage);
+    const arnndnAvailable = AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE !== null;
+    const arnndnSource = AUDIO_MIX_ARNNDN_MODEL_SOURCE;
+    const arnndnR2Object = AUDIO_MIX_ARNNDN_MODEL_R2_OBJECT;
+    let arnndnApplied = arnndnAvailable && selectedNoiseReductionStage.enabled;
+    if (selectedNoiseReductionStage.enabled && !arnndnAvailable) {
+      warnings.push('arnndn model unavailable; using afftdn-only denoise fallback.');
+    }
+    let stored: { id: string; url: string };
+    let measuredInputLufs: number | null = null;
+    let measuredInputTp: number | null = null;
+    let measuredInputLra: number | null = null;
+    let measuredOutputLufs: number | null = null;
+    let measuredOutputTp: number | null = null;
+    let measuredOutputLra: number | null = null;
+    let measuredDialogueLufsEstimate: number | null = null;
+    let measuredOutputSignalRmsThroughDb: number | null = null;
+    let measuredOutputSignalNoiseFloorDb: number | null = null;
+    let measuredOutputSignalSpeechBandRmsDb: number | null = null;
+    let measuredOutputSignalSpeechPresenceDb: number | null = null;
+    let measuredSuppressionDb: number | null = null;
+    let measuredNoiseImprovementDb: number | null = null;
+    let measuredSpeechBandRetentionDb: number | null = null;
+    let measuredSpeechPresenceDeltaDb: number | null = null;
+    let qualityGateHardFail = false;
+    let qualityGateReasons: string[] = [];
+    let finalLufs = mixPlan.quality.integratedLufs;
+
+    if (ffmpegResult.code === 0 && existsSync(preMixPath)) {
+      const loudnormProbeArgs = [
+        '-hide_banner',
+        '-i',
+        preMixPath,
+        '-af',
+        `${masteringPrefixFilter},loudnorm=I=${formatAudioMixNumber(
+          mixPlan.quality.integratedLufs
+        )}:LRA=${formatAudioMixNumber(
+          mixPlan.quality.loudnessRange
+        )}:TP=${formatAudioMixNumber(mixPlan.quality.truePeakDbtp)}:print_format=json`,
+        '-f',
+        'null',
+        '-',
+      ];
+      const loudnormProbeResult = await runBinaryCommand(
+        FFMPEG_BINARY,
+        loudnormProbeArgs,
+        120_000
+      );
+      const probeStats = parseAudioMixLoudnormStats(
+        `${loudnormProbeResult.stdout}\n${loudnormProbeResult.stderr}`
+      );
+      if (!probeStats) {
+        warnings.push('Unable to parse loudnorm first-pass stats; falling back to single-pass normalization.');
+      } else {
+        measuredInputLufs = probeStats.inputI;
+        measuredInputTp = probeStats.inputTp;
+        measuredInputLra = probeStats.inputLra;
+      }
+
+      const outputPath = path.join(tempDir, `mixed-${Date.now()}.m4a`);
+      let renderArgs: string[] = [];
+      if (probeStats) {
+        renderArgs = [
+          '-y',
+          '-i',
+          preMixPath,
+          '-af',
+          `${masteringPrefixFilter},loudnorm=I=${formatAudioMixNumber(
+            mixPlan.quality.integratedLufs
+          )}:LRA=${formatAudioMixNumber(
+            mixPlan.quality.loudnessRange
+          )}:TP=${formatAudioMixNumber(
+            mixPlan.quality.truePeakDbtp
+          )}:measured_I=${formatAudioMixNumber(
+            probeStats.inputI
+          )}:measured_TP=${formatAudioMixNumber(
+            probeStats.inputTp
+          )}:measured_LRA=${formatAudioMixNumber(
+            probeStats.inputLra
+          )}:measured_thresh=${formatAudioMixNumber(
+            probeStats.inputThresh
+          )}:offset=${formatAudioMixNumber(
+            probeStats.targetOffset
+          )}:linear=true:print_format=summary`,
+          '-c:a',
+          'aac',
+          '-b:a',
+          '256k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+          outputPath,
+        ];
+      } else {
+        renderArgs = [
+          '-y',
+          '-i',
+          preMixPath,
+          '-af',
+          `${masteringPrefixFilter},loudnorm=I=${formatAudioMixNumber(
+            mixPlan.quality.integratedLufs
+          )}:LRA=${formatAudioMixNumber(
+            mixPlan.quality.loudnessRange
+          )}:TP=${formatAudioMixNumber(mixPlan.quality.truePeakDbtp)}`,
+          '-c:a',
+          'aac',
+          '-b:a',
+          '256k',
+          '-ar',
+          '48000',
+          '-ac',
+          '2',
+          outputPath,
+        ];
+      }
+
+      const renderResult = await runBinaryCommand(FFMPEG_BINARY, renderArgs, 240_000);
+      if (renderResult.code === 0 && existsSync(outputPath)) {
+        const mixedBuffer = await fs.readFile(outputPath);
+        stored = await storeAudioFile(mixedBuffer, 'mixed-output.m4a', 'audio/mp4');
+        ffmpegApplied = true;
+        twoPassLoudnorm = Boolean(probeStats);
+
+        const verificationArgs = [
+          '-hide_banner',
+          '-i',
+          outputPath,
+          '-af',
+          `loudnorm=I=${formatAudioMixNumber(mixPlan.quality.integratedLufs)}:LRA=${formatAudioMixNumber(
+            mixPlan.quality.loudnessRange
+          )}:TP=${formatAudioMixNumber(mixPlan.quality.truePeakDbtp)}:print_format=json`,
+          '-f',
+          'null',
+          '-',
+        ];
+        const verificationResult = await runBinaryCommand(
+          FFMPEG_BINARY,
+          verificationArgs,
+          120_000
+        );
+        const verificationStats = parseAudioMixLoudnormStats(
+          `${verificationResult.stdout}\n${verificationResult.stderr}`
+        );
+        if (verificationStats && verificationStats.inputI !== null) {
+          finalLufs = verificationStats.inputI;
+          measuredOutputLufs = verificationStats.inputI;
+          measuredOutputTp = verificationStats.inputTp;
+          measuredOutputLra = verificationStats.inputLra;
+        }
+
+        if (mixPlan.quality.deliveryProfile === 'netflix') {
+          const dialogueRefGraph = buildAudioMixDialogueReferenceFilter(
+            activeTracks,
+            selectedNoiseReductionStage
+          );
+          if (!dialogueRefGraph) {
+            warnings.push('Netflix profile: no dialogue tracks available for dialogue loudness estimate.');
+          } else {
+            try {
+              const dialogueRefPath = path.join(tempDir, `dialogue-reference-${Date.now()}.wav`);
+              const dialogueRenderArgs: string[] = ['-y'];
+              activeTracks.forEach((track: AudioMixTrackEntry) => {
+                if (track.stagedPath) {
+                  dialogueRenderArgs.push('-i', track.stagedPath);
+                }
+              });
+              dialogueRenderArgs.push('-filter_complex', dialogueRefGraph.filterComplex);
+              dialogueRenderArgs.push('-map', dialogueRefGraph.mapLabel);
+              dialogueRenderArgs.push('-c:a', 'pcm_s24le', '-ar', '48000', '-ac', '2');
+              dialogueRenderArgs.push(dialogueRefPath);
+              const dialogueRenderResult = await runBinaryCommand(
+                FFMPEG_BINARY,
+                dialogueRenderArgs,
+                120_000
+              );
+              if (dialogueRenderResult.code === 0 && existsSync(dialogueRefPath)) {
+                const dialogueProbeArgs = [
+                  '-hide_banner',
+                  '-i',
+                  dialogueRefPath,
+                  '-af',
+                  'loudnorm=I=-27:LRA=7:TP=-2:print_format=json',
+                  '-f',
+                  'null',
+                  '-',
+                ];
+                const dialogueProbeResult = await runBinaryCommand(
+                  FFMPEG_BINARY,
+                  dialogueProbeArgs,
+                  120_000
+                );
+                const dialogueStats = parseAudioMixLoudnormStats(
+                  `${dialogueProbeResult.stdout}\n${dialogueProbeResult.stderr}`
+                );
+                measuredDialogueLufsEstimate = dialogueStats?.inputI ?? null;
+                if (measuredDialogueLufsEstimate === null) {
+                  warnings.push('Netflix profile: failed to parse dialogue loudness estimate.');
+                }
+              } else {
+                warnings.push('Netflix profile: failed to build dialogue reference stem.');
+              }
+            } catch (dialogueError) {
+              const dialogueErrorMessage =
+                dialogueError instanceof Error && dialogueError.message.trim().length > 0
+                  ? dialogueError.message
+                  : 'unknown error';
+              warnings.push(
+                `Netflix profile: dialogue estimate failed (${dialogueErrorMessage}).`
+              );
+            }
+          }
+        }
+
+        try {
+          const outputSignal = await probeAudioMixTrackSignal(outputPath, 0, null);
+          measuredOutputSignalRmsThroughDb = outputSignal.rmsThroughDb;
+          measuredOutputSignalNoiseFloorDb = outputSignal.noiseFloorDb;
+          measuredOutputSignalSpeechBandRmsDb = outputSignal.speechBandRmsDb;
+          measuredOutputSignalSpeechPresenceDb = outputSignal.speechPresenceDb;
+        } catch {
+          measuredOutputSignalRmsThroughDb = null;
+          measuredOutputSignalNoiseFloorDb = null;
+          measuredOutputSignalSpeechBandRmsDb = null;
+          measuredOutputSignalSpeechPresenceDb = null;
+        }
+
+        const primaryCandidate = evaluateAudioMixCandidateQuality(
+          inputRmsThroughDb,
+          inputNoiseFloorDb,
+          inputSpeechBandRmsDb,
+          inputSpeechPresenceDb,
+          measuredOutputSignalRmsThroughDb,
+          measuredOutputSignalNoiseFloorDb,
+          measuredOutputSignalSpeechBandRmsDb,
+          measuredOutputSignalSpeechPresenceDb,
+          warnings.length
+        );
+        qualityGatePrimaryScore = primaryCandidate.score;
+        measuredSuppressionDb = primaryCandidate.suppressionDb;
+        measuredNoiseImprovementDb = primaryCandidate.noiseImprovementDb;
+        measuredSpeechBandRetentionDb = primaryCandidate.speechBandRetentionDb;
+        measuredSpeechPresenceDeltaDb = primaryCandidate.speechPresenceDeltaDb;
+        qualityGateHardFail = primaryCandidate.hardFail;
+        qualityGateReasons = [...primaryCandidate.hardFailReasons];
+
+        const shouldRunFallbackCandidate =
+          selectedNoiseReductionStage.enabled &&
+          (qualityGateHardFail ||
+            (autoAbTestEnabled &&
+              activeTracks.length === 1 &&
+              activeTracks[0]?.type === 'dialogue'));
+
+        if (shouldRunFallbackCandidate) {
+          qualityGateRerendered = true;
+          if (qualityGateHardFail) {
+            warnings.push(
+              `[quality-gate] primary candidate flagged (${primaryCandidate.hardFailReasons.join('; ')}). Running safe fallback candidate.`
+            );
+          } else {
+            warnings.push('[auto-ab] running safe fallback candidate for score comparison.');
+          }
+
+          const fallbackNoiseReductionStage: AudioMixNoiseReductionStage = {
+            ...selectedNoiseReductionStage,
+            enabled: true,
+            profile: 'light',
+            reductionDb: 2.2,
+            noiseFloorDb: -50,
+            safetyMode: 'safe_light',
+            safetyReason: `quality gate fallback (${primaryCandidate.hardFailReasons.join('; ')})`,
+            rationale: `${selectedNoiseReductionStage.rationale} Quality gate fallback rerender with conservative denoise.`,
+          };
+          const fallbackMasteringStage: AudioMixMasteringStage = {
+            ...selectedMasteringStage,
+            compressorThresholdDb: Math.max(selectedMasteringStage.compressorThresholdDb, -13),
+            compressorRatio: Math.min(selectedMasteringStage.compressorRatio, 1.15),
+            compressorAttackMs: Math.max(selectedMasteringStage.compressorAttackMs, 30),
+            compressorReleaseMs: Math.max(selectedMasteringStage.compressorReleaseMs, 360),
+            limiterCeilingDbfs: Math.max(selectedMasteringStage.limiterCeilingDbfs, 0.97),
+          };
+          const fallbackGraph = buildAudioMixFilterGraph(
+            activeTracks,
+            mixPlan.ducking,
+            fallbackNoiseReductionStage
+          );
+          const fallbackPreMixPath = path.join(tempDir, `premix-fallback-${Date.now()}.wav`);
+          const fallbackPreMixArgs: string[] = ['-y'];
+          activeTracks.forEach((track: AudioMixTrackEntry) => {
+            if (track.stagedPath) {
+              fallbackPreMixArgs.push('-i', track.stagedPath);
+            }
+          });
+          fallbackPreMixArgs.push('-filter_complex', fallbackGraph.filterComplex);
+          fallbackPreMixArgs.push('-map', fallbackGraph.mapLabel);
+          fallbackPreMixArgs.push('-c:a', 'pcm_s24le', '-ar', '48000', '-ac', '2');
+          if (estimatedDurationSeconds > 0) {
+            fallbackPreMixArgs.push('-t', formatAudioMixNumber(estimatedDurationSeconds + 0.05));
+          }
+          fallbackPreMixArgs.push(fallbackPreMixPath);
+
+          const fallbackPreMixResult = await runBinaryCommand(
+            FFMPEG_BINARY,
+            fallbackPreMixArgs,
+            240_000
+          );
+
+          if (fallbackPreMixResult.code === 0 && existsSync(fallbackPreMixPath)) {
+            const fallbackOutputPath = path.join(tempDir, `mixed-fallback-${Date.now()}.m4a`);
+            const fallbackMasteringPrefixFilter = buildAudioMixMasteringPrefixFilter(
+              fallbackMasteringStage
+            );
+            const fallbackRenderArgs = [
+              '-y',
+              '-i',
+              fallbackPreMixPath,
+              '-af',
+              `${fallbackMasteringPrefixFilter},loudnorm=I=${formatAudioMixNumber(
+                mixPlan.quality.integratedLufs
+              )}:LRA=${formatAudioMixNumber(
+                mixPlan.quality.loudnessRange
+              )}:TP=${formatAudioMixNumber(mixPlan.quality.truePeakDbtp)}`,
+              '-c:a',
+              'aac',
+              '-b:a',
+              '256k',
+              '-ar',
+              '48000',
+              '-ac',
+              '2',
+              fallbackOutputPath,
+            ];
+
+            const fallbackRenderResult = await runBinaryCommand(
+              FFMPEG_BINARY,
+              fallbackRenderArgs,
+              240_000
+            );
+            if (fallbackRenderResult.code === 0 && existsSync(fallbackOutputPath)) {
+              const fallbackSignal = await probeAudioMixTrackSignal(
+                fallbackOutputPath,
+                0,
+                null
+              ).catch(() => ({
+                rmsThroughDb: null,
+                noiseFloorDb: null,
+                speechBandRmsDb: null,
+                speechPresenceDb: null,
+              }));
+              const fallbackCandidate = evaluateAudioMixCandidateQuality(
+                inputRmsThroughDb,
+                inputNoiseFloorDb,
+                inputSpeechBandRmsDb,
+                inputSpeechPresenceDb,
+                fallbackSignal.rmsThroughDb,
+                fallbackSignal.noiseFloorDb,
+                fallbackSignal.speechBandRmsDb,
+                fallbackSignal.speechPresenceDb,
+                warnings.length
+              );
+              qualityGateFallbackScore = fallbackCandidate.score;
+
+              if (fallbackCandidate.score >= primaryCandidate.score || primaryCandidate.hardFail) {
+                const fallbackBuffer = await fs.readFile(fallbackOutputPath);
+                stored = await storeAudioFile(fallbackBuffer, 'mixed-output-quality-gate.m4a', 'audio/mp4');
+                selectedNoiseReductionStage = fallbackNoiseReductionStage;
+                selectedMasteringStage = fallbackMasteringStage;
+                selectedGraph = fallbackGraph;
+                selectedCandidateLabel = 'quality_gate';
+                arnndnApplied = arnndnAvailable && selectedNoiseReductionStage.enabled;
+                measuredOutputSignalRmsThroughDb = fallbackSignal.rmsThroughDb;
+                measuredOutputSignalNoiseFloorDb = fallbackSignal.noiseFloorDb;
+                measuredOutputSignalSpeechBandRmsDb = fallbackSignal.speechBandRmsDb;
+                measuredOutputSignalSpeechPresenceDb = fallbackSignal.speechPresenceDb;
+                measuredSuppressionDb = fallbackCandidate.suppressionDb;
+                measuredNoiseImprovementDb = fallbackCandidate.noiseImprovementDb;
+                measuredSpeechBandRetentionDb = fallbackCandidate.speechBandRetentionDb;
+                measuredSpeechPresenceDeltaDb = fallbackCandidate.speechPresenceDeltaDb;
+                qualityGateHardFail = false;
+                qualityGateReasons = [];
+
+                const fallbackVerificationArgs = [
+                  '-hide_banner',
+                  '-i',
+                  fallbackOutputPath,
+                  '-af',
+                  `loudnorm=I=${formatAudioMixNumber(
+                    mixPlan.quality.integratedLufs
+                  )}:LRA=${formatAudioMixNumber(
+                    mixPlan.quality.loudnessRange
+                  )}:TP=${formatAudioMixNumber(mixPlan.quality.truePeakDbtp)}:print_format=json`,
+                  '-f',
+                  'null',
+                  '-',
+                ];
+                const fallbackVerificationResult = await runBinaryCommand(
+                  FFMPEG_BINARY,
+                  fallbackVerificationArgs,
+                  120_000
+                );
+                const fallbackVerificationStats = parseAudioMixLoudnormStats(
+                  `${fallbackVerificationResult.stdout}\n${fallbackVerificationResult.stderr}`
+                );
+                if (fallbackVerificationStats && fallbackVerificationStats.inputI !== null) {
+                  finalLufs = fallbackVerificationStats.inputI;
+                  measuredOutputLufs = fallbackVerificationStats.inputI;
+                  measuredOutputTp = fallbackVerificationStats.inputTp;
+                  measuredOutputLra = fallbackVerificationStats.inputLra;
+                }
+                warnings.push(
+                  `[quality-gate] selected fallback candidate (score ${formatAudioMixNumber(
+                    fallbackCandidate.score
+                  )} vs primary ${formatAudioMixNumber(primaryCandidate.score)}).`
+                );
+              } else {
+                warnings.push(
+                  `[quality-gate] kept primary candidate (score ${formatAudioMixNumber(
+                    primaryCandidate.score
+                  )} vs fallback ${formatAudioMixNumber(fallbackCandidate.score)}).`
+                );
+              }
+            } else {
+              warnings.push('[quality-gate] fallback render failed; primary candidate kept.');
+            }
+          } else {
+            warnings.push('[quality-gate] fallback premix failed; primary candidate kept.');
+          }
+        }
+      } else {
+        warnings.push('ffmpeg loudnorm render failed; returned first active track as fallback.');
+        if (renderResult.stderr.trim().length > 0) {
+          warnings.push(summarizeAudioMixStderr(renderResult.stderr, 400));
+        }
+        const fallbackTrack = activeTracks[0];
+        const { buffer, mime } = await getAudioBufferFromUrl(fallbackTrack.sourceFile);
+        stored = await storeAudioFile(buffer, 'mixed-output-fallback', mime);
+      }
+    } else {
+      warnings.push('ffmpeg mix failed; returned first active track as fallback.');
+      if (ffmpegResult.stderr.trim().length > 0) {
+        warnings.push(summarizeAudioMixStderr(ffmpegResult.stderr, 400));
+      }
+      const fallbackTrack = activeTracks[0];
+      const { buffer, mime } = await getAudioBufferFromUrl(fallbackTrack.sourceFile);
+      stored = await storeAudioFile(buffer, 'mixed-output-fallback', mime);
+    }
+
+    const compliance = evaluateAudioMixCompliance(
+      mixPlan.quality,
+      measuredOutputLufs,
+      measuredOutputTp,
+      measuredOutputLra,
+      measuredDialogueLufsEstimate
+    );
+    const qualityGatePassed = compliance.passed !== false;
+    if (!qualityGatePassed) {
+      warnings.push('Compliance checks are outside target tolerance.');
+    }
+    const profileCalibration = getAudioMixCalibrationProfile(mixPlan.quality.deliveryProfile);
+
+    const responsePayload = {
       mixedUrl: stored.url,
       metrics: {
-        trackCount: tracks.length,
-        duckingApplied: Boolean(req.body?.duckingSettings?.enabled)
-      }
-    });
+        trackCount: normalizedTracks.length,
+        tracks_processed: activeTracks.length,
+        duration_seconds: Number(estimatedDurationSeconds.toFixed(2)),
+        final_lufs: Number(finalLufs.toFixed(1)),
+        duckingApplied: ffmpegApplied ? selectedGraph.duckingApplied : false,
+        autoEditDuckingTracks: selectedGraph.autoEditDuckingTracks,
+        jlCutsApplied: selectedGraph.jlCutsApplied,
+        fadesApplied: selectedGraph.fadesApplied,
+        qualityProfile: mixPlan.quality.deliveryProfile,
+        target_lufs: mixPlan.quality.integratedLufs,
+        target_true_peak_dbtp: mixPlan.quality.truePeakDbtp,
+        target_lra: mixPlan.quality.loudnessRange,
+        measured_input_lufs: measuredInputLufs,
+        measured_input_true_peak_dbtp: measuredInputTp,
+        measured_input_lra: measuredInputLra,
+        measured_output_lufs: measuredOutputLufs,
+        measured_output_true_peak_dbtp: measuredOutputTp,
+        measured_output_lra: measuredOutputLra,
+        measured_dialogue_lufs_estimate: measuredDialogueLufsEstimate,
+        measured_input_signal_rms_through_db: inputRmsThroughDb,
+        measured_input_signal_noise_floor_db: inputNoiseFloorDb,
+        measured_input_speech_band_rms_db: inputSpeechBandRmsDb,
+        measured_input_speech_presence_db: inputSpeechPresenceDb,
+        measured_output_signal_rms_through_db: measuredOutputSignalRmsThroughDb,
+        measured_output_signal_noise_floor_db: measuredOutputSignalNoiseFloorDb,
+        measured_output_signal_speech_band_rms_db: measuredOutputSignalSpeechBandRmsDb,
+        measured_output_signal_speech_presence_db: measuredOutputSignalSpeechPresenceDb,
+        measured_suppression_db: measuredSuppressionDb,
+        measured_noise_improvement_db: measuredNoiseImprovementDb,
+        measured_speech_band_retention_db: measuredSpeechBandRetentionDb,
+        measured_speech_presence_delta_db: measuredSpeechPresenceDeltaDb,
+        twoPassLoudnorm,
+        compliance,
+        qualityGatePassed,
+        strictCompliance,
+        masteringApplied: ffmpegApplied,
+        noiseReductionApplied: selectedNoiseReductionStage.enabled || demucsApplied,
+        arnndnAvailable,
+        arnndnApplied,
+        arnndnSource,
+        arnndnModelPath: AUDIO_MIX_ARNNDN_MODEL_PATH_EFFECTIVE,
+        arnndnModelR2Key: arnndnR2Object?.key ?? null,
+        arnndnModelR2Bucket: arnndnR2Object?.bucket ?? null,
+        demucsRequested,
+        demucsApplied,
+        demucsUsedModel,
+        demucsAppliedTracks,
+        demucsModel,
+        demucsDevice,
+        demucsMetaSample: demucsMetaSamples[0] ?? null,
+        noiseReductionEngine: selectedNoiseReductionStage.engine || 'ffmpeg',
+        qualityGateRerendered,
+        qualityGateHardFail,
+        qualityGateReasons,
+        qualityGatePrimaryScore,
+        qualityGateFallbackScore,
+        selectedCandidateLabel,
+        autoAbTestEnabled,
+        noiseReductionStage: {
+          engine: selectedNoiseReductionStage.engine || 'ffmpeg',
+          profile: selectedNoiseReductionStage.profile,
+          reduction_db: selectedNoiseReductionStage.reductionDb,
+          noise_floor_db: selectedNoiseReductionStage.noiseFloorDb,
+          apply_to: selectedNoiseReductionStage.applyTo,
+          safety_mode: selectedNoiseReductionStage.safetyMode,
+          safety_reason: selectedNoiseReductionStage.safetyReason,
+          rationale: selectedNoiseReductionStage.rationale,
+        },
+        masteringStage: {
+          highpass_hz: selectedMasteringStage.highpassHz,
+          lowpass_hz: selectedMasteringStage.lowpassHz,
+          compressor_threshold_db: selectedMasteringStage.compressorThresholdDb,
+          compressor_ratio: selectedMasteringStage.compressorRatio,
+          compressor_attack_ms: selectedMasteringStage.compressorAttackMs,
+          compressor_release_ms: selectedMasteringStage.compressorReleaseMs,
+          limiter_ceiling_dbfs: selectedMasteringStage.limiterCeilingDbfs,
+        },
+        processingStages: ['mix', 'noise_reduction', 'master_bus', 'loudness_master'],
+        loudnessRationale: mixPlan.quality.rationale,
+        calibrationApplied: Boolean(profileCalibration),
+        calibrationVersion: audioMixCalibrationConfig?.version ?? null,
+        calibrationGeneratedAt: audioMixCalibrationConfig?.generatedAt ?? null,
+        calibrationSource: audioMixCalibrationConfig?.source ?? null,
+        ffmpegApplied,
+        warnings,
+      },
+    };
+
+    if (strictCompliance && compliance.passed === false) {
+      return res.status(422).json({
+        error: 'Audio compliance gate failed',
+        ...responsePayload,
+      });
+    }
+
+    res.json(responsePayload);
   } catch (error) {
     console.error('Audio mix error:', error);
     res.status(500).json({ error: 'Failed to mix audio' });
+  } finally {
+    if (tempDir) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 });
 

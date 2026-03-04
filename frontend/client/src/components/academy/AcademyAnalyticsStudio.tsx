@@ -25,8 +25,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Enrollment } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyAnalyticsStudioProps {
   courseId?: string;
@@ -231,7 +232,8 @@ const pathFromSeries = (values: number[], width: number, height: number, pad = 1
 function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse } = useAcademy();
-  const { analytics } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('analytics');
   const [selectedCourseId, setSelectedCourseId] = useState(courseId || 'all');
@@ -429,12 +431,12 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
   }, [activeCourse?.id, activeStudents, analytics, engagementRate, enrolledCount, range, revenueTotal, selectedCourseId]);
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   const handleExport = useCallback(() => {
@@ -482,21 +484,20 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -640,7 +641,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                 }}
               >
-                <MenuItem value="all">All Courses</MenuItem>
+                <MenuItem value="all">{tt('Alle kurs', 'All Courses')}</MenuItem>
                 {courses.map((course) => (
                   <MenuItem key={course.id} value={course.id}>
                     {course.title}
@@ -659,9 +660,9 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                 }}
               >
-                <MenuItem value="7d">Last 7 days</MenuItem>
-                <MenuItem value="30d">Last 30 days</MenuItem>
-                <MenuItem value="90d">Last 90 days</MenuItem>
+                <MenuItem value="7d">{tt('Siste 7 dager', 'Last 7 days')}</MenuItem>
+                <MenuItem value="30d">{tt('Siste 30 dager', 'Last 30 days')}</MenuItem>
+                <MenuItem value="90d">{tt('Siste 90 dager', 'Last 90 days')}</MenuItem>
               </Select>
             </Stack>
 
@@ -824,7 +825,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">All Courses</MenuItem>
+                      <MenuItem value="all">{tt('Alle kurs', 'All Courses')}</MenuItem>
                       {courses.map((course) => (
                         <MenuItem key={`rev-${course.id}`} value={course.id}>{course.title}</MenuItem>
                       ))}
@@ -839,9 +840,9 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="7d">Last 7 days</MenuItem>
-                      <MenuItem value="30d">Last 30 days</MenuItem>
-                      <MenuItem value="90d">Last 90 days</MenuItem>
+                      <MenuItem value="7d">{tt('Siste 7 dager', 'Last 7 days')}</MenuItem>
+                      <MenuItem value="30d">{tt('Siste 30 dager', 'Last 30 days')}</MenuItem>
+                      <MenuItem value="90d">{tt('Siste 90 dager', 'Last 90 days')}</MenuItem>
                     </Select>
                   </Stack>
                 </Stack>
@@ -907,7 +908,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   </Stack>
                 </Stack>
 
-                <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
                   <Box>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
                       <Typography sx={{ fontSize: 28, lineHeight: 1, fontWeight: 600 }}>Top Courses</Typography>

@@ -6,29 +6,7 @@ import type {
   TimelineTransition,
   TrackState,
 } from '../../ProfessionalTimeline';
-
-interface StoryArcClipMeta {
-  camera?: string;
-  shotName?: string;
-  scene?: string;
-  take?: string;
-  tags?: string[];
-  faceDetection?: {
-    hasFace: boolean;
-    faceCount: number;
-    confidence: number;
-    analyzedAt: number;
-    bestTimestamp?: number;
-    scanMetadata?: {
-      totalFramesAnalyzed: number;
-      framesWithFaces: number;
-      faceDetectionRate: number;
-      timestamps: Array<{ timestamp: number; hasFace: boolean }>;
-    };
-    [key: string]: unknown;
-  };
-  [key: string]: unknown;
-}
+import type { StoryArcClipMeta } from '../types';
 
 interface UseStoryArcTimelineHandlersParams {
   clips: BeatClip[];

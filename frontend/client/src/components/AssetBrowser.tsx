@@ -81,6 +81,13 @@ import { apiRequest } from '@/lib/queryClient';
 interface AssetBrowserProps {
   onTemplateSelect?: (templateId: string) => void;
   onSnippetDrag?: (snippetId: string) => void;
+  onSnippetInsert?: (snippet: {
+    id: string;
+    name: string;
+    type: 'transition' | 'opening' | 'closing' | 'montage' | 'dialogue' | 'action';
+    duration: number;
+    tags: string[];
+  }) => void;
   onMediaSelect?: (mediaFile: MediaFile) => void;
   height?: number | string;
   // Integration props for unified workflow connectivity
@@ -158,7 +165,85 @@ interface MediaFile {
   mimeType?: string
 }
 
-const STORY_ARC_TEMPLATES: Template[] = [];
+const STORY_ARC_TEMPLATES: Template[] = [
+  {
+    id: 'wedding_classic_8min',
+    name: 'Classic Wedding 8-Min Arc',
+    type: 'wedding',
+    duration: '8',
+    description: 'Balanced wedding narrative with prep, ceremony, reception, and finale.',
+    segments: 4,
+    emotionalCurve: 'rising',
+    tags: ['wedding', 'classic', 'ceremony', 'reception'],
+    isFavorite: true,
+  },
+  {
+    id: 'wedding_cinematic_5min',
+    name: 'Cinematic Wedding 5-Min',
+    type: 'wedding',
+    duration: '5',
+    description: 'Short cinematic cut with stronger emotional peaks and dynamic pacing.',
+    segments: 3,
+    emotionalCurve: 'mountain',
+    tags: ['wedding', 'cinematic', 'short-form'],
+    isFavorite: true,
+  },
+  {
+    id: 'corporate_brand_story_3min',
+    name: 'Corporate Brand Story',
+    type: 'corporate',
+    duration: '3',
+    description: 'Brand narrative template with intro, value proof, and CTA close.',
+    segments: 3,
+    emotionalCurve: 'rising',
+    tags: ['corporate', 'brand', 'marketing'],
+    isFavorite: false,
+  },
+  {
+    id: 'documentary_short_12min',
+    name: 'Documentary Short',
+    type: 'documentary',
+    duration: '12',
+    description: 'Documentary flow tuned for interviews, B-roll, and a clear resolution.',
+    segments: 6,
+    emotionalCurve: 'wave',
+    tags: ['documentary', 'interview', 'b-roll'],
+    isFavorite: false,
+  },
+  {
+    id: 'commercial_social_1min',
+    name: 'Social Commercial',
+    type: 'commercial',
+    duration: '1',
+    description: 'Fast social ad structure with punchy opening and product payoff.',
+    segments: 3,
+    emotionalCurve: 'mountain',
+    tags: ['commercial', 'social', 'ad'],
+    isFavorite: false,
+  },
+  {
+    id: 'music_video_performance_3m30',
+    name: 'Music Performance 3m30',
+    type: 'music_video',
+    duration: '3m30',
+    description: 'Performance-led cut with chorus emphasis and beat-driven transitions.',
+    segments: 5,
+    emotionalCurve: 'rising',
+    tags: ['music', 'performance', 'beat-sync'],
+    isFavorite: true,
+  },
+  {
+    id: 'event_recap_4min',
+    name: 'Event Recap 4-Min',
+    type: 'event',
+    duration: '4',
+    description: 'Event highlight recap for speaker moments, crowd energy, and outro.',
+    segments: 4,
+    emotionalCurve: 'wave',
+    tags: ['event', 'recap', 'highlight'],
+    isFavorite: false,
+  },
+];
 /*
   // Wedding Videography Templates - 8-minute Professional Templates
   {
@@ -586,7 +671,62 @@ const STORY_ARC_TEMPLATES: Template[] = [];
 }
 */
 
-const VIDEO_SNIPPETS: Snippet[] = [];
+const VIDEO_SNIPPETS: Snippet[] = [
+  {
+    id: 'transition_smooth_crossfade',
+    name: 'Smooth Crossfade',
+    type: 'transition',
+    duration: 1.2,
+    description: 'Soft crossfade transition for natural cut points.',
+    tags: ['transition', 'crossfade', 'smooth'],
+    isFavorite: true,
+  },
+  {
+    id: 'opening_title_reveal',
+    name: 'Title Reveal Opener',
+    type: 'opening',
+    duration: 4,
+    description: 'Cinematic opener with room for logo/title animation.',
+    tags: ['opening', 'title', 'branding'],
+    isFavorite: true,
+  },
+  {
+    id: 'montage_fast_cuts',
+    name: 'Fast-Cut Montage',
+    type: 'montage',
+    duration: 12,
+    description: 'Rhythmic montage block for high-energy sequences.',
+    tags: ['montage', 'fast', 'energy'],
+    isFavorite: false,
+  },
+  {
+    id: 'dialogue_interview_block',
+    name: 'Interview Dialogue Block',
+    type: 'dialogue',
+    duration: 20,
+    description: 'Stable interview layout segment for talking-head sections.',
+    tags: ['dialogue', 'interview', 'talking-head'],
+    isFavorite: false,
+  },
+  {
+    id: 'action_dynamic_push',
+    name: 'Dynamic Action Push',
+    type: 'action',
+    duration: 6,
+    description: 'Aggressive action beat with tighter pacing.',
+    tags: ['action', 'dynamic', 'impact'],
+    isFavorite: false,
+  },
+  {
+    id: 'closing_end_credits',
+    name: 'Elegant End Credits',
+    type: 'closing',
+    duration: 8,
+    description: 'Closing section for credits and final logo.',
+    tags: ['closing', 'credits', 'outro'],
+    isFavorite: false,
+  },
+];
 /*
     name: 'Smooth Fade Transition',
     type: 'transition',
@@ -642,7 +782,30 @@ const VIDEO_SNIPPETS: Snippet[] = [];
 }
 */
 
-const SAMPLE_ARCS: Arc[] = [];
+const SAMPLE_ARCS: Arc[] = [
+  {
+    id: 'arc_wedding_sample',
+    name: 'Sample Wedding Story',
+    type: 'wedding',
+    totalDuration: 480,
+    segments: 4,
+    confidence: 0.89,
+    createdAt: '2026-02-12T10:30:00Z',
+    tags: ['wedding', 'sample', 'highlight'],
+    isFavorite: true,
+  },
+  {
+    id: 'arc_brand_sample',
+    name: 'Sample Brand Reel',
+    type: 'corporate',
+    totalDuration: 180,
+    segments: 3,
+    confidence: 0.84,
+    createdAt: '2026-01-28T09:15:00Z',
+    tags: ['corporate', 'sample', 'brand'],
+    isFavorite: false,
+  },
+];
 /*
     name: 'Maria & John Wedding',
     type: 'wedding',
@@ -749,6 +912,7 @@ const SAMPLE_MEDIA_FILES: MediaFile[] = [];
 export default function AssetBrowser({ 
   onTemplateSelect, 
   onSnippetDrag, 
+  onSnippetInsert,
   onMediaSelect, 
   height = '100%',
   onMeetingCreate,
@@ -1380,6 +1544,47 @@ export default function AssetBrowser({
     };
   };
 
+  const generateStoryArcFromSampleArc = (arc: Arc): StoryArc => {
+    const total = Math.max(60, Math.round(arc.totalDuration || 0));
+    const segCount = Math.max(1, arc.segments || 1);
+    const segDur = Math.floor(total / segCount);
+    const now = new Date().toISOString();
+    const segments = Array.from({ length: segCount }).map((_, i) => {
+      const start = i * segDur;
+      const end = i === segCount - 1 ? total : (i + 1) * segDur;
+      let segmentType: 'opening' | 'build-up' | 'climax' | 'resolution' | 'closing' = 'build-up';
+      if (i === 0) segmentType = 'opening';
+      else if (i === segCount - 1) segmentType = 'closing';
+      else if (i === Math.floor(segCount / 2)) segmentType = 'climax';
+      else if (i === segCount - 2) segmentType = 'resolution';
+      return {
+        id: `${arc.id}_seg_${i + 1}`,
+        title: `${arc.name} - Del ${i + 1}`,
+        startTime: start,
+        endTime: end,
+        sourceClips: [],
+        segmentType,
+        pacing: 'medium',
+        emotionalArc: { joy: 0.6, sadness: 0.1, excitement: 0.5, calm: 0.5, tension: 0.2, romance: 0.3 },
+        priority: i + 1,
+      };
+    });
+    return {
+      id: arc.id,
+      title: arc.name,
+      type: arc.type as StoryArc['type'],
+      totalDuration: total,
+      segments,
+      musicSuggestions: [],
+      transitionEffects: [],
+      colorGrading: {
+        name: 'Default', temperature: 0, tint: 0, exposure: 0, contrast: 1, highlights: 0, shadows: 0, saturation: 1, vibrance: 1, luts: []
+      },
+      confidence: arc.confidence,
+      createdAt: now,
+    };
+  };
+
   return (
     <Box data-testid="storyarc-asset-browser" sx={{ height, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Header */}
@@ -1441,7 +1646,20 @@ export default function AssetBrowser({
                   sx={{ 
                     cursor: 'pointer', '&:hover': { borderColor: 'primary.main',}
                 }}
-                  onClick={() => console.log('Load arc: ', arc.id)}
+                  onClick={() => {
+                    onTemplateSelect?.(arc.id);
+                    if (onTimelineInit) {
+                      try {
+                        const storyArc = generateStoryArcFromSampleArc(arc);
+                        const { clips, tracks } = StoryArcDataIntegration.convertStoryArcToBeats(storyArc);
+                        onTimelineInit({ storyArc, clips, tracks });
+                        showToast({ title: 'Tidslinje fra Story Arc', description: `Lastet ${clips.length} klipp`, variant: 'success' });
+                      } catch (error: unknown) {
+                        const message = error instanceof Error ? error.message : 'Ukjent feil';
+                        showToast({ title: 'Klarte ikke å laste Story Arc', description: message, variant: 'destructive' });
+                      }
+                    }
+                  }}
                 >
                   <CardContent sx={{ p: 2,...theming.getThemedCardSx() }}>
                     <Stack direction="row" spacing={1} alignItems="flex-start">
@@ -1622,15 +1840,33 @@ export default function AssetBrowser({
                           ))}
                         </Stack>
                       </Box>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleFavorite(snippet.id);
-                      }}
-                      >
-                        {favorites.has(snippet.id) ? <Favorite fontSize="small" color="error" /> : <FavoriteBorder fontSize="small" />}
-                      </IconButton>
+                      <Stack spacing={0.5} alignItems="center">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSnippetInsert?.({
+                              id: snippet.id,
+                              name: snippet.name,
+                              type: snippet.type,
+                              duration: snippet.duration,
+                              tags: snippet.tags,
+                            });
+                          }}
+                        >
+                          Insert
+                        </Button>
+                        <IconButton 
+                          size="small" 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(snippet.id);
+                        }}
+                        >
+                          {favorites.has(snippet.id) ? <Favorite fontSize="small" color="error" /> : <FavoriteBorder fontSize="small" />}
+                        </IconButton>
+                      </Stack>
                     </Stack>
                   </CardContent>
                 </Card>

@@ -102,6 +102,11 @@ export interface TimelineTransition {
   trackId: string;
   type: string;
   duration?: number;
+  clipId?: string;
+  linkedClipId?: string;
+  edge?: 'in' | 'out';
+  layer?: 'video' | 'audio';
+  engine?: 'canvas2d' | 'webgl' | 'audio';
 }
 
 interface ProfessionalTimelineProps {
@@ -198,7 +203,7 @@ declare global {
   }
 }
 
-type DragMode = 'move' | 'resize-left' | 'resize-right';
+type DragMode = 'move' | 'resize-left' | 'resize-right' | 'fade-in' | 'fade-out';
 
 interface DragState {
   clipId: string;
@@ -206,6 +211,8 @@ interface DragState {
   startTime: number;
   originalTrackId: string;
   originalDuration: number;
+  originalFadeInDuration: number;
+  originalFadeOutDuration: number;
   mode: DragMode;
 }
 
@@ -214,7 +221,14 @@ interface DragPreviewState {
   trackId: string;
   start: number;
   duration: number;
+  fadeInDuration?: number;
+  fadeOutDuration?: number;
   mode: DragMode;
+}
+
+interface CopiedFadeProfile {
+  inDuration: number;
+  outDuration: number;
 }
 
 interface TrackLayout {
@@ -271,6 +285,14 @@ interface ExternalStore<T> {
 interface ContextMenuPayload {
   clipId: string;
   color?: string;
+  edge?: 'in' | 'out';
+  transitionType?: string;
+  duration?: number;
+  transitionLayer?: 'video' | 'audio';
+  transitionEngine?: 'canvas2d' | 'webgl' | 'audio';
+  fadeEdge?: 'in' | 'out';
+  fadeLayer?: 'video' | 'audio';
+  fadeDuration?: number;
 }
 
 interface ClipRect {
@@ -284,7 +306,13 @@ const RULER_HEIGHT = 24;
 const SNAP_PX = 6;
 const RESIZE_EDGE_THRESHOLD_PX = 10;
 const RESIZE_HANDLE_WIDTH_PX = 14;
+const FADE_HANDLE_SIZE_PX = 10;
 const MIN_CLIP_DURATION_SECONDS = 0.1;
+const DEFAULT_VIDEO_FADE_DURATION_SECONDS = 0.5;
+const DEFAULT_AUDIO_FADE_DURATION_SECONDS = 0.25;
+const MIN_FADE_DURATION_SECONDS = 0.02;
+const MAX_FADE_DURATION_SECONDS = 8;
+const COARSE_FADE_STEP_FRAMES = 5;
 const TIMELINE_SCROLL_STEP_SECONDS = 1;
 const TIMELINE_FINE_SCROLL_STEP_SECONDS = 0.04;
 const AUTO_SCROLL_EDGE_PX = 40;
@@ -313,6 +341,47 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function clampFadeDuration(value: number): number {
+  return clampNumber(value, MIN_FADE_DURATION_SECONDS, MAX_FADE_DURATION_SECONDS);
+}
+
+function formatFadeDurationLabel(value: number): string {
+  return `${Math.max(0, value).toFixed(2)}s`;
+}
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function getClipFadeDuration(clip: BeatClip, layer: 'video' | 'audio', edge: 'in' | 'out'): number {
+  const metadata = toRecord(clip.metadata);
+  if (!metadata) {
+    return 0;
+  }
+  const fadeKey = `${layer}Fade${edge === 'in' ? 'In' : 'Out'}`;
+  const fadeEntry = toRecord(metadata[fadeKey]);
+  if (fadeEntry && typeof fadeEntry.duration === 'number' && Number.isFinite(fadeEntry.duration) && fadeEntry.duration > 0) {
+    return fadeEntry.duration;
+  }
+
+  const transitions = toRecord(metadata.transitions);
+  const transitionEntry = transitions ? toRecord(transitions[edge]) : null;
+  if (!transitionEntry) {
+    return 0;
+  }
+  const transitionLayer = transitionEntry.layer;
+  if (transitionLayer === 'video' || transitionLayer === 'audio') {
+    if (transitionLayer !== layer) {
+      return 0;
+    }
+  }
+  const duration = transitionEntry.duration;
+  if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
+    return duration;
+  }
+  return 0;
+}
+
 type WorkspaceMode = 'cut' | 'edit' | 'color' | 'fairlight' | 'deliver';
 type TimelineToolMode = 'select' | 'trim' | 'roll' | 'slip' | 'slide' | 'razor';
 type TimeDisplayMode = 'timecode' | 'seconds' | 'frames';
@@ -326,6 +395,8 @@ interface TimelineToolbarPreferences {
   rippleEnabled: boolean;
   timeDisplayMode: TimeDisplayMode;
   timelineFps: number;
+  defaultVideoFadeDuration: number;
+  defaultAudioFadeDuration: number;
 }
 
 function isWorkspaceMode(value: unknown): value is WorkspaceMode {
@@ -378,6 +449,12 @@ function loadTimelineToolbarPreferences(): Partial<TimelineToolbarPreferences> {
     }
     if (typeof parsed.timelineFps === 'number' && Number.isFinite(parsed.timelineFps)) {
       prefs.timelineFps = clampNumber(parsed.timelineFps, 1, 120);
+    }
+    if (typeof parsed.defaultVideoFadeDuration === 'number' && Number.isFinite(parsed.defaultVideoFadeDuration)) {
+      prefs.defaultVideoFadeDuration = clampFadeDuration(parsed.defaultVideoFadeDuration);
+    }
+    if (typeof parsed.defaultAudioFadeDuration === 'number' && Number.isFinite(parsed.defaultAudioFadeDuration)) {
+      prefs.defaultAudioFadeDuration = clampFadeDuration(parsed.defaultAudioFadeDuration);
     }
     return prefs;
   } catch {
@@ -496,6 +573,8 @@ interface TimelineToolbarProps {
   inPoint: number | null;
   outPoint: number | null;
   timelineFps: number;
+  defaultVideoFadeDuration: number;
+  defaultAudioFadeDuration: number;
   workspaceMode: WorkspaceMode;
   toolMode: TimelineToolMode;
   safeTrimEnabled: boolean;
@@ -509,6 +588,8 @@ interface TimelineToolbarProps {
   onWorkspaceModeChange: (nextMode: WorkspaceMode) => void;
   onToolModeChange: (nextMode: TimelineToolMode) => void;
   onTimelineFpsChange: (nextFps: number) => void;
+  onDefaultVideoFadeDurationChange: (nextDuration: number) => void;
+  onDefaultAudioFadeDurationChange: (nextDuration: number) => void;
   onTimeDisplayModeChange: (nextMode: TimeDisplayMode) => void;
   onToggleSafeTrim: () => void;
   onToggleMagnetic: () => void;
@@ -537,6 +618,12 @@ interface TimelineToolbarProps {
   onSelectClipAtPlayhead: () => void;
   onNudgeSelectionLeft: () => void;
   onNudgeSelectionRight: () => void;
+  onApplyFadeInToSelection: () => void;
+  onApplyFadeOutToSelection: () => void;
+  onClearFadesOnSelection: () => void;
+  onCopyFadeFromSelection: () => void;
+  onPasteFadeToSelection: () => void;
+  canPasteFade: boolean;
 }
 
 const TimelineToolbar = React.memo(function TimelineToolbar({
@@ -544,6 +631,8 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
   inPoint,
   outPoint,
   timelineFps,
+  defaultVideoFadeDuration,
+  defaultAudioFadeDuration,
   workspaceMode,
   toolMode,
   safeTrimEnabled,
@@ -557,6 +646,8 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
   onWorkspaceModeChange,
   onToolModeChange,
   onTimelineFpsChange,
+  onDefaultVideoFadeDurationChange,
+  onDefaultAudioFadeDurationChange,
   onTimeDisplayModeChange,
   onToggleSafeTrim,
   onToggleMagnetic,
@@ -585,6 +676,12 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
   onSelectClipAtPlayhead,
   onNudgeSelectionLeft,
   onNudgeSelectionRight,
+  onApplyFadeInToSelection,
+  onApplyFadeOutToSelection,
+  onClearFadesOnSelection,
+  onCopyFadeFromSelection,
+  onPasteFadeToSelection,
+  canPasteFade,
 }: TimelineToolbarProps) {
   const workspaceOptions: Array<{ value: WorkspaceMode; label: string; icon: React.ReactNode }> = [
     { value: 'cut', label: 'Cut', icon: <ContentCutIcon fontSize="small" /> },
@@ -756,6 +853,67 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
+          </span>
+        </Tooltip>
+      </ButtonGroup>
+
+      <ButtonGroup size="small" variant="outlined">
+        <Tooltip title="Apply fade in to selection (Shift + F)">
+          <span>
+            <Button
+              aria-label="Apply fade in to selection"
+              onClick={onApplyFadeInToSelection}
+              disabled={selectedClipCount === 0}
+            >
+              Fade In
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title="Apply fade out to selection (Shift + G)">
+          <span>
+            <Button
+              aria-label="Apply fade out to selection"
+              onClick={onApplyFadeOutToSelection}
+              disabled={selectedClipCount === 0}
+            >
+              Fade Out
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title="Clear both fades on selection (Shift + X)">
+          <span>
+            <Button
+              aria-label="Clear fades on selection"
+              onClick={onClearFadesOnSelection}
+              disabled={selectedClipCount === 0}
+            >
+              Clear Fade
+            </Button>
+          </span>
+        </Tooltip>
+      </ButtonGroup>
+
+      <ButtonGroup size="small" variant="outlined">
+        <Tooltip title="Copy fade profile from active clip (Shift + C)">
+          <span>
+            <Button
+              aria-label="Copy fade profile"
+              onClick={onCopyFadeFromSelection}
+              disabled={selectedClipCount === 0}
+            >
+              Copy Fade
+            </Button>
+          </span>
+        </Tooltip>
+        <Tooltip title="Paste fade profile to selection (Shift + V)">
+          <span>
+            <Button
+              aria-label="Paste fade profile"
+              onClick={onPasteFadeToSelection}
+              disabled={selectedClipCount === 0 || !canPasteFade}
+            >
+              Paste Fade
+            </Button>
           </span>
         </Tooltip>
       </ButtonGroup>
@@ -949,6 +1107,36 @@ const TimelineToolbar = React.memo(function TimelineToolbar({
           </MenuItem>
         ))}
       </TextField>
+
+      <TextField
+        type="number"
+        size="small"
+        label="V Fade"
+        value={defaultVideoFadeDuration.toFixed(2)}
+        inputProps={{ min: MIN_FADE_DURATION_SECONDS, max: MAX_FADE_DURATION_SECONDS, step: 0.05 }}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (Number.isFinite(next)) {
+            onDefaultVideoFadeDurationChange(clampFadeDuration(next));
+          }
+        }}
+        sx={{ width: 92, '& .MuiInputBase-input': { py: 0.5 } }}
+      />
+
+      <TextField
+        type="number"
+        size="small"
+        label="A Fade"
+        value={defaultAudioFadeDuration.toFixed(2)}
+        inputProps={{ min: MIN_FADE_DURATION_SECONDS, max: MAX_FADE_DURATION_SECONDS, step: 0.05 }}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          if (Number.isFinite(next)) {
+            onDefaultAudioFadeDurationChange(clampFadeDuration(next));
+          }
+        }}
+        sx={{ width: 92, '& .MuiInputBase-input': { py: 0.5 } }}
+      />
 
       <Chip size="small" label={`Zoom ${Math.round(zoom * 100)}%`} variant="outlined" />
       <Chip size="small" label={`${selectedClipCount} selected`} color={selectedClipCount > 0 ? 'primary' : 'default'} variant="outlined" />
@@ -2412,6 +2600,7 @@ const TimelineCanvas = React.memo(function TimelineCanvas({
 interface ClipItemProps {
   clip: BeatClip;
   renderTrackId: string;
+  clipTrackIsAudio: boolean;
   renderStart: number;
   renderDuration: number;
   leftPx: number;
@@ -2426,7 +2615,13 @@ interface ClipItemProps {
   clipIsReadOnly: boolean;
   clipInActiveRange: boolean;
   showResizeHandles: boolean;
+  fadePreview?: {
+    fadeInDuration?: number;
+    fadeOutDuration?: number;
+  };
+  defaultFadeDuration: number;
   beginDrag: (e: React.MouseEvent, clipId: string, mode?: DragMode) => void;
+  onToggleFade: (clipId: string, layer: 'video' | 'audio', edge: 'in' | 'out') => void;
   onClipSelect: (clipId: string, multiSelect?: boolean) => void;
   onSetSelectedTrackId: (trackId: string) => void;
   onSetPlayheadTime: (timeSeconds: number) => void;
@@ -2436,6 +2631,7 @@ interface ClipItemProps {
 function areClipItemPropsEqual(previous: ClipItemProps, next: ClipItemProps): boolean {
   return previous.clip === next.clip &&
     previous.renderTrackId === next.renderTrackId &&
+    previous.clipTrackIsAudio === next.clipTrackIsAudio &&
     previous.renderStart === next.renderStart &&
     previous.renderDuration === next.renderDuration &&
     previous.leftPx === next.leftPx &&
@@ -2450,7 +2646,11 @@ function areClipItemPropsEqual(previous: ClipItemProps, next: ClipItemProps): bo
     previous.clipIsReadOnly === next.clipIsReadOnly &&
     previous.clipInActiveRange === next.clipInActiveRange &&
     previous.showResizeHandles === next.showResizeHandles &&
+    previous.fadePreview?.fadeInDuration === next.fadePreview?.fadeInDuration &&
+    previous.fadePreview?.fadeOutDuration === next.fadePreview?.fadeOutDuration &&
+    previous.defaultFadeDuration === next.defaultFadeDuration &&
     previous.beginDrag === next.beginDrag &&
+    previous.onToggleFade === next.onToggleFade &&
     previous.onClipSelect === next.onClipSelect &&
     previous.onSetSelectedTrackId === next.onSetSelectedTrackId &&
     previous.onSetPlayheadTime === next.onSetPlayheadTime &&
@@ -2460,6 +2660,7 @@ function areClipItemPropsEqual(previous: ClipItemProps, next: ClipItemProps): bo
 const ClipItem = React.memo(function ClipItem({
   clip,
   renderTrackId,
+  clipTrackIsAudio,
   renderStart,
   renderDuration,
   leftPx,
@@ -2474,7 +2675,10 @@ const ClipItem = React.memo(function ClipItem({
   clipIsReadOnly,
   clipInActiveRange,
   showResizeHandles,
+  fadePreview,
+  defaultFadeDuration,
   beginDrag,
+  onToggleFade,
   onClipSelect,
   onSetSelectedTrackId,
   onSetPlayheadTime,
@@ -2483,6 +2687,15 @@ const ClipItem = React.memo(function ClipItem({
   const showMetadataChips = selected || widthPx >= CLIP_METADATA_VISIBILITY_MIN_WIDTH_PX;
   const showTagChips = selected || widthPx >= CLIP_TAGS_VISIBILITY_MIN_WIDTH_PX;
   const clipAriaLabel = `${clip.name}. Start ${renderStart.toFixed(2)} seconds. Duration ${renderDuration.toFixed(2)} seconds.`;
+  const clipLayer: 'video' | 'audio' = clipTrackIsAudio ? 'audio' : 'video';
+  const fadeInDuration =
+    typeof fadePreview?.fadeInDuration === 'number' ? fadePreview.fadeInDuration : getClipFadeDuration(clip, clipLayer, 'in');
+  const fadeOutDuration =
+    typeof fadePreview?.fadeOutDuration === 'number' ? fadePreview.fadeOutDuration : getClipFadeDuration(clip, clipLayer, 'out');
+  const fadeInWidthPx = renderDuration > 0 ? Math.min(widthPx / 2, (fadeInDuration / renderDuration) * widthPx) : 0;
+  const fadeOutWidthPx = renderDuration > 0 ? Math.min(widthPx / 2, (fadeOutDuration / renderDuration) * widthPx) : 0;
+  const fadeColor = clipTrackIsAudio ? 'rgba(245, 158, 11, 0.32)' : 'rgba(14, 165, 233, 0.28)';
+  const fadeEdgeColor = clipTrackIsAudio ? 'rgba(245, 158, 11, 0.85)' : 'rgba(14, 165, 233, 0.8)';
   return (
     <Box
       role="button"
@@ -2548,6 +2761,38 @@ const ClipItem = React.memo(function ClipItem({
         },
       }}
     >
+      {fadeInWidthPx > 0.5 && (
+        <Box
+          aria-label={`${clipLayer} fade in`}
+          sx={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: fadeInWidthPx,
+            background: `linear-gradient(90deg, ${fadeColor} 0%, rgba(255,255,255,0.02) 100%)`,
+            borderRight: `1px solid ${fadeEdgeColor}`,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
+      {fadeOutWidthPx > 0.5 && (
+        <Box
+          aria-label={`${clipLayer} fade out`}
+          sx={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: fadeOutWidthPx,
+            background: `linear-gradient(270deg, ${fadeColor} 0%, rgba(255,255,255,0.02) 100%)`,
+            borderLeft: `1px solid ${fadeEdgeColor}`,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
       {showResizeHandles && (
         <Box
           data-testid={`timeline-clip-left-handle-${clip.id}`}
@@ -2563,6 +2808,68 @@ const ClipItem = React.memo(function ClipItem({
             zIndex: 2,
           }}
         />
+      )}
+      {!clipIsReadOnly && (
+        <Tooltip
+          arrow
+          title={`Fade In ${formatFadeDurationLabel(fadeInDuration)} (default ${formatFadeDurationLabel(defaultFadeDuration)}). Drag to adjust, double-click to toggle.`}
+        >
+          <Box
+            data-testid={`timeline-clip-fade-in-handle-${clip.id}`}
+            aria-label={`Fade in handle for ${clip.name}. Current ${formatFadeDurationLabel(fadeInDuration)}`}
+            onMouseDown={(e) => beginDrag(e, clip.id, 'fade-in')}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFade(clip.id, clipLayer, 'in');
+            }}
+            sx={{
+              position: 'absolute',
+              left: 1,
+              bottom: 1,
+              width: FADE_HANDLE_SIZE_PX,
+              height: FADE_HANDLE_SIZE_PX,
+              borderRadius: 0.5,
+              border: '1px solid rgba(255,255,255,0.75)',
+              bgcolor: fadeInDuration > 0 ? fadeEdgeColor : 'rgba(255,255,255,0.38)',
+              cursor: 'ew-resize',
+              zIndex: 3,
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+              opacity: selected || fadeInDuration > 0 ? 1 : 0.7,
+            }}
+          />
+        </Tooltip>
+      )}
+      {!clipIsReadOnly && (
+        <Tooltip
+          arrow
+          title={`Fade Out ${formatFadeDurationLabel(fadeOutDuration)} (default ${formatFadeDurationLabel(defaultFadeDuration)}). Drag to adjust, double-click to toggle.`}
+        >
+          <Box
+            data-testid={`timeline-clip-fade-out-handle-${clip.id}`}
+            aria-label={`Fade out handle for ${clip.name}. Current ${formatFadeDurationLabel(fadeOutDuration)}`}
+            onMouseDown={(e) => beginDrag(e, clip.id, 'fade-out')}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleFade(clip.id, clipLayer, 'out');
+            }}
+            sx={{
+              position: 'absolute',
+              right: 1,
+              bottom: 1,
+              width: FADE_HANDLE_SIZE_PX,
+              height: FADE_HANDLE_SIZE_PX,
+              borderRadius: 0.5,
+              border: '1px solid rgba(255,255,255,0.75)',
+              bgcolor: fadeOutDuration > 0 ? fadeEdgeColor : 'rgba(255,255,255,0.38)',
+              cursor: 'ew-resize',
+              zIndex: 3,
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+              opacity: selected || fadeOutDuration > 0 ? 1 : 0.7,
+            }}
+          />
+        </Tooltip>
       )}
       {showResizeHandles && (
         <Box
@@ -2676,12 +2983,16 @@ interface TimelineClipLayerProps {
   hasInOutRange: boolean;
   activeRangeStart: number | null;
   activeRangeEnd: number | null;
+  defaultVideoFadeDuration: number;
+  defaultAudioFadeDuration: number;
   timeToPixels: (timeSeconds: number) => number;
   beginDrag: (e: React.MouseEvent, clipId: string, mode?: DragMode) => void;
+  onToggleFade: (clipId: string, layer: 'video' | 'audio', edge: 'in' | 'out') => void;
   onClipSelect: (clipId: string, multiSelect?: boolean) => void;
   onSetSelectedTrackId: (trackId: string) => void;
   onSetPlayheadTime: (timeSeconds: number) => void;
   openContextMenu: (e: React.MouseEvent<HTMLElement>, clipId: string) => void;
+  isAudioTrackId: (trackId: string) => boolean;
 }
 
 const TimelineClipLayer = React.memo(function TimelineClipLayer({
@@ -2699,12 +3010,16 @@ const TimelineClipLayer = React.memo(function TimelineClipLayer({
   hasInOutRange,
   activeRangeStart,
   activeRangeEnd,
+  defaultVideoFadeDuration,
+  defaultAudioFadeDuration,
   timeToPixels,
   beginDrag,
+  onToggleFade,
   onClipSelect,
   onSetSelectedTrackId,
   onSetPlayheadTime,
   openContextMenu,
+  isAudioTrackId,
 }: TimelineClipLayerProps) {
   const dragPreview = useExternalStoreSnapshot(dragPreviewStore);
   const visibleClipsInViewport = useMemo(() => {
@@ -2751,11 +3066,23 @@ const TimelineClipLayer = React.memo(function TimelineClipLayer({
         const leftPx = HEADER_WIDTH + timeToPixels(renderStart);
         const widthPx = Math.max(4, timeToPixels(renderDuration));
         const showResizeHandles = !clipIsReadOnly && widthPx >= RESIZE_HANDLE_WIDTH_PX * 1.8;
+        const clipTrackIsAudio = isAudioTrackId(renderTrackId);
+        const defaultFadeDuration = clipTrackIsAudio
+          ? defaultAudioFadeDuration
+          : defaultVideoFadeDuration;
+        const fadePreview =
+          preview && (preview.mode === 'fade-in' || preview.mode === 'fade-out')
+            ? {
+                fadeInDuration: preview.fadeInDuration,
+                fadeOutDuration: preview.fadeOutDuration,
+              }
+            : undefined;
         return (
           <ClipItem
             key={clip.id}
             clip={clip}
             renderTrackId={renderTrackId}
+            clipTrackIsAudio={clipTrackIsAudio}
             renderStart={renderStart}
             renderDuration={renderDuration}
             leftPx={leftPx}
@@ -2770,7 +3097,10 @@ const TimelineClipLayer = React.memo(function TimelineClipLayer({
             clipIsReadOnly={clipIsReadOnly}
             clipInActiveRange={clipInActiveRange}
             showResizeHandles={showResizeHandles}
+            fadePreview={fadePreview}
+            defaultFadeDuration={defaultFadeDuration}
             beginDrag={beginDrag}
+            onToggleFade={onToggleFade}
             onClipSelect={onClipSelect}
             onSetSelectedTrackId={onSetSelectedTrackId}
             onSetPlayheadTime={onSetPlayheadTime}
@@ -2863,6 +3193,20 @@ export default function ProfessionalTimeline({
   const [timelineFps, setTimelineFps] = useState<number>(
     () => initialToolbarPreferencesRef.current.timelineFps ?? 25
   );
+  const [defaultVideoFadeDuration, setDefaultVideoFadeDuration] = useState<number>(() => {
+    const stored = initialToolbarPreferencesRef.current.defaultVideoFadeDuration;
+    return typeof stored === 'number' && Number.isFinite(stored)
+      ? clampFadeDuration(stored)
+      : DEFAULT_VIDEO_FADE_DURATION_SECONDS;
+  });
+  const [defaultAudioFadeDuration, setDefaultAudioFadeDuration] = useState<number>(() => {
+    const stored = initialToolbarPreferencesRef.current.defaultAudioFadeDuration;
+    return typeof stored === 'number' && Number.isFinite(stored)
+      ? clampFadeDuration(stored)
+      : DEFAULT_AUDIO_FADE_DURATION_SECONDS;
+  });
+  const [copiedFadeProfile, setCopiedFadeProfile] = useState<CopiedFadeProfile | null>(null);
+  const [fadeDragHint, setFadeDragHint] = useState<string | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
   const markerCounterRef = useRef(0);
@@ -3016,6 +3360,29 @@ export default function ProfessionalTimeline({
     }
     return map;
   }, [clips]);
+  const trackMapById = useMemo(() => {
+    const map = new Map<string, Track>();
+    for (const track of tracks) {
+      map.set(track.id, track);
+    }
+    return map;
+  }, [tracks]);
+  const isAudioTrack = useCallback((trackId: string): boolean => {
+    const normalizedTrackId = trackId.toLowerCase();
+    if (normalizedTrackId.startsWith('audio') || /^a\d+$/.test(normalizedTrackId)) {
+      return true;
+    }
+    const track = trackMapById.get(trackId);
+    if (!track) {
+      return false;
+    }
+    const state = trackStates[trackId];
+    const effectiveType = state?.type ?? track.type;
+    if (effectiveType === 'audio') {
+      return true;
+    }
+    return track.name.toLowerCase().includes('audio');
+  }, [trackMapById, trackStates]);
   const selectedClipList = useMemo(() => {
     return Array.from(selectedClips)
       .map((clipId) => clipMapById.get(clipId))
@@ -3157,6 +3524,8 @@ export default function ProfessionalTimeline({
       rippleEnabled,
       timeDisplayMode,
       timelineFps,
+      defaultVideoFadeDuration,
+      defaultAudioFadeDuration,
     };
     try {
       window.localStorage.setItem(TIMELINE_TOOLBAR_PREFS_KEY, JSON.stringify(preferences));
@@ -3164,6 +3533,8 @@ export default function ProfessionalTimeline({
       // Ignore persistence errors so editing is never blocked by storage limits.
     }
   }, [
+    defaultAudioFadeDuration,
+    defaultVideoFadeDuration,
     magneticEnabled,
     rippleEnabled,
     safeTrimEnabled,
@@ -3495,6 +3866,130 @@ export default function ProfessionalTimeline({
     onClipSelect(clipId, false);
   }, [onClipSelect]);
 
+  const getDefaultFadeDurationForLayer = useCallback((layer: 'video' | 'audio'): number => {
+    return layer === 'audio' ? defaultAudioFadeDuration : defaultVideoFadeDuration;
+  }, [defaultAudioFadeDuration, defaultVideoFadeDuration]);
+
+  const resolveFadeTargets = useCallback((): BeatClip[] => {
+    if (selectedClipList.length > 0) {
+      return selectedClipList;
+    }
+    const clipAtPlayhead = findClipAtTime(currentTime);
+    return clipAtPlayhead ? [clipAtPlayhead] : [];
+  }, [currentTime, findClipAtTime, selectedClipList]);
+
+  const setClipFade = useCallback((
+    clip: BeatClip,
+    edge: 'in' | 'out',
+    duration: number,
+    explicitLayer?: 'video' | 'audio',
+  ) => {
+    if (!onContextMenuAction) {
+      return;
+    }
+    const fadeLayer: 'video' | 'audio' = explicitLayer ?? (isAudioTrack(clip.trackId) ? 'audio' : 'video');
+    const maxFadeDuration = Math.max(frameStepSeconds, clip.duration - frameStepSeconds);
+    const clampedDuration = clampNumber(duration, frameStepSeconds, maxFadeDuration);
+    onContextMenuAction('set-clip-fade', {
+      clipId: clip.id,
+      fadeLayer,
+      fadeEdge: edge,
+      fadeDuration: clampedDuration,
+    });
+  }, [frameStepSeconds, isAudioTrack, onContextMenuAction]);
+
+  const clearClipFade = useCallback((
+    clip: BeatClip,
+    edge: 'in' | 'out',
+    explicitLayer?: 'video' | 'audio',
+  ) => {
+    if (!onContextMenuAction) {
+      return;
+    }
+    const fadeLayer: 'video' | 'audio' = explicitLayer ?? (isAudioTrack(clip.trackId) ? 'audio' : 'video');
+    onContextMenuAction('clear-clip-fade', {
+      clipId: clip.id,
+      fadeLayer,
+      fadeEdge: edge,
+    });
+  }, [isAudioTrack, onContextMenuAction]);
+
+  const applyFadeToTargets = useCallback((edge: 'in' | 'out') => {
+    const targets = resolveFadeTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    for (const clip of targets) {
+      const fadeLayer: 'video' | 'audio' = isAudioTrack(clip.trackId) ? 'audio' : 'video';
+      setClipFade(clip, edge, getDefaultFadeDurationForLayer(fadeLayer), fadeLayer);
+    }
+  }, [getDefaultFadeDurationForLayer, isAudioTrack, resolveFadeTargets, setClipFade]);
+
+  const clearFadesOnTargets = useCallback(() => {
+    const targets = resolveFadeTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    for (const clip of targets) {
+      const fadeLayer: 'video' | 'audio' = isAudioTrack(clip.trackId) ? 'audio' : 'video';
+      clearClipFade(clip, 'in', fadeLayer);
+      clearClipFade(clip, 'out', fadeLayer);
+    }
+  }, [clearClipFade, isAudioTrack, resolveFadeTargets]);
+
+  const copyFadeFromTargets = useCallback(() => {
+    const targets = resolveFadeTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    const clip = targets[0];
+    const fadeLayer: 'video' | 'audio' = isAudioTrack(clip.trackId) ? 'audio' : 'video';
+    setCopiedFadeProfile({
+      inDuration: getClipFadeDuration(clip, fadeLayer, 'in'),
+      outDuration: getClipFadeDuration(clip, fadeLayer, 'out'),
+    });
+  }, [isAudioTrack, resolveFadeTargets]);
+
+  const pasteFadeToTargets = useCallback(() => {
+    if (!copiedFadeProfile) {
+      return;
+    }
+    const targets = resolveFadeTargets();
+    if (targets.length === 0) {
+      return;
+    }
+    for (const clip of targets) {
+      const fadeLayer: 'video' | 'audio' = isAudioTrack(clip.trackId) ? 'audio' : 'video';
+      if (copiedFadeProfile.inDuration > frameStepSeconds / 2) {
+        setClipFade(clip, 'in', copiedFadeProfile.inDuration, fadeLayer);
+      } else {
+        clearClipFade(clip, 'in', fadeLayer);
+      }
+      if (copiedFadeProfile.outDuration > frameStepSeconds / 2) {
+        setClipFade(clip, 'out', copiedFadeProfile.outDuration, fadeLayer);
+      } else {
+        clearClipFade(clip, 'out', fadeLayer);
+      }
+    }
+  }, [clearClipFade, copiedFadeProfile, frameStepSeconds, isAudioTrack, resolveFadeTargets, setClipFade]);
+
+  const toggleClipFadeFromHandle = useCallback((
+    clipId: string,
+    layer: 'video' | 'audio',
+    edge: 'in' | 'out',
+  ) => {
+    const clip = clipMapById.get(clipId);
+    if (!clip) {
+      return;
+    }
+    const existingDuration = getClipFadeDuration(clip, layer, edge);
+    if (existingDuration > frameStepSeconds / 2) {
+      clearClipFade(clip, edge, layer);
+      return;
+    }
+    setClipFade(clip, edge, getDefaultFadeDurationForLayer(layer), layer);
+  }, [clearClipFade, clipMapById, frameStepSeconds, getDefaultFadeDurationForLayer, setClipFade]);
+
   const selectMultipleClipsDeterministic = useCallback((clipIds: string[]) => {
     if (clipIds.length === 0) {
       return;
@@ -3631,7 +4126,9 @@ export default function ProfessionalTimeline({
       previousPreview.trackId === nextPreview.trackId &&
       previousPreview.mode === nextPreview.mode &&
       Math.abs(previousPreview.start - nextPreview.start) < DRAG_COMMIT_EPSILON_SECONDS &&
-      Math.abs(previousPreview.duration - nextPreview.duration) < DRAG_COMMIT_EPSILON_SECONDS
+      Math.abs(previousPreview.duration - nextPreview.duration) < DRAG_COMMIT_EPSILON_SECONDS &&
+      Math.abs((previousPreview.fadeInDuration ?? 0) - (nextPreview.fadeInDuration ?? 0)) < DRAG_COMMIT_EPSILON_SECONDS &&
+      Math.abs((previousPreview.fadeOutDuration ?? 0) - (nextPreview.fadeOutDuration ?? 0)) < DRAG_COMMIT_EPSILON_SECONDS
     ) {
       return;
     }
@@ -3655,6 +4152,29 @@ export default function ProfessionalTimeline({
       }
       return;
     }
+    if (activeDrag.mode === 'fade-in' || activeDrag.mode === 'fade-out') {
+      const fadeLayer: 'video' | 'audio' = isAudioTrack(currentClip.trackId) ? 'audio' : 'video';
+      const previewFadeInDuration = Math.max(0, preview.fadeInDuration ?? activeDrag.originalFadeInDuration);
+      const previewFadeOutDuration = Math.max(0, preview.fadeOutDuration ?? activeDrag.originalFadeOutDuration);
+      const changedFadeIn = Math.abs(previewFadeInDuration - activeDrag.originalFadeInDuration) >= DRAG_COMMIT_EPSILON_SECONDS;
+      const changedFadeOut = Math.abs(previewFadeOutDuration - activeDrag.originalFadeOutDuration) >= DRAG_COMMIT_EPSILON_SECONDS;
+
+      if (changedFadeIn) {
+        if (previewFadeInDuration <= frameStepSeconds / 2) {
+          clearClipFade(currentClip, 'in', fadeLayer);
+        } else {
+          setClipFade(currentClip, 'in', previewFadeInDuration, fadeLayer);
+        }
+      }
+      if (changedFadeOut) {
+        if (previewFadeOutDuration <= frameStepSeconds / 2) {
+          clearClipFade(currentClip, 'out', fadeLayer);
+        } else {
+          setClipFade(currentClip, 'out', previewFadeOutDuration, fadeLayer);
+        }
+      }
+      return;
+    }
     if (!onClipResize) {
       return;
     }
@@ -3664,7 +4184,7 @@ export default function ProfessionalTimeline({
       return;
     }
     onClipResize(activeDrag.clipId, preview.start, preview.duration, activeDrag.mode);
-  }, [clipMapById, onClipMove, onClipResize]);
+  }, [clearClipFade, clipMapById, frameStepSeconds, isAudioTrack, onClipMove, onClipResize, setClipFade]);
 
   const scheduleObjectUrlRevoke = useCallback((objectUrl: string, delayMs: number = OBJECT_URL_REVOKE_DELAY_MS) => {
     const timeoutId = window.setTimeout(() => {
@@ -3720,6 +4240,55 @@ export default function ProfessionalTimeline({
       });
       return;
     }
+
+    if (activeDrag.mode === 'fade-in' || activeDrag.mode === 'fade-out') {
+      const maxFadeDuration = Math.max(0, activeDrag.originalDuration - frameStepSeconds);
+      const rawDuration =
+        activeDrag.mode === 'fade-in'
+          ? activeDrag.originalFadeInDuration + pixelsToTime(deltaX)
+          : activeDrag.originalFadeOutDuration - pixelsToTime(deltaX);
+      const fadeStepSeconds = e.altKey
+        ? 0
+        : (e.shiftKey ? frameStepSeconds * COARSE_FADE_STEP_FRAMES : frameStepSeconds);
+      const snappedDuration =
+        fadeStepSeconds > 0
+          ? Math.round(rawDuration / fadeStepSeconds) * fadeStepSeconds
+          : rawDuration;
+      const nextDuration = clampNumber(
+        Number.isFinite(snappedDuration) ? snappedDuration : 0,
+        0,
+        maxFadeDuration
+      );
+      const linkEdges = e.metaKey || e.ctrlKey;
+      const previewFadeInDuration = linkEdges
+        ? nextDuration
+        : (activeDrag.mode === 'fade-in' ? nextDuration : activeDrag.originalFadeInDuration);
+      const previewFadeOutDuration = linkEdges
+        ? nextDuration
+        : (activeDrag.mode === 'fade-out' ? nextDuration : activeDrag.originalFadeOutDuration);
+      setSnapGuideVisible(false);
+      setSnapGuideX(null);
+      setSnapGuideLabel(null);
+      const modeLabel = activeDrag.mode === 'fade-in' ? 'Fade In' : 'Fade Out';
+      const stepLabel = e.altKey
+        ? 'fine'
+        : e.shiftKey
+          ? `${COARSE_FADE_STEP_FRAMES}f step`
+          : 'frame step';
+      setFadeDragHint(`${modeLabel} ${formatFadeDurationLabel(nextDuration)} (${stepLabel}${linkEdges ? ', linked' : ''})`);
+      updateDragPreview({
+        clipId: activeDrag.clipId,
+        trackId: activeDrag.originalTrackId,
+        start: activeDrag.startTime,
+        duration: activeDrag.originalDuration,
+        fadeInDuration: previewFadeInDuration,
+        fadeOutDuration: previewFadeOutDuration,
+        mode: activeDrag.mode,
+      });
+      return;
+    }
+
+    setFadeDragHint(null);
 
     if (!onClipResize) return;
     const originalEnd = clampNumber(movingClipEnd, activeDrag.startTime, totalDuration);
@@ -3788,6 +4357,7 @@ export default function ProfessionalTimeline({
     }
   }, [
     clipTrackEndById,
+    frameStepSeconds,
     getTimelineXFromClientX,
     getTrackIdFromClientY,
     maybeAutoScrollDuringInteraction,
@@ -3812,6 +4382,7 @@ export default function ProfessionalTimeline({
     setSnapGuideVisible(false);
     setSnapGuideX(null);
     setSnapGuideLabel(null);
+    setFadeDragHint(null);
     detachDragListeners();
   }, [
     commitDragPreview,
@@ -3855,6 +4426,9 @@ export default function ProfessionalTimeline({
     if (!clip) return;
     if (collabLocks[clip.id]) return;
     if (trackStates[clip.trackId]?.locked) return;
+    const clipLayer: 'video' | 'audio' = isAudioTrack(clip.trackId) ? 'audio' : 'video';
+    const initialFadeInDuration = getClipFadeDuration(clip, clipLayer, 'in');
+    const initialFadeOutDuration = getClipFadeDuration(clip, clipLayer, 'out');
     timelineRef.current.focus();
     detachDragListeners();
     const nextDragState: DragState = {
@@ -3863,6 +4437,8 @@ export default function ProfessionalTimeline({
       startTime: clip.start,
       originalTrackId: clip.trackId,
       originalDuration: clip.duration,
+      originalFadeInDuration: initialFadeInDuration,
+      originalFadeOutDuration: initialFadeOutDuration,
       mode,
     };
     dragStateRef.current = nextDragState;
@@ -3871,6 +4447,8 @@ export default function ProfessionalTimeline({
       trackId: clip.trackId,
       start: clip.start,
       duration: clip.duration,
+      fadeInDuration: initialFadeInDuration,
+      fadeOutDuration: initialFadeOutDuration,
       mode,
     };
     dragPreviewRef.current = nextPreview;
@@ -3879,6 +4457,11 @@ export default function ProfessionalTimeline({
     setSnapGuideVisible(false);
     setSnapGuideX(null);
     setSnapGuideLabel(null);
+    setFadeDragHint(
+      mode === 'fade-in' || mode === 'fade-out'
+        ? `${mode === 'fade-in' ? 'Fade In' : 'Fade Out'} ${formatFadeDurationLabel(mode === 'fade-in' ? initialFadeInDuration : initialFadeOutDuration)}`
+        : null
+    );
     const onMove = (event: MouseEvent) => {
       handleMouseMove(event);
     };
@@ -3888,7 +4471,7 @@ export default function ProfessionalTimeline({
     dragListenersRef.current = { move: onMove, up: onUp };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [clipMapById, collabLocks, detachDragListeners, getTimelineXFromClientX, handleMouseMove, handleMouseUp, reviewerMode, trackStates]);
+  }, [clipMapById, collabLocks, detachDragListeners, getTimelineXFromClientX, handleMouseMove, handleMouseUp, reviewerMode, trackStates, isAudioTrack]);
 
   const stopPanInertia = useCallback(() => {
     if (panInertiaRafRef.current !== null) {
@@ -5048,6 +5631,34 @@ export default function ProfessionalTimeline({
       }
     }
 
+    if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (key === 'f') {
+        e.preventDefault();
+        applyFadeToTargets('in');
+        return;
+      }
+      if (key === 'g') {
+        e.preventDefault();
+        applyFadeToTargets('out');
+        return;
+      }
+      if (key === 'x') {
+        e.preventDefault();
+        clearFadesOnTargets();
+        return;
+      }
+      if (key === 'c') {
+        e.preventDefault();
+        copyFadeFromTargets();
+        return;
+      }
+      if (key === 'v') {
+        e.preventDefault();
+        pasteFadeToTargets();
+        return;
+      }
+    }
+
     if (!e.ctrlKey && !e.metaKey && !e.altKey) {
       if (key === 'b') {
         e.preventDefault();
@@ -5420,8 +6031,11 @@ export default function ProfessionalTimeline({
   }, [
     alignSelectionToPlayhead,
     addEphemeralMarker,
+    applyFadeToTargets,
     closeGapOnTrackAtTime,
     closeGapsAllTracksAtTime,
+    clearFadesOnTargets,
+    copyFadeFromTargets,
     currentTime,
     cycleSelectedTrackAudioRole,
     cycleSelectedTrackAutomation,
@@ -5443,6 +6057,7 @@ export default function ProfessionalTimeline({
     onTrackToggle,
     onZoomChange,
     outPoint,
+    pasteFadeToTargets,
     selectSingleClip,
     selectedTrackId,
     selectedClipList,
@@ -5492,6 +6107,47 @@ export default function ProfessionalTimeline({
     onContextMenuAction(action, { clipId: menuClipId, ...extra });
     closeContextMenu();
   };
+  const menuClip = menuClipId ? clipMapById.get(menuClipId) : null;
+  const menuClipIsAudio = menuClip ? isAudioTrack(menuClip.trackId) : false;
+  const menuClipTransitionLayer: 'video' | 'audio' = menuClipIsAudio ? 'audio' : 'video';
+  const menuClipTransitionType = menuClipIsAudio ? 'audio_crossfade' : 'crossfade';
+  const menuClipTransitionDuration = menuClipIsAudio ? 0.25 : 0.5;
+  const menuClipFadeDuration = getDefaultFadeDurationForLayer(menuClipTransitionLayer);
+  const menuClipFadePresets = menuClipIsAudio
+    ? [0.1, 0.25, 0.5]
+    : [0.25, 0.5, 1];
+
+  const copyFadeFromMenuClip = useCallback(() => {
+    if (!menuClip) {
+      closeContextMenu();
+      return;
+    }
+    const fadeLayer: 'video' | 'audio' = isAudioTrack(menuClip.trackId) ? 'audio' : 'video';
+    setCopiedFadeProfile({
+      inDuration: getClipFadeDuration(menuClip, fadeLayer, 'in'),
+      outDuration: getClipFadeDuration(menuClip, fadeLayer, 'out'),
+    });
+    closeContextMenu();
+  }, [closeContextMenu, isAudioTrack, menuClip]);
+
+  const pasteFadeToMenuClip = useCallback(() => {
+    if (!menuClip || !copiedFadeProfile) {
+      closeContextMenu();
+      return;
+    }
+    const fadeLayer: 'video' | 'audio' = isAudioTrack(menuClip.trackId) ? 'audio' : 'video';
+    if (copiedFadeProfile.inDuration > frameStepSeconds / 2) {
+      setClipFade(menuClip, 'in', copiedFadeProfile.inDuration, fadeLayer);
+    } else {
+      clearClipFade(menuClip, 'in', fadeLayer);
+    }
+    if (copiedFadeProfile.outDuration > frameStepSeconds / 2) {
+      setClipFade(menuClip, 'out', copiedFadeProfile.outDuration, fadeLayer);
+    } else {
+      clearClipFade(menuClip, 'out', fadeLayer);
+    }
+    closeContextMenu();
+  }, [clearClipFade, closeContextMenu, copiedFadeProfile, frameStepSeconds, isAudioTrack, menuClip, setClipFade]);
 
   const parseDroppedMedia = useCallback((event: React.DragEvent): {
     id?: string;
@@ -6114,6 +6770,34 @@ export default function ProfessionalTimeline({
     nudgeSelectedClips(frameStepSeconds);
   }, [frameStepSeconds, nudgeSelectedClips]);
 
+  const handleToolbarVideoFadeDurationChange = useCallback((nextDuration: number) => {
+    setDefaultVideoFadeDuration(clampFadeDuration(nextDuration));
+  }, []);
+
+  const handleToolbarAudioFadeDurationChange = useCallback((nextDuration: number) => {
+    setDefaultAudioFadeDuration(clampFadeDuration(nextDuration));
+  }, []);
+
+  const handleToolbarApplyFadeIn = useCallback(() => {
+    applyFadeToTargets('in');
+  }, [applyFadeToTargets]);
+
+  const handleToolbarApplyFadeOut = useCallback(() => {
+    applyFadeToTargets('out');
+  }, [applyFadeToTargets]);
+
+  const handleToolbarClearFades = useCallback(() => {
+    clearFadesOnTargets();
+  }, [clearFadesOnTargets]);
+
+  const handleToolbarCopyFade = useCallback(() => {
+    copyFadeFromTargets();
+  }, [copyFadeFromTargets]);
+
+  const handleToolbarPasteFade = useCallback(() => {
+    pasteFadeToTargets();
+  }, [pasteFadeToTargets]);
+
   const handleCanvasDragLeave = useCallback((event: React.DragEvent) => {
     if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) {
       setDropTrackId(null);
@@ -6150,6 +6834,8 @@ export default function ProfessionalTimeline({
         inPoint={inPoint}
         outPoint={outPoint}
         timelineFps={timelineFps}
+        defaultVideoFadeDuration={defaultVideoFadeDuration}
+        defaultAudioFadeDuration={defaultAudioFadeDuration}
         workspaceMode={workspaceMode}
         toolMode={toolMode}
         safeTrimEnabled={safeTrimEnabled}
@@ -6163,6 +6849,8 @@ export default function ProfessionalTimeline({
         onWorkspaceModeChange={setWorkspaceMode}
         onToolModeChange={setToolMode}
         onTimelineFpsChange={handleToolbarFpsChange}
+        onDefaultVideoFadeDurationChange={handleToolbarVideoFadeDurationChange}
+        onDefaultAudioFadeDurationChange={handleToolbarAudioFadeDurationChange}
         onTimeDisplayModeChange={setTimeDisplayMode}
         onToggleSafeTrim={handleToolbarToggleSafeTrim}
         onToggleMagnetic={handleToolbarToggleMagnetic}
@@ -6191,6 +6879,12 @@ export default function ProfessionalTimeline({
         onSelectClipAtPlayhead={selectClipUnderPlayhead}
         onNudgeSelectionLeft={handleToolbarNudgeSelectionLeft}
         onNudgeSelectionRight={handleToolbarNudgeSelectionRight}
+        onApplyFadeInToSelection={handleToolbarApplyFadeIn}
+        onApplyFadeOutToSelection={handleToolbarApplyFadeOut}
+        onClearFadesOnSelection={handleToolbarClearFades}
+        onCopyFadeFromSelection={handleToolbarCopyFade}
+        onPasteFadeToSelection={handleToolbarPasteFade}
+        canPasteFade={copiedFadeProfile !== null}
       />
       <TimelineToolbarLiveStatus
         currentTime={currentTime}
@@ -6345,6 +7039,22 @@ export default function ProfessionalTimeline({
               </>
             )}
 
+            {fadeDragHint && (
+              <Chip
+                size="small"
+                label={fadeDragHint}
+                sx={{
+                  position: 'absolute',
+                  left: HEADER_WIDTH + 8,
+                  top: 6,
+                  height: 20,
+                  fontSize: 10,
+                  pointerEvents: 'none',
+                  zIndex: 5,
+                }}
+              />
+            )}
+
             {/* Compare overlay */}
             {visibleCompareClipsInViewport.map(c => {
               if (!visibleTrackIdSet.has(c.trackId)) {
@@ -6450,12 +7160,24 @@ export default function ProfessionalTimeline({
               }
               const off = trackOffsetMap[tr.trackId];
               if (!off) return null;
+              const transitionLayer: 'video' | 'audio' =
+                tr.layer ?? (isAudioTrack(tr.trackId) ? 'audio' : 'video');
+              const transitionColor = transitionLayer === 'audio' ? 'warning.main' : 'info.main';
+              const transitionWidth = transitionLayer === 'audio' ? 3 : 2;
+              const transitionEdgeLabel = tr.edge ? ` (${tr.edge})` : '';
               return (
-                <Tooltip key={tr.id} title={`${tr.type} @ ${tr.time.toFixed(2)}s`}>
+                <Tooltip key={tr.id} title={`${transitionLayer} ${tr.type}${transitionEdgeLabel} @ ${tr.time.toFixed(2)}s`}>
                   <Box
                     role="presentation"
-                    aria-label={`${tr.type} transition at ${tr.time.toFixed(2)} seconds`}
-                    sx={{ position: 'absolute', left: HEADER_WIDTH + timeToPixels(tr.time), top: off.top, height: off.height, width: 2, bgcolor: 'info.main' }}
+                    aria-label={`${transitionLayer} ${tr.type} transition at ${tr.time.toFixed(2)} seconds`}
+                    sx={{
+                      position: 'absolute',
+                      left: HEADER_WIDTH + timeToPixels(tr.time),
+                      top: off.top,
+                      height: off.height,
+                      width: transitionWidth,
+                      bgcolor: transitionColor,
+                    }}
                   />
                 </Tooltip>
               );
@@ -6477,12 +7199,16 @@ export default function ProfessionalTimeline({
               hasInOutRange={hasInOutRange}
               activeRangeStart={activeRangeStart}
               activeRangeEnd={activeRangeEnd}
+              defaultVideoFadeDuration={defaultVideoFadeDuration}
+              defaultAudioFadeDuration={defaultAudioFadeDuration}
               timeToPixels={timeToPixels}
               beginDrag={beginDrag}
+              onToggleFade={toggleClipFadeFromHandle}
               onClipSelect={onClipSelect}
               onSetSelectedTrackId={setSelectedTrackId}
               onSetPlayheadTime={setPlayheadTime}
               openContextMenu={openContextMenu}
+              isAudioTrackId={isAudioTrack}
             />
 
             {marqueeState && (
@@ -6550,6 +7276,108 @@ export default function ProfessionalTimeline({
                 Extend Right (1 frame)
               </MenuItem>
             )}
+            <Divider />
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('add-transition', {
+                edge: 'in',
+                transitionLayer: menuClipTransitionLayer,
+                transitionType: menuClipTransitionType,
+                duration: menuClipTransitionDuration,
+                transitionEngine: menuClipIsAudio ? 'audio' : 'canvas2d',
+              })}
+            >
+              {menuClipIsAudio ? 'Add Audio Transition In' : 'Add Video Transition In'}
+            </MenuItem>
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('add-transition', {
+                edge: 'out',
+                transitionLayer: menuClipTransitionLayer,
+                transitionType: menuClipTransitionType,
+                duration: menuClipTransitionDuration,
+                transitionEngine: menuClipIsAudio ? 'audio' : 'canvas2d',
+              })}
+            >
+              {menuClipIsAudio ? 'Add Audio Transition Out' : 'Add Video Transition Out'}
+            </MenuItem>
+            <Divider />
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('set-clip-fade', {
+                fadeEdge: 'in',
+                fadeLayer: menuClipTransitionLayer,
+                fadeDuration: menuClipFadeDuration,
+              })}
+            >
+              {menuClipIsAudio ? 'Clip Fade In (Audio)' : 'Clip Fade In (Video)'} {formatFadeDurationLabel(menuClipFadeDuration)}
+            </MenuItem>
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('set-clip-fade', {
+                fadeEdge: 'out',
+                fadeLayer: menuClipTransitionLayer,
+                fadeDuration: menuClipFadeDuration,
+              })}
+            >
+              {menuClipIsAudio ? 'Clip Fade Out (Audio)' : 'Clip Fade Out (Video)'} {formatFadeDurationLabel(menuClipFadeDuration)}
+            </MenuItem>
+            {menuClipFadePresets.map((presetDuration) => (
+              <MenuItem
+                key={`preset-fade-in-${presetDuration}`}
+                disabled={!menuClip}
+                onClick={() => handleMenu('set-clip-fade', {
+                  fadeEdge: 'in',
+                  fadeLayer: menuClipTransitionLayer,
+                  fadeDuration: presetDuration,
+                })}
+              >
+                {menuClipIsAudio ? 'Audio Fade In Preset' : 'Video Fade In Preset'} {formatFadeDurationLabel(presetDuration)}
+              </MenuItem>
+            ))}
+            {menuClipFadePresets.map((presetDuration) => (
+              <MenuItem
+                key={`preset-fade-out-${presetDuration}`}
+                disabled={!menuClip}
+                onClick={() => handleMenu('set-clip-fade', {
+                  fadeEdge: 'out',
+                  fadeLayer: menuClipTransitionLayer,
+                  fadeDuration: presetDuration,
+                })}
+              >
+                {menuClipIsAudio ? 'Audio Fade Out Preset' : 'Video Fade Out Preset'} {formatFadeDurationLabel(presetDuration)}
+              </MenuItem>
+            ))}
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('clear-clip-fade', {
+                fadeEdge: 'in',
+                fadeLayer: menuClipTransitionLayer,
+              })}
+            >
+              {menuClipIsAudio ? 'Clear Fade In (Audio)' : 'Clear Fade In (Video)'}
+            </MenuItem>
+            <MenuItem
+              disabled={!menuClip}
+              onClick={() => handleMenu('clear-clip-fade', {
+                fadeEdge: 'out',
+                fadeLayer: menuClipTransitionLayer,
+              })}
+            >
+              {menuClipIsAudio ? 'Clear Fade Out (Audio)' : 'Clear Fade Out (Video)'}
+            </MenuItem>
+            <MenuItem
+              disabled={!menuClip}
+              onClick={copyFadeFromMenuClip}
+            >
+              Copy Fade Profile
+            </MenuItem>
+            <MenuItem
+              disabled={!menuClip || !copiedFadeProfile}
+              onClick={pasteFadeToMenuClip}
+            >
+              Paste Fade Profile
+            </MenuItem>
             <Divider />
             <MenuItem onClick={() => handleMenu('color', { color: '#9c27b0' })}>Label: Purple</MenuItem>
             <MenuItem onClick={() => handleMenu('color', { color: '#03a9f4' })}>Label: Blue</MenuItem>

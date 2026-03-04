@@ -17,6 +17,7 @@ import { ProjectProvider } from '@/contexts/ProjectContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { RealTimeProvider } from '@/contexts/RealTimeContext';
+import { AcademyProvider } from '@/contexts/AcademyContext';
 import { VisualEditorProvider } from '../admin/visual-editor/VisualEditorContext';
 import CreatorHubMarketplace from '../resume/ResumeBuilderMarketplace';
 import ContractSummaryWidget from '../contract-designer/ContractSummaryWidget';
@@ -8131,7 +8132,9 @@ const UniversalDashboardContent: React.FC<UniversalDashboardProps> = ({ professi
               TILBAKE TIL DASHBOARD
             </Button>
           </Box>
-          <AcademyDashboard />
+          <AcademyProvider>
+            <AcademyDashboard />
+          </AcademyProvider>
         </Box>
       )}
 

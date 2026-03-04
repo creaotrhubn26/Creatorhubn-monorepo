@@ -8,6 +8,7 @@ import { videoEngine } from '../../../services/video-playback-engine';
 import type { BeatClip, Track } from '../../../services/storyArcDataIntegration';
 import type { TimelineMarker } from '../../ProfessionalTimeline';
 import type { StoryArcLongJobKind } from './useStoryArcLongJobManager';
+import type { StoryArcClipMeta } from '../types';
 
 interface SnackbarState {
   open: boolean;
@@ -42,7 +43,7 @@ interface UseStoryArcFaceDetectionFlowParams {
       ) => void) | null
     >
   >;
-  setClipMeta: Dispatch<SetStateAction<Record<string, any>>>;
+  setClipMeta: Dispatch<SetStateAction<Record<string, StoryArcClipMeta>>>;
   setClips: Dispatch<SetStateAction<BeatClip[]>>;
   setMarkers: Dispatch<SetStateAction<TimelineMarker[]>>;
   setPendingSubclipsResolve: Dispatch<

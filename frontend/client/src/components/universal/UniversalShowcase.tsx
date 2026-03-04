@@ -27,6 +27,7 @@ import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useFileManagementStatus } from '../../contexts/FileManagementStatusContext';
 import { FileStatusWrapper } from '../common/FileStatusIndicators';
 import { useDemoMode, useDemoModeData } from '@/contexts/DemoModeContext';
+import { AcademyProvider } from '@/contexts/AcademyContext';
 import UniversalFileUpload from './UniversalFileUpload';
 const ClientAuthDialog = React.lazy(() => import('../proofing/ClientAuthDialog'));
 // Import Academy Dashboard
@@ -11805,7 +11806,9 @@ const UniversalShowcase: React.FC<UniversalShowcaseProps> = ({
               TILBAKE TIL SHOWCASE
             </Button>
           </Box>
-          <AcademyDashboard />
+          <AcademyProvider>
+            <AcademyDashboard />
+          </AcademyProvider>
         </Box>
       )}
 

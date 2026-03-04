@@ -22,8 +22,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Enrollment, type Lesson } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyStudentDashboardStudioProps {
   courseId?: string;
@@ -246,7 +247,8 @@ const toDisplayName = (value: string, index: number): string => {
 function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, setCurrentCourse, setCurrentLesson } = useAcademy();
-  const { analytics } = useEnhancedMasterIntegration();
+  
+  const { navLabel } = useAcademyLocale();
 
   const [mainTab, setMainTab] = useState<'explore' | 'courses' | 'library' | 'community' | 'achievements'>('courses');
   const [leftNav, setLeftNav] = useState('overview');
@@ -410,14 +412,14 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
   );
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy/student-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy/student-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -441,21 +443,20 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}

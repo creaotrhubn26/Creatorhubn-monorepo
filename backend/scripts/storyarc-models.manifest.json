@@ -1,0 +1,118 @@
+{
+  "manifestVersion": 1,
+  "description": "Story Arc Studio speech + diarization + denoise model artifacts. Deepgram is API-based and therefore has no model file upload.",
+  "models": [
+    {
+      "id": "rnnoise-lq",
+      "description": "RNNoise ARNNDN model used by /api/audio/mix denoise chain.",
+      "optional": false,
+      "r2Key": "models/audio/rnnoise/leavened-quisling-2018-08-31-lq.rnnn",
+      "source": {
+        "type": "local",
+        "path": "config/models/rnnoise/lq.rnnn"
+      }
+    },
+    {
+      "id": "faster-whisper-small-config",
+      "optional": true,
+      "r2Key": "models/speech/faster-whisper-small/config.json",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/main/config.json"
+      }
+    },
+    {
+      "id": "faster-whisper-small-model",
+      "optional": true,
+      "r2Key": "models/speech/faster-whisper-small/model.bin",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/main/model.bin"
+      }
+    },
+    {
+      "id": "faster-whisper-small-tokenizer",
+      "optional": true,
+      "r2Key": "models/speech/faster-whisper-small/tokenizer.json",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/Systran/faster-whisper-small/resolve/main/tokenizer.json"
+      }
+    },
+    {
+      "id": "whisperx-align-en-config",
+      "optional": true,
+      "r2Key": "models/speech/whisperx-align-en/config.json",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/config.json"
+      }
+    },
+    {
+      "id": "whisperx-align-en-model",
+      "optional": true,
+      "r2Key": "models/speech/whisperx-align-en/pytorch_model.bin",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/pytorch_model.bin"
+      }
+    },
+    {
+      "id": "whisperx-align-en-vocab",
+      "optional": true,
+      "r2Key": "models/speech/whisperx-align-en/vocab.json",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/vocab.json"
+      }
+    },
+    {
+      "id": "whisperx-align-en-preprocessor",
+      "optional": true,
+      "r2Key": "models/speech/whisperx-align-en/preprocessor_config.json",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/facebook/wav2vec2-base-960h/resolve/main/preprocessor_config.json"
+      }
+    },
+    {
+      "id": "pyannote-speaker-diarization-config",
+      "description": "Requires accepted HF license + HUGGINGFACE_TOKEN.",
+      "optional": true,
+      "r2Key": "models/speech/pyannote/speaker-diarization-3.1/config.yaml",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/pyannote/speaker-diarization-3.1/resolve/main/config.yaml"
+      }
+    },
+    {
+      "id": "pyannote-segmentation-config",
+      "description": "Requires accepted HF license + HUGGINGFACE_TOKEN.",
+      "optional": true,
+      "r2Key": "models/speech/pyannote/segmentation-3.0/config.yaml",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/pyannote/segmentation-3.0/resolve/main/config.yaml"
+      }
+    },
+    {
+      "id": "pyannote-segmentation-model",
+      "description": "Requires accepted HF license + HUGGINGFACE_TOKEN.",
+      "optional": true,
+      "r2Key": "models/speech/pyannote/segmentation-3.0/pytorch_model.bin",
+      "source": {
+        "type": "url",
+        "url": "https://huggingface.co/pyannote/segmentation-3.0/resolve/main/pytorch_model.bin"
+      }
+    },
+    {
+      "id": "demucs-htdemucs-weight",
+      "optional": true,
+      "r2Key": "models/audio/demucs/htdemucs/955717e8-8726e21a.th",
+      "source": {
+        "type": "url",
+        "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/955717e8-8726e21a.th"
+      }
+    }
+  ]
+}

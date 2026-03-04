@@ -42,8 +42,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface ChapterItem {
   id: string;
@@ -196,7 +197,8 @@ const buildDefaultQuiz = (): PlayerQuiz => ({
 function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: AcademyVideoPlayerStudioProps) {
   const [, setLocation] = useLocation();
   const { state, updateProgress, updateSettings, addBookmark, addNote, getCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef(0);
@@ -425,16 +427,16 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
   }, [activeCourse?.id, activeLesson?.id, chapters, onSave, speed, state.settings.subtitles, transcriptLines]);
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'cta', label: 'CTA Overlay', route: '/academy/cta-overlay' },
-    { id: 'lowerthirds', label: 'Animated Lower Thirds', route: '/academy/lower-thirds' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
+    { id: 'lowerthirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   const speedOptions = [0.5, 1, 1.25, 1.5, 2, 6];
@@ -460,21 +462,20 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -553,7 +554,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
               <Typography sx={{ letterSpacing: '0.22em', fontSize: 15, color: 'rgba(237,240,247,0.82)' }}>
                 CREATOR STUDIO
               </Typography>
-              <Chip label="Draft" size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }} />
+              <Chip label={tt('Utkast', 'Draft')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }} />
             </Stack>
 
             <Stack direction="row" spacing={1.2} alignItems="center">
@@ -589,7 +590,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <Typography sx={{ fontSize: 30, fontWeight: 600, letterSpacing: '0.02em' }}>
                     {activeCourse?.title || 'Directing Masterclass'}
                   </Typography>
-                  <Chip label="Draft" size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
+                  <Chip label={tt('Utkast', 'Draft')} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }} />
                 </Stack>
 
                 <Stack direction="row" spacing={1}>

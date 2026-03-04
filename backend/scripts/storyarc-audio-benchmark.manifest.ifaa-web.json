@@ -1,0 +1,97 @@
+{
+  "datasetName": "ifaa-web-speech-intelligibility",
+  "description": "Public web-hosted speech degradation samples from IFAA, paired with the original clean speech reference.",
+  "cases": [
+    {
+      "id": "ifaa-pink-noise",
+      "category": "noise_pink",
+      "weight": 1.2,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-pink-noise.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-vocal-spectrum-noise",
+      "category": "noise_vocal_spectrum",
+      "weight": 1.2,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-noise-mit-sprachspektrum.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-1khz-band-noise",
+      "category": "noise_1khz_band",
+      "weight": 1.1,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-1khz-band.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-two-speakers",
+      "category": "interfering_talker",
+      "weight": 1.3,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-2-sprecher.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-reverb-short",
+      "category": "reverb_short",
+      "weight": 1.0,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-nachhall-kurz.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-reverb-medium",
+      "category": "reverb_medium",
+      "weight": 1.0,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-nachhall-mittel.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-reverb-long",
+      "category": "reverb_long",
+      "weight": 1.1,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-nachhall-lang.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-echo",
+      "category": "echo",
+      "weight": 1.1,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-echo.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-band-100-10k",
+      "category": "band_limit_wide",
+      "weight": 0.9,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-bnd1.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-band-300-3400",
+      "category": "band_limit_telephone",
+      "weight": 1.0,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-bnd2.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-band-1k-octave",
+      "category": "band_limit_narrow",
+      "weight": 1.0,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-bnd3.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-clipping",
+      "category": "clipping",
+      "weight": 1.1,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-clipping.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    },
+    {
+      "id": "ifaa-compressed",
+      "category": "dynamic_compression",
+      "weight": 1.0,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr-komprimiert.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav"
+    }
+  ]
+}

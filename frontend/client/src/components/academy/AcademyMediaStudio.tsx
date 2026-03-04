@@ -47,6 +47,7 @@ import { useLocation } from 'wouter';
 import { useAcademy, type Course, type CourseResource, type LessonResource } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
 
 type MediaAssetType = 'image' | 'video' | 'audio' | 'document';
 type AssetScope = 'all' | 'favorites' | 'upload';
@@ -346,7 +347,8 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
 function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel } = useAcademyLocale();
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const objectUrlStoreRef = useRef<string[]>([]);
@@ -1334,11 +1336,11 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
         >
           <Stack direction="row" spacing={0.8}>
             {[
-              { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-              { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-              { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-              { id: 'media', label: 'Media', route: '/academy/media' },
-              { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
+              { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+              { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+              { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+              { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+              { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
             ].map((item) => (
               <Button
                 key={item.id}

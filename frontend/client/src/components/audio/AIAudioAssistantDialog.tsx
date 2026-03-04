@@ -12,6 +12,11 @@ import {
   Alert,
   ToggleButtonGroup,
   ToggleButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  type SelectChangeEvent,
 } from '@mui/material';
 import { AutoFixHigh, GraphicEq, CheckCircle } from '@mui/icons-material';
 import AudioMixerPanel from './AudioMixerPanel';
@@ -24,6 +29,18 @@ interface AIAudioAssistantDialogProps {
     name: string;
     sourceFile: string;
     type?: 'dialogue' | 'music' | 'sfx';
+    timeline?: {
+      start: number;
+      duration: number;
+      inPoint: number;
+      outPoint: number;
+      linkedVideoClipId?: string;
+      autoEditDucking?: Record<string, unknown>;
+      autoEditJCut?: Record<string, unknown>;
+      autoEditLCut?: Record<string, unknown>;
+      audioFadeIn?: { duration: number; edge: 'in'; layer: 'audio' };
+      audioFadeOut?: { duration: number; edge: 'out'; layer: 'audio' };
+    };
   }>;
   onMixComplete: (mixedAudioUrl: string, metrics: Record<string, unknown>) => void;
   selectedTrackId?: string | null;
@@ -45,6 +62,18 @@ interface MixerTrack {
     midGain: number;
     highGain: number;
   };
+  timeline?: {
+    start: number;
+    duration: number;
+    inPoint: number;
+    outPoint: number;
+    linkedVideoClipId?: string;
+    autoEditDucking?: Record<string, unknown>;
+    autoEditJCut?: Record<string, unknown>;
+    autoEditLCut?: Record<string, unknown>;
+    audioFadeIn?: { duration: number; edge: 'in'; layer: 'audio' };
+    audioFadeOut?: { duration: number; edge: 'out'; layer: 'audio' };
+  };
 }
 
 interface DuckingSettings {
@@ -54,6 +83,20 @@ interface DuckingSettings {
   release: number;
   threshold: number;
 }
+
+type DeliveryProfileValue =
+  | 'adaptive'
+  | 'netflix'
+  | 'ebu_r128'
+  | 'atsc_a85'
+  | 'streaming_spotify'
+  | 'streaming_youtube'
+  | 'streaming_prime_video'
+  | 'streaming_apple_music'
+  | 'streaming_tidal'
+  | 'podcast';
+
+type NoiseReductionProfileValue = 'off' | 'light' | 'standard' | 'aggressive';
 
 export default function AIAudioAssistantDialog({
   open,
@@ -75,6 +118,9 @@ export default function AIAudioAssistantDialog({
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<{ mixedUrl: string; metrics: Record<string, unknown> } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deliveryProfile, setDeliveryProfile] = useState<DeliveryProfileValue>('adaptive');
+  const [noiseReductionProfile, setNoiseReductionProfile] =
+    useState<NoiseReductionProfileValue>('standard');
 
   const filteredTracks = useMemo(() => {
     if (!selectedTrackId) return audioTracks;
@@ -97,12 +143,25 @@ export default function AIAudioAssistantDialog({
         lowGain: 0,
         midGain: 0,
         highGain: 0
-      }
+      },
+      timeline: track.timeline,
     }));
     setMixerTracks(initial);
     setResult(null);
     setError(null);
+    setDeliveryProfile('adaptive');
+    setNoiseReductionProfile('standard');
   }, [filteredTracks, open]);
+
+  const handleDeliveryProfileChange = (event: SelectChangeEvent<DeliveryProfileValue>) => {
+    setDeliveryProfile(event.target.value as DeliveryProfileValue);
+  };
+
+  const handleNoiseReductionProfileChange = (
+    event: SelectChangeEvent<NoiseReductionProfileValue>
+  ) => {
+    setNoiseReductionProfile(event.target.value as NoiseReductionProfileValue);
+  };
 
   const handleAutoMix = async () => {
     setProcessing(true);
@@ -114,7 +173,14 @@ export default function AIAudioAssistantDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tracks: mixerTracks,
-          duckingSettings
+          duckingSettings,
+          mixContext: {
+            source: 'story-arc-studio',
+            includeAutoEditMetadata: true,
+            deliveryProfile,
+            noiseReductionProfile,
+            noiseReductionApplyTo: 'dialogue',
+          },
         })
       });
 
@@ -161,6 +227,42 @@ export default function AIAudioAssistantDialog({
             <ToggleButton value="mixer">Mixer</ToggleButton>
           </ToggleButtonGroup>
 
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel id="mix-delivery-profile-label">Delivery</InputLabel>
+            <Select
+              labelId="mix-delivery-profile-label"
+              label="Delivery"
+              value={deliveryProfile}
+              onChange={handleDeliveryProfileChange}
+            >
+              <MenuItem value="adaptive">Adaptive</MenuItem>
+              <MenuItem value="netflix">Netflix</MenuItem>
+              <MenuItem value="ebu_r128">Broadcast (EBU R128)</MenuItem>
+              <MenuItem value="atsc_a85">Broadcast (ATSC A/85)</MenuItem>
+              <MenuItem value="streaming_spotify">Spotify</MenuItem>
+              <MenuItem value="streaming_youtube">YouTube</MenuItem>
+              <MenuItem value="streaming_prime_video">Prime Video</MenuItem>
+              <MenuItem value="streaming_apple_music">Apple Music</MenuItem>
+              <MenuItem value="streaming_tidal">TIDAL</MenuItem>
+              <MenuItem value="podcast">Podcast / Speech</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel id="mix-noise-profile-label">Noise Reduction</InputLabel>
+            <Select
+              labelId="mix-noise-profile-label"
+              label="Noise Reduction"
+              value={noiseReductionProfile}
+              onChange={handleNoiseReductionProfileChange}
+            >
+              <MenuItem value="off">Off</MenuItem>
+              <MenuItem value="light">Light</MenuItem>
+              <MenuItem value="standard">Standard</MenuItem>
+              <MenuItem value="aggressive">Aggressive</MenuItem>
+            </Select>
+          </FormControl>
+
           {viewMode === 'simple' && (
             <Box>
               <Typography variant="body2" gutterBottom>
@@ -201,7 +303,7 @@ export default function AIAudioAssistantDialog({
 
           {result && (
             <Chip
-              label={`Spor: ${mixerTracks.length} • Ducking: ${duckingSettings.enabled ? 'pa' : 'av'}`}
+              label={`Spor: ${mixerTracks.length} • Ducking: ${duckingSettings.enabled ? 'pa' : 'av'} • NR: ${noiseReductionProfile} • Delivery: ${deliveryProfile}`}
               color="primary"
               variant="outlined"
             />

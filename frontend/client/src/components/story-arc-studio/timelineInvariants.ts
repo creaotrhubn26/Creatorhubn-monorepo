@@ -18,6 +18,12 @@ interface EnforceTimelineInvariantsOptions {
   frameTime: number;
   tracks: Track[];
   enforceNoOverlap?: boolean;
+  transitions?: Array<{
+    trackId: string;
+    time: number;
+    clipId?: string;
+    edge?: 'in' | 'out';
+  }>;
 }
 
 export interface EnforceTimelineInvariantsResult {
@@ -27,6 +33,18 @@ export interface EnforceTimelineInvariantsResult {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizeFrameTime(frameTime: number): number {
+  return isFiniteNumber(frameTime) && frameTime > 0 ? frameTime : 1 / 30;
+}
+
+function snapToFrame(value: number, frameTime: number): number {
+  return Math.round(value / frameTime) * frameTime;
 }
 
 function inferAudioTrackFromId(trackId: string | undefined): boolean {
@@ -121,14 +139,63 @@ function normalizeOffsets(
   };
 }
 
+function getTransitionEdgeMetadata(clip: BeatClip, edge: 'in' | 'out'): Record<string, unknown> | null {
+  if (!isRecord(clip.metadata) || !isRecord(clip.metadata.transitions)) {
+    return null;
+  }
+  const edgeValue = clip.metadata.transitions[edge];
+  return isRecord(edgeValue) ? edgeValue : null;
+}
+
+function isTransitionOverlapAllowed(
+  left: BeatClip,
+  right: BeatClip,
+  frameTime: number,
+  transitions: Array<{ trackId: string; time: number; clipId?: string; edge?: 'in' | 'out' }>
+): boolean {
+  if (left.trackId !== right.trackId) {
+    return false;
+  }
+  const overlapStart = Math.max(left.start, right.start);
+  const overlapEnd = Math.min(left.start + left.duration, right.start + right.duration);
+  if (overlapEnd - overlapStart <= frameTime / 3) {
+    return false;
+  }
+
+  const transitionAtOverlap = transitions.some((transition) => {
+    if (transition.trackId !== left.trackId) {
+      return false;
+    }
+    if (transition.edge === 'out' && transition.clipId === left.id) {
+      return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+    }
+    if (transition.edge === 'in' && transition.clipId === right.id) {
+      return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+    }
+    if (transition.clipId && transition.clipId !== left.id && transition.clipId !== right.id) {
+      return false;
+    }
+    return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+  });
+  if (transitionAtOverlap) {
+    return true;
+  }
+
+  const leftOut = getTransitionEdgeMetadata(left, 'out');
+  const rightIn = getTransitionEdgeMetadata(right, 'in');
+  return leftOut?.targetClipId === right.id || rightIn?.sourceClipId === left.id;
+}
+
 export function enforceTimelineInvariants(
   clipList: BeatClip[],
   {
     frameTime,
     tracks,
     enforceNoOverlap = false,
+    transitions = [],
   }: EnforceTimelineInvariantsOptions
 ): EnforceTimelineInvariantsResult {
+  const normalizedFrameTime = normalizeFrameTime(frameTime);
   const issues: TimelineInvariantIssue[] = [];
   const trackIdSet = new Set(tracks.map((track) => track.id));
 
@@ -137,14 +204,14 @@ export function enforceTimelineInvariants(
     const preferAudioFallback = inferAudioTrackFromId(nextClip.trackId);
 
     if (!trackIdSet.has(nextClip.trackId)) {
+      issues.push({
+        code: 'invalid_track',
+        clipId: nextClip.id,
+        trackId: nextClip.trackId,
+        message: `Clip ${nextClip.id} referenced unknown track ${nextClip.trackId}.`,
+      });
       const fallbackTrackId = resolveFallbackTrackId(tracks, preferAudioFallback);
       if (fallbackTrackId) {
-        issues.push({
-          code: 'invalid_track',
-          clipId: nextClip.id,
-          trackId: nextClip.trackId,
-          message: `Clip ${nextClip.id} referenced unknown track ${nextClip.trackId}.`,
-        });
         nextClip.trackId = fallbackTrackId;
       }
     }
@@ -166,10 +233,22 @@ export function enforceTimelineInvariants(
         trackId: nextClip.trackId,
         message: `Clip ${nextClip.id} had invalid duration.`,
       });
-      nextClip.duration = Math.max(frameTime, 1 / 120);
+      nextClip.duration = Math.max(normalizedFrameTime, 1 / 120);
     }
 
-    nextClip = normalizeOffsets(nextClip, frameTime, issues);
+    const snappedStart = snapToFrame(nextClip.start, normalizedFrameTime);
+    if (snappedStart !== nextClip.start) {
+      nextClip.start = snappedStart;
+    }
+    const snappedDuration = Math.max(
+      normalizedFrameTime,
+      snapToFrame(nextClip.duration, normalizedFrameTime)
+    );
+    if (snappedDuration !== nextClip.duration) {
+      nextClip.duration = snappedDuration;
+    }
+
+    nextClip = normalizeOffsets(nextClip, normalizedFrameTime, issues);
     return nextClip;
   });
 
@@ -188,6 +267,9 @@ export function enforceTimelineInvariants(
         const current = sorted[index];
         const previousEnd = previous.start + previous.duration;
         if (current.start < previousEnd) {
+          if (isTransitionOverlapAllowed(previous, current, normalizedFrameTime, transitions)) {
+            continue;
+          }
           issues.push({
             code: 'clip_overlap',
             clipId: current.id,
@@ -211,6 +293,9 @@ export function enforceTimelineInvariants(
         const previous = sorted[index - 1];
         const current = sorted[index];
         if (current.start < previous.start + previous.duration) {
+          if (isTransitionOverlapAllowed(previous, current, normalizedFrameTime, transitions)) {
+            continue;
+          }
           issues.push({
             code: 'clip_overlap',
             clipId: current.id,

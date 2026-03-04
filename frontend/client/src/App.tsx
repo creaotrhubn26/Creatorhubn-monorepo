@@ -25,11 +25,13 @@ import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline, Box, Typography } from '@mui/material';
 import { creatorHubTheme } from './theme/creatorHubTheme';
 import { LanguageProvider } from '@/components/language-provider';
+import AcademyLocaleSwitcher from '@/components/academy/AcademyLocaleSwitcher';
 import { DemoModeProvider } from './contexts/DemoModeContext';
 import { UniversalSessionProvider } from './contexts/UniversalSessionContext';
 import { ClientSessionProvider } from './contexts/ClientSessionContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProjectProvider } from './contexts/ProjectContext';
+import { AcademyProvider } from './contexts/AcademyContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ThemeProvider as AppThemeProvider } from './contexts/ThemeContext';
 import { RealTimeProvider } from './contexts/RealTimeContext';
@@ -169,6 +171,16 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
+const AcademyLandingRouteWrapper = (props: any) => (
+  <AcademyProvider>
+    <AcademyLandingPage {...props} />
+  </AcademyProvider>
+);
+const AcademyDashboardRouteWrapper = (props: any) => (
+  <AcademyProvider>
+    <AcademyDashboardCinematic {...props} />
+  </AcademyProvider>
+);
 const StoryArcStudioRouteWrapper = () => (
   <SettingsProvider>
     <AppThemeProvider>
@@ -305,6 +317,7 @@ function App() {
                   >
                     <ProjectProvider>
                       <GlobalChatProvider>
+                <AcademyLocaleSwitcher />
                 <Switch>
                   {/* Login route */}
                   <Route path="/login" component={LoginPageSimple} />
@@ -374,8 +387,8 @@ function App() {
                     path="/equipment-rental"
                     component={() => <SmartDashboardRoute profession="photographer" />}
                   />
-                  <Route path="/academy" component={AcademyLandingPage as React.ComponentType<any>} />
-                  <Route path="/academy-dashboard" component={AcademyDashboardCinematic as React.ComponentType<any>} />
+                  <Route path="/academy" component={AcademyLandingRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy-dashboard" component={AcademyDashboardRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy/course-creator" component={CourseCreator as React.ComponentType<any>} />
                   <Route path="/academy/module-manager" component={ModuleManager as React.ComponentType<any>} />
                   <Route path="/academy/annotation-editor" component={VideoAnnotationEditor as React.ComponentType<any>} />

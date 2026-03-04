@@ -1,0 +1,28 @@
+{
+  "datasetName": "storyarc-audio-benchmark-example",
+  "description": "Replace with 500+ noisy/clean pairs across dialogue, indoor/outdoor, music-bed and reverberant scenes.",
+  "cases": [
+    {
+      "id": "ifaa-speech-pink-noise-01",
+      "category": "speech_noise_pink",
+      "weight": 1.2,
+      "noisyPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-pink-noise.wav",
+      "cleanPath": "https://ifaa-akustik.de/wp-content/uploads/2022/12/spr1-originalsignal.wav",
+      "notes": "Public speech+pink-noise pair"
+    },
+    {
+      "id": "replace-with-your-case-02",
+      "category": "speech_reverb",
+      "weight": 1.0,
+      "noisyPath": "/absolute/path/to/noisy-speech-02.wav",
+      "cleanPath": "/absolute/path/to/clean-speech-02.wav"
+    },
+    {
+      "id": "replace-with-your-case-03",
+      "category": "speech_with_music_bed",
+      "weight": 1.0,
+      "noisyPath": "/absolute/path/to/noisy-speech-03.wav",
+      "cleanPath": "/absolute/path/to/clean-speech-03.wav"
+    }
+  ]
+}

@@ -6,6 +6,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
+const SETTINGS_NAMESPACE = 'creatorhub_user_settings';
+
 // Settings interface
 export interface UserSettings {
   // General settings
@@ -520,27 +522,32 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const response = await fetch('/api/settings, ', {
+      const response = await fetch('/api/settings', {
         method: 'PUT',
         headers: {
-          'Content-Type' : 'application/json','Authorization': `Bearer ${user.id}`,
-      },
-        body: JSON.stringify(settings),
-    });
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.id}`,
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          namespace: SETTINGS_NAMESPACE,
+          data: settings,
+        }),
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to save settings, ');
-    }
+        throw new Error('Failed to save settings');
+      }
 
       setIsDirty(false);
       setLastSaved(new Date());
-  } catch (err) {
+    } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to save settings';
       setError(errorMessage);
       throw new Error(errorMessage);
-  } finally {
+    } finally {
       setIsLoading(false);
-  }
+    }
 }, [user, settings]);
 
   // Load settings
@@ -551,29 +558,41 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
     setError(null);
 
     try {
-      const response = await fetch('/api/settings', {
+      const params = new URLSearchParams({
+        user_id: user.id,
+        namespace: SETTINGS_NAMESPACE,
+      });
+
+      const response = await fetch(`/api/settings?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${user.id}`,
-      },
-    });
+        },
+      });
 
       if (response.ok) {
-        const userSettings = await response.json();
-        setSettingsState(userSettings);
+        const payload = await response.json() as { data?: Partial<UserSettings> | null };
+        if (payload?.data && typeof payload.data === 'object') {
+          setSettingsState({
+            ...defaultSettings,
+            ...payload.data,
+          });
+        } else {
+          setSettingsState(defaultSettings);
+        }
         setIsDirty(false);
         setLastSaved(new Date());
-    } else {
+      } else {
         // Use default settings if no saved settings found
         setSettingsState(defaultSettings);
-    }
-  } catch (err) {
+      }
+    } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load settings';
       setError(errorMessage);
       // Use default settings on error
       setSettingsState(defaultSettings);
-  } finally {
+    } finally {
       setIsLoading(false);
-  }
+    }
 }, [user]);
 
   // Export settings
@@ -910,5 +929,4 @@ export const useSettings = (): SettingsContextType => {
 };
 
 export default SettingsContext;
-
 

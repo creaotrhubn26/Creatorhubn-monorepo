@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Stack, Typography } from '@mui/material';
 import { Cameraswitch as CameraswitchIcon, QrCodeScanner as QrCodeScannerIcon } from '@mui/icons-material';
 
@@ -7,6 +7,8 @@ type ScannerState = 'idle' | 'starting' | 'scanning' | 'unsupported' | 'permissi
 interface QrCameraScannerProps {
   active: boolean;
   onDetected: (value: string) => void;
+  formats?: string[];
+  scanTargetLabel?: string;
 }
 
 interface MinimalDetection {
@@ -17,14 +19,20 @@ interface MinimalBarcodeDetector {
   detect(source: ImageBitmapSource): Promise<MinimalDetection[]>;
 }
 
-type MinimalBarcodeDetectorCtor = new (options?: {
-  formats?: string[];
-}) => MinimalBarcodeDetector;
+interface MinimalBarcodeDetectorCtor {
+  new (options?: { formats?: string[] }): MinimalBarcodeDetector;
+  getSupportedFormats?: () => Promise<string[]>;
+}
 
 const SCAN_INTERVAL_MS = 320;
 const DETECTION_COOLDOWN_MS = 1200;
 
-export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
+export function QrCameraScanner({
+  active,
+  onDetected,
+  formats,
+  scanTargetLabel = 'kode',
+}: QrCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectorRef = useRef<MinimalBarcodeDetector | null>(null);
@@ -40,6 +48,15 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
   const [statusMessage, setStatusMessage] = useState('Kamera er ikke aktivert');
   const [restartNonce, setRestartNonce] = useState(0);
   const [scanPulseActive, setScanPulseActive] = useState(false);
+  const normalizedTargetLabel = scanTargetLabel.trim() || 'kode';
+
+  const requestedFormats = useMemo(() => {
+    const normalized = (formats ?? ['qr_code'])
+      .map((format) => String(format).trim().toLowerCase())
+      .filter((format) => format.length > 0);
+    const unique = Array.from(new Set(normalized));
+    return unique.length > 0 ? unique : ['qr_code'];
+  }, [formats]);
 
   useEffect(() => {
     onDetectedRef.current = onDetected;
@@ -119,7 +136,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
         .BarcodeDetector;
       if (!detectorCtor) {
         setScannerState('unsupported');
-        setStatusMessage('QR-deteksjon støttes ikke i denne nettleseren');
+        setStatusMessage('Kode-deteksjon støttes ikke i denne nettleseren');
         return;
       }
 
@@ -150,14 +167,34 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
         }
 
         streamRef.current = stream;
-        detectorRef.current = new detectorCtor({ formats: ['qr_code'] });
+        let detectorFormats = requestedFormats;
+        if (typeof detectorCtor.getSupportedFormats === 'function') {
+          try {
+            const supported = await detectorCtor.getSupportedFormats();
+            const supportedLookup = new Set(
+              supported.map((format) => format.trim().toLowerCase())
+            );
+            const matching = requestedFormats.filter((format) =>
+              supportedLookup.has(format)
+            );
+            detectorFormats = matching.length > 0 ? matching : requestedFormats;
+          } catch {
+            // Ignore and try requested formats directly.
+          }
+        }
+
+        try {
+          detectorRef.current = new detectorCtor({ formats: detectorFormats });
+        } catch {
+          detectorRef.current = new detectorCtor();
+        }
         video.srcObject = stream;
         await video.play();
 
         if (cancelled) return;
 
         setScannerState('scanning');
-        setStatusMessage('Pek kamera mot en lager-QR');
+        setStatusMessage(`Pek kamera mot ${normalizedTargetLabel}`);
 
         intervalRef.current = window.setInterval(async () => {
           if (scanBusyRef.current || !videoRef.current || !detectorRef.current) return;
@@ -179,7 +216,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
 
             lastDetectedValueRef.current = value;
             lastDetectedAtRef.current = now;
-            setStatusMessage('QR funnet. Åpner post...');
+            setStatusMessage(`${normalizedTargetLabel} funnet. Oppdaterer felt...`);
             setScanPulseActive(true);
             playSuccessSound();
             if (feedbackTimeoutRef.current != null) {
@@ -187,7 +224,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
             }
             feedbackTimeoutRef.current = window.setTimeout(() => {
               setScanPulseActive(false);
-              setStatusMessage('Pek kamera mot en lager-QR');
+              setStatusMessage(`Pek kamera mot ${normalizedTargetLabel}`);
             }, 550);
             onDetectedRef.current(value);
           } catch {
@@ -217,7 +254,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
       cancelled = true;
       stopScanner();
     };
-  }, [active, playSuccessSound, restartNonce, stopScanner]);
+  }, [active, normalizedTargetLabel, playSuccessSound, requestedFormats, restartNonce, stopScanner]);
 
   useEffect(() => {
     return () => {
@@ -317,7 +354,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
               transform: 'translateZ(0)',
             }}
           >
-            QR lest
+            {normalizedTargetLabel} lest
           </Box>
         )}
         {scannerState !== 'scanning' && (
@@ -344,7 +381,7 @@ export function QrCameraScanner({ active, onDetected }: QrCameraScannerProps) {
           severity={scannerState === 'permission' ? 'warning' : 'info'}
           sx={{ mt: 1.25 }}
         >
-          {statusMessage}. Du kan fortsatt bruke feltet under for å lime inn QR-tekst manuelt.
+          {statusMessage}. Du kan fortsatt bruke feltet under for å lime inn skannet kode manuelt.
         </Alert>
       )}
       {scannerState === 'scanning' && (

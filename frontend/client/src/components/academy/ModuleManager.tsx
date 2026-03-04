@@ -33,6 +33,8 @@ import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 import AcademyVideoPlayer from './AcademyVideoPlayer';
 
 interface ModuleLesson {
@@ -129,6 +131,7 @@ function ModuleManager({
   const [, setLocation] = useLocation();
   const { getCourse, updateCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
+  const { tt, navLabel } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('curriculum');
   const [rightTab, setRightTab] = useState<'module' | 'schedule' | 'prerequisites' | 'localization'>('module');
@@ -236,12 +239,12 @@ function ModuleManager({
 
     return {
       id: courseId || 'module-manager-preview-course',
-      title: 'Module Manager Preview',
+      title: tt('Forhåndsvisning av moduladministrator', 'Module Manager Preview'),
       lessons: flattenedLessons,
       duration: totalMinutes,
       isPublished: moduleItems.some((module) => module.status === 'published'),
     };
-  }, [courseId, moduleItems, totalMinutes]);
+  }, [courseId, moduleItems, totalMinutes, tt]);
 
   const previewLesson = previewCourse.lessons[0] || null;
 
@@ -256,18 +259,18 @@ function ModuleManager({
   const addModule = useCallback(() => {
     const module: ModuleEntity = {
       id: `module-${Date.now()}`,
-      title: `New Module ${moduleItems.length + 1}`,
-      description: 'Module description',
+      title: `${tt('Ny modul', 'New Module')} ${moduleItems.length + 1}`,
+      description: tt('Modulbeskrivelse', 'Module description'),
       status: 'draft',
       releaseMode: 'manual',
       releaseDate: new Date().toISOString().slice(0, 16),
-      lessons: [buildLesson('New Lesson', 7)],
+      lessons: [buildLesson(tt('Ny leksjon', 'New Lesson'), 7)],
     };
     const nextModules = [...moduleItems, module];
     commitModules(nextModules);
     setActiveModuleId(module.id);
     onModuleSelect?.(module);
-  }, [commitModules, moduleItems, onModuleSelect]);
+  }, [commitModules, moduleItems, onModuleSelect, tt]);
 
   const updateActiveModule = useCallback(
     (updater: (module: ModuleEntity) => ModuleEntity) => {
@@ -283,9 +286,9 @@ function ModuleManager({
   const addLesson = useCallback(() => {
     updateActiveModule((module) => ({
       ...module,
-      lessons: [...module.lessons, buildLesson('New Lesson', 8)],
+      lessons: [...module.lessons, buildLesson(tt('Ny leksjon', 'New Lesson'), 8)],
     }));
-  }, [updateActiveModule]);
+  }, [tt, updateActiveModule]);
 
   const updateLesson = useCallback(
     (lessonId: string, field: keyof ModuleLesson, value: string | number | boolean) => {
@@ -354,16 +357,16 @@ function ModuleManager({
           lessonCount: nextModules.reduce((sum, module) => sum + module.lessons.length, 0),
         });
 
-        setSaveMessage(publish ? 'Modules published.' : 'Modules saved.');
+        setSaveMessage(publish ? tt('Moduler publisert.', 'Modules published.') : tt('Moduler lagret.', 'Modules saved.'));
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save modules.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre moduler.', 'Failed to save modules.');
         debugging.logIntegration('error', 'Module manager save failed', { error: message });
         setSaveMessage(message);
       } finally {
         setSaving(false);
       }
     },
-    [analytics, commitModules, courseId, debugging, getCourse, moduleItems, updateCourse],
+    [analytics, commitModules, courseId, debugging, getCourse, moduleItems, tt, updateCourse],
   );
 
   useEffect(() => {
@@ -384,7 +387,7 @@ function ModuleManager({
               border: '1px solid rgba(245,166,35,0.4)',
             }}
           >
-            Back to Module Manager
+            {tt('Tilbake til moduladministrator', 'Back to Module Manager')}
           </Button>
         </Box>
         <AcademyVideoPlayer course={previewCourse} lesson={previewLesson} />
@@ -417,19 +420,7 @@ function ModuleManager({
           }}
         >
           <Box sx={{ p: 2, borderBottom: '1px solid rgba(245,166,35,0.15)' }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Box
-                sx={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: '6px',
-                  background: 'linear-gradient(135deg, #f5a623 0%, #f59e0b 100%)',
-                }}
-              />
-              <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.08em', fontSize: '1.1rem' }}>
-                CREATORHUB ACADEMY
-              </Typography>
-            </Stack>
+            <AcademyBrandMark />
           </Box>
 
           <Box sx={{ p: 1.5 }}>
@@ -446,7 +437,7 @@ function ModuleManager({
                 mb: 1.2,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
 
             <Stack spacing={0.6}>
@@ -498,7 +489,7 @@ function ModuleManager({
                       border: active ? '1px solid rgba(245,166,35,0.42)' : '1px solid transparent',
                     }}
                   >
-                    {label}
+                    {navLabel(label)}
                   </Button>
                 );
               })}
@@ -518,7 +509,7 @@ function ModuleManager({
                 borderRadius: '8px',
               }}
             >
-              New Module
+              {tt('Ny modul', 'New Module')}
             </Button>
           </Box>
         </Box>
@@ -539,7 +530,7 @@ function ModuleManager({
                   CREATOR STUDIO
                 </Typography>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.8rem', md: '2.2rem' } }}>
-                  Module Manager
+                  {tt('Moduladministrator', 'Module Manager')}
                 </Typography>
               </Stack>
 
@@ -555,7 +546,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Annotation
+                  {tt('Annotering', 'Annotation')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -568,7 +559,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Quiz
+                  {tt('Quiz', 'Quiz')}
                 </Button>
                 <Button
                   startIcon={<Campaign />}
@@ -594,7 +585,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
                 <Button
                   startIcon={<Movie />}
@@ -607,7 +598,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Player
+                  {tt('Spiller', 'Player')}
                 </Button>
                 <Button
                   startIcon={<MonetizationOn />}
@@ -620,7 +611,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Monetize
+                  {tt('Monetiser', 'Monetize')}
                 </Button>
                 <Button
                   startIcon={<PlayArrow />}
@@ -633,7 +624,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Preview
+                  {tt('Forhåndsvis', 'Preview')}
                 </Button>
                 <Button
                   startIcon={<Save />}
@@ -647,7 +638,7 @@ function ModuleManager({
                     px: 2,
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   startIcon={<Publish />}
@@ -665,7 +656,7 @@ function ModuleManager({
                     },
                   }}
                 >
-                  Publish
+                  {tt('Publiser', 'Publish')}
                 </Button>
               </Stack>
             </Stack>
@@ -700,7 +691,7 @@ function ModuleManager({
                   borderRadius: '8px',
                 }}
               >
-                <MenuItem value="all">All Modules</MenuItem>
+                <MenuItem value="all">{tt('Alle moduler', 'All Modules')}</MenuItem>
               </Select>
               <IconButton sx={{ color: 'rgba(244,237,225,0.7)' }}>
                 <MoreHoriz />
@@ -713,7 +704,7 @@ function ModuleManager({
                 size="small"
                 value={searchValue}
                 onChange={(event) => setSearchValue(event.target.value)}
-                placeholder="Search Modules..."
+                placeholder={tt('Søk moduler...', 'Search Modules...')}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -742,7 +733,7 @@ function ModuleManager({
                   '&:hover': { background: 'linear-gradient(180deg, #ffe08d 0%, #f6b640 100%)' },
                 }}
               >
-                Add Module
+                {tt('Legg til modul', 'Add Module')}
               </Button>
             </Stack>
 
@@ -872,7 +863,7 @@ function ModuleManager({
                               <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.4 }}>
                                 <Chip
                                   size="small"
-                                  label={lesson.releaseScheduled ? 'Release Scheduled' : 'Manual Release'}
+                                  label={lesson.releaseScheduled ? tt('Publisering planlagt', 'Release Scheduled') : tt('Manuell publisering', 'Manual Release')}
                                   sx={{
                                     height: 20,
                                     bgcolor: 'rgba(255,255,255,0.08)',
@@ -883,7 +874,7 @@ function ModuleManager({
                                 />
                                 <Chip
                                   size="small"
-                                  label={`${Math.round(lesson.duration / 60)} min`}
+                                  label={`${Math.round(lesson.duration / 60)} ${tt('min', 'min')}`}
                                   sx={{
                                     height: 20,
                                     bgcolor: alpha('#f5a623', 0.2),
@@ -909,8 +900,12 @@ function ModuleManager({
 
                     <Box sx={{ px: 1.3, py: 0.85, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                       <Stack direction="row" spacing={1.4}>
-                        <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.72 }}>Minutes {moduleMinutes}</Typography>
-                        <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.72 }}>Completion Rate {moduleCompletion}%</Typography>
+                        <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.72 }}>
+                          {tt('Minutter', 'Minutes')} {moduleMinutes}
+                        </Typography>
+                        <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.72 }}>
+                          {tt('Fullføringsrate', 'Completion Rate')} {moduleCompletion}%
+                        </Typography>
                       </Stack>
                     </Box>
                   </Box>
@@ -930,7 +925,7 @@ function ModuleManager({
                   px: 2.4,
                 }}
               >
-                Add Module
+                {tt('Legg til modul', 'Add Module')}
               </Button>
             </Box>
           </Box>
@@ -949,7 +944,7 @@ function ModuleManager({
               ['schedule', 'Schedule'],
               ['prerequisites', 'Prerequisites'],
               ['localization', 'Localization'],
-            ] as const).map(([key, label]) => (
+            ] as const).map(([key, _label]) => (
               <Button
                 key={key}
                 onClick={() => setRightTab(key)}
@@ -965,7 +960,13 @@ function ModuleManager({
                   fontWeight: rightTab === key ? 700 : 500,
                 }}
               >
-                {label}
+                {key === 'module'
+                  ? tt('Moduladministrator', 'Module Manager')
+                  : key === 'schedule'
+                    ? tt('Planlegging', 'Schedule')
+                    : key === 'prerequisites'
+                      ? tt('Forutsetninger', 'Prerequisites')
+                      : tt('Lokalisering', 'Localization')}
               </Button>
             ))}
           </Stack>
@@ -979,7 +980,7 @@ function ModuleManager({
             }}
           >
             <TextField
-              label="Module Title"
+              label={tt('Modultittel', 'Module Title')}
               value={activeModule?.title || ''}
               onChange={(event) => {
                 const value = event.target.value;
@@ -999,7 +1000,7 @@ function ModuleManager({
             />
 
             <TextField
-              label="Description"
+              label={tt('Beskrivelse', 'Description')}
               value={activeModule?.description || ''}
               onChange={(event) => {
                 const value = event.target.value;
@@ -1032,13 +1033,13 @@ function ModuleManager({
                 background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
               }}
             >
-              Add Lesson
+              {tt('Legg til leksjon', 'Add Lesson')}
             </Button>
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mb: 1.2 }} />
 
             <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.8rem', mb: 0.8 }}>
-              Release Date
+              {tt('Publiseringsdato', 'Release Date')}
             </Typography>
 
             <Stack spacing={1.1} sx={{ mb: 1.2 }}>
@@ -1055,7 +1056,7 @@ function ModuleManager({
                   borderRadius: '8px',
                 }}
               >
-                {scheduleMode === 'manual' ? '●' : '○'} Manually Enable Release
+                {scheduleMode === 'manual' ? '●' : '○'} {tt('Aktiver publisering manuelt', 'Manually Enable Release')}
               </Button>
 
               <Button
@@ -1071,7 +1072,7 @@ function ModuleManager({
                   borderRadius: '8px',
                 }}
               >
-                {scheduleMode === 'scheduled' ? '●' : '○'} Schedule Release
+                {scheduleMode === 'scheduled' ? '●' : '○'} {tt('Planlegg publisering', 'Schedule Release')}
               </Button>
             </Stack>
 
@@ -1122,10 +1123,13 @@ function ModuleManager({
               }}
             >
               <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.82 }}>
-                The module will be released on
+                {tt('Modulen blir publisert', 'The module will be released on')}
               </Typography>
               <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>
-                {activeModule?.releaseDate ? new Date(activeModule.releaseDate).toLocaleString() : 'Not scheduled'} {timezone}
+                {activeModule?.releaseDate
+                  ? new Date(activeModule.releaseDate).toLocaleString()
+                  : tt('Ikke planlagt', 'Not scheduled')}{' '}
+                {timezone}
               </Typography>
             </Box>
 
@@ -1140,7 +1144,7 @@ function ModuleManager({
                   flex: 1,
                 }}
               >
-                Cancel
+                {tt('Avbryt', 'Cancel')}
               </Button>
               <Button
                 onClick={() => void saveModules(false)}
@@ -1153,26 +1157,26 @@ function ModuleManager({
                   background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
                 }}
               >
-                Save
+                {tt('Lagre', 'Save')}
               </Button>
             </Stack>
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1.2 }} />
 
             <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Modules</Typography>
+              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>{tt('Moduler', 'Modules')}</Typography>
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                 {moduleItems.length}
               </Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.8 }}>
-              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Lessons</Typography>
+              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>{navLabel('Lessons')}</Typography>
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                 {moduleItems.reduce((sum, module) => sum + module.lessons.length, 0)}
               </Typography>
             </Stack>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.8 }}>
-              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Completion</Typography>
+              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>{tt('Fullføring', 'Completion')}</Typography>
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                 {completionRate}%
               </Typography>

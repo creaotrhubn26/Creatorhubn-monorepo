@@ -77,6 +77,29 @@ const severityOrder: Record<'high' | 'medium' | 'low', number> = {
   low: 2,
 };
 
+const WAREHOUSE_TAB_PANEL_SX = {
+  p: 2,
+  m: { xs: 1.5, md: 2 },
+  borderRadius: 2,
+  border: '1px solid rgba(148,163,184,0.22)',
+  background: 'linear-gradient(150deg, rgba(2,6,23,0.74) 0%, rgba(15,23,42,0.68) 50%, rgba(30,41,59,0.56) 100%)',
+  boxShadow: '0 12px 30px rgba(2,6,23,0.26)',
+};
+
+const WAREHOUSE_CONTROL_SX = {
+  '& .MuiInputBase-root': {
+    color: '#e2e8f0',
+    bgcolor: 'rgba(15,23,42,0.7)',
+    borderRadius: 1.25,
+  },
+  '& .MuiOutlinedInput-notchedOutline': {
+    borderColor: 'rgba(148,163,184,0.34)',
+  },
+  '& .MuiInputLabel-root': {
+    color: 'rgba(226,232,240,0.7)',
+  },
+};
+
 export interface WarehouseDialogItem {
   id: string;
   itemType: InventoryItemType;
@@ -518,39 +541,75 @@ export function WarehouseInventoryDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xl" PaperProps={{ sx: { bgcolor: '#111421', color: '#fff' } }}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      fullWidth
+      maxWidth="xl"
+      PaperProps={{
+        sx: {
+          color: '#f8fafc',
+          borderRadius: 3,
+          overflow: 'hidden',
+          border: '1px solid rgba(148,163,184,0.26)',
+          background:
+            'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.92) 52%, rgba(30,41,59,0.86) 100%)',
+          boxShadow: '0 26px 70px rgba(2,6,23,0.54)',
+          backdropFilter: 'blur(18px)',
+        },
+      }}
+    >
       <DialogTitle
         component="div"
         sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          py: 1.5,
+          borderBottom: '1px solid rgba(148,163,184,0.22)',
+          py: 1.75,
+          px: { xs: 2, md: 2.5 },
+          background:
+            'linear-gradient(120deg, rgba(147,51,234,0.18) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.2) 100%)',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Inventory2Icon sx={{ color: '#c084fc' }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            {title}
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 1.5,
+              background: 'linear-gradient(135deg, #a855f7, #7e22ce)',
+              border: '1px solid rgba(233,213,255,0.36)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Inventory2Icon sx={{ color: '#fff', fontSize: 20 }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>{title}</Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.72)' }}>
+              Role Room lagerstyring og sporbarhet
+            </Typography>
+          </Box>
           <Chip
             size="small"
             label={`${totals.totalAvailable} tilgjengelig`}
-            sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#81c784', fontWeight: 700 }}
+            sx={{ bgcolor: 'rgba(76,175,80,0.2)', color: '#86efac', fontWeight: 700, border: '1px solid rgba(134,239,172,0.32)' }}
           />
         </Box>
-        <IconButton onClick={onClose} sx={{ color: 'rgba(255,255,255,0.75)' }}>
+        <IconButton onClick={onClose} sx={{ color: 'rgba(226,232,240,0.8)' }}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ px: 0 }}>
+      <DialogContent sx={{ px: 0, pb: 1 }}>
         {feedback && (
           <Alert
             severity={feedback.kind}
             onClose={() => setFeedback(null)}
-            sx={{ mx: 2, mt: 2, borderRadius: 2 }}
+            sx={{ mx: 2, mt: 2, borderRadius: 2, border: '1px solid rgba(148,163,184,0.24)', bgcolor: 'rgba(15,23,42,0.8)' }}
           >
             {feedback.message}
           </Alert>
@@ -563,8 +622,25 @@ export function WarehouseInventoryDialog({
           scrollButtons="auto"
           sx={{
             px: 2,
+            pt: 1.5,
+            pb: 1,
             minHeight: 44,
-            '& .MuiTabs-indicator': { backgroundColor: '#9333ea' },
+            '& .MuiTabs-indicator': { display: 'none' },
+            '& .MuiTab-root': {
+              minHeight: 38,
+              textTransform: 'none',
+              borderRadius: 1.25,
+              border: '1px solid rgba(148,163,184,0.24)',
+              color: 'rgba(203,213,225,0.75)',
+              bgcolor: 'rgba(15,23,42,0.6)',
+              mr: 1,
+              '&.Mui-selected': {
+                color: '#f5d0fe',
+                borderColor: 'rgba(192,132,252,0.46)',
+                bgcolor: 'rgba(147,51,234,0.24)',
+                boxShadow: '0 8px 20px rgba(147,51,234,0.26)',
+              },
+            },
           }}
         >
           <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label="Oversikt" />
@@ -575,10 +651,10 @@ export function WarehouseInventoryDialog({
           <Tab icon={<RuleIcon sx={{ fontSize: 16 }} />} iconPosition="start" label="Konsistens" />
         </Tabs>
 
-        <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+        <Divider sx={{ borderColor: 'rgba(148,163,184,0.2)' }} />
 
         {tab === 0 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Box
               sx={{
                 display: 'grid',
@@ -677,7 +753,7 @@ export function WarehouseInventoryDialog({
         )}
 
         {tab === 1 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Opprett lagernode
             </Typography>
@@ -695,9 +771,9 @@ export function WarehouseInventoryDialog({
                 value={newNodeName}
                 onChange={(event) => setNewNodeName(event.target.value)}
                 size="small"
-                sx={{ '& .MuiOutlinedInput-root': { color: '#fff' } }}
+                sx={WAREHOUSE_CONTROL_SX}
               />
-              <FormControl size="small">
+              <FormControl size="small" sx={WAREHOUSE_CONTROL_SX}>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Type</InputLabel>
                 <Select
                   value={newNodeType}
@@ -712,7 +788,7 @@ export function WarehouseInventoryDialog({
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small">
+              <FormControl size="small" sx={WAREHOUSE_CONTROL_SX}>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Overordnet</InputLabel>
                 <Select
                   value={newNodeParent}
@@ -728,7 +804,7 @@ export function WarehouseInventoryDialog({
                   ))}
                 </Select>
               </FormControl>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateNode}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={handleCreateNode} sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#050816', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}>
                 Opprett
               </Button>
             </Box>
@@ -779,7 +855,7 @@ export function WarehouseInventoryDialog({
         )}
 
         {tab === 2 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1}
@@ -796,6 +872,7 @@ export function WarehouseInventoryDialog({
                   startIcon={<QrCodeIcon />}
                   onClick={() => selectedItem && openQrLabel(`${selectedItem.itemType}:${selectedItem.id}`)}
                   disabled={!selectedItem}
+                  sx={{ borderColor: 'rgba(147,197,253,0.52)', color: '#93c5fd', '&:hover': { borderColor: '#93c5fd', bgcolor: 'rgba(59,130,246,0.12)' } }}
                 >
                   QR-etikett
                 </Button>
@@ -808,6 +885,7 @@ export function WarehouseInventoryDialog({
                     setQrScanError(null);
                     setQrScanOpen(true);
                   }}
+                  sx={{ borderColor: 'rgba(192,132,252,0.5)', color: '#d8b4fe', '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(147,51,234,0.12)' } }}
                 >
                   Skann QR
                 </Button>
@@ -820,7 +898,7 @@ export function WarehouseInventoryDialog({
                 gap: 1,
               }}
             >
-              <FormControl size="small" fullWidth>
+              <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Post</InputLabel>
                 <Select
                   value={selectedItemKey}
@@ -836,7 +914,7 @@ export function WarehouseInventoryDialog({
                 </Select>
               </FormControl>
 
-              <FormControl size="small" fullWidth>
+              <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
                 <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Operasjon</InputLabel>
                 <Select
                   value={operation}
@@ -858,11 +936,11 @@ export function WarehouseInventoryDialog({
                 size="small"
                 value={quantity}
                 onChange={(event) => setQuantity(Math.max(0, Number(event.target.value) || 0))}
-                sx={{ '& .MuiOutlinedInput-root': { color: '#fff' } }}
+                sx={WAREHOUSE_CONTROL_SX}
               />
 
               {operationNeedsSource(operation) && (
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
                   <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>Fra lager</InputLabel>
                   <Select
                     value={fromLocationId}
@@ -880,7 +958,7 @@ export function WarehouseInventoryDialog({
               )}
 
               {operationNeedsDestination(operation) || operation !== 'move' ? (
-                <FormControl size="small" fullWidth>
+                <FormControl size="small" fullWidth sx={WAREHOUSE_CONTROL_SX}>
                   <InputLabel sx={{ color: 'rgba(255,255,255,0.8)' }}>
                     {operation === 'move' ? 'Til lager' : 'Lager'}
                   </InputLabel>
@@ -906,14 +984,14 @@ export function WarehouseInventoryDialog({
                     size="small"
                     value={sceneId}
                     onChange={(event) => setSceneId(event.target.value)}
-                    sx={{ '& .MuiOutlinedInput-root': { color: '#fff' } }}
+                    sx={WAREHOUSE_CONTROL_SX}
                   />
                   <TextField
                     label="Shot-ID"
                     size="small"
                     value={shotId}
                     onChange={(event) => setShotId(event.target.value)}
-                    sx={{ '& .MuiOutlinedInput-root': { color: '#fff' } }}
+                    sx={WAREHOUSE_CONTROL_SX}
                   />
                 </>
               )}
@@ -923,12 +1001,12 @@ export function WarehouseInventoryDialog({
                 size="small"
                 value={operationNote}
                 onChange={(event) => setOperationNote(event.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { color: '#fff' } }}
+                sx={WAREHOUSE_CONTROL_SX}
               />
             </Box>
 
             <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1.5 }}>
-              <Button variant="contained" onClick={handleSubmitOperation}>
+              <Button variant="contained" onClick={handleSubmitOperation} sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#050816', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}>
                 Lagre operasjon
               </Button>
             </Stack>
@@ -936,7 +1014,7 @@ export function WarehouseInventoryDialog({
         )}
 
         {tab === 3 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Aktive reservasjoner
             </Typography>
@@ -1000,7 +1078,7 @@ export function WarehouseInventoryDialog({
         )}
 
         {tab === 4 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Transaksjonslogg
             </Typography>
@@ -1045,7 +1123,7 @@ export function WarehouseInventoryDialog({
         )}
 
         {tab === 5 && (
-          <Box sx={{ p: 2 }}>
+          <Box sx={WAREHOUSE_TAB_PANEL_SX}>
             <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1 }}>
               Konsistenssjekk
             </Typography>
@@ -1187,7 +1265,7 @@ export function WarehouseInventoryDialog({
             variant="outlined"
             startIcon={<CopyIcon />}
             onClick={() => qrItem && handleCopyQrValue(qrItem)}
-            sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
+            sx={{ borderColor: '#c084fc', color: '#c084fc' }}
           >
             Kopier data
           </Button>
@@ -1200,7 +1278,7 @@ export function WarehouseInventoryDialog({
               setQrScanError(null);
               setQrScanOpen(true);
             }}
-            sx={{ borderColor: '#81c784', color: '#81c784' }}
+            sx={{ borderColor: '#c084fc', color: '#c084fc', '&:hover': { borderColor: '#d8b4fe', bgcolor: 'rgba(147,51,234,0.12)' } }}
           >
             Skann
           </Button>
@@ -1222,7 +1300,7 @@ export function WarehouseInventoryDialog({
         fullWidth
         PaperProps={{
           sx: {
-            bgcolor: '#1b2030',
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(255,255,255,0.1)',
@@ -1240,7 +1318,7 @@ export function WarehouseInventoryDialog({
           }}
         >
           <Stack direction="row" spacing={1} alignItems="center">
-            <QrCodeScannerIcon sx={{ color: '#64b5f6' }} />
+            <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Skann lager-QR
             </Typography>
@@ -1255,6 +1333,7 @@ export function WarehouseInventoryDialog({
           </Typography>
           <QrCameraScanner
             active={qrScanOpen}
+            scanTargetLabel="lager-QR"
             onDetected={(value) => {
               setQrScanInput(value);
               setQrScanError(null);
@@ -1277,8 +1356,8 @@ export function WarehouseInventoryDialog({
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(100,181,246,0.4)' },
-                '&.Mui-focused fieldset': { borderColor: '#64b5f6' },
+                '&:hover fieldset': { borderColor: 'rgba(192,132,252,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#c084fc' },
               },
             }}
           />
@@ -1309,7 +1388,7 @@ export function WarehouseInventoryDialog({
                 setQrScanError('Kunne ikke lese fra utklippstavle.');
               }
             }}
-            sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
+            sx={{ borderColor: '#c084fc', color: '#c084fc' }}
           >
             Lim inn
           </Button>
@@ -1317,7 +1396,7 @@ export function WarehouseInventoryDialog({
             variant="contained"
             startIcon={<QrCodeScannerIcon />}
             onClick={() => handleResolveScannedQr(qrScanInput)}
-            sx={{ bgcolor: '#64b5f6', color: '#000', fontWeight: 700, '&:hover': { bgcolor: '#90caf9' } }}
+            sx={{ background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#000', fontWeight: 700, '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' } }}
           >
             Tolk QR
           </Button>

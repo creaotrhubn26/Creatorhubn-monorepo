@@ -28,8 +28,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Lesson } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyCurriculumStudioProps {
   courseId?: string;
@@ -181,7 +182,8 @@ const buildModulesFromCourse = (course: Course | null | undefined): CurriculumMo
 function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurriculumStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('curriculum');
   const [selectedCourseId, setSelectedCourseId] = useState(courseId || 'all');
@@ -281,12 +283,12 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
     const moduleIndex = moduleItems.length + 1;
     const newModule: CurriculumModule = {
       id: `curriculum-module-${Date.now()}`,
-      title: `Module ${moduleIndex}`,
+      title: `${tt('Modul', 'Module')} ${moduleIndex}`,
       status: 'draft',
-      releaseNote: 'Release Scheduled',
+      releaseNote: tt('Planlagt publisering', 'Release Scheduled'),
       expanded: true,
       imageTheme: moduleIndex % placeholderBackgrounds.length,
-      lessons: [buildLesson('New Lesson', 600)],
+      lessons: [buildLesson(tt('Ny leksjon', 'New Lesson'), 600)],
     };
 
     setModuleItems((prev) => [
@@ -294,7 +296,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
       newModule,
     ]);
     setActiveModuleId(newModule.id);
-  }, [moduleItems.length]);
+  }, [moduleItems.length, tt]);
 
   const toggleModule = useCallback((moduleId: string) => {
     setModuleItems((prev) =>
@@ -313,12 +315,12 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
         if (module.id !== moduleId) return module;
         return {
           ...module,
-          lessons: [...module.lessons, buildLesson('New Lesson', 540)],
+          lessons: [...module.lessons, buildLesson(tt('Ny leksjon', 'New Lesson'), 540)],
         };
       }),
     );
     setActiveModuleId(moduleId);
-  }, []);
+  }, [tt]);
 
   const saveCurriculum = useCallback(
     async (publish: boolean) => {
@@ -375,9 +377,13 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
           timestamp: Date.now(),
         });
 
-        setSaveMessage(publish ? 'Curriculum published.' : 'Curriculum saved.');
+        setSaveMessage(
+          publish
+            ? tt('Læreplan publisert.', 'Curriculum published.')
+            : tt('Læreplan lagret.', 'Curriculum saved.'),
+        );
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save curriculum.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre læreplan.', 'Failed to save curriculum.');
         setSaveMessage(message);
         debugging.logIntegration('error', 'Academy curriculum save failed', {
           courseId: activeCourse?.id || null,
@@ -387,20 +393,20 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
         setSaving(false);
       }
     },
-    [activeCourse, analytics, debugging, moduleItems, onSave, state?.courses, updateCourse],
+    [activeCourse, analytics, debugging, moduleItems, onSave, state?.courses, tt, updateCourse],
   );
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'enrollment', label: 'Enrollment', route: '/academy/enrollment' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -424,21 +430,20 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -452,7 +457,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -499,7 +504,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 borderRadius: 1,
               }}
             >
-              New Module
+              {tt('Ny modul', 'New Module')}
             </Button>
           </Box>
         </Box>
@@ -531,7 +536,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   borderRadius: 1,
                 }}
               >
-                Preview
+                {tt('Forhåndsvis', 'Preview')}
               </Button>
               <Button
                 startIcon={<Save />}
@@ -544,7 +549,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   borderRadius: 1,
                 }}
               >
-                Save
+                {tt('Lagre', 'Save')}
               </Button>
               <Button
                 startIcon={<Publish />}
@@ -559,7 +564,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   fontWeight: 700,
                 }}
               >
-                Publish
+                {tt('Publiser', 'Publish')}
               </Button>
               <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.75)' }}>
                 <NotificationsNone fontSize="small" />
@@ -592,7 +597,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
                 <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  Curriculum
+                  {tt('Læreplan', 'Curriculum')}
                 </Typography>
 
                 <Stack direction="row" spacing={1} alignItems="center">
@@ -607,7 +612,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                       '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                     }}
                   >
-                    <MenuItem value="all">All Modules</MenuItem>
+                    <MenuItem value="all">{tt('Alle moduler', 'All Modules')}</MenuItem>
                     {courseItems.map((course) => (
                       <MenuItem key={course.id} value={course.id}>
                         {course.title}
@@ -646,7 +651,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   <TextField
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
-                    placeholder="Search Lessons..."
+                    placeholder={tt('Søk leksjoner...', 'Search Lessons...')}
                     size="small"
                     InputProps={{
                       startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -672,7 +677,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                       fontWeight: 700,
                     }}
                   >
-                    Add Module
+                    {tt('Legg til modul', 'Add Module')}
                   </Button>
                 </Stack>
 
@@ -736,7 +741,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                               }}
                             />
                             <Typography sx={{ fontSize: 37, fontWeight: 600, lineHeight: 1 }}>
-                              {module.title}
+                              {navLabel(module.title)}
                             </Typography>
                           </Stack>
 
@@ -753,7 +758,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                                 border: '1px solid rgba(255,255,255,0.16)',
                               }}
                             >
-                              + Durations
+                              + {tt('Varigheter', 'Durations')}
                             </Button>
                             <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)' }}>
                               <MoreHoriz fontSize="small" />
@@ -794,12 +799,16 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
 
                                 <Box sx={{ minWidth: 0, flex: 1 }}>
                                   <Typography sx={{ fontSize: 39, lineHeight: 1, fontWeight: 600 }} noWrap>
-                                    {lesson.title}
+                                    {navLabel(lesson.title)}
                                   </Typography>
                                   <Stack direction="row" spacing={0.6} sx={{ mt: 0.5 }}>
                                     <Chip
                                       size="small"
-                                      label={lesson.releaseMode === 'scheduled' ? 'Release Scheduled' : 'Manual Release'}
+                                      label={
+                                        lesson.releaseMode === 'scheduled'
+                                          ? tt('Planlagt publisering', 'Release Scheduled')
+                                          : tt('Manuell publisering', 'Manual Release')
+                                      }
                                       sx={{
                                         height: 20,
                                         color: '#edf0f7',
@@ -821,10 +830,10 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                             ))}
 
                             <Stack direction="row" spacing={1.4} sx={{ px: 1, py: 0.8 }}>
-                              <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>Minutes {moduleMinutes}</Typography>
-                              <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>Completion Rate: {moduleCompletion}%</Typography>
+                              <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>{tt('Minutter', 'Minutes')} {moduleMinutes}</Typography>
+                              <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>{tt('Fullføringsrate', 'Completion Rate')}: {moduleCompletion}%</Typography>
                               <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>
-                                Avg Watch Time: {avgWatchMinutes} min
+                                {tt('Gj.sn. seertid', 'Avg Watch Time')}: {avgWatchMinutes} {tt('min', 'min')}
                               </Typography>
                             </Stack>
                             <LinearProgress
@@ -851,7 +860,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
 
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.1 }}>
                   <TextField
-                    placeholder="Search Modules..."
+                    placeholder={tt('Søk moduler...', 'Search Modules...')}
                     size="small"
                     InputProps={{
                       startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -865,7 +874,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     }}
                   />
                   <Button sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>
-                    Page 1 of 1
+                    {tt('Side 1 av 1', 'Page 1 of 1')}
                   </Button>
                   <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: '1px solid rgba(255,255,255,0.16)' }}>
                     <ChevronLeft fontSize="small" />
@@ -875,7 +884,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   </IconButton>
                 </Stack>
 
-                <Typography sx={{ mt: 1.4, fontSize: 39, fontWeight: 600 }}>Course Analytics</Typography>
+                <Typography sx={{ mt: 1.4, fontSize: 39, fontWeight: 600 }}>{tt('Kursanalyse', 'Course Analytics')}</Typography>
 
                 <Stack
                   direction={{ xs: 'column', lg: 'row' }}
@@ -886,25 +895,25 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     <Stack direction="row" spacing={2.2}>
                       <Box>
                         <Typography sx={{ fontSize: 44, fontWeight: 700, lineHeight: 1 }}>{totalLessons}</Typography>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Lessons</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Leksjoner', 'Lessons')}</Typography>
                       </Box>
                       <Box>
                         <Typography sx={{ fontSize: 44, fontWeight: 700, lineHeight: 1 }}>{totalModules}</Typography>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Modules</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Moduler', 'Modules')}</Typography>
                       </Box>
                       <Box>
                         <Typography sx={{ fontSize: 44, fontWeight: 700, lineHeight: 1 }}>{completionRate}%</Typography>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Completion</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Fullføring', 'Completion')}</Typography>
                       </Box>
                       <Box>
                         <Typography sx={{ fontSize: 44, fontWeight: 700, lineHeight: 1 }}>{totalEnrollments}</Typography>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Total Enrollments</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Totale påmeldinger', 'Total Enrollments')}</Typography>
                       </Box>
                     </Stack>
                   </Box>
 
                   <Box sx={{ ...panelSx, width: { xs: '100%', lg: 420 }, p: 1 }}>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Avg Watch Time</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Gj.sn. seertid', 'Avg Watch Time')}</Typography>
                     <Box
                       sx={{
                         mt: 0.8,
@@ -947,7 +956,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
 
               <Box sx={{ p: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
                 <Typography sx={{ fontSize: 38, fontWeight: 600 }}>
-                  {selectedModule?.title || 'Foundations'}
+                  {selectedModule?.title || tt('Grunnlag', 'Foundations')}
                 </Typography>
               </Box>
 
@@ -970,7 +979,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                       <DragIndicator sx={{ color: 'rgba(237,240,247,0.45)' }} />
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography sx={{ fontSize: 37, lineHeight: 1, fontWeight: 600 }} noWrap>
-                          {lesson.title}
+                          {navLabel(lesson.title)}
                         </Typography>
                         <Stack direction="row" spacing={0.8} sx={{ mt: 0.4 }}>
                           <Chip
@@ -991,7 +1000,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                         size="small"
                         sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.14)' }}
                       >
-                        + Duration
+                        + {tt('Varighet', 'Duration')}
                       </Button>
                     </Stack>
                   ))}
@@ -1007,7 +1016,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  New Module
+                  {tt('Ny modul', 'New Module')}
                 </Button>
               </Box>
 
@@ -1051,7 +1060,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   startIcon={<Publish />}
@@ -1065,7 +1074,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     fontWeight: 700,
                   }}
                 >
-                  Publish
+                  {tt('Publiser', 'Publish')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1081,7 +1090,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Close
+                  {tt('Lukk', 'Close')}
                 </Button>
               </Stack>
             </Box>

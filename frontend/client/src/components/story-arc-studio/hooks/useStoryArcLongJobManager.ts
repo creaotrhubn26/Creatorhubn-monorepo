@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export type StoryArcLongJobKind = 'sync' | 'scene' | 'face';
+export type StoryArcLongJobKind = 'sync' | 'scene' | 'face' | 'autoEdit';
 
 interface PersistedServerJob {
   kind: StoryArcLongJobKind;
@@ -113,6 +113,7 @@ const INITIAL_JOB_RUNNING_STATE: Record<StoryArcLongJobKind, boolean> = {
   sync: false,
   scene: false,
   face: false,
+  autoEdit: false,
 };
 
 function createInitialJobRuntime(): Record<StoryArcLongJobKind, JobRuntime> {
@@ -120,6 +121,7 @@ function createInitialJobRuntime(): Record<StoryArcLongJobKind, JobRuntime> {
     sync: { controller: null, cancelHandler: null },
     scene: { controller: null, cancelHandler: null },
     face: { controller: null, cancelHandler: null },
+    autoEdit: { controller: null, cancelHandler: null },
   };
 }
 
@@ -337,6 +339,7 @@ export function useStoryArcLongJobManager() {
       cancelJob('sync');
       cancelJob('scene');
       cancelJob('face');
+      cancelJob('autoEdit');
     };
   }, [cancelJob]);
 

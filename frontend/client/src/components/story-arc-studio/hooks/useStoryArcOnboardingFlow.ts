@@ -1,5 +1,6 @@
 import { useCallback, useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import type { ProjectToEditorData } from '../../../utils/story-arc-project-integration';
+import { isRecord, toErrorMessage } from '../storyArcStudioNormalizers';
 
 export interface RecentStoryArcProject {
   id: string;
@@ -15,6 +16,22 @@ interface WorkerInitStatus {
   error: string | null;
   progress: number;
   workers: Record<string, { ready: boolean; message: string; friendlyName?: string; description?: string }>;
+}
+
+interface WorkerStatusEntry {
+  ready: boolean;
+  status?: string;
+  message: string;
+  friendlyName?: string;
+  description?: string;
+}
+
+interface WorkersStatusResponse {
+  status?: string;
+  workers?: {
+    onDemand?: Record<string, WorkerStatusEntry>;
+    continuous?: Record<string, WorkerStatusEntry>;
+  };
 }
 
 interface SnackbarState {
@@ -65,10 +82,10 @@ export function useStoryArcOnboardingFlow({
         severity: 'success',
       });
       setOnboardingStep((step) => step + 1);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSnackbar({
         open: true,
-        message: error?.message || 'Failed to connect project',
+        message: toErrorMessage(error, 'Failed to connect project'),
         severity: 'error',
       });
     } finally {
@@ -106,10 +123,10 @@ export function useStoryArcOnboardingFlow({
         severity: 'success',
       });
       setOnboardingStep((step) => step + 1);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSnackbar({
         open: true,
-        message: error?.message || 'Failed to connect project',
+        message: toErrorMessage(error, 'Failed to connect project'),
         severity: 'error',
       });
     } finally {
@@ -160,7 +177,11 @@ export function useStoryArcOnboardingFlow({
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Failed to create project');
+        const errorMessage =
+          isRecord(errorData) && typeof errorData.error === 'string'
+            ? errorData.error
+            : 'Failed to create project';
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -183,10 +204,10 @@ export function useStoryArcOnboardingFlow({
       setCreateProjectDialogOpen(false);
       setNewProjectName('');
       setOnboardingStep((step) => step + 1);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSnackbar({
         open: true,
-        message: error?.message || 'Failed to create project',
+        message: toErrorMessage(error, 'Failed to create project'),
         severity: 'error',
       });
     } finally {
@@ -219,15 +240,15 @@ export function useStoryArcOnboardingFlow({
       const checkStatus = async (): Promise<void> => {
         try {
           const response = await fetch('/api/workers/status', { credentials: 'include' });
-          const data = await response.json();
-          const allWorkers = {
+          const data = (await response.json()) as WorkersStatusResponse;
+          const allWorkers: Record<string, WorkerStatusEntry> = {
             ...(data.workers?.onDemand || {}),
             ...(data.workers?.continuous || {}),
           };
 
           const totalWorkers = Object.keys(allWorkers).length;
           const readyWorkers = Object.values(allWorkers).filter(
-            (worker: any) => worker.ready || worker.status === 'running'
+            (worker) => worker.ready || worker.status === 'running'
           ).length;
           const progress = totalWorkers > 0 ? Math.round((readyWorkers / totalWorkers) * 100) : 0;
 

@@ -125,6 +125,7 @@ const getErrorStatusCode = (error: unknown): number | null => {
 interface EquipmentCatalogBrowserProps {
   profession: 'photographer' | 'videographer' | 'music_producer' | 'vendor';
   userId: string;
+  roleRoomBranding?: boolean;
   /** When provided, shows a "Legg til i prosjekt" button alongside the
    * normal inventory button so a parent (e.g. EquipmentManagementPanel)
    * can pre-fill its own add-form from the catalog. */
@@ -448,10 +449,39 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   profession,
   onAddToProject,
   userId,
+  roleRoomBranding = false,
 }) => {
   const theming = useTheming(profession);
   const professionColor = PROFESSION_COLORS[profession];
   const queryClient = useQueryClient();
+  const catalogGridSpacing = roleRoomBranding ? { xs: 1.5, md: 2 } : 3;
+  const roleRoomPanelSx = roleRoomBranding
+    ? {
+        p: { xs: 2, md: 3 },
+        borderRadius: 3,
+        border: '1px solid rgba(148,163,184,0.24)',
+        background: 'linear-gradient(160deg, rgba(2,6,23,0.82) 0%, rgba(15,23,42,0.7) 48%, rgba(30,41,59,0.58) 100%)',
+        boxShadow: '0 14px 32px rgba(2,6,23,0.32)',
+      }
+    : {};
+  const roleRoomControlSx = roleRoomBranding
+    ? {
+        '& .MuiInputBase-root': {
+          color: '#e2e8f0',
+          bgcolor: 'rgba(15,23,42,0.72)',
+          borderRadius: 1.5,
+        },
+        '& .MuiInputLabel-root': { color: 'rgba(226,232,240,0.68)' },
+        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.35)' },
+        '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': {
+          borderColor: 'rgba(192,132,252,0.6)',
+        },
+        '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': {
+          borderColor: '#c084fc',
+        },
+        '& .MuiSvgIcon-root': { color: 'rgba(226,232,240,0.62)' },
+      }
+    : {};
 
   // CMS mode detection - allows image editing in CMS/dev mode
   const cmsMode = useCmsMode();
@@ -789,10 +819,23 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
             display: 'flex',
             flexDirection: 'column',
             transition: 'all 0.3s ease',
-            border: isCompareSelected ? `2px solid ${professionColor}` : 'none','&:hover': {
+            border: roleRoomBranding
+              ? isCompareSelected
+                ? `2px solid ${professionColor}`
+                : '1px solid rgba(148,163,184,0.24)'
+              : isCompareSelected
+                ? `2px solid ${professionColor}`
+                : 'none',
+            background: roleRoomBranding
+              ? 'linear-gradient(145deg, rgba(15,23,42,0.84) 0%, rgba(30,41,59,0.72) 100%)'
+              : '#fff',
+            boxShadow: roleRoomBranding ? '0 10px 24px rgba(2,6,23,0.28)' : undefined,
+            '&:hover': {
               transform: 'translateY(-4px)',
-              boxShadow: 6,
-            }}}
+              boxShadow: roleRoomBranding ? '0 16px 34px rgba(76,29,149,0.34)' : 6,
+              borderColor: roleRoomBranding ? 'rgba(192,132,252,0.48)' : undefined,
+            },
+          }}
         >
           {/* Comparison checkbox overlay */}
           {compareMode && (
@@ -813,13 +856,14 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
               alt={`${equipment.brand} ${equipment.model}`}
               sx={{
                 objectFit: 'contain',
-                bgcolor: '#f5f5f5',
-                p: 2}}
+                bgcolor: roleRoomBranding ? 'rgba(255,255,255,0.04)' : '#f5f5f5',
+                p: 2,
+              }}
             />
           </Box>
           <CardContent sx={{ flexGrow: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-              <Typography variant="subtitle2" color="text.secondary">
+              <Typography variant="subtitle2" sx={{ color: roleRoomBranding ? 'rgba(226,232,240,0.74)' : 'text.secondary' }}>
                 {equipment.brand}
               </Typography>
               <IconButton
@@ -836,7 +880,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
                 )}
               </IconButton>
             </Box>
-            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600, mb: 1 }}>
+            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600, mb: 1, color: roleRoomBranding ? '#f8fafc' : 'inherit' }}>
               {equipment.model}
             </Typography>
 
@@ -882,7 +926,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
               </Typography>
             )}
             {equipment.norwegianSupplier && (
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: roleRoomBranding ? 'rgba(148,163,184,0.9)' : 'text.secondary' }}>
                 Tilgjengelig hos {equipment.norwegianSupplier}
               </Typography>
             )}
@@ -891,6 +935,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
             <Button
               size="small"
               startIcon={<Info />}
+              sx={{ color: roleRoomBranding ? 'rgba(196,181,253,0.95)' : undefined }}
               onClick={() => setSelectedEquipment(equipment)}
             >
               Detaljer
@@ -940,33 +985,52 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
   };
 
   return (
-    <Box>
+    <Box sx={roleRoomPanelSx}>
       {/* Search and Filters */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h5" sx={{ mb: 2, color: theming.colors.primary, display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography
+          variant="h5"
+          sx={{
+            mb: 2,
+            color: roleRoomBranding ? '#f8fafc' : theming.colors.primary,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
           <PhotoCamera />
           Utstyrskatalog
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            mb: 2,
+            color: roleRoomBranding ? 'rgba(203,213,225,0.75)' : 'text.secondary',
+          }}
+        >
           Søk i vår database med profesjonelt utstyr og legg til i din utstyrsliste
         </Typography>
 
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', gap: roleRoomBranding ? 1.5 : 2, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             placeholder="Søk etter utstyr..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             size="small"
-            sx={{ minWidth: 250 }}
+            sx={{
+              minWidth: 250,
+              ...roleRoomControlSx,
+            }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
                   <Search />
                 </InputAdornment>
-              )}}
+              ),
+            }}
           />
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: 150, ...roleRoomControlSx }}>
             <InputLabel>Kategori</InputLabel>
             <Select
               value={selectedCategory}
@@ -984,7 +1048,7 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: 150, ...roleRoomControlSx }}>
             <InputLabel>Merke</InputLabel>
             <Select
               value={selectedBrand}
@@ -1001,7 +1065,11 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
 
           <Chip
             label={`${equipmentList.length} produkter`}
-            sx={{ bgcolor: professionColor + '20', color: professionColor }}
+            sx={{
+              bgcolor: roleRoomBranding ? 'rgba(192,132,252,0.2)' : professionColor + '20',
+              color: roleRoomBranding ? '#e9d5ff' : professionColor,
+              border: roleRoomBranding ? '1px solid rgba(192,132,252,0.42)' : undefined,
+            }}
           />
 
           {/* Comparison mode toggle */}
@@ -1015,7 +1083,8 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
             sx={{
               bgcolor: compareMode ? professionColor : 'transparent',
               borderColor: professionColor,
-              color: compareMode ? 'white' : professionColor}}
+              color: compareMode ? 'white' : professionColor,
+            }}
           >
             {compareMode ? 'Avslutt sammenligning' : 'Sammenlign utstyr'}
           </Button>
@@ -1060,14 +1129,27 @@ const EquipmentCatalogBrowser: React.FC<EquipmentCatalogBrowserProps> = ({
 
       {/* Equipment Grid */}
       {catalogMode !== 'checking' && !(catalogMode === 'api' && isLoading) && equipmentList.length > 0 && (
-        <Grid container spacing={3}>
+        <Grid container spacing={0} sx={{ gap: catalogGridSpacing }}>
           {equipmentList.map(renderEquipmentCard)}
         </Grid>
       )}
 
       {/* Empty State */}
       {catalogMode !== 'checking' && !(catalogMode === 'api' && isLoading) && equipmentList.length === 0 && (
-        <Alert severity="info" sx={{ mt: 2 }}>
+        <Alert
+          severity="info"
+          sx={{
+            mt: 2,
+            ...(roleRoomBranding
+              ? {
+                  bgcolor: 'rgba(15,23,42,0.76)',
+                  color: '#cbd5e1',
+                  border: '1px solid rgba(148,163,184,0.3)',
+                  '& .MuiAlert-icon': { color: '#93c5fd' },
+                }
+              : {}),
+          }}
+        >
           {catalogMode === 'fallback'
             ? 'Katalog kjører i fallback-modus. Viser lokal reservekatalog uten API-kall.'
             : 'Ingen utstyr funnet med gjeldende filtre. Prøv å endre søket eller filtrene.'}

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="860" height="220" viewBox="0 0 860 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="coinBg" cx="35%" cy="26%" r="80%">
+      <stop offset="0%" stop-color="#fff0c9" />
+      <stop offset="56%" stop-color="#f8c357" />
+      <stop offset="100%" stop-color="#bf7c18" />
+    </radialGradient>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffe6ab" />
+      <stop offset="42%" stop-color="#f5b235" />
+      <stop offset="100%" stop-color="#a35f0f" />
+    </linearGradient>
+    <linearGradient id="headline" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ef7d0d" />
+      <stop offset="45%" stop-color="#f5a01f" />
+      <stop offset="100%" stop-color="#ffd07c" />
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#f7b13c" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <g transform="translate(6 10)" filter="url(#glow)">
+    <circle cx="95" cy="95" r="88" fill="url(#coinBg)" />
+    <circle cx="95" cy="95" r="88" fill="none" stroke="url(#metal)" stroke-width="6" />
+    <circle cx="95" cy="95" r="74" fill="none" stroke="#76440f" stroke-opacity="0.35" stroke-width="2" />
+
+    <g transform="translate(0 2)">
+      <polygon points="95,52 45,77 95,102 145,77" fill="#2a1404" />
+      <rect x="80" y="77" width="30" height="40" rx="3" fill="#2a1404" />
+      <polygon points="95,63 70,77 95,90 120,77" fill="#efb13c" />
+      <polygon points="87,76 87,92 104,84" fill="#fff2cc" />
+    </g>
+
+    <circle cx="139" cy="63" r="15" fill="#ecac2e" stroke="#7d4a0d" stroke-width="1.6" />
+    <rect x="132" y="58" width="14" height="8" rx="1.5" fill="#2a1404" />
+    <polygon points="137,60 137,66 143,63" fill="#ffeac0" />
+
+    <rect x="70" y="132" width="50" height="14" rx="2.8" fill="#2a1404" />
+    <rect x="75" y="135" width="7" height="7" rx="1" fill="#f7bc42" />
+    <rect x="85" y="135" width="7" height="7" rx="1" fill="#f7bc42" />
+    <rect x="95" y="135" width="7" height="7" rx="1" fill="#f7bc42" />
+    <rect x="105" y="135" width="7" height="7" rx="1" fill="#f7bc42" />
+  </g>
+
+  <g transform="translate(208 44)">
+    <text x="0" y="70" font-family="Manrope, Montserrat, Arial, sans-serif" font-size="88" font-weight="800" fill="url(#headline)">CreatorHub</text>
+    <line x1="0" y1="102" x2="118" y2="102" stroke="url(#metal)" stroke-width="3" stroke-linecap="round" />
+    <text x="140" y="114" font-family="Manrope, Montserrat, Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="7" fill="url(#metal)">NORGE ACADEMY</text>
+    <line x1="642" y1="102" x2="776" y2="102" stroke="url(#metal)" stroke-width="3" stroke-linecap="round" />
+  </g>
+</svg>

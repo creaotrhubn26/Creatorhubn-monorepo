@@ -14,6 +14,18 @@ interface AIAudioTrackOption {
   name: string;
   sourceFile: string;
   type?: 'dialogue' | 'music' | 'sfx';
+  timeline?: {
+    start: number;
+    duration: number;
+    inPoint: number;
+    outPoint: number;
+    linkedVideoClipId?: string;
+    autoEditDucking?: Record<string, unknown>;
+    autoEditJCut?: Record<string, unknown>;
+    autoEditLCut?: Record<string, unknown>;
+    audioFadeIn?: { duration: number; edge: 'in'; layer: 'audio' };
+    audioFadeOut?: { duration: number; edge: 'out'; layer: 'audio' };
+  };
 }
 
 interface UseStoryArcAudioFlowsParams {

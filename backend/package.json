@@ -24,7 +24,8 @@
     "db:studio": "npx --yes drizzle-kit studio",
     "generate-assets": "tsx scripts/generate-all-assets.ts",
     "test-generation": "tsx scripts/generate-all-assets.ts -- --limit 1",
-    "upload-models-r2": "tsx scripts/upload-models-to-r2.ts",
+    "upload-models-r2": "tsx scripts/upload-models-to-r2.ts --manifest scripts/storyarc-models.manifest.json",
+    "upload-models-r2:dry": "tsx scripts/upload-models-to-r2.ts --manifest scripts/storyarc-models.manifest.json --dry-run true",
     "upload-gfpgan": "tsx scripts/upload-gfpgan-essential.ts",
     "upload-realesrgan": "tsx scripts/upload-realesrgan-to-r2.ts",
     "upload-diffbir": "tsx scripts/upload-diffbir-to-r2.ts",
@@ -84,7 +85,14 @@
     "db:kill-queries": "tsx server/scripts/kill-long-running-queries.ts",
     "db:kill-queries:live": "tsx server/scripts/kill-long-running-queries.ts --kill",
     "db:kill-idle": "tsx server/scripts/kill-idle-transactions.ts",
-    "db:kill-idle:live": "tsx server/scripts/kill-idle-transactions.ts --kill"
+    "db:kill-idle:live": "tsx server/scripts/kill-idle-transactions.ts --kill",
+    "audio:benchmark:autotune": "tsx scripts/storyarc-audio-benchmark-autotune.ts",
+    "audio:benchmark:example": "tsx scripts/storyarc-audio-benchmark-autotune.ts --manifest scripts/storyarc-audio-benchmark.manifest.example.json --profile podcast --iterations 25 --sample-size 1 --finalists 3 --limit 1 --concurrency 1 --write-calibration config/storyarc-audio-calibration.json",
+    "audio:benchmark:demucs:example": "tsx scripts/storyarc-audio-benchmark-autotune.ts --manifest scripts/storyarc-audio-benchmark.manifest.example.json --profile podcast --noise-engine demucs --iterations 25 --sample-size 1 --finalists 3 --limit 1 --concurrency 1 --write-calibration config/storyarc-audio-calibration.fsdd50.json",
+    "audio:dataset:ifaa:r2": "node scripts/ingest-audio-manifest-to-r2.mjs --source-manifest scripts/storyarc-audio-benchmark.manifest.ifaa-web.json --output-manifest scripts/storyarc-audio-benchmark.manifest.ifaa-r2.json --expires-seconds 259200",
+    "storyarc:wedding:e2e": "tsx scripts/storyarc-wedding-e2e-from-url.ts",
+    "storyarc:wedding:e2e:upload-r2": "node scripts/upload-storyarc-e2e-artifacts-r2.mjs",
+    "storyarc:year-reel:from-cases": "tsx scripts/storyarc-year-reel-from-cases.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.928.0",

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedAt": "2026-03-04T09:25:00.000Z",
+  "source": "studio-quality-guardrail-baseline",
+  "profiles": {
+    "podcast": {
+      "qualityTarget": {
+        "integratedLufs": -16,
+        "truePeakDbtp": -1,
+        "loudnessRange": 8.5
+      },
+      "masteringStage": {
+        "highpassHz": 60,
+        "lowpassHz": 18000,
+        "compressorThresholdDb": -16.5,
+        "compressorRatio": 1.45,
+        "compressorAttackMs": 20,
+        "compressorReleaseMs": 260,
+        "limiterCeilingDbfs": 0.94
+      },
+      "noiseReductionStage": {
+        "profile": "standard",
+        "enabled": true,
+        "reductionDb": 9,
+        "noiseFloorDb": -42,
+        "applyTo": "dialogue"
+      }
+    }
+  }
+}

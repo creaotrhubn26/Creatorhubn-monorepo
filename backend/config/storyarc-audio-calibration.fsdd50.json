@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "generatedAt": "2026-03-04T12:30:04.744Z",
+  "profiles": {
+    "podcast": {
+      "qualityTarget": {
+        "integratedLufs": -14,
+        "truePeakDbtp": -1.206,
+        "loudnessRange": 12
+      },
+      "masteringStage": {
+        "highpassHz": 76.274,
+        "lowpassHz": 21000,
+        "compressorThresholdDb": -26.217,
+        "compressorRatio": 1.558,
+        "compressorAttackMs": 16.073,
+        "compressorReleaseMs": 273.426,
+        "limiterCeilingDbfs": 0.8388
+      },
+      "noiseReductionStage": {
+        "profile": "off",
+        "enabled": false,
+        "reductionDb": 0,
+        "noiseFloorDb": -60,
+        "applyTo": "dialogue"
+      }
+    }
+  },
+  "source": "storyarc-audio-benchmark-autotune:storyarc-audio-benchmark-example"
+}

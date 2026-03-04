@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent } from 'react';
+import { useState, useMemo, useEffect, useId, useRef, useCallback, type ChangeEvent, type DragEvent, type SyntheticEvent, type HTMLAttributes } from 'react';
 import {
   Box,
   Alert,
+  Autocomplete,
   Typography,
   Button,
   IconButton,
@@ -127,6 +128,12 @@ import {
   VendorLink,
 } from '../services/castingApiService';
 import { useToast } from './ToastStack';
+import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
+import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
+import equipPng from './icons/Keep/roleroom_equip.png';
+import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
+import warehouseInventoryService from '../services/warehouseInventoryService';
+import QrCameraScanner from './shared/QrCameraScanner';
 
 const TOUCH_TARGET_SIZE = 44;
 
@@ -145,11 +152,14 @@ type ViewMode = 'grid' | 'table';
 
 // ── Bridge: data shapes from external database APIs ───────────────────────────
 interface GearNewsArticle {
+  id?: string;
   title: string;
   summary?: string;
   category?: string;
   brand?: string;
   url?: string;
+  source?: string;
+  publishedAt?: string;
   rating?: number;
   price?: string;
   isNew?: boolean;
@@ -197,6 +207,7 @@ interface CameraSourceMeta {
 interface CameraRecord {
   id: string;
   externalId?: string;
+  source?: string;
   type: CameraCatalogType;
   brand: string;
   model: string;
@@ -225,6 +236,100 @@ interface CameraCatalogResponse {
   cameras?: CameraRecord[];
 }
 
+const normalizeCameraIdentity = (value: unknown): string =>
+  String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+const getCameraSourceKey = (camera: CameraRecord): string =>
+  normalizeCameraIdentity(camera.sourceMeta?.source || camera.source || '');
+
+const CAMERA_SOURCE_PRIORITY: Record<string, number> = {
+  database: 100,
+  'database-sync': 95,
+  release_registry: 90,
+  'release-registry': 90,
+  manual: 85,
+  world: 80,
+  seed: 70,
+  api: 60,
+  discovery: 40,
+};
+
+const VERIFIED_CAMERA_SPEC_SOURCES = new Set([
+  'database',
+  'database-sync',
+  'release_registry',
+  'release-registry',
+  'manual',
+]);
+
+const hasTrustedCameraSpecs = (camera: CameraRecord): boolean => {
+  const sourceKey = getCameraSourceKey(camera);
+  if (!VERIFIED_CAMERA_SPEC_SOURCES.has(sourceKey)) return false;
+  if (camera.sourceMeta?.isDeprecated) return false;
+
+  const hasCoreIdentity =
+    normalizeCameraIdentity(camera.brand).length > 0 &&
+    normalizeCameraIdentity(camera.model).length > 0;
+
+  const hasSpecPayload =
+    Boolean(camera.sensorSize) ||
+    Boolean(camera.mount) ||
+    Boolean(camera.releaseDate) ||
+    Boolean(camera.videoResolution?.length) ||
+    Boolean(camera.resolution?.length) ||
+    Boolean(camera.videoFrameRates?.length) ||
+    Boolean(camera.frameRates?.length) ||
+    Boolean(camera.videoCodecs?.length) ||
+    Boolean(camera.logFormats?.length) ||
+    Object.keys(camera.specs ?? {}).length > 0;
+
+  return hasCoreIdentity && hasSpecPayload;
+};
+
+const getCameraReliabilityScore = (camera: CameraRecord): number => {
+  const sourceScore = CAMERA_SOURCE_PRIORITY[getCameraSourceKey(camera)] ?? 20;
+  const completenessScore =
+    (camera.externalId ? 8 : 0) +
+    (camera.releaseDate ? 6 : 0) +
+    (camera.description ? 5 : 0) +
+    (camera.sensorSize ? 5 : 0) +
+    (camera.mount ? 4 : 0) +
+    (camera.videoResolution?.length ?? camera.resolution?.length ?? 0) +
+    (camera.videoFrameRates?.length ?? camera.frameRates?.length ?? 0) +
+    (camera.videoCodecs?.length ?? 0) +
+    (camera.logFormats?.length ?? 0) +
+    Math.min(Object.keys(camera.specs ?? {}).length, 20) +
+    (camera.sourceMeta?.isDeprecated ? -12 : 0);
+
+  const certificationScore = camera.isNetflixCertified ? 4 : 0;
+  return sourceScore + completenessScore + certificationScore;
+};
+
+const CAMERA_SPEC_WHITELIST: Record<string, string> = {
+  sensorSize: 'Sensor',
+  mount: 'Fatning',
+  releaseDate: 'Lansering',
+  priceRange: 'Prisnivå',
+  videoResolution: 'Oppløsning',
+  resolution: 'Oppløsning',
+  videoFrameRates: 'Bildefrekvens',
+  frameRates: 'Bildefrekvens',
+  videoCodecs: 'Kodek',
+  logFormats: 'Log-format',
+  features: 'Funksjoner',
+  dynamicRange: 'Dynamisk omfang',
+  internalRecording: 'Intern opptak',
+  recordingFormats: 'Opptaksformat',
+  rawRecording: 'RAW-opptak',
+  mediaTypes: 'Lagringsmedia',
+  bitDepth: 'Bitdybde',
+  chromaSubsampling: 'Chroma subsampling',
+  isoRange: 'ISO',
+  stabilization: 'Stabilisering',
+  autofocus: 'Autofokus',
+  maxRecordingTime: 'Maks opptakstid',
+};
+
 interface MemoryCardTypeRecord {
   id: string;
   name: string;
@@ -245,6 +350,18 @@ interface MemoryCardResponse {
   data?: MemoryCardTypeRecord[];
   results?: MemoryCardTypeRecord[];
   cardTypeIds?: string[];
+}
+
+interface AudioStorageDeviceRecord {
+  brand: string;
+  model: string;
+  category?: string;
+}
+
+interface AudioStorageDevicesResponse {
+  data?: AudioStorageDeviceRecord[];
+  results?: AudioStorageDeviceRecord[];
+  devices?: AudioStorageDeviceRecord[];
 }
 
 const getErrorStatusCode = (error: unknown): number | null => {
@@ -319,26 +436,42 @@ const CONDITION_COLORS: Record<string, string> = {
   needs_repair: '#d32f2f',
 };
 
-const DEFAULT_CATEGORY_OPTIONS = [
-  'Kamera',
-  'Linse',
-  'Rig',
-  'Stativ',
-  'Lys',
-  'Lyd',
-  'Optikk',
-  'Strøm',
-  'Transport',
-  'Sikkerhet',
-  'Annet',
-];
+const CATALOG_BRIDGE_CARD_GAP = { xs: 1.5, md: 2 };
 
-import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
-import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
-import equipPng from './icons/Keep/roleroom_equip.png';
-import WarehouseInventoryDialog, { type WarehouseDialogItem } from './shared/WarehouseInventoryDialog';
-import warehouseInventoryService from '../services/warehouseInventoryService';
-import QrCameraScanner from './shared/QrCameraScanner';
+const CATALOG_BRIDGE_CARD_SX = {
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+  background: 'linear-gradient(155deg, rgba(2,6,23,0.84) 0%, rgba(15,23,42,0.74) 52%, rgba(30,41,59,0.62) 100%)',
+  border: '1px solid rgba(148,163,184,0.2)',
+  borderRadius: 2,
+  boxShadow: '0 10px 24px rgba(2,6,23,0.26)',
+  transition: 'all 0.26s ease',
+  '&:hover': {
+    borderColor: 'rgba(125,211,252,0.38)',
+    boxShadow: '0 14px 30px rgba(2,6,23,0.38)',
+    transform: 'translateY(-2px)',
+  },
+};
+
+const CATALOG_BRIDGE_SURFACE_SX = {
+  p: 2.5,
+  background: 'linear-gradient(150deg, rgba(2,6,23,0.74) 0%, rgba(15,23,42,0.64) 100%)',
+  border: '1px solid rgba(148,163,184,0.22)',
+  borderRadius: 2,
+  boxShadow: '0 10px 24px rgba(2,6,23,0.24)',
+};
+
+const CATALOG_BRIDGE_TAB_PANEL_SX = {
+  p: { xs: 2, md: 3 },
+  m: { xs: 1.5, md: 2 },
+  borderRadius: 2.5,
+  border: '1px solid rgba(148,163,184,0.2)',
+  background: 'linear-gradient(155deg, rgba(2,6,23,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
+  boxShadow: '0 12px 28px rgba(2,6,23,0.26)',
+};
+
+
 
 interface EquipmentManagementPanelProps {
   projectId: string;
@@ -385,6 +518,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     status: 'available' as Equipment['status'],
     isGlobal: false, // If true, equipment is available across all projects
   });
+  const [brandInputValue, setBrandInputValue] = useState('');
+  const [modelInputValue, setModelInputValue] = useState('');
+  const [brandShouldSuggest, setBrandShouldSuggest] = useState(false);
+  const [modelShouldSuggest, setModelShouldSuggest] = useState(false);
+  const [cameraSpecsExpanded, setCameraSpecsExpanded] = useState(false);
 
   // Image picker state
   const [imagePickerOpen, setImagePickerOpen] = useState(false);
@@ -442,8 +580,45 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     equipmentCategoriesService.getCustomCategories(projectId).then(setCustomCategories);
   }, [projectId]);
 
+  const defaultCategoryOptions = useMemo(
+    () => [
+      'Kamera',
+      'Linse',
+      'Rig',
+      'Stativ',
+      'Lys',
+      'Lyd',
+      'Optikk',
+      'Strøm',
+      'Transport',
+      'Sikkerhet',
+      'Annet',
+    ],
+    []
+  );
+
+  const serialNumberScanFormats = useMemo(
+    () => ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'qr_code'],
+    []
+  );
+
   // Combined categories (default + custom)
-  const allCategories = [...DEFAULT_CATEGORY_OPTIONS, ...customCategories];
+  const allCategories = [...defaultCategoryOptions, ...customCategories];
+
+  useEffect(() => {
+    if (dialogOpen) {
+      setBrandInputValue(formData.brand || '');
+      setModelInputValue(formData.model || '');
+      return;
+    }
+
+    setBrandInputValue('');
+    setModelInputValue('');
+    setBrandShouldSuggest(false);
+    setCameraSpecsExpanded(false);
+    setModelShouldSuggest(false);
+  }, [dialogOpen, formData.brand, formData.model]);
+
 
   // === NEW WORKFLOW FEATURES ===
   
@@ -490,6 +665,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [qrTargetEquipment, setQrTargetEquipment] = useState<Equipment | null>(null);
   const [qrScanInput, setQrScanInput] = useState('');
   const [qrScanError, setQrScanError] = useState<string | null>(null);
+  const [serialScanDialogOpen, setSerialScanDialogOpen] = useState(false);
+  const [serialScanInput, setSerialScanInput] = useState('');
+  const [serialScanError, setSerialScanError] = useState<string | null>(null);
 
   // ── External database data: gear news, market prices, lens database ──────────
   const { data: gearNewsRaw, isLoading: gearNewsLoading } = useQuery<GearNewsResponse>({
@@ -632,6 +810,495 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     if (Array.isArray(memoryCardsRaw)) return memoryCardsRaw;
     return memoryCardsRaw?.data ?? memoryCardsRaw?.results ?? [];
   }, [memoryCardsRaw]);
+
+  const { data: manufacturerCameraRaw } = useQuery<CameraCatalogResponse | CameraRecord[]>({
+    queryKey: ['/api/equipment/cameras', 'manufacturer-suggestions'],
+    enabled: dialogOpen,
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/equipment/cameras?includeUndated=1') as Promise<CameraCatalogResponse>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          return { data: [] };
+        }
+        throw error;
+      }
+    },
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+
+  const manufacturerCameraItems: CameraRecord[] = useMemo(() => {
+    if (Array.isArray(manufacturerCameraRaw)) return manufacturerCameraRaw;
+    return manufacturerCameraRaw?.data ?? manufacturerCameraRaw?.results ?? manufacturerCameraRaw?.cameras ?? [];
+  }, [manufacturerCameraRaw]);
+
+  const { data: audioStorageRaw } = useQuery<AudioStorageDevicesResponse | AudioStorageDeviceRecord[]>({
+    queryKey: ['/api/equipment/audio-storage-devices', 'manufacturer-suggestions'],
+    enabled: dialogOpen,
+    queryFn: async () => {
+      try {
+        return await apiRequest('/api/equipment/audio-storage-devices?yearFrom=2020&yearTo=2026&limit=400') as Promise<AudioStorageDevicesResponse>;
+      } catch (error) {
+        if (isRecoverableEndpointError(error)) {
+          return { data: [] };
+        }
+        throw error;
+      }
+    },
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+
+  const audioStorageItems: AudioStorageDeviceRecord[] = useMemo(() => {
+    if (Array.isArray(audioStorageRaw)) return audioStorageRaw;
+    return audioStorageRaw?.data ?? audioStorageRaw?.results ?? audioStorageRaw?.devices ?? [];
+  }, [audioStorageRaw]);
+
+  const cameraCandidates = useMemo(() => {
+    const merged = new Map<string, CameraRecord>();
+
+    const getCameraKey = (camera: CameraRecord) => {
+      const idKey = String(camera.id ?? '').trim().toLowerCase();
+      if (idKey) return idKey;
+
+      return [
+        camera.type,
+        String(camera.brand ?? '').trim().toLowerCase(),
+        String(camera.model ?? '').trim().toLowerCase(),
+      ].join('::');
+    };
+
+    [...cameraCatalogItems, ...manufacturerCameraItems].forEach((camera) => {
+      const key = getCameraKey(camera);
+      if (!key || key === '::') return;
+
+      const existing = merged.get(key);
+      if (!existing || getCameraReliabilityScore(camera) > getCameraReliabilityScore(existing)) {
+        merged.set(key, camera);
+      }
+    });
+
+    return Array.from(merged.values());
+  }, [cameraCatalogItems, manufacturerCameraItems]);
+
+  const categorySuggestionTokens = useMemo(() => {
+    const selected = formData.category.trim().toLowerCase();
+    if (!selected || selected === 'all') return [] as string[];
+
+    const tokenMap: Record<string, string[]> = {
+      kamera: ['kamera', 'camera', 'cine', 'cinema', 'mirrorless', 'dslr', 'camcorder', 'drone', 'action'],
+      filmutstyr: ['kamera', 'camera', 'cine', 'cinema', 'mirrorless', 'dslr', 'camcorder', 'drone', 'action'],
+      videoutstyr: ['kamera', 'camera', 'cine', 'cinema', 'camcorder', 'drone', 'action'],
+      fotoutstyr: ['kamera', 'camera', 'mirrorless', 'dslr', 'lens', 'linse'],
+      linse: ['linse', 'lens', 'optikk'],
+      lyd: ['lyd', 'audio', 'recorder', 'microphone', 'mikrofon'],
+      lydutstyr: ['lyd', 'audio', 'recorder', 'microphone', 'mikrofon'],
+      lys: ['lys', 'light', 'lighting', 'flash'],
+      stativ: ['stativ', 'tripod', 'support'],
+      rig: ['rig', 'gimbal', 'stabilizer'],
+      strøm: ['strøm', 'power', 'battery'],
+      transport: ['transport', 'case', 'bag'],
+      lagring: ['lagring', 'storage', 'memory', 'card', 'ssd', 'hdd', 'nas', 'cfexpress', 'sd'],
+      minnekort: ['lagring', 'storage', 'memory', 'card', 'cfexpress', 'sd', 'microsd', 'cfast'],
+      sikkerhet: ['sikkerhet', 'safety'],
+    };
+
+    const tokens = new Set<string>([selected]);
+    Object.entries(tokenMap).forEach(([key, mapped]) => {
+      if (selected.includes(key) || mapped.some((value) => selected.includes(value))) {
+        mapped.forEach((value) => tokens.add(value));
+      }
+    });
+
+    return Array.from(tokens);
+  }, [formData.category]);
+
+  const matchesSelectedCategory = useCallback((category?: string | null) => {
+    if (categorySuggestionTokens.length === 0) return true;
+    const normalized = String(category ?? '').trim().toLowerCase();
+    if (!normalized) return false;
+    return categorySuggestionTokens.some((token) => normalized.includes(token));
+  }, [categorySuggestionTokens]);
+
+  const manufacturerOptions = useMemo(() => {
+    const cameraCategorySelected = [
+      'kamera',
+      'camera',
+      'cine',
+      'cinema',
+      'filmutstyr',
+      'videoutstyr',
+      'fotoutstyr',
+      'camcorder',
+      'mirrorless',
+      'dslr',
+    ].some((token) => formData.category.trim().toLowerCase().includes(token));
+
+    const brandCategories = new Map<string, Set<string>>();
+
+    const addValue = (brand?: string | null, category?: string | null) => {
+      const normalizedBrand = String(brand ?? '').trim();
+      if (!normalizedBrand) return;
+
+      const categories = brandCategories.get(normalizedBrand) ?? new Set<string>();
+      const normalizedCategory = String(category ?? '').trim().toLowerCase();
+      if (normalizedCategory) categories.add(normalizedCategory);
+      brandCategories.set(normalizedBrand, categories);
+    };
+
+    if (cameraCategorySelected) {
+      cameraCandidates.forEach((camera) => addValue(camera.brand, camera.category));
+    } else {
+      equipment.forEach((eq) => addValue(eq.brand, eq.category));
+      cameraCandidates.forEach((camera) => addValue(camera.brand, camera.category));
+      audioStorageItems.forEach((device) => addValue(device.brand, device.category));
+    }
+
+    return Array.from(brandCategories.entries())
+      .filter(([, categories]) => {
+        if (categorySuggestionTokens.length === 0) return true;
+        if (categories.size === 0) return false;
+        return Array.from(categories).some((category) => matchesSelectedCategory(category));
+      })
+      .map(([brand]) => brand)
+      .sort((a, b) => a.localeCompare(b, 'nb'))
+      .slice(0, 400);
+  }, [
+    equipment,
+    cameraCandidates,
+    audioStorageItems,
+    categorySuggestionTokens,
+    formData.category,
+    matchesSelectedCategory,
+  ]);
+
+  const modelOptions = useMemo(() => {
+    const cameraCategorySelected = [
+      'kamera',
+      'camera',
+      'cine',
+      'cinema',
+      'filmutstyr',
+      'videoutstyr',
+      'fotoutstyr',
+      'camcorder',
+      'mirrorless',
+      'dslr',
+    ].some((token) => formData.category.trim().toLowerCase().includes(token));
+
+    const selectedBrand = formData.brand.trim().toLowerCase();
+    const modelEntries = new Map<string, string>();
+
+    const addModel = (brand?: string | null, model?: string | null, category?: string | null) => {
+      const normalizedBrand = String(brand ?? '').trim().toLowerCase();
+      const normalizedModel = String(model ?? '').trim();
+      const normalizedCategory = String(category ?? '').trim().toLowerCase();
+      if (!normalizedModel) return;
+      if (selectedBrand && normalizedBrand && !normalizedBrand.includes(selectedBrand)) return;
+      if (!matchesSelectedCategory(normalizedCategory)) return;
+
+      const key = `${normalizedBrand}::${normalizedModel.toLowerCase()}`;
+      if (!modelEntries.has(key)) {
+        modelEntries.set(key, normalizedModel);
+      }
+    };
+
+    if (cameraCategorySelected) {
+      cameraCandidates.forEach((camera) => addModel(camera.brand, camera.model, camera.category));
+    } else {
+      equipment.forEach((eq) => addModel(eq.brand, eq.model, eq.category));
+      cameraCandidates.forEach((camera) => addModel(camera.brand, camera.model, camera.category));
+      audioStorageItems.forEach((device) => addModel(device.brand, device.model, device.category));
+    }
+
+    const sortedModels = Array.from(modelEntries.values()).sort((a, b) => a.localeCompare(b, 'nb'));
+    const uniqueModels = new Map<string, string>();
+
+    sortedModels.forEach((model) => {
+      const normalized = model.trim().toLowerCase();
+      if (!normalized) return;
+      if (!uniqueModels.has(normalized)) {
+        uniqueModels.set(normalized, model);
+      }
+    });
+
+    return Array.from(uniqueModels.values()).slice(0, 500);
+  }, [
+    formData.brand,
+    equipment,
+    cameraCandidates,
+    audioStorageItems,
+    formData.category,
+    matchesSelectedCategory,
+  ]);
+
+  const isCameraCategorySelected = useMemo(() => {
+    const selected = formData.category.trim().toLowerCase();
+    if (!selected || selected === 'all') return false;
+
+    return [
+      'kamera',
+      'camera',
+      'cine',
+      'cinema',
+      'filmutstyr',
+      'videoutstyr',
+      'fotoutstyr',
+      'camcorder',
+      'mirrorless',
+      'dslr',
+    ].some((token) => selected.includes(token));
+  }, [formData.category]);
+
+  const cameraSuggestionMatches = useMemo(() => {
+    if (!isCameraCategorySelected) return [] as CameraRecord[];
+
+    const mergedCameras = new Map<string, CameraRecord>();
+    const addCamera = (camera: CameraRecord) => {
+      const fallbackKey = [
+        camera.type,
+        String(camera.brand ?? '').trim().toLowerCase(),
+        String(camera.model ?? '').trim().toLowerCase(),
+      ].join('::');
+      const key = String(camera.id ?? '').trim() || fallbackKey;
+      if (!key || key === '::') return;
+      if (!mergedCameras.has(key)) {
+        mergedCameras.set(key, camera);
+      }
+    };
+
+    cameraCatalogItems.forEach(addCamera);
+    manufacturerCameraItems.forEach(addCamera);
+
+    const brandNeedle = formData.brand.trim().toLowerCase();
+    const modelNeedle = formData.model.trim().toLowerCase();
+    if (!brandNeedle && !modelNeedle) return [] as CameraRecord[];
+
+    return Array.from(mergedCameras.values())
+      .filter((camera) => {
+        const brand = String(camera.brand ?? '').trim().toLowerCase();
+        const model = String(camera.model ?? '').trim().toLowerCase();
+        if (!brand || !model) return false;
+        if (!matchesSelectedCategory(camera.category)) return false;
+        if (brandNeedle && !brand.includes(brandNeedle)) return false;
+        if (modelNeedle && !model.includes(modelNeedle)) return false;
+        return true;
+      })
+      .map((camera) => {
+        const brand = String(camera.brand ?? '').trim().toLowerCase();
+        const model = String(camera.model ?? '').trim().toLowerCase();
+        let score = 0;
+        if (brandNeedle && brand === brandNeedle) score += 12;
+        if (brandNeedle && brand.startsWith(brandNeedle)) score += 6;
+        if (modelNeedle && model === modelNeedle) score += 24;
+        if (modelNeedle && model.startsWith(modelNeedle)) score += 12;
+        if (camera.isNetflixCertified) score += 1;
+        return { camera, score };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const brandCompare = a.camera.brand.localeCompare(b.camera.brand, 'nb');
+        if (brandCompare !== 0) return brandCompare;
+        return a.camera.model.localeCompare(b.camera.model, 'nb');
+      })
+      .slice(0, 4)
+      .map((entry) => entry.camera);
+  }, [
+    isCameraCategorySelected,
+    cameraCatalogItems,
+    manufacturerCameraItems,
+    formData.brand,
+    formData.model,
+    matchesSelectedCategory,
+  ]);
+
+  const modelOptionCameraLookup = useMemo(() => {
+    const lookup = new Map<string, CameraRecord>();
+    if (!isCameraCategorySelected) return lookup;
+
+    const selectedBrand = formData.brand.trim().toLowerCase();
+    const candidates = cameraCandidates;
+
+    candidates.forEach((camera) => {
+      const normalizedModel = String(camera.model ?? '').trim().toLowerCase();
+      const normalizedBrand = String(camera.brand ?? '').trim().toLowerCase();
+      if (!normalizedModel) return;
+      if (!matchesSelectedCategory(camera.category)) return;
+      if (selectedBrand && !normalizedBrand.includes(selectedBrand)) return;
+
+      const existing = lookup.get(normalizedModel);
+      if (!existing) {
+        lookup.set(normalizedModel, camera);
+        return;
+      }
+
+      if (!existing.isNetflixCertified && camera.isNetflixCertified) {
+        lookup.set(normalizedModel, camera);
+      }
+    });
+
+    return lookup;
+  }, [
+    isCameraCategorySelected,
+    formData.brand,
+    cameraCandidates,
+    matchesSelectedCategory,
+  ]);
+
+  const selectedCameraForForm = useMemo(() => {
+    if (!isCameraCategorySelected) return null;
+
+    const brandNeedle = normalizeCameraIdentity(formData.brand);
+    const modelNeedle = normalizeCameraIdentity(formData.model);
+    if (!modelNeedle) return null;
+
+    const exactModelMatches = cameraCandidates
+      .filter((camera) => matchesSelectedCategory(camera.category))
+      .filter((camera) => normalizeCameraIdentity(camera.model) === modelNeedle);
+
+    if (exactModelMatches.length === 0) return null;
+
+    const exactBrandMatches =
+      brandNeedle.length > 0
+        ? exactModelMatches.filter((camera) => normalizeCameraIdentity(camera.brand) === brandNeedle)
+        : exactModelMatches;
+
+    const candidates = exactBrandMatches.length > 0 ? exactBrandMatches : exactModelMatches;
+
+    return [...candidates].sort(
+      (a, b) => getCameraReliabilityScore(b) - getCameraReliabilityScore(a)
+    )[0] ?? null;
+  }, [
+    isCameraCategorySelected,
+    formData.brand,
+    formData.model,
+    cameraCandidates,
+    matchesSelectedCategory,
+  ]);
+
+  const cameraSourceLabelForForm = useMemo(() => {
+    if (!selectedCameraForForm) return 'Ukjent kilde';
+    const sourceKey = getCameraSourceKey(selectedCameraForForm);
+    const labelMap: Record<string, string> = {
+      database: 'Database',
+      'database-sync': 'Database sync',
+      release_registry: 'Release registry',
+      'release-registry': 'Release registry',
+      manual: 'Manuell verifisering',
+      world: 'World camera database',
+      seed: 'Seed-data',
+      api: 'API',
+      discovery: 'Discovery',
+    };
+    return labelMap[sourceKey] ?? (sourceKey ? sourceKey : 'Ukjent kilde');
+  }, [selectedCameraForForm]);
+
+  const selectedCameraHasTrustedSpecs = useMemo(() => (
+    selectedCameraForForm ? hasTrustedCameraSpecs(selectedCameraForForm) : false
+  ), [selectedCameraForForm]);
+
+  const cameraSpecDetails = useMemo(() => {
+    if (!selectedCameraForForm) {
+      return [] as Array<{ label: string; value: string }>;
+    }
+    if (!selectedCameraHasTrustedSpecs) {
+      return [] as Array<{ label: string; value: string }>;
+    }
+
+    const details: Array<{ label: string; value: string }> = [];
+    const seen = new Set<string>();
+    const pushDetail = (label: string, rawValue: unknown) => {
+      const value = stringifySpecValue(rawValue).trim();
+      if (!value) return;
+      const dedupeKey = `${label.toLowerCase()}::${value.toLowerCase()}`;
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+      details.push({ label, value });
+    };
+
+    pushDetail('Kategori', selectedCameraForForm.category);
+    pushDetail('Sensor', selectedCameraForForm.sensorSize);
+    pushDetail('Fatning', selectedCameraForForm.mount);
+    pushDetail('Lansering', selectedCameraForForm.releaseDate);
+    pushDetail('Prisnivå', selectedCameraForForm.priceRange);
+    pushDetail(
+      'Oppløsning',
+      selectedCameraForForm.videoResolution?.join(', ') ||
+        selectedCameraForForm.resolution?.join(', ')
+    );
+    pushDetail(
+      'Bildefrekvens',
+      selectedCameraForForm.videoFrameRates?.join(', ') ||
+        selectedCameraForForm.frameRates?.join(', ')
+    );
+    pushDetail('Kodek', selectedCameraForForm.videoCodecs?.join(', '));
+    pushDetail('Log-format', selectedCameraForForm.logFormats?.join(', '));
+    pushDetail('Funksjoner', selectedCameraForForm.features?.join(', '));
+
+    Object.entries(selectedCameraForForm.specs ?? {})
+      .filter(([key]) => Boolean(CAMERA_SPEC_WHITELIST[key]))
+      .slice(0, 12)
+      .forEach(([key, value]) => pushDetail(CAMERA_SPEC_WHITELIST[key], value));
+
+    return details;
+  }, [selectedCameraForForm, selectedCameraHasTrustedSpecs]);
+
+  const renderNetflixBadge = useCallback((label = 'Netflix-sertifisert', compact = false) => (
+    <Box
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: compact ? 0 : 0.55,
+        px: compact ? 0.65 : 0.9,
+        py: compact ? 0.15 : 0.3,
+        borderRadius: 999,
+        bgcolor: '#000',
+        border: '1px solid #E50914',
+        boxShadow: '0 0 0 1px rgba(229,9,20,0.35) inset',
+      }}
+    >
+      <Box
+        component="img"
+        src={netflixWordmark}
+        alt="Netflix"
+        sx={{ height: compact ? 8 : 10, width: 'auto', display: 'block' }}
+      />
+      {!compact && (
+        <Typography sx={{ color: '#fff', fontSize: '0.66rem', fontWeight: 700, lineHeight: 1 }}>
+          {label}
+        </Typography>
+      )}
+    </Box>
+  ), []);
+
+  const getCameraSpecChips = useCallback((camera: CameraRecord) => {
+    const specs = new Map<string, string>();
+
+    const addSpec = (label: string, rawValue: unknown) => {
+      const value = stringifySpecValue(rawValue).trim();
+      if (!value) return;
+      if (specs.has(label)) return;
+      const compactValue = value.length > 48 ? `${value.slice(0, 45)}...` : value;
+      specs.set(label, compactValue);
+    };
+
+    addSpec('Sensor', camera.sensorSize);
+    addSpec('Fatning', camera.mount);
+    addSpec('Lansert', camera.releaseDate);
+    addSpec('Oppløsning', camera.videoResolution?.[0] ?? camera.resolution?.[0]);
+    addSpec('Bildefrekvens', camera.videoFrameRates?.[0] ?? camera.frameRates?.[0]);
+    addSpec('Log', camera.logFormats?.join(', '));
+    addSpec('Kodek', camera.videoCodecs?.join(', '));
+
+    Object.entries(camera.specs ?? {})
+      .slice(0, 4)
+      .forEach(([key, rawValue]) => addSpec(key, rawValue));
+
+    return Array.from(specs.entries())
+      .slice(0, 6)
+      .map(([label, value]) => `${label}: ${value}`);
+  }, []);
   
   // History/audit log
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -1952,6 +2619,33 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     showSuccess(`QR funnet: ${match.name}`);
   };
 
+  const normalizeScannedSerialValue = (rawValue: string): string =>
+    rawValue
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .map((part) => part.trim())
+      .find((part) => part.length > 0) ?? "";
+
+  const handleApplyScannedSerialNumber = (rawValue: string) => {
+    const normalizedSerial = normalizeScannedSerialValue(rawValue);
+    if (!normalizedSerial) {
+      setSerialScanError("Fant ingen gyldig serienummerkode i skannet verdi.");
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, serialNumber: normalizedSerial }));
+    setSerialScanInput(normalizedSerial);
+    setSerialScanError(null);
+    setSerialScanDialogOpen(false);
+    setFormErrors((prev) => {
+      if (!prev.serialNumber) return prev;
+      const next = { ...prev };
+      delete next.serialNumber;
+      return next;
+    });
+    showSuccess(`Serienummer oppdatert: ${normalizedSerial}`);
+  };
+
   // 6. History/audit log — real API data
   const handleOpenHistory = async (eq: Equipment) => {
     setSelectedEquipmentHistory(eq);
@@ -3237,17 +3931,38 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       {viewMode === 'grid' ? (
         <Grid container spacing={2.5}>
           {filteredEquipment.length === 0 ? (
-            <Grid size={{ xs: 12 }}>
-              <RoleRoomEmptyState
-                iconSrc={equipPng}
-                title="Ingen utstyr funnet"
-                subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all' 
-                  ? 'Prøv å endre søkekriteriene' 
-                  : 'Legg til ditt første utstyr for å komme i gang'}
-                color="#9333ea"
-                buttonLabel="Legg til utstyr"
-                onAction={handleOpenCreateTypeDialog}
-              />
+            <Grid
+              size={{ xs: 12 }}
+              sx={{
+                width: '100%',
+                flexBasis: '100%',
+                maxWidth: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <Box
+                sx={{
+                  minHeight: { xs: 420, md: '56vh' },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '100%',
+                }}
+              >
+                <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+                  <RoleRoomEmptyState
+                    iconSrc={equipPng}
+                    title="Ingen utstyr funnet"
+                    subtitle={searchQuery || categoryFilter !== 'all' || statusFilter !== 'all'
+                      ? 'Prøv å endre søkekriteriene'
+                      : 'Legg til ditt første utstyr for å komme i gang'}
+                    color="#9333ea"
+                    buttonLabel="Legg til utstyr"
+                    onAction={handleOpenCreateTypeDialog}
+                  />
+                </Box>
+              </Box>
             </Grid>
           ) : (
             filteredEquipment.map((eq, index) => {
@@ -4271,59 +4986,430 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               </FormControl>
             </Box>
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
-              <TextField
-                fullWidth
-                label="Merke"
-                value={formData.brand}
-                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+              <Autocomplete
+                freeSolo
+                autoComplete
+                autoHighlight
+                openOnFocus={false}
+                clearOnBlur={false}
+                forcePopupIcon={false}
+                options={manufacturerOptions}
+                inputValue={brandInputValue}
+                onInputChange={(_event, newInputValue, reason) => {
+                  setBrandInputValue(newInputValue);
+                  setFormData((prev) => ({ ...prev, brand: newInputValue }));
+                  setBrandShouldSuggest(reason === 'input' && newInputValue.trim().length > 0);
+                  setCameraSpecsExpanded(false);
                 }}
+                onChange={(_event, newValue) => {
+                  const nextValue = typeof newValue === 'string' ? newValue : String(newValue ?? '');
+                  setBrandInputValue(nextValue);
+                  setFormData((prev) => ({ ...prev, brand: nextValue }));
+                  setBrandShouldSuggest(false);
+                  setCameraSpecsExpanded(false);
+                }}
+                onBlur={() => setBrandShouldSuggest(false)}
+                open={
+                  brandShouldSuggest &&
+                  brandInputValue.trim().length > 0 &&
+                  manufacturerOptions.some((option) =>
+                    option.toLowerCase().includes(brandInputValue.trim().toLowerCase())
+                  )
+                }
+                filterOptions={(options, state) => {
+                  const needle = state.inputValue.trim().toLowerCase();
+                  if (!needle) return [];
+                  return options.filter((option) => option.toLowerCase().includes(needle));
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    fullWidth
+                    label="Merke"
+                    helperText={manufacturerOptions.length > 0 ? 'Skriv for å få forslag fra produsentdatabasen' : 'Ingen produsentforslag tilgjengelig'}
+                    sx={{ 
+                      '& .MuiOutlinedInput-root': { 
+                        bgcolor: 'rgba(0,0,0,0.2)', 
+                        color: '#fff',
+                        borderRadius: 2,
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                        '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                        '&.Mui-focused fieldset': { borderColor: '#9333ea' },
+                      },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                      '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+                    }}
+                  />
+                )}
               />
             </Box>
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
-              <TextField
-                fullWidth
-                label="Modell"
-                value={formData.model}
-                onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                sx={{ 
-                  '& .MuiOutlinedInput-root': { 
-                    bgcolor: 'rgba(0,0,0,0.2)', 
-                    color: '#fff',
-                    borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
-                  },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+              <Autocomplete
+                freeSolo
+                autoComplete
+                autoHighlight
+                openOnFocus={false}
+                clearOnBlur={false}
+                forcePopupIcon={false}
+                options={modelOptions}
+                inputValue={modelInputValue}
+                onInputChange={(_event, newInputValue, reason) => {
+                  setModelInputValue(newInputValue);
+                  setFormData((prev) => ({ ...prev, model: newInputValue }));
+                  setModelShouldSuggest(reason === 'input' && newInputValue.trim().length > 0);
+                  setCameraSpecsExpanded(false);
                 }}
+                onChange={(_event, newValue) => {
+                  const nextValue = typeof newValue === 'string' ? newValue : String(newValue ?? '');
+                  const matchedCamera = modelOptionCameraLookup.get(nextValue.trim().toLowerCase());
+                  const canonicalModel = matchedCamera?.model ?? nextValue;
+
+                  setModelInputValue(canonicalModel);
+                  if (matchedCamera?.brand) {
+                    setBrandInputValue(matchedCamera.brand);
+                  }
+                  setFormData((prev) => ({
+                    ...prev,
+                    brand: matchedCamera?.brand ?? prev.brand,
+                    model: canonicalModel,
+                  }));
+                  setModelShouldSuggest(false);
+                  setBrandShouldSuggest(false);
+                  setCameraSpecsExpanded(false);
+                }}
+                onBlur={() => {
+                  setModelShouldSuggest(false);
+                  const matchedCamera = modelOptionCameraLookup.get(modelInputValue.trim().toLowerCase());
+                  if (!matchedCamera) return;
+
+                  setModelInputValue(matchedCamera.model);
+                  setBrandInputValue(matchedCamera.brand);
+                  setFormData((prev) => ({
+                    ...prev,
+                    brand: matchedCamera.brand,
+                    model: matchedCamera.model,
+                  }));
+                }}
+                open={
+                  modelShouldSuggest &&
+                  modelInputValue.trim().length > 0 &&
+                  modelOptions.some((option) =>
+                    option.toLowerCase().includes(modelInputValue.trim().toLowerCase())
+                  )
+                }
+                filterOptions={(options, state) => {
+                  const needle = state.inputValue.trim().toLowerCase();
+                  if (!needle) return [];
+                  return options.filter((option) => option.toLowerCase().includes(needle));
+                }}
+                renderOption={(props, option, state) => {
+                  const camera = modelOptionCameraLookup.get(option.trim().toLowerCase());
+                  const specPreview = camera ? getCameraSpecChips(camera).slice(0, 2) : [];
+                  const { key: _muiOptionKey, ...optionProps } =
+                    props as unknown as HTMLAttributes<HTMLLIElement> & { key?: string | number };
+                  const resolvedOptionKey = `${option.trim().toLowerCase()}-${camera?.id ?? 'option'}-${state.index}`;
+
+                  return (
+                    <Box key={resolvedOptionKey} component="li" {...optionProps} sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ width: '100%', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
+                          {option}
+                        </Typography>
+                        {camera?.isNetflixCertified && renderNetflixBadge('Netflix', true)}
+                      </Stack>
+                      {specPreview.length > 0 && (
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                          {specPreview.map((specLine) => (
+                            <Chip
+                              key={`${resolvedOptionKey}-${specLine}`}
+                              size="small"
+                              label={specLine}
+                              sx={{
+                                height: 18,
+                                bgcolor: 'rgba(255,255,255,0.08)',
+                                color: 'rgba(255,255,255,0.72)',
+                                '& .MuiChip-label': { px: 0.75, fontSize: '0.66rem' },
+                              }}
+                            />
+                          ))}
+                        </Stack>
+                      )}
+                    </Box>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    fullWidth
+                    label="Modell"
+                    helperText={modelOptions.length > 0 ? 'Velg eksisterende modell eller skriv inn ny' : 'Ingen modellforslag for valgt kategori/merke'}
+                    sx={{ 
+                      '& .MuiOutlinedInput-root': { 
+                        bgcolor: 'rgba(0,0,0,0.2)', 
+                        color: '#fff',
+                        borderRadius: 2,
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                        '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
+                        '&.Mui-focused fieldset': { borderColor: '#9333ea' },
+                      },
+                      '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                      '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.6)' },
+                    }}
+                  />
+                )}
               />
             </Box>
+            {isCameraCategorySelected && formData.model.trim().length > 0 && !selectedCameraForForm && (
+              <Box sx={{ gridColumn: '1 / -1' }}>
+                <Alert
+                  severity="info"
+                  sx={{
+                    bgcolor: 'rgba(30,41,59,0.55)',
+                    color: 'rgba(255,255,255,0.9)',
+                    border: '1px solid rgba(148,163,184,0.3)',
+                    '& .MuiAlert-icon': { color: '#93c5fd' },
+                  }}
+                >
+                  Velg eksakt modell fra listen for verifiserte spesifikasjoner.
+                </Alert>
+              </Box>
+            )}
+            {isCameraCategorySelected && selectedCameraForForm && (
+              <Box sx={{ gridColumn: '1 / -1' }}>
+                <Paper
+                  sx={{
+                    p: 2,
+                    background:
+                      'linear-gradient(145deg, rgba(15,23,42,0.88) 0%, rgba(30,41,59,0.82) 52%, rgba(17,24,39,0.9) 100%)',
+                    border: '1px solid rgba(125,211,252,0.22)',
+                    borderRadius: 2,
+                    boxShadow: '0 14px 34px rgba(2,6,23,0.45)',
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={1}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'flex-start', md: 'center' }}
+                  >
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ color: '#f8fafc', fontWeight: 800 }}>
+                        Valgt kamera: {selectedCameraForForm.brand} {selectedCameraForForm.model}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.8)' }}>
+                        Kategori: {selectedCameraForForm.category || 'Ukjent'} · Kilde: {cameraSourceLabelForForm}
+                      </Typography>
+                    </Box>
+                    <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
+                      <Chip
+                        size="small"
+                        label={selectedCameraForForm.type === 'video' ? 'Cine/Video' : 'Foto'}
+                        sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 700 }}
+                      />
+                      {selectedCameraForForm.isNetflixCertified &&
+                        renderNetflixBadge('Netflix-sertifisert', false)}
+                    </Stack>
+                  </Stack>
+
+                  <Alert
+                    severity={selectedCameraHasTrustedSpecs ? 'success' : 'warning'}
+                    sx={{
+                      mt: 1.25,
+                      bgcolor: selectedCameraHasTrustedSpecs ? 'rgba(34,197,94,0.14)' : 'rgba(245,158,11,0.16)',
+                      color: selectedCameraHasTrustedSpecs ? '#dcfce7' : '#ffedd5',
+                      border: selectedCameraHasTrustedSpecs
+                        ? '1px solid rgba(74,222,128,0.34)'
+                        : '1px solid rgba(251,191,36,0.34)',
+                      '& .MuiAlert-icon': {
+                        color: selectedCameraHasTrustedSpecs ? '#86efac' : '#fcd34d',
+                      },
+                    }}
+                  >
+                    {selectedCameraHasTrustedSpecs
+                      ? `Verifiserte spesifikasjoner fra ${cameraSourceLabelForForm}.`
+                      : `Ingen verifisert spesifikasjonspakke funnet i ${cameraSourceLabelForForm}. Velg en modell fra verifisert database for 100% korrekt spesifikasjon.`}
+                  </Alert>
+
+                  {selectedCameraHasTrustedSpecs && (
+                    <>
+                      <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.75 }}>
+                        {getCameraSpecChips(selectedCameraForForm).map((specLine) => (
+                          <Chip
+                            key={`${selectedCameraForForm.id}-${specLine}`}
+                            size="small"
+                            label={specLine}
+                            sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.82)' }}
+                          />
+                        ))}
+                      </Stack>
+
+                      <Button
+                        size="small"
+                        onClick={() => setCameraSpecsExpanded((prev) => !prev)}
+                        sx={{
+                          mt: 1,
+                          color: '#bfdbfe',
+                          fontWeight: 700,
+                          textTransform: 'none',
+                          px: 0,
+                          '&:hover': { bgcolor: 'transparent', color: '#dbeafe' },
+                        }}
+                      >
+                        {cameraSpecsExpanded ? 'Skjul spesifikasjoner' : 'Les mer om spesifikasjoner'}
+                      </Button>
+
+                      <Collapse in={cameraSpecsExpanded}>
+                        <Box
+                          sx={{
+                            mt: 1,
+                            display: 'grid',
+                            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                            gap: 1,
+                          }}
+                        >
+                          {cameraSpecDetails.map((entry) => (
+                            <Box
+                              key={`${entry.label}-${entry.value}`}
+                              sx={{
+                                p: 1,
+                                borderRadius: 1.5,
+                                bgcolor: 'rgba(15,23,42,0.55)',
+                                border: '1px solid rgba(148,163,184,0.18)',
+                              }}
+                            >
+                              <Typography variant="caption" sx={{ color: 'rgba(148,163,184,0.92)', display: 'block' }}>
+                                {entry.label}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: '#f8fafc', fontWeight: 600, lineHeight: 1.35 }}>
+                                {entry.value}
+                              </Typography>
+                            </Box>
+                          ))}
+                        </Box>
+                      </Collapse>
+                    </>
+                  )}
+                </Paper>
+              </Box>
+            )}
+            {isCameraCategorySelected && cameraSuggestionMatches.length > 0 && (
+              <Box sx={{ gridColumn: '1 / -1' }}>
+                <Paper
+                  sx={{
+                    p: 1.5,
+                    bgcolor: 'rgba(99,102,241,0.08)',
+                    border: '1px solid rgba(129,140,248,0.28)',
+                    borderRadius: 2,
+                  }}
+                >
+                  <Typography variant="subtitle2" sx={{ color: '#e9d5ff', fontWeight: 700, mb: 1 }}>
+                    Kamera-treff fra produsentdatabase
+                  </Typography>
+                  <Stack spacing={1}>
+                    {cameraSuggestionMatches.map((camera) => (
+                      <Box
+                        key={`${camera.id}-${camera.brand}-${camera.model}`}
+                        sx={{
+                          p: 1.25,
+                          borderRadius: 1.5,
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          bgcolor: 'rgba(15,23,42,0.45)',
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1}
+                          alignItems={{ xs: 'flex-start', sm: 'center' }}
+                          justifyContent="space-between"
+                        >
+                          <Typography variant="body2" sx={{ color: '#fff', fontWeight: 700 }}>
+                            {camera.brand} {camera.model}
+                          </Typography>
+                          <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap' }}>
+                            <Chip
+                              size="small"
+                              label={camera.type === 'video' ? 'Cine/Video' : 'Foto'}
+                              sx={{ bgcolor: 'rgba(56,189,248,0.18)', color: '#bae6fd', fontWeight: 600 }}
+                            />
+                            {camera.isNetflixCertified && renderNetflixBadge('Netflix-sertifisert', false)}
+                          </Stack>
+                        </Stack>
+
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)', display: 'block', mt: 0.75 }}>
+                          Kategori: {camera.category || 'Ukjent'}
+                        </Typography>
+
+                        <Stack direction="row" spacing={0.75} sx={{ mt: 1, flexWrap: 'wrap', rowGap: 0.75 }}>
+                          {getCameraSpecChips(camera).map((specLine) => (
+                            <Chip
+                              key={`${camera.id}-${specLine}`}
+                              size="small"
+                              label={specLine}
+                              sx={{ bgcolor: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.82)' }}
+                            />
+                          ))}
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Paper>
+              </Box>
+            )}
             <Box sx={{ gridColumn: { xs: '1 / -1', sm: 'span 1' } }}>
               <TextField
                 fullWidth
                 label="Serienummer"
                 value={formData.serialNumber}
-                onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, serialNumber: e.target.value });
+                  if (formErrors.serialNumber) {
+                    setFormErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.serialNumber;
+                      return next;
+                    });
+                  }
+                }}
+                error={Boolean(formErrors.serialNumber)}
+                helperText={
+                  formErrors.serialNumber ||
+                  'Skriv inn manuelt eller skann strekkode/QR-kode'
+                }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title="Skann serienummer">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSerialScanInput(formData.serialNumber || '');
+                            setSerialScanError(null);
+                            setSerialScanDialogOpen(true);
+                          }}
+                          sx={{
+                            color: '#64b5f6',
+                            '&:hover': {
+                              bgcolor: 'rgba(100,181,246,0.16)',
+                            },
+                          }}
+                        >
+                          <QrCodeScannerIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  ),
+                }}
                 sx={{ 
                   '& .MuiOutlinedInput-root': { 
                     bgcolor: 'rgba(0,0,0,0.2)', 
                     color: '#fff',
                     borderRadius: 2,
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                    '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
-                    '&.Mui-focused fieldset': { borderColor: '#9333ea' },
+                    '& fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.1)' },
+                    '&:hover fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : 'rgba(147,51,234,0.3)' },
+                    '&.Mui-focused fieldset': { borderColor: formErrors.serialNumber ? '#f44336' : '#9333ea' },
                   },
-                  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
+                  '& .MuiInputLabel-root': { color: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.87)' },
+                  '& .MuiFormHelperText-root': { color: formErrors.serialNumber ? '#f44336' : 'rgba(255,255,255,0.6)' },
                 }}
               />
             </Box>
@@ -6919,34 +8005,124 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       </Dialog>
 
       {/* ── Reports Dialog ───────────────────────────── */}
-      <Dialog open={reportsDialogOpen} onClose={() => setReportsDialogOpen(false)} maxWidth="md" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 0 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #9c27b0, #6a1b9a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Dialog
+        open={reportsDialogOpen}
+        onClose={() => setReportsDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            color: '#f8fafc',
+            borderRadius: 3,
+            overflow: 'hidden',
+            border: '1px solid rgba(148,163,184,0.28)',
+            background:
+              'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.94) 56%, rgba(30,41,59,0.9) 100%)',
+            boxShadow: '0 24px 64px rgba(2,6,23,0.56)',
+            backdropFilter: 'blur(22px)',
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: { xs: 2, sm: 3 },
+            py: 2,
+            borderBottom: '1px solid rgba(148,163,184,0.22)',
+            background:
+              'linear-gradient(120deg, rgba(147,51,234,0.2) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.25) 100%)',
+          }}
+        >
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 2,
+              background: 'linear-gradient(135deg, #a855f7, #7e22ce)',
+              border: '1px solid rgba(233,213,255,0.36)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 10px 22px rgba(147,51,234,0.34)',
+            }}
+          >
             <ReportIcon sx={{ color: '#fff' }} />
           </Box>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Rapporter</Typography>
-          <IconButton onClick={() => setReportsDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff', lineHeight: 1.1 }}>
+              Rapporter
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.74)' }}>
+              Role Room oversikt over utstyr, avvik og vedlikehold
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={0.75} sx={{ ml: 'auto', mr: 1, display: { xs: 'none', md: 'flex' } }}>
+            <Chip size="small" label={`${equipment.length} totalt`} sx={{ bgcolor: 'rgba(59,130,246,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.34)' }} />
+            <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
+            <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
+          </Stack>
+          <IconButton onClick={() => setReportsDialogOpen(false)} sx={{ color: 'rgba(226,232,240,0.76)' }}><CloseIcon /></IconButton>
         </DialogTitle>
-        <Tabs value={reportsTab} onChange={(_, v) => setReportsTab(v)} sx={{ px: 3, '& .MuiTabs-indicator': { bgcolor: '#9c27b0' }, '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', '&.Mui-selected': { color: '#ce93d8' } } }}>
-          <Tab label="Utstyrsliste" />
-          <Tab label={`Manglende (${missingItems.length})`} />
-          <Tab label={`Vedlikehold / Rep. (${maintenanceItems.length})`} />
-        </Tabs>
-        <DialogContent sx={{ pt: 2 }}>
+
+        <Box
+          sx={{
+            px: { xs: 1.5, sm: 2.5 },
+            pt: 1.5,
+            pb: 1,
+            borderBottom: '1px solid rgba(148,163,184,0.16)',
+            background: 'linear-gradient(180deg, rgba(15,23,42,0.42) 0%, rgba(2,6,23,0.08) 100%)',
+          }}
+        >
+          <Tabs
+            value={reportsTab}
+            onChange={(_, v) => setReportsTab(v)}
+            variant={isMobile ? 'scrollable' : 'standard'}
+            scrollButtons="auto"
+            sx={{
+              minHeight: 40,
+              '& .MuiTabs-indicator': { display: 'none' },
+              '& .MuiTab-root': {
+                minHeight: 38,
+                textTransform: 'none',
+                borderRadius: 1.25,
+                border: '1px solid rgba(148,163,184,0.24)',
+                color: 'rgba(203,213,225,0.75)',
+                bgcolor: 'rgba(15,23,42,0.56)',
+                mr: 1,
+                px: 1.5,
+                '&.Mui-selected': {
+                  color: '#f5d0fe',
+                  borderColor: 'rgba(192,132,252,0.48)',
+                  bgcolor: 'rgba(147,51,234,0.24)',
+                  boxShadow: '0 8px 22px rgba(147,51,234,0.24)',
+                },
+              },
+            }}
+          >
+            <Tab icon={<Inventory2Icon sx={{ fontSize: 16 }} />} iconPosition="start" label="Utstyrsliste" />
+            <Tab icon={<MissingItemIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={`Manglende (${missingItems.length})`} />
+            <Tab icon={<WarningIcon sx={{ fontSize: 16 }} />} iconPosition="start" label={`Vedlikehold / Rep. (${maintenanceItems.length})`} />
+          </Tabs>
+        </Box>
+
+        <DialogContent sx={{ px: { xs: 2, sm: 3 }, py: 2.25 }}>
           {reportsTab === 0 && (
             <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+              <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
                 Fullstendig utstyrsliste for prosjektet — {equipment.length} elementer
               </Typography>
-              <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+              <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
                 {equipment.map(eq => (
-                  <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <Chip label={STATUS_LABELS[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], fontSize: '0.65rem', minWidth: 80 }} />
-                    <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.brand} {eq.model}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 50 }}>×{eq.quantity}</Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', minWidth: 80 }}>{getCrewName(eq.assignees?.[0]?.crew_id ?? '')}</Typography>
+                  <Box key={eq.id} sx={{ px: 1.25, py: 1, borderRadius: 1.5, border: '1px solid rgba(148,163,184,0.2)', background: 'linear-gradient(140deg, rgba(15,23,42,0.72) 0%, rgba(30,41,59,0.58) 100%)', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                    <Chip label={STATUS_LABELS[eq.status]} size="small" sx={{ bgcolor: `${STATUS_COLORS[eq.status]}20`, color: STATUS_COLORS[eq.status], border: `1px solid ${STATUS_COLORS[eq.status]}55`, fontSize: '0.65rem', minWidth: 90 }} />
+                    <Typography variant="body2" sx={{ color: '#fff', flex: 1, minWidth: 180, fontWeight: 600 }}>{eq.name}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)', minWidth: 120 }}>{eq.brand} {eq.model}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)', minWidth: 54 }}>×{eq.quantity}</Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)', minWidth: 96 }}>{getCrewName(eq.assignees?.[0]?.crew_id ?? '')}</Typography>
                   </Box>
                 ))}
               </Box>
@@ -6954,22 +8130,22 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
           {reportsTab === 1 && (
             <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+              <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
                 Tilgjengelig utstyr uten tildelt ansvarlig — {missingItems.length} elementer
               </Typography>
               {missingItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-                  <Typography sx={{ color: '#4caf50' }}>Alt utstyr er tilordnet</Typography>
+                <Box sx={{ textAlign: 'center', py: 4, borderRadius: 2, border: '1px solid rgba(76,175,80,0.34)', background: 'linear-gradient(145deg, rgba(22,101,52,0.22) 0%, rgba(15,23,42,0.62) 100%)' }}>
+                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
+                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>Alt utstyr er tilordnet</Typography>
                 </Box>
               ) : (
-                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
                   {missingItems.map(eq => (
-                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <MissingItemIcon sx={{ color: '#9333ea', fontSize: 18, flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: '#fff', flex: 1, fontWeight: 600 }}>{eq.name}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.category}</Typography>
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>×{eq.quantity}</Typography>
+                    <Box key={eq.id} sx={{ px: 1.25, py: 1, borderRadius: 1.5, border: '1px solid rgba(250,204,21,0.32)', background: 'linear-gradient(145deg, rgba(113,63,18,0.32) 0%, rgba(15,23,42,0.62) 100%)', display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      <MissingItemIcon sx={{ color: '#facc15', fontSize: 18, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: '#fff', flex: 1, minWidth: 180, fontWeight: 600 }}>{eq.name}</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.74)', minWidth: 110 }}>{eq.category}</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.74)', minWidth: 54 }}>×{eq.quantity}</Typography>
                     </Box>
                   ))}
                 </Box>
@@ -6978,24 +8154,24 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
           {reportsTab === 2 && (
             <Box>
-              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 2 }}>
+              <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.76)', mb: 1.5 }}>
                 Utstyr som trenger vedlikehold eller reparasjon — {maintenanceItems.length} elementer
               </Typography>
               {maintenanceItems.length === 0 ? (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-                  <Typography sx={{ color: '#4caf50' }}>Ingen vedlikeholdsoppgaver</Typography>
+                <Box sx={{ textAlign: 'center', py: 4, borderRadius: 2, border: '1px solid rgba(76,175,80,0.34)', background: 'linear-gradient(145deg, rgba(22,101,52,0.22) 0%, rgba(15,23,42,0.62) 100%)' }}>
+                  <CheckCircleIcon sx={{ fontSize: 40, color: '#4ade80', mb: 1 }} />
+                  <Typography sx={{ color: '#86efac', fontWeight: 600 }}>Ingen vedlikeholdsoppgaver</Typography>
                 </Box>
               ) : (
-                <Box sx={{ maxHeight: 360, overflowY: 'auto' }}>
+                <Box sx={{ maxHeight: 360, overflowY: 'auto', pr: 0.5, display: 'grid', gap: 1 }}>
                   {maintenanceItems.map(eq => (
-                    <Box key={eq.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                      <WarningIcon sx={{ color: '#f44336', fontSize: 18, flexShrink: 0 }} />
-                      <Box sx={{ flex: 1 }}>
+                    <Box key={eq.id} sx={{ px: 1.25, py: 1, borderRadius: 1.5, border: '1px solid rgba(248,113,113,0.34)', background: 'linear-gradient(145deg, rgba(127,29,29,0.28) 0%, rgba(15,23,42,0.64) 100%)', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <WarningIcon sx={{ color: '#f87171', fontSize: 18, flexShrink: 0 }} />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>{eq.name}</Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(203,213,225,0.72)' }}>{eq.notes ?? 'Ingen merknader'}</Typography>
                       </Box>
-                      <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], fontSize: '0.65rem' }} />
+                      <Chip label={CONDITION_LABELS[eq.condition]} size="small" sx={{ bgcolor: `${CONDITION_COLORS[eq.condition]}20`, color: CONDITION_COLORS[eq.condition], border: `1px solid ${CONDITION_COLORS[eq.condition]}55`, fontSize: '0.65rem' }} />
                     </Box>
                   ))}
                 </Box>
@@ -7003,10 +8179,21 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
-          <Button onClick={() => setReportsDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
-          <Button onClick={handleDownloadGearList} variant="contained" startIcon={<DownloadIcon />}
-            sx={{ bgcolor: '#9c27b0', '&:hover': { bgcolor: '#8e24aa' } }}>
+        <DialogActions sx={{ px: { xs: 2, sm: 3 }, py: 2.25, borderTop: '1px solid rgba(148,163,184,0.2)', gap: 1 }}>
+          <Button onClick={() => setReportsDialogOpen(false)} variant="outlined" sx={{ borderColor: 'rgba(148,163,184,0.46)', color: 'rgba(226,232,240,0.88)', '&:hover': { borderColor: 'rgba(192,132,252,0.62)', bgcolor: 'rgba(147,51,234,0.12)' } }}>Lukk</Button>
+          <Button
+            onClick={handleDownloadGearList}
+            variant="contained"
+            startIcon={<DownloadIcon />}
+            sx={{
+              ml: 'auto',
+              color: '#050816',
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 60%, #3b82f6 100%)',
+              boxShadow: '0 12px 28px rgba(147,51,234,0.38)',
+              '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 60%, #60a5fa 100%)' },
+            }}
+          >
             Last ned CSV
           </Button>
         </DialogActions>
@@ -7067,13 +8254,37 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         open={catalogBridgeOpen}
         onClose={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }}
         fullScreen
-        PaperProps={{ sx: { bgcolor: '#0f0f1a' } }}
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.98) 0%, rgba(15,23,42,0.94) 50%, rgba(30,41,59,0.88) 100%)',
+            color: '#fff',
+          },
+        }}
       >
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#fff', pb: 0 }}>
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(148,163,184,0.24)',
+            color: '#fff',
+            pb: 0.5,
+            background: 'linear-gradient(90deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 100%)',
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SearchIcon sx={{ color: '#9333ea' }} />
+            <SearchIcon sx={{ color: '#c084fc' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
-            <Chip label="Importer til prosjekt" size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc' }} />
+            <Chip
+              label="Importer til prosjekt"
+              size="small"
+              sx={{
+                bgcolor: 'rgba(192,132,252,0.2)',
+                color: '#e9d5ff',
+                border: '1px solid rgba(192,132,252,0.45)',
+              }}
+            />
           </Box>
           <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={{ color: 'rgba(255,255,255,0.7)' }}>
             <CloseIcon />
@@ -7081,15 +8292,21 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         </DialogTitle>
 
         {/* Sub-tab navigation */}
-        <Box sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)', bgcolor: 'rgba(255,255,255,0.02)' }}>
+        <Box
+          sx={{
+            borderBottom: '1px solid rgba(148,163,184,0.24)',
+            bgcolor: 'rgba(15,23,42,0.52)',
+            backdropFilter: 'blur(10px)',
+          }}
+        >
           <Tabs
             value={catalogDialogTab}
             onChange={(_, v: number) => setCatalogDialogTab(v)}
             sx={{
               px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.6)', minHeight: 48, fontSize: '0.82rem' },
-              '& .Mui-selected': { color: '#9333ea' },
-              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
+              '& .MuiTab-root': { color: 'rgba(255,255,255,0.66)', minHeight: 50, fontSize: '0.82rem' },
+              '& .Mui-selected': { color: '#c084fc' },
+              '& .MuiTabs-indicator': { bgcolor: '#c084fc', height: 3 },
             }}
           >
             <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label="Produkt-katalog" iconPosition="start" />
@@ -7100,20 +8317,23 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Tabs>
         </Box>
 
-        <DialogContent sx={{ p: 0, overflow: 'auto' }}>
+        <DialogContent sx={{ p: 0, overflow: 'auto', bgcolor: 'transparent' }}>
 
           {/* Tab 0 — Manufacturer product catalog */}
           {catalogDialogTab === 0 && (
-            <EquipmentCatalogBrowser
-              profession="videographer"
-              userId={user?.id ? String(user.id) : ''}
-              onAddToProject={handleImportFromCatalog}
-            />
+            <Box sx={{ p: { xs: 1.5, md: 2 } }}>
+              <EquipmentCatalogBrowser
+                profession="videographer"
+                userId={user?.id ? String(user.id) : ''}
+                onAddToProject={handleImportFromCatalog}
+                roleRoomBranding
+              />
+            </Box>
           )}
 
           {/* Tab 1 — Gear news feed */}
           {catalogDialogTab === 1 && (
-            <Box sx={{ p: 3 }}>
+            <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <NewspaperIcon sx={{ color: '#9333ea' }} />
                 Utstyrsnyheter
@@ -7129,10 +8349,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen nyheter tilgjengelig akkurat nå.</Typography>
                 </Box>
               ) : (
-                <Grid container spacing={2}>
+                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
                   {gearNewsArticles.map((article, idx) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={idx}>
-                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`${article.id || article.url || article.title || 'gear-news'}-${idx}`}>
+                      <Card sx={CATALOG_BRIDGE_CARD_SX}>
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
                             {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontSize: '0.7rem' }} />}
@@ -7145,6 +8365,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           {article.summary && (
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                               {article.summary}
+                            </Typography>
+                          )}
+                          {(article.source || article.publishedAt) && (
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block', mt: 1 }}>
+                              {article.source ? `${article.source}` : ''}
+                              {article.source && article.publishedAt ? ' · ' : ''}
+                              {article.publishedAt
+                                ? new Date(article.publishedAt).toLocaleDateString('nb-NO', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                  })
+                                : ''}
                             </Typography>
                           )}
                           {article.rating !== undefined && (
@@ -7171,7 +8404,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
           {/* Tab 2 — Market prices */}
           {catalogDialogTab === 2 && (
-            <Box sx={{ p: 3 }}>
+            <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <TrendingUpIcon sx={{ color: '#4caf50' }} />
                 Markedspriser & Sammenligning
@@ -7189,9 +8422,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               ) : (
                 <>
                   {/* Summary row */}
-                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                  <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP, mb: 3 }}>
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(76,175,80,0.3)', borderRadius: 2 }}>
+                      <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(76,175,80,0.35)' }}>
                         <TrendingUpIcon sx={{ color: '#4caf50', mb: 1 }} />
                         <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
                           {marketItems.filter(i => i.availability === 'available').length}
@@ -7200,7 +8433,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       </Paper>
                     </Grid>
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(147,51,234,0.3)', borderRadius: 2 }}>
+                      <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(147,51,234,0.35)' }}>
                         <AttachMoneyIcon sx={{ color: '#9333ea', mb: 1 }} />
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
                           Fra: {marketItems.length > 0 ? Math.min(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
@@ -7211,7 +8444,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       </Paper>
                     </Grid>
                     <Grid size={{ xs: 12, sm: 4 }}>
-                      <Paper sx={{ p: 2.5, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(33,150,243,0.3)', borderRadius: 2 }}>
+                      <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(33,150,243,0.35)' }}>
                         <StarIcon sx={{ color: '#2196f3', mb: 1 }} />
                         <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
                           {(marketItems.reduce((acc, item) => acc + parseFloat(item.videographerRating || '0'), 0) / (marketItems.length || 1)).toFixed(1)}
@@ -7222,10 +8455,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </Grid>
 
                   {/* Items grid */}
-                  <Grid container spacing={2}>
+                  <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
                     {marketItems.map(item => (
                       <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
-                        <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                        <Card sx={CATALOG_BRIDGE_CARD_SX}>
                           <CardContent sx={{ flexGrow: 1 }}>
                             <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
                               {item.brand} {item.model}
@@ -7284,7 +8517,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
           {/* Tab 3 — Lens database */}
           {catalogDialogTab === 3 && (
-            <Box sx={{ p: 3 }}>
+            <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <PhotoLibraryIcon sx={{ color: '#9333ea' }} />
                 Objektiv Database
@@ -7300,10 +8533,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen objektiver i databasen ennå.</Typography>
                 </Box>
               ) : (
-                <Grid container spacing={2}>
+                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
                   {lensItems.map(lens => (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }} key={lens.id}>
-                      <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' } }}>
+                      <Card sx={CATALOG_BRIDGE_CARD_SX}>
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
                             {lens.brand} {lens.model}
@@ -7357,7 +8590,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
           {/* Tab 4 — Backend camera + memory card catalog */}
           {catalogDialogTab === 4 && (
-            <Box sx={{ p: 3 }}>
+            <Box sx={CATALOG_BRIDGE_TAB_PANEL_SX}>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Inventory2Icon sx={{ color: '#c084fc' }} />
@@ -7384,7 +8617,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 </Alert>
               )}
 
-              <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
+              <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP, mb: 2.5 }}>
                 <Grid size={{ xs: 12, md: 5 }}>
                   <TextField
                     fullWidth
@@ -7495,9 +8728,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </Typography>
                 </Box>
               ) : (
-                <Grid container spacing={2}>
+                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
                   <Grid size={{ xs: 12, lg: 7 }}>
-                    <Grid container spacing={2}>
+                    <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
                       {cameraCatalogItems.map((camera) => (
                         <Grid key={camera.id} size={{ xs: 12, sm: 6 }}>
                           <Card
@@ -7505,9 +8738,30 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                             sx={{
                               height: '100%',
                               cursor: 'pointer',
+                              position: 'relative',
+                              overflow: 'hidden',
                               border: selectedCameraId === camera.id ? '1px solid #c084fc' : '1px solid rgba(255,255,255,0.08)',
-                              bgcolor: selectedCameraId === camera.id ? 'rgba(192,132,252,0.12)' : 'rgba(255,255,255,0.04)',
-                              '&:hover': { bgcolor: 'rgba(255,255,255,0.07)' },
+                              background: selectedCameraId === camera.id
+                                ? 'linear-gradient(150deg, rgba(192,132,252,0.2) 0%, rgba(30,41,59,0.85) 100%)'
+                                : 'linear-gradient(150deg, rgba(15,23,42,0.78) 0%, rgba(30,41,59,0.55) 100%)',
+                              boxShadow: selectedCameraId === camera.id
+                                ? '0 10px 26px rgba(147,51,234,0.34)'
+                                : '0 8px 20px rgba(2,6,23,0.28)',
+                              '&::before': {
+                                content: '""',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: 2,
+                                background: selectedCameraId === camera.id
+                                  ? 'linear-gradient(90deg, #c084fc, #38bdf8)'
+                                  : 'linear-gradient(90deg, rgba(148,163,184,0.65), rgba(125,211,252,0.55))',
+                              },
+                              '&:hover': {
+                                background: 'linear-gradient(150deg, rgba(51,65,85,0.92) 0%, rgba(30,41,59,0.78) 100%)',
+                                borderColor: 'rgba(125,211,252,0.38)',
+                              },
                             }}
                           >
                             <CardContent>
@@ -7524,24 +8778,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                                       color: camera.type === 'photo' ? '#90caf9' : '#d1a3ff',
                                     }}
                                   />
-                                  {camera.isNetflixCertified && (
-                                    <Chip
-                                      size="small"
-                                      icon={
-                                        <img
-                                          src={netflixWordmark}
-                                          alt="Netflix"
-                                          style={{ height: 10, width: 'auto', display: 'block' }}
-                                        />
-                                      }
-                                      label="Sertifisert"
-                                      sx={{
-                                        bgcolor: 'rgba(229,9,20,0.88)',
-                                        color: '#fff',
-                                        fontWeight: 700,
-                                      }}
-                                    />
-                                  )}
+                                  {camera.isNetflixCertified && renderNetflixBadge('Netflix', true)}
                                 </Stack>
                               </Box>
                               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.65)', mb: 1.5 }}>
@@ -7582,8 +8819,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     <Paper
                       sx={{
                         p: 2,
-                        bgcolor: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        background:
+                          'linear-gradient(160deg, rgba(2,6,23,0.84) 0%, rgba(15,23,42,0.72) 44%, rgba(30,41,59,0.62) 100%)',
+                        border: '1px solid rgba(125,211,252,0.18)',
+                        borderRadius: 2,
+                        boxShadow: '0 14px 30px rgba(2,6,23,0.35)',
                       }}
                     >
                       <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 700, mb: 1.5 }}>
@@ -7595,23 +8835,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                             Valgt kamera: {selectedCamera.brand} {selectedCamera.model}
                           </Typography>
                           {selectedCamera.isNetflixCertified && (
-                            <Chip
-                              size="small"
-                              icon={
-                                <img
-                                  src={netflixWordmark}
-                                  alt="Netflix"
-                                  style={{ height: 10, width: 'auto', display: 'block' }}
-                                />
-                              }
-                              label="Netflix-sertifisert cinekamera"
-                              sx={{
-                                mb: 1,
-                                bgcolor: 'rgba(229,9,20,0.88)',
-                                color: '#fff',
-                                fontWeight: 700,
-                              }}
-                            />
+                            <Box sx={{ mb: 1 }}>
+                              {renderNetflixBadge('Netflix-sertifisert cinekamera', false)}
+                            </Box>
                           )}
                           <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
                             Kilde: {selectedCamera.sourceMeta?.source ?? 'seed'}
@@ -7829,7 +9055,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            bgcolor: '#1c2128',
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
             border: '1px solid rgba(255,255,255,0.1)',
@@ -7848,7 +9074,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-            <QrCodeScannerIcon sx={{ color: '#64b5f6' }} />
+            <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Skann lager-QR
             </Typography>
@@ -7863,6 +9089,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Typography>
           <QrCameraScanner
             active={qrScanDialogOpen}
+            scanTargetLabel="lager-QR"
             onDetected={(value) => {
               setQrScanInput(value);
               setQrScanError(null);
@@ -7886,8 +9113,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 bgcolor: 'rgba(0,0,0,0.2)',
                 borderRadius: 2,
                 '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                '&:hover fieldset': { borderColor: 'rgba(100,181,246,0.4)' },
-                '&.Mui-focused fieldset': { borderColor: '#64b5f6' },
+                '&:hover fieldset': { borderColor: 'rgba(192,132,252,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#c084fc' },
               },
             }}
           />
@@ -7913,7 +9140,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 setQrScanError('Kunne ikke lese fra utklippstavle.');
               }
             }}
-            sx={{ borderColor: '#64b5f6', color: '#64b5f6' }}
+            sx={{ borderColor: '#c084fc', color: '#c084fc' }}
           >
             Lim inn
           </Button>
@@ -7922,13 +9149,132 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             startIcon={<QrCodeScannerIcon />}
             onClick={() => handleResolveScannedQr(qrScanInput)}
             sx={{
-              bgcolor: '#64b5f6',
+              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
               color: '#000',
               fontWeight: 700,
-              '&:hover': { bgcolor: '#90caf9' },
+              '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
             }}
           >
             Tolk QR
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={serialScanDialogOpen}
+        onClose={() => setSerialScanDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        TransitionComponent={Grow}
+        PaperProps={{
+          sx: {
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
+            color: '#fff',
+            borderRadius: 3,
+            border: '1px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+          },
+        }}
+      >
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            py: 2,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Skann serienummer
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 2.5 }}>
+          <Typography sx={{ color: 'rgba(255,255,255,0.7)', mb: 1.25, fontSize: '0.9rem' }}>
+            Skann strekkode eller QR-kode for å fylle serienummer automatisk.
+          </Typography>
+          <QrCameraScanner
+            active={serialScanDialogOpen}
+            formats={serialNumberScanFormats}
+            scanTargetLabel="strekkode/QR-kode"
+            onDetected={(value) => {
+              setSerialScanInput(value);
+              setSerialScanError(null);
+              handleApplyScannedSerialNumber(value);
+            }}
+          />
+          <TextField
+            fullWidth
+            autoFocus
+            value={serialScanInput}
+            onChange={(event) => {
+              setSerialScanInput(event.target.value);
+              if (serialScanError) setSerialScanError(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                handleApplyScannedSerialNumber(serialScanInput);
+              }
+            }}
+            placeholder="Eks: A001-SN-240315"
+            sx={{
+              mt: 1.5,
+              '& .MuiOutlinedInput-root': {
+                color: '#fff',
+                bgcolor: 'rgba(0,0,0,0.2)',
+                borderRadius: 2,
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(192,132,252,0.45)' },
+                '&.Mui-focused fieldset': { borderColor: '#c084fc' },
+              },
+            }}
+          />
+          {serialScanError && (
+            <Alert severity="warning" sx={{ mt: 1.5 }}>
+              {serialScanError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+          <Button onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            Avbryt
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CopyIcon />}
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                setSerialScanInput(text);
+                setSerialScanError(null);
+              } catch {
+                setSerialScanError('Kunne ikke lese fra utklippstavle.');
+              }
+            }}
+            sx={{ borderColor: '#c084fc', color: '#c084fc' }}
+          >
+            Lim inn
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<QrCodeScannerIcon />}
+            onClick={() => handleApplyScannedSerialNumber(serialScanInput)}
+            sx={{
+              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+              color: '#000',
+              fontWeight: 700,
+              '&:hover': { background: 'linear-gradient(135deg, #c084fc, #9333ea)' },
+            }}
+          >
+            Bruk kode
           </Button>
         </DialogActions>
       </Dialog>
@@ -7941,11 +9287,29 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         onClose={() => setFirmwarePanelOpen(false)}
         fullWidth
         maxWidth="lg"
-        PaperProps={{ sx: { bgcolor: '#0f0f1a', color: '#fff' } }}
+        PaperProps={{
+          sx: {
+            background:
+              'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
+            color: '#fff',
+            border: '1px solid rgba(148,163,184,0.3)',
+            borderRadius: 2,
+            boxShadow: '0 18px 38px rgba(2,6,23,0.5)',
+          },
+        }}
       >
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <DialogTitle
+          component="div"
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: '1px solid rgba(148,163,184,0.24)',
+            background: 'linear-gradient(90deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.12) 100%)',
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SyncIcon sx={{ color: '#2196f3' }} />
+            <SyncIcon sx={{ color: '#38bdf8' }} />
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
           </Box>
           <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>

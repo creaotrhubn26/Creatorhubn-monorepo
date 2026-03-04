@@ -130,7 +130,29 @@ import { HLSStreamingService } from '../services/hls-streaming-service';
 import { webWorkerEngine } from '../services/web-worker-engine';
 import { ThumbnailCacheService } from '../services/thumbnail-cache-service';
 import { audioAnalysisEngine } from '../services/audio-analysis-engine';
-import type { SpeedKeyframe } from '../services/speed-ramp-engine';
+import { SpeedRampEngine, type SpeedKeyframe } from '../services/speed-ramp-engine';
+import {
+  createAutoEditAlternatives,
+  getDefaultAutoEditOptions,
+  type AutoEditFeedbackValue,
+  type AutoEditOptions,
+  type AutoEditPreset,
+  type AutoEditProposal,
+  type AutoEditVariant,
+} from '../services/auto-edit-engine';
+import {
+  cancelAutoEditServerJob,
+  getAutoEditServerJob,
+  retryAutoEditServerJob,
+  startAutoEditServerJob,
+  type AutoEditServerContext,
+  type AutoEditServerJobState,
+  type AutoEditServerRankingResult,
+} from '../services/auto-edit-server';
+import {
+  getStoryIntentProfile,
+  getStoryIntentProfiles,
+} from '../services/story-intent-profiles';
 import type { CaptionSegment } from './timeline/AutoCaptionsPanel';
 import {
   audioSyncEngine,
@@ -165,6 +187,7 @@ import {
   normalizeSceneDetectionProgress,
   toErrorMessage,
 } from './story-arc-studio/storyArcStudioNormalizers';
+import type { StoryArcClipMeta } from './story-arc-studio/types';
 import { enforceTimelineInvariants } from './story-arc-studio/timelineInvariants';
 const loadExportDialog = () => import('./ExportDialog');
 const loadAIStoryGeneratorDialog = () => import('./timeline/AIStoryGeneratorDialog');
@@ -357,6 +380,46 @@ interface CaptionExportPayload {
   vtt: string;
 }
 
+interface NarrativeTranscriptionSegment {
+  id: number;
+  start: number;
+  end: number;
+  text: string;
+  confidence: number;
+  speakerName: string | null;
+}
+
+interface NarrativeTranscriptionResult {
+  language: string;
+  text: string;
+  segments: NarrativeTranscriptionSegment[];
+}
+
+interface NarrativeTranscriptionJobStartResponse {
+  success?: boolean;
+  job_id?: string;
+  error?: string;
+}
+
+interface NarrativeTranscriptionJobStatusResponse {
+  success?: boolean;
+  status?: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  result?: {
+    transcription?: {
+      language?: string;
+      text?: string;
+      segments?: unknown[];
+    };
+  };
+  error?: string;
+}
+
+interface AutoEditSpeechEnrichment {
+  clips: BeatClip[];
+  sourcesTranscribed: number;
+  clipsEnriched: number;
+}
+
 interface ThumbnailCacheSummary {
   thumbnailCount: number;
   totalSize: number;
@@ -369,6 +432,44 @@ interface SelectedAssetMedia {
   type?: string;
   mimeType?: string;
   file?: File;
+}
+
+interface AssetBrowserSnippetDetail {
+  id: string;
+  name: string;
+  type: 'transition' | 'opening' | 'closing' | 'montage' | 'dialogue' | 'action';
+  duration: number;
+  tags: string[];
+}
+
+interface AutoEditTimelineSnapshot {
+  clips: BeatClip[];
+  transitions: TimelineTransition[];
+  markers: TimelineMarker[];
+  selectedClipIds: string[];
+}
+
+interface AutoEditPreviewState {
+  proposal: AutoEditProposal;
+  alternatives: Record<AutoEditVariant, AutoEditProposal>;
+  selectedVariant: AutoEditVariant;
+  snapshot: AutoEditTimelineSnapshot;
+  generatedAt: number;
+}
+
+interface AutoEditHistoryEntry {
+  id: string;
+  proposalId: string;
+  projectKey: string;
+  preset: AutoEditPreset;
+  variant: AutoEditVariant;
+  intentProfileId: string;
+  confidence: number;
+  duration: number;
+  generatedAt: number;
+  status: 'generated' | 'applied' | 'reverted' | 'failed';
+  summary: string[];
+  serverJobId?: string | null;
 }
 
 interface ExportedVideoResult {
@@ -484,8 +585,17 @@ const TIMELINE_ZOOM_STORAGE_KEY = 'storyArcStudio.timeline.zoom.v1';
 const COMPOSITION_SETTINGS_STORAGE_KEY = 'storyArcStudio.composition.settings.v1';
 const ONBOARDING_COMPLETED_STORAGE_KEY = 'storyArcStudio_onboardingCompleted';
 const PROJECT_CONTEXT_SESSION_STORAGE_KEY = 'storyArcStudio_projectContext';
+const AUTO_EDIT_PROFILE_STORAGE_KEY = 'storyArcStudio.autoEdit.intentProfile.v1';
+const AUTO_EDIT_FEEDBACK_STORAGE_KEY = 'storyArcStudio.autoEdit.feedback.v1';
+const AUTO_EDIT_HISTORY_STORAGE_KEY = 'storyArcStudio.autoEdit.history.v1';
+const AUTO_EDIT_PENDING_PREVIEW_STORAGE_KEY = 'storyArcStudio.autoEdit.pendingPreview.v1';
 const ENABLE_EDITOR_TEST_HOOKS = import.meta.env.DEV;
 const ENABLE_EXPERIMENTAL_TIMELINE_PANELS = import.meta.env.VITE_ENABLE_STORYARC_EXPERIMENTAL_PANELS !== 'false';
+const AUTO_EDIT_TRANSCRIPTION_LANGUAGE = 'no';
+const AUTO_EDIT_TRANSCRIPTION_POLL_INTERVAL_MS = 1500;
+const AUTO_EDIT_TRANSCRIPTION_MAX_POLL_ATTEMPTS = 120;
+const AUTO_EDIT_TRANSCRIPT_MAX_LENGTH = 900;
+const AUTO_EDIT_TRANSCRIPT_MAX_PHRASES = 8;
 const RESOLVE_WORKSPACE_PRESETS: ResolveWorkspacePreset[] = [
   'edit',
   'cut',
@@ -568,6 +678,33 @@ function setSafeLocalStorageItem(key: string, value: string): void {
   }
 }
 
+function getSafeLocalStorageJson<T>(key: string, fallback: T): T {
+  const raw = getSafeLocalStorageItem(key);
+  if (!raw) {
+    return fallback;
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function setSafeLocalStorageJson(key: string, value: unknown): void {
+  try {
+    setSafeLocalStorageItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore serialization/storage failures.
+  }
+}
+
+function buildAutoEditClipFeedbackKey(clip: BeatClip): string {
+  const source = (clip.sourceFile || clip.name || clip.id || '').trim().toLowerCase();
+  const startBucket = Math.round((Number.isFinite(clip.start) ? clip.start : 0) * 10);
+  const durationBucket = Math.round((Number.isFinite(clip.duration) ? clip.duration : 0) * 10);
+  return `${source}|${clip.trackId}|${startBucket}|${durationBucket}`;
+}
+
 function getSafeSessionStorageItem(key: string): string | null {
   if (typeof window === 'undefined') {
     return null;
@@ -606,6 +743,10 @@ function clampTimelineZoomValue(value: number): number {
   return Math.round(clamped * 10) / 10;
 }
 
+function clampNumber(value: number, minValue: number, maxValue: number): number {
+  return Math.min(maxValue, Math.max(minValue, value));
+}
+
 function buildAudioRoleBooleanMap(defaultValue = false): Record<AudioTrackRole, boolean> {
   return AUDIO_ROLE_ORDER.reduce<Record<AudioTrackRole, boolean>>((accumulator, role) => {
     accumulator[role] = defaultValue;
@@ -631,6 +772,149 @@ function inferAudioRoleFromTrackName(trackName: string): AudioTrackRole {
     return 'effects';
   }
   return 'dialogue';
+}
+
+function normalizeAutoEditKeywordToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function tokenizeAutoEditKeywords(value: string): string[] {
+  return value
+    .split(/[\s,;|/]+/)
+    .map((token) => normalizeAutoEditKeywordToken(token))
+    .filter((token) => token.length >= 3);
+}
+
+function dedupeAutoEditKeywords(
+  values: Array<string | null | undefined>,
+  maxItems = 28
+): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    if (!value) {
+      return;
+    }
+    tokenizeAutoEditKeywords(value).forEach((token) => {
+      if (seen.has(token) || unique.length >= maxItems) {
+        return;
+      }
+      seen.add(token);
+      unique.push(token);
+    });
+  });
+  return unique;
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return numeric;
+    }
+  }
+  return null;
+}
+
+function sanitizeTranscriptText(value: unknown, maxLength = AUTO_EDIT_TRANSCRIPT_MAX_LENGTH): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength);
+}
+
+function dedupeTranscriptPhrases(
+  values: Array<string | null | undefined>,
+  maxItems = AUTO_EDIT_TRANSCRIPT_MAX_PHRASES
+): string[] {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  values.forEach((value) => {
+    const normalized = sanitizeTranscriptText(value, 160);
+    if (!normalized) {
+      return;
+    }
+    const dedupeKey = normalized.toLowerCase();
+    if (seen.has(dedupeKey) || unique.length >= maxItems) {
+      return;
+    }
+    seen.add(dedupeKey);
+    unique.push(normalized);
+  });
+  return unique;
+}
+
+function normalizeNarrativeTranscriptionSegments(rawSegments: unknown): NarrativeTranscriptionSegment[] {
+  if (!Array.isArray(rawSegments)) {
+    return [];
+  }
+  return rawSegments
+    .map((segment, index) => {
+      if (!isRecord(segment)) {
+        return null;
+      }
+      const start = readFiniteNumber(segment.start);
+      const end = readFiniteNumber(segment.end);
+      const text = sanitizeTranscriptText(segment.text, 220);
+      if (start === null || end === null || !text) {
+        return null;
+      }
+      const confidence = readFiniteNumber(segment.confidence);
+      const speakerName = sanitizeTranscriptText(segment.speaker, 80);
+      return {
+        id: readFiniteNumber(segment.id) ?? index + 1,
+        start,
+        end: end >= start ? end : start,
+        text,
+        confidence: confidence !== null ? clampNumber(confidence, 0, 1) : 1,
+        speakerName: speakerName || null,
+      };
+    })
+    .filter((segment): segment is NarrativeTranscriptionSegment => Boolean(segment));
+}
+
+function extractTranscriptPhrases(
+  segments: NarrativeTranscriptionSegment[],
+  maxItems = AUTO_EDIT_TRANSCRIPT_MAX_PHRASES
+): string[] {
+  return dedupeTranscriptPhrases(
+    segments.map((segment) => segment.text),
+    maxItems
+  );
+}
+
+function resolveClipSourceWindow(clip: BeatClip): { start: number; end: number; hasExplicitBounds: boolean } {
+  const metadata = isRecord(clip.metadata) ? clip.metadata : null;
+  const clipDuration = Number.isFinite(clip.duration) ? Math.max(0, clip.duration) : 0;
+  const inPoint =
+    readFiniteNumber(metadata?.inPoint) ??
+    readFiniteNumber(metadata?.sourceStartTime) ??
+    0;
+  const configuredOutPoint = readFiniteNumber(metadata?.outPoint);
+  const fallbackOutPoint = inPoint + clipDuration;
+  const outPoint = configuredOutPoint !== null ? configuredOutPoint : fallbackOutPoint;
+  const start = Math.max(0, Math.min(inPoint, outPoint));
+  const end = Math.max(start, Math.max(inPoint, outPoint));
+  const hasExplicitBounds =
+    readFiniteNumber(metadata?.inPoint) !== null ||
+    readFiniteNumber(metadata?.outPoint) !== null ||
+    readFiniteNumber(metadata?.sourceStartTime) !== null;
+  return {
+    start,
+    end,
+    hasExplicitBounds,
+  };
+}
+
+function clipTrackLooksAudio(trackId: string): boolean {
+  const normalized = trackId.trim().toLowerCase();
+  return normalized.startsWith('audio') || /^a\d+$/.test(normalized);
 }
 
 function isLikelyAudioTrack(track: Track): boolean {
@@ -1054,6 +1338,7 @@ export default function StoryArcStudio({
   const userAdjustedTimelineZoomRef = useRef(false);
   const timelineZoomLoadedFromStorageRef = useRef(false);
   const [selectedClips, setSelectedClips] = useState<Set<string>>(new Set());
+  const [autoMonitorEnabled, setAutoMonitorEnabled] = useState(false);
   const clipMap = useMemo(() => new Map(clips.map((clip) => [clip.id, clip])), [clips]);
   const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks]);
   const {
@@ -1132,6 +1417,55 @@ export default function StoryArcStudio({
   const [trackHeightScale, setTrackHeightScale] = useState(1);
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [transitions, setTransitions] = useState<TimelineTransition[]>([]);
+  const [showAutoEditDialog, setShowAutoEditDialog] = useState(false);
+  const [autoEditRunning, setAutoEditRunning] = useState(false);
+  const [autoEditJobId, setAutoEditJobId] = useState<string | null>(null);
+  const [autoEditServerProgress, setAutoEditServerProgress] = useState<number | null>(null);
+  const [autoEditIntentProfileId, setAutoEditIntentProfileId] = useState<string>(() => {
+    return getSafeLocalStorageItem(AUTO_EDIT_PROFILE_STORAGE_KEY) || 'balanced-story';
+  });
+  const [autoEditOptions, setAutoEditOptions] = useState<AutoEditOptions>(() =>
+    getDefaultAutoEditOptions('story-60')
+  );
+  const [autoEditPreview, setAutoEditPreview] = useState<AutoEditPreviewState | null>(null);
+  const [lastAutoEditSnapshot, setLastAutoEditSnapshot] = useState<AutoEditPreviewState | null>(null);
+  const [autoEditFeedbackByClipKey, setAutoEditFeedbackByClipKey] = useState<Record<string, AutoEditFeedbackValue>>(
+    () => getSafeLocalStorageJson<Record<string, AutoEditFeedbackValue>>(AUTO_EDIT_FEEDBACK_STORAGE_KEY, {})
+  );
+  const [autoEditHistory, setAutoEditHistory] = useState<AutoEditHistoryEntry[]>(
+    () => getSafeLocalStorageJson<AutoEditHistoryEntry[]>(AUTO_EDIT_HISTORY_STORAGE_KEY, [])
+  );
+  const appliedAutoEditProposalIdsRef = useRef<Set<string>>(new Set());
+  const revertedAutoEditProposalIdsRef = useRef<Set<string>>(new Set());
+  const autoEditPreviewRestoredRef = useRef(false);
+  const autoEditTranscriptionCacheRef = useRef<Map<string, NarrativeTranscriptionResult>>(new Map());
+  const storyIntentProfiles = useMemo(() => getStoryIntentProfiles(), []);
+  const activeIntentProfile = useMemo(
+    () => getStoryIntentProfile(autoEditIntentProfileId),
+    [autoEditIntentProfileId]
+  );
+  const autoEditProjectKey = useMemo(() => {
+    const explicitStoryArcId = typeof storyArcId === 'string' ? storyArcId : null;
+    const storyArcEntityId = typeof storyArc?.id === 'string' ? storyArc.id : null;
+    const selectedProjectId =
+      selectedProject && (typeof selectedProject.id === 'string' || typeof selectedProject.id === 'number')
+        ? String(selectedProject.id)
+        : null;
+    const projectNameRaw =
+      (typeof selectedProject?.name === 'string' && selectedProject.name.trim().length > 0
+        ? selectedProject.name
+        : typeof selectedProject?.projectName === 'string'
+          ? selectedProject.projectName
+          : null) ||
+      storyArc?.title ||
+      'default';
+    const normalizedName = projectNameRaw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    return explicitStoryArcId || storyArcEntityId || selectedProjectId || normalizedName || 'default';
+  }, [selectedProject, storyArc?.id, storyArc?.title, storyArcId]);
+  const autoEditHistoryForProject = useMemo(
+    () => autoEditHistory.filter((entry) => entry.projectKey === autoEditProjectKey).slice(0, 12),
+    [autoEditHistory, autoEditProjectKey]
+  );
   const [magneticEnabled, setMagneticEnabled] = useState(true);
   const [rippleEnabled, setRippleEnabled] = useState(false);
   const [pendingTransitionType, setPendingTransitionType] = useState<string | null>(null);
@@ -1139,51 +1473,7 @@ export default function StoryArcStudio({
   const [pendingTransitionEngine, setPendingTransitionEngine] = useState<'canvas2d' | 'webgl'>('canvas2d');
 
   // Clip metadata & collaboration
-  interface ClipMeta { 
-    camera?: string; 
-    shotName?: string; 
-    scene?: string; 
-    take?: string; 
-    tags?: string[];
-    syncGroup?: string; // Multi-angle sync group identifier
-    faceDetection?: {
-      hasFace: boolean;
-      faceCount: number;
-      confidence: number;
-      analyzedAt: number;
-      // Comprehensive FaceXFormer analysis results
-      comprehensiveAnalysis?: {
-        parsing?: {
-          mask?: string; // base64
-          visualization?: string; // base64
-        };
-        landmarks?: {
-          points: Array<{ x: number; y: number }>;
-          count: number;
-          visualization?: string; // base64
-        };
-        headpose?: {
-          pitch: number;
-          yaw: number;
-          roll: number;
-          visualization?: string; // base64
-        };
-        attributes?: {
-          values: number[];
-          count: number;
-        };
-      };
-      bestTimestamp?: number; // Timestamp of best result
-      scanMetadata?: {
-        totalFramesAnalyzed: number;
-        framesWithFaces: number;
-        faceDetectionRate: number;
-        timestamps: Array<{ timestamp: number; hasFace: boolean }>;
-      };
-    };
-    [key: string]: unknown;
-  }
-  const [clipMeta, setClipMeta] = useState<Record<string, ClipMeta>>({});
+  const [clipMeta, setClipMeta] = useState<Record<string, StoryArcClipMeta>>({});
   
   // Face detection worker state
   const [faceDetectionProgress, setFaceDetectionProgress] = useState<FaceDetectionProgress | null>(null);
@@ -1374,6 +1664,52 @@ export default function StoryArcStudio({
   // Recent projects state
   const [recentProjects, setRecentProjects] = useState<RecentStoryArcProject[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+
+  useEffect(() => {
+    setSafeLocalStorageItem(AUTO_EDIT_PROFILE_STORAGE_KEY, autoEditIntentProfileId);
+  }, [autoEditIntentProfileId]);
+
+  useEffect(() => {
+    setSafeLocalStorageJson(AUTO_EDIT_FEEDBACK_STORAGE_KEY, autoEditFeedbackByClipKey);
+  }, [autoEditFeedbackByClipKey]);
+
+  useEffect(() => {
+    setSafeLocalStorageJson(AUTO_EDIT_HISTORY_STORAGE_KEY, autoEditHistory.slice(0, 80));
+  }, [autoEditHistory]);
+
+  useEffect(() => {
+    setAutoEditOptions((previous) => {
+      const defaults = getDefaultAutoEditOptions(previous.preset);
+      const transitionDensity = clampNumber(
+        defaults.transitionDensity + activeIntentProfile.transitionDensityBias,
+        0,
+        1
+      );
+      const targetDuration = clampNumber(
+        defaults.targetDurationSeconds * (1 + activeIntentProfile.targetDurationBias),
+        10,
+        180
+      );
+      const next: AutoEditOptions = {
+        ...previous,
+        intentProfileId: activeIntentProfile.id,
+        transitionDensity,
+        targetDurationSeconds: targetDuration,
+        maxConsecutiveByCamera: activeIntentProfile.maxConsecutiveByCamera,
+        maxConsecutiveBySpeaker: activeIntentProfile.maxConsecutiveBySpeaker,
+      };
+      if (
+        next.intentProfileId === previous.intentProfileId &&
+        next.transitionDensity === previous.transitionDensity &&
+        next.targetDurationSeconds === previous.targetDurationSeconds &&
+        next.maxConsecutiveByCamera === previous.maxConsecutiveByCamera &&
+        next.maxConsecutiveBySpeaker === previous.maxConsecutiveBySpeaker
+      ) {
+        return previous;
+      }
+      return next;
+    });
+  }, [activeIntentProfile]);
 
   // Fetch recent projects
   const fetchRecentProjects = useCallback(async () => {
@@ -1767,6 +2103,7 @@ export default function StoryArcStudio({
       cancelManagedJob('scene');
       cancelManagedJob('sync');
       cancelManagedJob('face');
+      cancelManagedJob('autoEdit');
       clearSceneDetectionPollInterval();
       clearAiRatingRevealTimeout();
       clearWorkerInitTimeouts();
@@ -2581,6 +2918,18 @@ export default function StoryArcStudio({
     }));
   }, []);
 
+  const cloneTimelineTransitions = useCallback(
+    (transitionList: TimelineTransition[]): TimelineTransition[] =>
+      transitionList.map((transition) => ({ ...transition })),
+    []
+  );
+
+  const cloneTimelineMarkers = useCallback(
+    (markerList: TimelineMarker[]): TimelineMarker[] =>
+      markerList.map((marker) => ({ ...marker })),
+    []
+  );
+
   useEffect(() => {
     const derivedCulture = projectContext?.weddingCulture || '';
     const derivedProjectType = projectContext?.projectType || storyArc?.type || 'wedding';
@@ -2617,10 +2966,10 @@ export default function StoryArcStudio({
   }, [clips, cloneClipList]);
 
   useEffect(() => {
-    const validation = timelineEngine.validateTimeline(clips, tracks);
+    const validation = timelineEngine.validateTimeline(clips, tracks, transitions);
     setTimelineWarnings(validation.warnings);
     setTimelineErrors(validation.errors);
-  }, [clips, tracks]);
+  }, [clips, tracks, transitions]);
 
   useEffect(() => {
     timelineEngine.setConfig({
@@ -3050,13 +3399,35 @@ export default function StoryArcStudio({
       for (let index = 1; index < sortedTrackClips.length; index += 1) {
         const previous = sortedTrackClips[index - 1];
         const current = sortedTrackClips[index];
-        if (current.start < previous.start + previous.duration - frameTime / 10) {
+        const overlapStart = Math.max(previous.start, current.start);
+        const overlapEnd = Math.min(previous.start + previous.duration, current.start + current.duration);
+        const hasMeaningfulOverlap = overlapEnd - overlapStart > frameTime / 3;
+        const transitionAllowsOverlap = transitions.some((transition) => {
+          if (transition.trackId !== trackId) {
+            return false;
+          }
+          if (transition.edge === 'out' && transition.clipId === previous.id) {
+            return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+          }
+          if (transition.edge === 'in' && transition.clipId === current.id) {
+            return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+          }
+          if (transition.clipId && transition.clipId !== previous.id && transition.clipId !== current.id) {
+            return false;
+          }
+          return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+        });
+        if (
+          hasMeaningfulOverlap &&
+          !transitionAllowsOverlap &&
+          current.start < previous.start + previous.duration - frameTime / 10
+        ) {
           return true;
         }
       }
       return false;
     },
-    [frameTime]
+    [frameTime, transitions]
   );
 
   const showSafeTrimBlockedWarning = useCallback(() => {
@@ -3131,7 +3502,12 @@ export default function StoryArcStudio({
   ]);
 
   const applyClipUpdates = useCallback(
-    (nextClips: BeatClip[], keepSelection?: Set<string>) => {
+    (
+      nextClips: BeatClip[],
+      keepSelection?: Set<string>,
+      nextTransitionsOverride?: TimelineTransition[]
+    ) => {
+      const transitionsForValidation = nextTransitionsOverride ?? transitions;
       const snapped = nextClips.map((clip) => ({
         ...clip,
         start: timelineEngine.snapToFrame(Math.max(0, clip.start)),
@@ -3141,6 +3517,7 @@ export default function StoryArcStudio({
         frameTime,
         tracks,
         enforceNoOverlap: safeTrimMode,
+        transitions: transitionsForValidation,
       });
       const invariantWarnings: string[] = [];
       const overlapCount = invariantResult.issues.filter(
@@ -3173,11 +3550,11 @@ export default function StoryArcStudio({
       if (keepSelection) {
         setSelectedClips(keepSelection);
       }
-      const validation = timelineEngine.validateTimeline(invariantResult.clips, tracks);
+      const validation = timelineEngine.validateTimeline(invariantResult.clips, tracks, transitionsForValidation);
       setTimelineWarnings([...validation.warnings, ...invariantWarnings]);
       setTimelineErrors(validation.errors);
     },
-    [frameTime, tracks, safeTrimMode]
+    [frameTime, tracks, safeTrimMode, transitions]
   );
 
   const performUndo = useCallback(() => {
@@ -3211,6 +3588,1119 @@ export default function StoryArcStudio({
       return remaining;
     });
   }, [clips, cloneClipList]);
+
+  const createAutoEditSnapshot = useCallback((): AutoEditTimelineSnapshot => {
+    return {
+      clips: cloneClipList(clips),
+      transitions: cloneTimelineTransitions(transitions),
+      markers: cloneTimelineMarkers(markers),
+      selectedClipIds: Array.from(selectedClips),
+    };
+  }, [
+    cloneClipList,
+    cloneTimelineMarkers,
+    cloneTimelineTransitions,
+    clips,
+    markers,
+    selectedClips,
+    transitions,
+  ]);
+
+  const applyAutoEditSnapshot = useCallback((snapshot: AutoEditTimelineSnapshot) => {
+    const nextTransitions = cloneTimelineTransitions(snapshot.transitions);
+    const nextMarkers = cloneTimelineMarkers(snapshot.markers);
+    const nextSelection = new Set(snapshot.selectedClipIds);
+    setTransitions(nextTransitions);
+    setMarkers(nextMarkers);
+    applyClipUpdates(cloneClipList(snapshot.clips), nextSelection, nextTransitions);
+  }, [applyClipUpdates, cloneClipList, cloneTimelineMarkers, cloneTimelineTransitions]);
+
+  const openAutoEditDialog = useCallback(() => {
+    setShowAutoEditDialog(true);
+  }, []);
+
+  const closeAutoEditDialog = useCallback(() => {
+    if (autoEditRunning) {
+      cancelManagedJob('autoEdit');
+      return;
+    }
+    setShowAutoEditDialog(false);
+  }, [autoEditRunning, cancelManagedJob]);
+
+  const updateAutoEditPreset = useCallback((event: SelectChangeEvent<AutoEditPreset>) => {
+    const preset = event.target.value as AutoEditPreset;
+    const defaults = getDefaultAutoEditOptions(preset);
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      preset,
+      targetDurationSeconds: clampNumber(
+        defaults.targetDurationSeconds * (1 + activeIntentProfile.targetDurationBias),
+        10,
+        180
+      ),
+      transitionDensity: clampNumber(
+        defaults.transitionDensity + activeIntentProfile.transitionDensityBias,
+        0,
+        1
+      ),
+      minShotDurationSeconds: defaults.minShotDurationSeconds,
+      maxShotDurationSeconds: defaults.maxShotDurationSeconds,
+      maxConsecutiveByCamera: activeIntentProfile.maxConsecutiveByCamera,
+      maxConsecutiveBySpeaker: activeIntentProfile.maxConsecutiveBySpeaker,
+    }));
+  }, [activeIntentProfile]);
+
+  const updateAutoEditTargetDuration = useCallback((_event: Event, value: number | number[]) => {
+    const nextValue = Array.isArray(value) ? value[0] : value;
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      targetDurationSeconds: Math.max(frameTime, nextValue),
+    }));
+  }, [frameTime]);
+
+  const updateAutoEditTransitionDensity = useCallback((_event: Event, value: number | number[]) => {
+    const nextValue = Array.isArray(value) ? value[0] : value;
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      transitionDensity: Math.max(0, Math.min(1, nextValue)),
+    }));
+  }, []);
+
+  const updateAutoEditVariant = useCallback((event: SelectChangeEvent<AutoEditVariant>) => {
+    const variant = event.target.value as AutoEditVariant;
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      variant,
+    }));
+  }, []);
+
+  const updateAutoEditIntentProfile = useCallback((event: SelectChangeEvent<string>) => {
+    const profileId = String(event.target.value || 'balanced-story');
+    const profile = getStoryIntentProfile(profileId);
+    setAutoEditIntentProfileId(profile.id);
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      intentProfileId: profile.id,
+      maxConsecutiveByCamera: profile.maxConsecutiveByCamera,
+      maxConsecutiveBySpeaker: profile.maxConsecutiveBySpeaker,
+      transitionDensity: clampNumber(
+        getDefaultAutoEditOptions(previous.preset).transitionDensity + profile.transitionDensityBias,
+        0,
+        1
+      ),
+      targetDurationSeconds: clampNumber(
+        getDefaultAutoEditOptions(previous.preset).targetDurationSeconds *
+          (1 + profile.targetDurationBias),
+        10,
+        180
+      ),
+    }));
+  }, []);
+
+  const updateAutoEditMinShotDuration = useCallback((_event: Event, value: number | number[]) => {
+    const nextValue = Array.isArray(value) ? value[0] : value;
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      minShotDurationSeconds: clampNumber(nextValue, 0.2, previous.maxShotDurationSeconds - 0.05),
+    }));
+  }, []);
+
+  const updateAutoEditMaxShotDuration = useCallback((_event: Event, value: number | number[]) => {
+    const nextValue = Array.isArray(value) ? value[0] : value;
+    setAutoEditOptions((previous) => ({
+      ...previous,
+      maxShotDurationSeconds: clampNumber(nextValue, previous.minShotDurationSeconds + 0.05, 40),
+    }));
+  }, []);
+
+  const handleAutoEditOptionToggle = useCallback((field: keyof Pick<AutoEditOptions, 'includeAssemble' | 'includePolish' | 'addMarkers' | 'addAudioBed' | 'enforceNoOverlap' | 'enableDucking' | 'enableJCutLCut' | 'cleanupFillerPauses'>) =>
+    (_event: React.ChangeEvent<HTMLInputElement>, checked: boolean) => {
+      setAutoEditOptions((previous) => ({
+        ...previous,
+        [field]: checked,
+      }));
+    }, []);
+
+  const buildContextualAutoEditClips = useCallback(
+    (sourceClips: BeatClip[]): BeatClip[] => {
+      return sourceClips.map((clip) => {
+        const meta = clipMeta[clip.id];
+        const markerLabels = markers
+          .filter(
+            (marker) =>
+              marker.time >= clip.start &&
+              marker.time <= clip.start + clip.duration &&
+              typeof marker.label === 'string' &&
+              marker.label.trim().length > 0
+          )
+          .map((marker) => marker.label as string)
+          .slice(0, 12);
+        const mergedTags = dedupeAutoEditKeywords(
+          [
+            ...(Array.isArray(clip.tags) ? clip.tags : []),
+            ...(Array.isArray(meta?.tags) ? meta.tags : []),
+            ...markerLabels,
+            typeof meta?.scene === 'string' ? meta.scene : null,
+            typeof meta?.shotName === 'string' ? meta.shotName : null,
+            typeof meta?.camera === 'string' ? meta.camera : null,
+          ],
+          36
+        );
+
+        return {
+          ...clip,
+          tags: mergedTags.length > 0 ? mergedTags : clip.tags,
+          metadata: {
+            ...(isRecord(clip.metadata) ? clip.metadata : {}),
+            autoEditContext: {
+              ...(isRecord(clip.metadata?.autoEditContext)
+                ? (clip.metadata?.autoEditContext as Record<string, unknown>)
+                : {}),
+              scene: typeof meta?.scene === 'string' ? meta.scene : undefined,
+              shotName: typeof meta?.shotName === 'string' ? meta.shotName : undefined,
+              camera: typeof meta?.camera === 'string' ? meta.camera : undefined,
+              syncGroup: typeof meta?.syncGroup === 'string' ? meta.syncGroup : undefined,
+              markerLabels,
+            },
+          },
+        };
+      });
+    },
+    [clipMeta, markers]
+  );
+
+  const buildAutoEditServerContext = useCallback(
+    (contextualClips: BeatClip[], options: AutoEditOptions): AutoEditServerContext => {
+      const storyTypeRaw =
+        (projectContext?.projectType as string | undefined) ||
+        storyArc?.type ||
+        'story';
+      const storyType = String(storyTypeRaw || 'story');
+      const presetGoalKeywords: Record<AutoEditPreset, string[]> = {
+        'reel-30': ['highlight', 'hero', 'impact', 'emotion', 'hook', 'energy'],
+        'story-60': ['story', 'build', 'reaction', 'detail', 'moment', 'progression'],
+        interview: ['dialogue', 'speech', 'face', 'closeup', 'reaction', 'clarity'],
+      };
+      const presetAvoidKeywords: Record<AutoEditPreset, string[]> = {
+        'reel-30': ['filler', 'slow', 'repetitive'],
+        'story-60': ['repetitive'],
+        interview: ['timelapse', 'shaky', 'distant'],
+      };
+      const storyTypeBoostKeywords: Record<string, string[]> = {
+        wedding: ['ceremony', 'vows', 'family', 'kiss', 'ring', 'dance'],
+        documentary: ['context', 'detail', 'authentic', 'interview'],
+        corporate: ['speaker', 'presentation', 'team', 'brand'],
+        music_video: ['rhythm', 'performance', 'beat', 'energy'],
+        event: ['crowd', 'moment', 'reaction', 'highlight'],
+      };
+
+      const clipContextById: Record<
+        string,
+        NonNullable<AutoEditServerContext['clipContextById']>[string]
+      > = {};
+      const feedbackByClipId: Record<string, AutoEditFeedbackValue> = {};
+
+      contextualClips.forEach((clip) => {
+        const meta = clipMeta[clip.id];
+        const markerLabels = markers
+          .filter(
+            (marker) =>
+              marker.time >= clip.start &&
+              marker.time <= clip.start + clip.duration &&
+              typeof marker.label === 'string' &&
+              marker.label.trim().length > 0
+          )
+          .map((marker) => marker.label as string)
+          .slice(0, 16);
+        const metadata = isRecord(clip.metadata) ? clip.metadata : {};
+        const metadataAutoEditContext = isRecord(metadata.autoEditContext)
+          ? (metadata.autoEditContext as Record<string, unknown>)
+          : {};
+        const transcriptText = sanitizeTranscriptText(
+          typeof metadata.transcript === 'string'
+            ? metadata.transcript
+            : typeof metadataAutoEditContext.transcriptText === 'string'
+              ? metadataAutoEditContext.transcriptText
+              : typeof metadata.captionText === 'string'
+                ? metadata.captionText
+                : typeof metadata.detectedSpeech === 'string'
+                  ? metadata.detectedSpeech
+                  : '',
+          AUTO_EDIT_TRANSCRIPT_MAX_LENGTH
+        );
+        const transcriptPhrases = dedupeTranscriptPhrases([
+          ...(Array.isArray(metadata.transcriptPhrases)
+            ? (metadata.transcriptPhrases as unknown[])
+                .map((entry) => (typeof entry === 'string' ? entry : ''))
+                .filter(Boolean)
+            : []),
+          ...(Array.isArray(metadataAutoEditContext.transcriptPhrases)
+            ? (metadataAutoEditContext.transcriptPhrases as unknown[])
+                .map((entry) => (typeof entry === 'string' ? entry : ''))
+                .filter(Boolean)
+            : []),
+        ]);
+        const transcriptCandidates = [
+          transcriptText,
+          ...transcriptPhrases,
+          Array.isArray(metadata.transcriptKeywords)
+            ? (metadata.transcriptKeywords as unknown[]).join(' ')
+            : null,
+          Array.isArray(metadata.detectedText)
+            ? (metadata.detectedText as unknown[]).join(' ')
+            : null,
+          Array.isArray(metadata.keywords)
+            ? (metadata.keywords as unknown[]).join(' ')
+            : null,
+        ];
+        const speakerName = sanitizeTranscriptText(
+          typeof metadata.speakerName === 'string'
+            ? metadata.speakerName
+            : typeof metadata.speaker === 'string'
+              ? metadata.speaker
+              : typeof metadataAutoEditContext.speakerName === 'string'
+                ? metadataAutoEditContext.speakerName
+                : '',
+          80
+        );
+        const moodCandidates = [
+          clip.beatName,
+          clip.synopsis,
+          typeof metadata.emotion === 'string' ? metadata.emotion : null,
+          typeof metadata.mood === 'string' ? metadata.mood : null,
+        ];
+        clipContextById[clip.id] = {
+          scene: typeof meta?.scene === 'string' ? meta.scene : undefined,
+          shotName: typeof meta?.shotName === 'string' ? meta.shotName : undefined,
+          camera: typeof meta?.camera === 'string' ? meta.camera : undefined,
+          syncGroup: typeof meta?.syncGroup === 'string' ? meta.syncGroup : undefined,
+          tags: dedupeAutoEditKeywords(
+            [
+              ...(Array.isArray(clip.tags) ? clip.tags : []),
+              ...(Array.isArray(meta?.tags) ? meta.tags : []),
+              ...markerLabels,
+            ],
+            40
+          ),
+          markerLabels,
+          transcriptKeywords: dedupeAutoEditKeywords(transcriptCandidates, 36),
+          transcriptText: transcriptText || undefined,
+          transcriptPhrases,
+          speakerName: speakerName || undefined,
+          moodHints: dedupeAutoEditKeywords(moodCandidates, 24),
+        };
+        const clipFeedback = autoEditFeedbackByClipKey[buildAutoEditClipFeedbackKey(clip)];
+        if (clipFeedback === 'approved' || clipFeedback === 'rejected') {
+          feedbackByClipId[clip.id] = clipFeedback;
+        }
+      });
+
+      const normalizedStoryType = storyType.toLowerCase();
+      const typeGoalKeywords =
+        storyTypeBoostKeywords[normalizedStoryType] || storyTypeBoostKeywords.event;
+      const beatHints =
+        storyArc?.segments.map((segment) => `${segment.segmentType} ${segment.title}`) || [];
+
+      return {
+        storyTitle: storyArc?.title || projectContext?.projectName || null,
+        storyType,
+        intentProfileId: activeIntentProfile.id,
+        intentProfileName: activeIntentProfile.name,
+        intentGoalKeywords: dedupeAutoEditKeywords(activeIntentProfile.goalKeywords, 28),
+        intentAvoidKeywords: dedupeAutoEditKeywords(activeIntentProfile.avoidKeywords, 24),
+        forbiddenPatterns: dedupeAutoEditKeywords(activeIntentProfile.forbiddenPatterns, 24),
+        goalKeywords: dedupeAutoEditKeywords(
+          [
+            ...presetGoalKeywords[options.preset],
+            ...typeGoalKeywords,
+            ...activeIntentProfile.goalKeywords,
+            ...culturalMomentsDetected,
+            ...beatHints,
+          ],
+          48
+        ),
+        avoidKeywords: dedupeAutoEditKeywords(
+          [
+            ...presetAvoidKeywords[options.preset],
+            ...activeIntentProfile.avoidKeywords,
+            ...activeIntentProfile.forbiddenPatterns,
+          ],
+          24
+        ),
+        culturalMoments: dedupeAutoEditKeywords(culturalMomentsDetected, 24),
+        beatHints: dedupeAutoEditKeywords(beatHints, 28),
+        feedbackByClipId,
+        clipContextById,
+      };
+    },
+    [
+      activeIntentProfile,
+      autoEditFeedbackByClipKey,
+      clipMeta,
+      culturalMomentsDetected,
+      markers,
+      projectContext?.projectName,
+      projectContext?.projectType,
+      storyArc?.segments,
+      storyArc?.title,
+      storyArc?.type,
+    ]
+  );
+
+  const appendAutoEditHistoryEntry = useCallback((entry: AutoEditHistoryEntry) => {
+    setAutoEditHistory((previous) => [entry, ...previous].slice(0, 80));
+  }, []);
+
+  const markAutoEditHistoryStatus = useCallback(
+    (proposalId: string, status: AutoEditHistoryEntry['status']) => {
+      setAutoEditHistory((previous) =>
+        previous.map((entry) =>
+          entry.proposalId === proposalId ? { ...entry, status } : entry
+        )
+      );
+    },
+    []
+  );
+
+  const clearPersistedAutoEditPreview = useCallback(() => {
+    setSafeLocalStorageItem(AUTO_EDIT_PENDING_PREVIEW_STORAGE_KEY, '');
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(AUTO_EDIT_PENDING_PREVIEW_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }, []);
+
+  const persistAutoEditPreview = useCallback(
+    (previewState: AutoEditPreviewState) => {
+      const payload = {
+        projectKey: autoEditProjectKey,
+        previewState,
+        persistedAt: Date.now(),
+      };
+      setSafeLocalStorageJson(AUTO_EDIT_PENDING_PREVIEW_STORAGE_KEY, payload);
+    },
+    [autoEditProjectKey]
+  );
+
+  const applyAutoEditProposalPreview = useCallback(
+    (
+      snapshot: AutoEditTimelineSnapshot,
+      proposal: AutoEditProposal,
+      mode: 'server' | 'local' | 'resume',
+      alternatives?: Record<AutoEditVariant, AutoEditProposal>
+    ): boolean => {
+      if (proposal.clips.length === 0) {
+        setSnackbar({
+          open: true,
+          message: 'Auto Edit could not build a proposal with current media.',
+          severity: 'warning',
+        });
+        return false;
+      }
+
+      const nextTransitions = proposal.transitions.map((transition) => ({ ...transition }));
+      const nextMarkers = proposal.markers.map((marker) => ({ ...marker }));
+      const selectedIds =
+        proposal.selectedClipIds.length > 0
+          ? new Set(proposal.selectedClipIds)
+          : new Set(proposal.clips.slice(0, 1).map((clip) => clip.id));
+
+      setTransitions(nextTransitions);
+      setMarkers(nextMarkers);
+      applyClipUpdates(cloneClipList(proposal.clips), selectedIds, nextTransitions);
+
+      const previewState: AutoEditPreviewState = {
+        snapshot,
+        proposal,
+        alternatives: alternatives || { safe: proposal, balanced: proposal, bold: proposal },
+        selectedVariant: proposal.variant,
+        generatedAt: Date.now(),
+      };
+      setAutoEditPreview(previewState);
+      setLastAutoEditSnapshot(previewState);
+      persistAutoEditPreview(previewState);
+      appendAutoEditHistoryEntry({
+        id: `${proposal.proposalId}:${previewState.generatedAt}`,
+        proposalId: proposal.proposalId,
+        projectKey: autoEditProjectKey,
+        preset: proposal.preset,
+        variant: proposal.variant,
+        intentProfileId: autoEditIntentProfileId,
+        confidence: proposal.confidence,
+        duration: proposal.estimatedDurationSeconds,
+        generatedAt: previewState.generatedAt,
+        status: 'generated',
+        summary: proposal.summary.slice(0, 5),
+        serverJobId: autoEditJobId,
+      });
+      setShowAutoEditDialog(false);
+
+      const modeLabel =
+        mode === 'server'
+          ? 'server-ranked'
+          : mode === 'resume'
+            ? 'resumed'
+            : 'local fallback';
+      setSnackbar({
+        open: true,
+        message: `Auto Edit ${modeLabel} preview ready (${proposal.estimatedDurationSeconds.toFixed(1)}s, ${(proposal.confidence * 100).toFixed(0)}% confidence).`,
+        severity: 'success',
+      });
+      return true;
+    },
+    [
+      appendAutoEditHistoryEntry,
+      applyClipUpdates,
+      autoEditIntentProfileId,
+      autoEditJobId,
+      autoEditProjectKey,
+      cloneClipList,
+      persistAutoEditPreview,
+    ]
+  );
+
+  const previewAutoEditVariant = useCallback(
+    (variant: AutoEditVariant) => {
+      if (!autoEditPreview) {
+        return;
+      }
+      const nextProposal = autoEditPreview.alternatives[variant];
+      if (!nextProposal) {
+        return;
+      }
+      const nextTransitions = nextProposal.transitions.map((transition) => ({ ...transition }));
+      const nextMarkers = nextProposal.markers.map((marker) => ({ ...marker }));
+      const selectedIds =
+        nextProposal.selectedClipIds.length > 0
+          ? new Set(nextProposal.selectedClipIds)
+          : new Set(nextProposal.clips.slice(0, 1).map((clip) => clip.id));
+      setTransitions(nextTransitions);
+      setMarkers(nextMarkers);
+      applyClipUpdates(cloneClipList(nextProposal.clips), selectedIds, nextTransitions);
+      setAutoEditPreview((previous) => {
+        if (!previous) {
+          return previous;
+        }
+        const nextState: AutoEditPreviewState = {
+          ...previous,
+          proposal: nextProposal,
+          selectedVariant: variant,
+        };
+        persistAutoEditPreview(nextState);
+        return nextState;
+      });
+    },
+    [autoEditPreview, applyClipUpdates, cloneClipList, persistAutoEditPreview]
+  );
+
+  const setAutoEditClipFeedback = useCallback(
+    (clipId: string, feedback: AutoEditFeedbackValue | null) => {
+      const previewClip = autoEditPreview?.proposal.clips.find((clip) => clip.id === clipId) || null;
+      const timelineClip = clipMap.get(clipId) || null;
+      const resolvedClip = previewClip || timelineClip;
+      const feedbackKey = resolvedClip ? buildAutoEditClipFeedbackKey(resolvedClip) : clipId;
+
+      setAutoEditFeedbackByClipKey((previous) => {
+        const next = { ...previous };
+        if (!feedback) {
+          delete next[feedbackKey];
+        } else {
+          next[feedbackKey] = feedback;
+        }
+        return next;
+      });
+    },
+    [autoEditPreview, clipMap]
+  );
+
+  const getAutoEditClipFeedback = useCallback(
+    (clip: BeatClip): AutoEditFeedbackValue | null => {
+      const feedback = autoEditFeedbackByClipKey[buildAutoEditClipFeedbackKey(clip)];
+      return feedback === 'approved' || feedback === 'rejected' ? feedback : null;
+    },
+    [autoEditFeedbackByClipKey]
+  );
+
+  const pollAutoEditServerJob = useCallback(
+    async (jobId: string): Promise<AutoEditServerRankingResult> => {
+      let didRetryServerJob = false;
+      setAutoEditJobId(jobId);
+      const rankingResult = await startPollingJob<
+        AutoEditServerJobState,
+        AutoEditServerRankingResult
+      >({
+        kind: 'autoEdit',
+        serverJobId: jobId,
+        intervalMs: 1800,
+        maxConsecutivePollErrors: 4,
+        maxRetries: 1,
+        retryDelayMs: 1800,
+        onCancel: () => {
+          void cancelAutoEditServerJob(jobId).catch(() => undefined);
+        },
+        onProgress: (progress) => {
+          if (!progress) {
+            return;
+          }
+          setAutoEditServerProgress(progress.progress);
+        },
+        poll: async (serverJobId) => {
+          const status = await getAutoEditServerJob(serverJobId);
+          if (status.status === 'completed') {
+            if (!status.result) {
+              return {
+                state: 'failed',
+                error: 'Auto Edit server job completed without ranking result',
+              };
+            }
+            return {
+              state: 'completed',
+              result: status.result,
+            };
+          }
+          if (status.status === 'failed') {
+            if (!didRetryServerJob) {
+              didRetryServerJob = true;
+              await retryAutoEditServerJob(serverJobId);
+              return {
+                state: 'running',
+                progress: status,
+              };
+            }
+            return {
+              state: 'failed',
+              error: status.error || 'Auto Edit server ranking failed',
+            };
+          }
+          if (status.status === 'cancelled') {
+            return {
+              state: 'failed',
+              error: status.error || 'Cancelled by user',
+            };
+          }
+          return {
+            state: 'running',
+            progress: status,
+          };
+        },
+      });
+      return rankingResult;
+    },
+    [startPollingJob]
+  );
+
+  const pollNarrativeTranscriptionJob = useCallback(
+    async (jobId: string): Promise<NarrativeTranscriptionResult> => {
+      for (let attempt = 0; attempt < AUTO_EDIT_TRANSCRIPTION_MAX_POLL_ATTEMPTS; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, AUTO_EDIT_TRANSCRIPTION_POLL_INTERVAL_MS));
+        const statusPayload = (await apiRequest(
+          `/api/video-analysis/transcribe/${encodeURIComponent(jobId)}`
+        )) as NarrativeTranscriptionJobStatusResponse;
+        if (!isRecord(statusPayload)) {
+          throw new Error('Invalid transcription job status payload');
+        }
+        const status = typeof statusPayload.status === 'string' ? statusPayload.status : 'processing';
+        if (status === 'completed') {
+          const resultPayload = isRecord(statusPayload.result) ? statusPayload.result : {};
+          const transcriptionPayload = isRecord(resultPayload.transcription)
+            ? resultPayload.transcription
+            : {};
+          const segments = normalizeNarrativeTranscriptionSegments(transcriptionPayload.segments);
+          const transcriptText =
+            sanitizeTranscriptText(transcriptionPayload.text, 4000) ||
+            sanitizeTranscriptText(
+              segments.map((segment) => segment.text).join(' '),
+              4000
+            );
+          if (segments.length === 0 && transcriptText.length === 0) {
+            throw new Error('Transcription completed with no usable speech segments');
+          }
+          const language =
+            typeof transcriptionPayload.language === 'string' &&
+            transcriptionPayload.language.trim().length > 0
+              ? transcriptionPayload.language.trim()
+              : AUTO_EDIT_TRANSCRIPTION_LANGUAGE;
+          return {
+            language,
+            text: transcriptText,
+            segments,
+          };
+        }
+        if (status === 'failed' || status === 'cancelled') {
+          const failureMessage =
+            typeof statusPayload.error === 'string' && statusPayload.error.trim().length > 0
+              ? statusPayload.error
+              : status === 'cancelled'
+                ? 'Transcription cancelled'
+                : 'Transcription failed';
+          throw new Error(failureMessage);
+        }
+      }
+      throw new Error('Transcription timed out');
+    },
+    []
+  );
+
+  const transcribeAutoEditSource = useCallback(
+    async (sourcePath: string, sourceFile: File | null): Promise<NarrativeTranscriptionResult> => {
+      const normalizedSourcePath = sourcePath.trim();
+      const fileCacheKey =
+        sourceFile instanceof File
+          ? `${sourceFile.name}:${sourceFile.size}:${sourceFile.lastModified}`
+          : '';
+      const cache = autoEditTranscriptionCacheRef.current;
+      if (normalizedSourcePath && cache.has(normalizedSourcePath)) {
+        return cache.get(normalizedSourcePath) as NarrativeTranscriptionResult;
+      }
+      if (!normalizedSourcePath && fileCacheKey && cache.has(fileCacheKey)) {
+        return cache.get(fileCacheKey) as NarrativeTranscriptionResult;
+      }
+
+      let startPayload: unknown;
+      if (sourceFile instanceof File) {
+        const formData = new FormData();
+        formData.append('video', sourceFile, sourceFile.name || ('storyarc-autoedit-' + Date.now() + '.mp4'));
+        formData.append('language', AUTO_EDIT_TRANSCRIPTION_LANGUAGE);
+        startPayload = (await apiRequest('/api/video-analysis/transcribe', {
+          method: 'POST',
+          body: formData,
+        })) as NarrativeTranscriptionJobStartResponse;
+      } else {
+        if (!normalizedSourcePath) {
+          throw new Error('Missing source path for Auto Edit transcription');
+        }
+        startPayload = (await apiRequest('/api/video-analysis/transcribe', {
+          method: 'POST',
+          body: {
+            video_path: normalizedSourcePath,
+            language: AUTO_EDIT_TRANSCRIPTION_LANGUAGE,
+            model_size: 'base',
+            word_timestamps: true,
+          },
+        })) as NarrativeTranscriptionJobStartResponse;
+      }
+
+      if (!isRecord(startPayload) || startPayload.success !== true || typeof startPayload.job_id !== 'string') {
+        const errorMessage =
+          isRecord(startPayload) && typeof startPayload.error === 'string'
+            ? startPayload.error
+            : 'Could not start transcription job';
+        throw new Error(errorMessage);
+      }
+
+      const transcription = await pollNarrativeTranscriptionJob(startPayload.job_id);
+      if (normalizedSourcePath) {
+        cache.set(normalizedSourcePath, transcription);
+      }
+      if (fileCacheKey) {
+        cache.set(fileCacheKey, transcription);
+      }
+      return transcription;
+    },
+    [pollNarrativeTranscriptionJob]
+  );
+
+  const enrichAutoEditClipsWithSpeechContext = useCallback(
+    async (contextualClips: BeatClip[]): Promise<AutoEditSpeechEnrichment> => {
+      const sourceCandidates = new Map<string, File | null>();
+      contextualClips.forEach((clip) => {
+        const sourcePath = typeof clip.sourceFile === 'string' ? clip.sourceFile.trim() : '';
+        if (!sourcePath || !isUsableMediaSource(sourcePath)) {
+          return;
+        }
+        const track = trackMap.get(clip.trackId);
+        const audioTrack =
+          (track && isLikelyAudioTrack(track)) ||
+          clipTrackLooksAudio(clip.trackId);
+        if (audioTrack) {
+          return;
+        }
+        if (!sourceCandidates.has(sourcePath)) {
+          sourceCandidates.set(
+            sourcePath,
+            sourceFileRegistry[sourcePath] instanceof File ? sourceFileRegistry[sourcePath] : null
+          );
+        }
+      });
+
+      if (sourceCandidates.size === 0) {
+        return {
+          clips: contextualClips,
+          sourcesTranscribed: 0,
+          clipsEnriched: 0,
+        };
+      }
+
+      const transcriptionBySource = new Map<string, NarrativeTranscriptionResult>();
+      let sourceIndex = 0;
+      for (const [sourcePath, sourceFile] of sourceCandidates.entries()) {
+        sourceIndex += 1;
+        setAutoEditServerProgress(Math.max(2, Math.round((sourceIndex / sourceCandidates.size) * 20)));
+        try {
+          const transcription = await transcribeAutoEditSource(sourcePath, sourceFile);
+          transcriptionBySource.set(sourcePath, transcription);
+        } catch (error) {
+          console.warn('Auto Edit transcription failed for source:', sourcePath, error);
+        }
+      }
+
+      if (transcriptionBySource.size === 0) {
+        return {
+          clips: contextualClips,
+          sourcesTranscribed: 0,
+          clipsEnriched: 0,
+        };
+      }
+
+      let clipsEnriched = 0;
+      const enrichedClips = contextualClips.map((clip) => {
+        const sourcePath = typeof clip.sourceFile === 'string' ? clip.sourceFile.trim() : '';
+        if (!sourcePath) {
+          return clip;
+        }
+        const transcription = transcriptionBySource.get(sourcePath);
+        if (!transcription) {
+          return clip;
+        }
+
+        const sourceWindow = resolveClipSourceWindow(clip);
+        const overlappingSegments = transcription.segments.filter(
+          (segment) => segment.end > sourceWindow.start && segment.start < sourceWindow.end
+        );
+        const effectiveSegments =
+          overlappingSegments.length > 0
+            ? overlappingSegments
+            : sourceWindow.hasExplicitBounds
+              ? []
+              : transcription.segments.slice(0, Math.min(6, transcription.segments.length));
+        if (effectiveSegments.length === 0) {
+          return clip;
+        }
+
+        const transcriptText = sanitizeTranscriptText(
+          effectiveSegments.map((segment) => segment.text).join(' '),
+          AUTO_EDIT_TRANSCRIPT_MAX_LENGTH
+        );
+        if (!transcriptText) {
+          return clip;
+        }
+        const transcriptPhrases = extractTranscriptPhrases(
+          effectiveSegments,
+          AUTO_EDIT_TRANSCRIPT_MAX_PHRASES
+        );
+
+        const metadata = isRecord(clip.metadata) ? clip.metadata : {};
+        const existingAutoEditContext = isRecord(metadata.autoEditContext)
+          ? (metadata.autoEditContext as Record<string, unknown>)
+          : {};
+        const existingTranscriptKeywords = Array.isArray(metadata.transcriptKeywords)
+          ? (metadata.transcriptKeywords as unknown[])
+              .map((entry) => (typeof entry === 'string' ? entry : ''))
+              .filter(Boolean)
+          : [];
+        const transcriptKeywords = dedupeAutoEditKeywords(
+          [
+            transcriptText,
+            ...transcriptPhrases,
+            ...existingTranscriptKeywords,
+            typeof existingAutoEditContext.transcriptText === 'string'
+              ? existingAutoEditContext.transcriptText
+              : null,
+          ],
+          36
+        );
+        const speakerFromMetadata = sanitizeTranscriptText(
+          typeof metadata.speakerName === 'string'
+            ? metadata.speakerName
+            : typeof metadata.speaker === 'string'
+              ? metadata.speaker
+              : typeof existingAutoEditContext.speakerName === 'string'
+                ? existingAutoEditContext.speakerName
+                : '',
+          80
+        );
+        const speakerFromSegments = sanitizeTranscriptText(
+          effectiveSegments
+            .map((segment) => segment.speakerName)
+            .find((speaker) => typeof speaker === 'string' && speaker.trim().length > 0) || '',
+          80
+        );
+        const speakerName = speakerFromMetadata || speakerFromSegments;
+
+        clipsEnriched += 1;
+        return {
+          ...clip,
+          metadata: {
+            ...metadata,
+            transcript: transcriptText,
+            transcriptKeywords,
+            transcriptPhrases,
+            transcriptLanguage: transcription.language,
+            autoEditContext: {
+              ...existingAutoEditContext,
+              transcriptText,
+              transcriptKeywords,
+              transcriptPhrases,
+              speakerName: speakerName || undefined,
+            },
+          },
+        };
+      });
+
+      return {
+        clips: enrichedClips,
+        sourcesTranscribed: transcriptionBySource.size,
+        clipsEnriched,
+      };
+    },
+    [
+      isUsableMediaSource,
+      sourceFileRegistry,
+      trackMap,
+      transcribeAutoEditSource,
+    ]
+  );
+
+  const runAutoEdit = useCallback(async () => {
+    if (clips.length === 0) {
+      setSnackbar({
+        open: true,
+        message: 'Add clips before running Auto Edit.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    setAutoEditRunning(true);
+    setAutoEditServerProgress(0);
+    setAutoEditJobId(null);
+    clearPersistedAutoEditPreview();
+    try {
+      const snapshot = createAutoEditSnapshot();
+      const contextualClips = buildContextualAutoEditClips(clips);
+      const speechEnrichment = await enrichAutoEditClipsWithSpeechContext(contextualClips);
+      const enrichedClips = speechEnrichment.clips;
+      if (speechEnrichment.sourcesTranscribed > 0) {
+        console.info(
+          'Auto Edit speech enrichment',
+          'sources=' + speechEnrichment.sourcesTranscribed,
+          'clips=' + speechEnrichment.clipsEnriched
+        );
+      }
+      const autoEditContext = buildAutoEditServerContext(enrichedClips, autoEditOptions);
+      const feedbackByClipId: Record<string, AutoEditFeedbackValue> = {};
+      enrichedClips.forEach((clip) => {
+        const feedback = autoEditFeedbackByClipKey[buildAutoEditClipFeedbackKey(clip)];
+        if (feedback === 'approved' || feedback === 'rejected') {
+          feedbackByClipId[clip.id] = feedback;
+        }
+      });
+      let serverRanking: AutoEditServerRankingResult | null = null;
+      let usedServerRanking = false;
+
+      try {
+        let startedAutoEditJobId: string | null = null;
+        const serverJobId = await runManagedJob<string>({
+          kind: 'autoEdit',
+          maxRetries: 1,
+          retryDelayMs: 1200,
+          onCancel: () => {
+            if (!startedAutoEditJobId) {
+              return;
+            }
+            void cancelAutoEditServerJob(startedAutoEditJobId).catch(() => undefined);
+          },
+          task: async () => {
+            const startedJobId = await startAutoEditServerJob({
+              storyArcId: storyArcId || storyArc?.id || null,
+              clips: enrichedClips,
+              tracks,
+              options: autoEditOptions,
+              frameRate,
+              context: autoEditContext,
+            });
+            startedAutoEditJobId = startedJobId;
+            setAutoEditJobId(startedJobId);
+            return startedJobId;
+          },
+        });
+        serverRanking = await pollAutoEditServerJob(serverJobId);
+        usedServerRanking = true;
+      } catch (serverError) {
+        if (serverError instanceof Error && serverError.name === 'AbortError') {
+          throw serverError;
+        }
+        clearPersistedServerJob('autoEdit');
+        console.warn('Auto Edit server ranking unavailable, using local fallback:', serverError);
+      }
+
+      const alternativesResult = createAutoEditAlternatives(
+        {
+          clips: enrichedClips,
+          tracks,
+          transitions: transitions.map((transition) => ({ ...transition })),
+          markers: markers.map((marker) => ({ ...marker })),
+          frameRate,
+          humanFeedbackByClipId: feedbackByClipId,
+          serverRanking: serverRanking
+            ? {
+                clipScores: serverRanking.clipScores,
+                rankedClipIds: serverRanking.rankedClipIds,
+                clipSignalsById: serverRanking.clipSignalsById,
+                beatByClipId: serverRanking.beatByClipId,
+                confidence: serverRanking.confidence,
+                summary: serverRanking.summary,
+                modelUsed: serverRanking.modelUsed,
+                analyzerAvailable: serverRanking.analyzerAvailable,
+                llmBeatClassificationUsed: serverRanking.llmBeatClassificationUsed,
+              }
+            : null,
+        },
+        autoEditOptions
+      );
+      const initialVariant = autoEditOptions.variant || alternativesResult.defaultVariant;
+      const proposal =
+        alternativesResult.alternatives[initialVariant] ||
+        alternativesResult.alternatives.balanced;
+
+      applyAutoEditProposalPreview(
+        snapshot,
+        proposal,
+        usedServerRanking ? 'server' : 'local',
+        alternativesResult.alternatives
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setSnackbar({
+          open: true,
+          message: 'Auto Edit cancelled',
+          severity: 'info',
+        });
+        return;
+      }
+      const failedHistoryId = `failed:${Date.now()}`;
+      appendAutoEditHistoryEntry({
+        id: failedHistoryId,
+        proposalId: failedHistoryId,
+        projectKey: autoEditProjectKey,
+        preset: autoEditOptions.preset,
+        variant: autoEditOptions.variant,
+        intentProfileId: autoEditIntentProfileId,
+        confidence: 0,
+        duration: 0,
+        generatedAt: Date.now(),
+        status: 'failed',
+        summary: [toErrorMessage(error, 'Unknown error')],
+        serverJobId: autoEditJobId,
+      });
+      setSnackbar({
+        open: true,
+        message: `Auto Edit failed: ${toErrorMessage(error, 'Unknown error')}`,
+        severity: 'error',
+      });
+    } finally {
+      setAutoEditJobId(null);
+      setAutoEditServerProgress(null);
+      setAutoEditRunning(false);
+    }
+  }, [
+    autoEditFeedbackByClipKey,
+    autoEditOptions,
+    autoEditIntentProfileId,
+    autoEditJobId,
+    autoEditProjectKey,
+    appendAutoEditHistoryEntry,
+    buildAutoEditServerContext,
+    buildContextualAutoEditClips,
+    clearPersistedAutoEditPreview,
+    clips,
+    createAutoEditSnapshot,
+    enrichAutoEditClipsWithSpeechContext,
+    frameRate,
+    markers,
+    pollAutoEditServerJob,
+    runManagedJob,
+    clearPersistedServerJob,
+    storyArcId,
+    storyArc?.id,
+    applyAutoEditProposalPreview,
+    tracks,
+    transitions,
+  ]);
+
+  const acceptAutoEditPreview = useCallback(() => {
+    if (!autoEditPreview) {
+      return;
+    }
+    const proposalId = autoEditPreview.proposal.proposalId;
+    if (appliedAutoEditProposalIdsRef.current.has(proposalId)) {
+      setSnackbar({
+        open: true,
+        message: 'This Auto Edit proposal is already applied.',
+        severity: 'info',
+      });
+      return;
+    }
+    appliedAutoEditProposalIdsRef.current.add(proposalId);
+    markAutoEditHistoryStatus(proposalId, 'applied');
+    clearPersistedAutoEditPreview();
+    setAutoEditPreview(null);
+    setSnackbar({
+      open: true,
+      message: 'Auto Edit changes applied. Use Undo Auto Edit to roll back.',
+      severity: 'info',
+    });
+  }, [autoEditPreview, clearPersistedAutoEditPreview, markAutoEditHistoryStatus]);
+
+  const rejectAutoEditPreview = useCallback(() => {
+    if (!autoEditPreview) {
+      return;
+    }
+    const proposalId = autoEditPreview.proposal.proposalId;
+    if (revertedAutoEditProposalIdsRef.current.has(proposalId)) {
+      setSnackbar({
+        open: true,
+        message: 'This Auto Edit proposal is already reverted.',
+        severity: 'info',
+      });
+      return;
+    }
+    revertedAutoEditProposalIdsRef.current.add(proposalId);
+    markAutoEditHistoryStatus(proposalId, 'reverted');
+    applyAutoEditSnapshot(autoEditPreview.snapshot);
+    setAutoEditPreview(null);
+    setLastAutoEditSnapshot(null);
+    clearPersistedAutoEditPreview();
+    setSnackbar({
+      open: true,
+      message: 'Auto Edit preview reverted.',
+      severity: 'info',
+    });
+  }, [applyAutoEditSnapshot, autoEditPreview, clearPersistedAutoEditPreview, markAutoEditHistoryStatus]);
+
+  const undoLastAutoEdit = useCallback(() => {
+    if (!lastAutoEditSnapshot) {
+      return;
+    }
+    applyAutoEditSnapshot(lastAutoEditSnapshot.snapshot);
+    markAutoEditHistoryStatus(lastAutoEditSnapshot.proposal.proposalId, 'reverted');
+    setLastAutoEditSnapshot(null);
+    setAutoEditPreview(null);
+    clearPersistedAutoEditPreview();
+    setSnackbar({
+      open: true,
+      message: 'Reverted last Auto Edit.',
+      severity: 'info',
+    });
+  }, [
+    applyAutoEditSnapshot,
+    clearPersistedAutoEditPreview,
+    lastAutoEditSnapshot,
+    markAutoEditHistoryStatus,
+  ]);
 
   const copySelectedClips = useCallback(() => {
     const selected = Array.from(selectedClips)
@@ -5171,6 +6661,47 @@ export default function StoryArcStudio({
     return 0;
   }, []);
 
+  const getClipFadeDuration = useCallback((
+    clip: BeatClip,
+    layer: 'video' | 'audio',
+    edge: 'in' | 'out'
+  ): number => {
+    if (!isRecord(clip.metadata)) {
+      return 0;
+    }
+    const fadeKey = `${layer}Fade${edge === 'in' ? 'In' : 'Out'}`;
+    const fadeEntry = isRecord(clip.metadata[fadeKey]) ? clip.metadata[fadeKey] : null;
+    if (fadeEntry && typeof fadeEntry.duration === 'number' && Number.isFinite(fadeEntry.duration) && fadeEntry.duration > 0) {
+      return fadeEntry.duration;
+    }
+    const transitions = isRecord(clip.metadata.transitions) ? clip.metadata.transitions : null;
+    const transitionEntry = transitions && isRecord(transitions[edge]) ? transitions[edge] : null;
+    if (!transitionEntry) {
+      return 0;
+    }
+    const transitionLayer = transitionEntry.layer;
+    if ((transitionLayer === 'video' || transitionLayer === 'audio') && transitionLayer !== layer) {
+      return 0;
+    }
+    if (typeof transitionEntry.duration === 'number' && Number.isFinite(transitionEntry.duration) && transitionEntry.duration > 0) {
+      return transitionEntry.duration;
+    }
+    return 0;
+  }, []);
+
+  const resolveClipVideoOpacity = useCallback((clip: BeatClip | null, timelineLocalTime: number): number => {
+    if (!clip || !Number.isFinite(timelineLocalTime)) {
+      return 1;
+    }
+    const fadeIn = Math.max(0, getClipFadeDuration(clip, 'video', 'in'));
+    const fadeOut = Math.max(0, getClipFadeDuration(clip, 'video', 'out'));
+    const clampedLocal = Math.max(0, Math.min(clip.duration, timelineLocalTime));
+    const fadeInFactor = fadeIn > 0 ? Math.max(0, Math.min(1, clampedLocal / fadeIn)) : 1;
+    const timeRemaining = Math.max(0, clip.duration - clampedLocal);
+    const fadeOutFactor = fadeOut > 0 ? Math.max(0, Math.min(1, timeRemaining / fadeOut)) : 1;
+    return Math.max(0, Math.min(1, Math.min(fadeInFactor, fadeOutFactor)));
+  }, [getClipFadeDuration]);
+
   const getSelectedPrimaryClip = useCallback((): BeatClip | null => {
     const selected = Array.from(selectedClips)
       .map((clipId) => clipMap.get(clipId))
@@ -6220,6 +7751,46 @@ export default function StoryArcStudio({
     [clipMap, selectedPrimaryClipId]
   );
 
+  useEffect(() => {
+    if (!selectedPrimaryClip) {
+      setCurrentSpeedKeyframes([]);
+      return;
+    }
+    const rawKeyframes = selectedPrimaryClip.metadata?.speedKeyframes;
+    if (!Array.isArray(rawKeyframes)) {
+      setCurrentSpeedKeyframes([]);
+      return;
+    }
+
+    const allowedCurves = new Set<SpeedKeyframe['curveType']>([
+      'linear',
+      'ease_in',
+      'ease_out',
+      'ease_in_out',
+      'bezier',
+    ]);
+
+    const parsed = rawKeyframes
+      .flatMap((entry): SpeedKeyframe[] => {
+        if (!isRecord(entry)) {
+          return [];
+        }
+        const time = typeof entry.time === 'number' && Number.isFinite(entry.time) ? entry.time : null;
+        const speed = typeof entry.speed === 'number' && Number.isFinite(entry.speed) ? entry.speed : null;
+        const curveRaw = typeof entry.curveType === 'string' ? entry.curveType : 'linear';
+        if (time === null || speed === null) {
+          return [];
+        }
+        const curveType: SpeedKeyframe['curveType'] = allowedCurves.has(curveRaw as SpeedKeyframe['curveType'])
+          ? (curveRaw as SpeedKeyframe['curveType'])
+          : 'linear';
+        return [{ time, speed, curveType }];
+      })
+      .sort((left, right) => left.time - right.time);
+
+    setCurrentSpeedKeyframes(parsed);
+  }, [selectedPrimaryClip]);
+
   const resolveClipLocalTime = useCallback(
     (clip: BeatClip | null) => {
       if (!clip) {
@@ -6270,6 +7841,17 @@ export default function StoryArcStudio({
     }
     return previewClip ?? sourcePreviewClip ?? null;
   }, [previewClip, sourcePreviewClip, previewError, isUsableMediaSource]);
+
+  const programMonitorTimelineLocalTime = useMemo(() => {
+    if (!programMonitorClip) {
+      return 0;
+    }
+    return Math.max(0, Math.min(programMonitorClip.duration, currentTime - programMonitorClip.start));
+  }, [programMonitorClip, currentTime]);
+
+  const programMonitorOpacity = useMemo(() => {
+    return resolveClipVideoOpacity(programMonitorClip, programMonitorTimelineLocalTime);
+  }, [programMonitorClip, programMonitorTimelineLocalTime, resolveClipVideoOpacity]);
 
   const programPreviewLocalTime = useMemo(() => {
     return resolveClipLocalTime(programMonitorClip);
@@ -6838,26 +8420,265 @@ export default function StoryArcStudio({
     ]);
   }, [currentTime]);
 
+  const addTransitionToClipEdge = useCallback((
+    clip: BeatClip,
+    edge: 'in' | 'out',
+    options?: {
+      type?: string;
+      duration?: number;
+      layer?: 'video' | 'audio';
+      engine?: 'canvas2d' | 'webgl' | 'audio';
+    }
+  ): { time: number; layer: 'video' | 'audio'; transitionType: string; duration: number } => {
+    const baseClip = clips.find((entry) => entry.id === clip.id);
+    if (!baseClip) {
+      return {
+        time: timelineEngine.snapToFrame(Math.max(0, edge === 'in' ? clip.start : clip.start + clip.duration)),
+        layer: options?.layer ?? (isAudioTrackId(clip.trackId) ? 'audio' : 'video'),
+        transitionType: options?.type || 'crossfade',
+        duration: Math.max(frameTime, options?.duration || 0.5),
+      };
+    }
+
+    const resolvedLayer = options?.layer ?? (isAudioTrackId(baseClip.trackId) ? 'audio' : 'video');
+    const transitionType =
+      options?.type || (resolvedLayer === 'audio' ? 'audio_crossfade' : 'crossfade');
+    const requestedDuration =
+      typeof options?.duration === 'number' && Number.isFinite(options.duration) && options.duration > 0
+        ? options.duration
+        : resolvedLayer === 'audio'
+          ? 0.25
+          : 0.5;
+    const transitionEngine: 'canvas2d' | 'webgl' | 'audio' =
+      options?.engine ?? (resolvedLayer === 'audio' ? 'audio' : pendingTransitionEngine);
+    const nowIso = new Date().toISOString();
+
+    const trackClips = clips
+      .filter((entry) => entry.trackId === baseClip.trackId)
+      .sort((left, right) => left.start - right.start);
+    const baseIndex = trackClips.findIndex((entry) => entry.id === baseClip.id);
+    const partnerClip =
+      baseIndex >= 0
+        ? edge === 'out'
+          ? trackClips[baseIndex + 1] || null
+          : trackClips[baseIndex - 1] || null
+        : null;
+
+    let transitionTime = timelineEngine.snapToFrame(
+      Math.max(0, edge === 'in' ? baseClip.start : baseClip.start + baseClip.duration)
+    );
+    let appliedDuration = timelineEngine.snapToFrame(Math.max(frameTime, requestedDuration));
+
+    const updateTransitionMetadata = (
+      targetClip: BeatClip,
+      transitionEdge: 'in' | 'out',
+      linkedClipId: string | null
+    ): BeatClip => {
+      const existingTransitions =
+        isRecord(targetClip.metadata?.transitions)
+          ? (targetClip.metadata.transitions as Record<string, unknown>)
+          : {};
+      const baseMetadata = targetClip.metadata || {};
+      const transitionMetadata = {
+        ...(isRecord(existingTransitions[transitionEdge]) ? existingTransitions[transitionEdge] : {}),
+        type: transitionType,
+        duration: appliedDuration,
+        layer: resolvedLayer,
+        engine: transitionEngine,
+        appliedAt: nowIso,
+        ...(transitionEdge === 'out'
+          ? { targetClipId: linkedClipId }
+          : { sourceClipId: linkedClipId }),
+      };
+
+      const fadeKey = `${resolvedLayer}Fade${transitionEdge === 'in' ? 'In' : 'Out'}`;
+      return {
+        ...targetClip,
+        metadata: {
+          ...baseMetadata,
+          transitions: {
+            ...existingTransitions,
+            [transitionEdge]: transitionMetadata,
+          },
+          [fadeKey]: {
+            duration: appliedDuration,
+            curve: 'linear',
+            appliedAt: nowIso,
+          },
+        },
+      };
+    };
+
+    const nextClipMap = new Map<string, BeatClip>(clips.map((entry) => [entry.id, entry]));
+
+    if (partnerClip) {
+      const maxCrossfadeDuration = timelineEngine.snapToFrame(
+        Math.max(
+          frameTime,
+          Math.min(
+            Math.max(frameTime, baseClip.duration - frameTime),
+            Math.max(frameTime, partnerClip.duration - frameTime)
+          )
+        )
+      );
+      appliedDuration = timelineEngine.snapToFrame(
+        Math.max(frameTime, Math.min(requestedDuration, maxCrossfadeDuration))
+      );
+
+      if (edge === 'out') {
+        const cutTime = timelineEngine.snapToFrame(baseClip.start + baseClip.duration);
+        const minPartnerStart = timelineEngine.snapToFrame(Math.max(0, baseClip.start + frameTime));
+        const nextPartnerStart = timelineEngine.snapToFrame(
+          Math.max(minPartnerStart, cutTime - appliedDuration)
+        );
+        appliedDuration = timelineEngine.snapToFrame(Math.max(frameTime, cutTime - nextPartnerStart));
+        transitionTime = cutTime;
+        nextClipMap.set(partnerClip.id, {
+          ...partnerClip,
+          start: nextPartnerStart,
+        });
+      } else {
+        const cutTime = timelineEngine.snapToFrame(baseClip.start);
+        const minBaseStart = timelineEngine.snapToFrame(Math.max(0, partnerClip.start + frameTime));
+        const nextBaseStart = timelineEngine.snapToFrame(
+          Math.max(minBaseStart, cutTime - appliedDuration)
+        );
+        appliedDuration = timelineEngine.snapToFrame(Math.max(frameTime, cutTime - nextBaseStart));
+        transitionTime = cutTime;
+        nextClipMap.set(baseClip.id, {
+          ...baseClip,
+          start: nextBaseStart,
+        });
+      }
+
+      const baseAfterTiming = nextClipMap.get(baseClip.id) || baseClip;
+      const partnerAfterTiming = nextClipMap.get(partnerClip.id) || partnerClip;
+      const nextBaseClip = updateTransitionMetadata(baseAfterTiming, edge, partnerClip.id);
+      const oppositeEdge: 'in' | 'out' = edge === 'out' ? 'in' : 'out';
+      const nextPartnerClip = updateTransitionMetadata(partnerAfterTiming, oppositeEdge, baseClip.id);
+      nextClipMap.set(baseClip.id, nextBaseClip);
+      nextClipMap.set(partnerClip.id, nextPartnerClip);
+    } else {
+      const nextBaseClip = updateTransitionMetadata(baseClip, edge, null);
+      nextClipMap.set(baseClip.id, nextBaseClip);
+    }
+
+    const transitionPayload: TimelineTransition = {
+      id: `tr-${baseClip.id}-${edge}-${Date.now()}`,
+      time: transitionTime,
+      trackId: baseClip.trackId,
+      type: transitionType,
+      duration: appliedDuration,
+      clipId: baseClip.id,
+      linkedClipId: partnerClip?.id,
+      edge,
+      layer: resolvedLayer,
+      engine: transitionEngine,
+    };
+
+    const nextTransitions = [
+      ...transitions.filter((transition) => {
+        const transitionLayer = transition.layer ?? (isAudioTrackId(transition.trackId) ? 'audio' : 'video');
+        const transitionEdge = transition.edge ?? 'out';
+        return !(
+          transition.trackId === baseClip.trackId &&
+          transitionLayer === resolvedLayer &&
+          transitionEdge === edge &&
+          transition.clipId === baseClip.id
+        );
+      }),
+      transitionPayload,
+    ];
+
+    const transitionSelection = new Set<string>([
+      baseClip.id,
+      ...(partnerClip ? [partnerClip.id] : []),
+    ]);
+    setTransitions(nextTransitions);
+    applyClipUpdates(Array.from(nextClipMap.values()), transitionSelection, nextTransitions);
+    setMarkers((previous) => [
+      ...previous,
+      {
+        id: `tr-marker-${baseClip.id}-${edge}-${Date.now()}`,
+        time: transitionTime,
+        color: resolvedLayer === 'audio' ? '#f59e0b' : '#0ea5e9',
+        label: `${resolvedLayer === 'audio' ? 'Audio' : 'Video'} ${transitionType} (${edge})`,
+      },
+    ]);
+
+    return {
+      time: transitionTime,
+      layer: resolvedLayer,
+      transitionType,
+      duration: appliedDuration,
+    };
+  }, [
+    clips,
+    frameTime,
+    isAudioTrackId,
+    pendingTransitionEngine,
+    transitions,
+    applyClipUpdates,
+  ]);
+
   const placePendingTransitionAtNearestCut = useCallback(() => {
     if (!pendingTransitionType) {
       return;
     }
     const preferredTrackId = selectedPrimaryClip?.trackId;
     const { time: placeTime, trackId } = findNearestCut(clips, tracks, currentTime, preferredTrackId);
-    const transitionId = `tr${Date.now()}`;
-    setTransitions((previous) => [
-      ...previous,
-      {
-        id: transitionId,
-        time: placeTime,
-        trackId,
-        type: pendingTransitionType,
-        duration: pendingTransitionDuration,
-      },
-    ]);
+    const transitionLayer: 'audio' | 'video' = isAudioTrackId(trackId) ? 'audio' : 'video';
+    const transitionEngine: 'canvas2d' | 'webgl' | 'audio' =
+      transitionLayer === 'audio' ? 'audio' : pendingTransitionEngine;
+
+    const trackClips = clips
+      .filter((entry) => entry.trackId === trackId)
+      .sort((left, right) => left.start - right.start);
+    let anchorClip: BeatClip | null = null;
+    let anchorEdge: 'in' | 'out' = 'out';
+    let nearestCutDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < trackClips.length - 1; index += 1) {
+      const left = trackClips[index];
+      const cutTime = left.start + left.duration;
+      const cutDistance = Math.abs(cutTime - placeTime);
+      if (cutDistance < nearestCutDistance) {
+        nearestCutDistance = cutDistance;
+        anchorClip = left;
+        anchorEdge = 'out';
+      }
+    }
+    if (!anchorClip) {
+      const nearestClip = trackClips
+        .slice()
+        .sort((left, right) =>
+          Math.abs((left.start + left.duration / 2) - placeTime) - Math.abs((right.start + right.duration / 2) - placeTime)
+        )[0] || null;
+      if (nearestClip) {
+        const midpoint = nearestClip.start + nearestClip.duration / 2;
+        anchorClip = nearestClip;
+        anchorEdge = placeTime < midpoint ? 'in' : 'out';
+      }
+    }
+
+    if (!anchorClip) {
+      setSnackbar({
+        open: true,
+        message: 'No clip found on track for transition placement.',
+        severity: 'warning',
+      });
+      setPendingTransitionType(null);
+      return;
+    }
+
+    const result = addTransitionToClipEdge(anchorClip, anchorEdge, {
+      type: pendingTransitionType,
+      duration: pendingTransitionDuration,
+      layer: transitionLayer,
+      engine: transitionEngine,
+    });
     setSnackbar({
       open: true,
-      message: `Placed ${pendingTransitionType} (${pendingTransitionEngine.toUpperCase()}, ${pendingTransitionDuration.toFixed(2)}s)`,
+      message: `Placed ${result.layer} ${result.transitionType} (${result.duration.toFixed(2)}s)`,
       severity: 'success',
     });
     setPendingTransitionType(null);
@@ -6869,6 +8690,38 @@ export default function StoryArcStudio({
     clips,
     tracks,
     currentTime,
+    isAudioTrackId,
+    frameTime,
+    addTransitionToClipEdge,
+  ]);
+
+  const placePendingTransitionOnSelectedClip = useCallback((edge: 'in' | 'out' = 'out') => {
+    if (!pendingTransitionType || !selectedPrimaryClip) {
+      return;
+    }
+    const transitionLayer: 'audio' | 'video' =
+      isAudioTrackId(selectedPrimaryClip.trackId) ? 'audio' : 'video';
+    const transitionEngine: 'canvas2d' | 'webgl' | 'audio' =
+      transitionLayer === 'audio' ? 'audio' : pendingTransitionEngine;
+    const result = addTransitionToClipEdge(selectedPrimaryClip, edge, {
+      type: pendingTransitionType,
+      duration: pendingTransitionDuration,
+      layer: transitionLayer,
+      engine: transitionEngine,
+    });
+    setSnackbar({
+      open: true,
+      message: `Applied ${result.layer} ${result.transitionType} on selected clip (${edge}, ${result.duration.toFixed(2)}s).`,
+      severity: 'success',
+    });
+    setPendingTransitionType(null);
+  }, [
+    pendingTransitionType,
+    pendingTransitionDuration,
+    pendingTransitionEngine,
+    selectedPrimaryClip,
+    isAudioTrackId,
+    addTransitionToClipEdge,
   ]);
 
   const toggleAssetPanel = useCallback(() => {
@@ -7766,12 +9619,143 @@ export default function StoryArcStudio({
           setSyncInProgress(false);
         });
     }
+
+    const persistedAutoEditJob = getPersistedServerJob('autoEdit');
+    if (persistedAutoEditJob) {
+      setAutoEditRunning(true);
+      setAutoEditJobId(persistedAutoEditJob.serverJobId);
+      setAutoEditServerProgress(0);
+      const snapshot = createAutoEditSnapshot();
+      void pollAutoEditServerJob(persistedAutoEditJob.serverJobId)
+        .then((serverRanking) => {
+          const contextualClips = buildContextualAutoEditClips(clips);
+          const feedbackByClipId: Record<string, AutoEditFeedbackValue> = {};
+          contextualClips.forEach((clip) => {
+            const feedback = autoEditFeedbackByClipKey[buildAutoEditClipFeedbackKey(clip)];
+            if (feedback === 'approved' || feedback === 'rejected') {
+              feedbackByClipId[clip.id] = feedback;
+            }
+          });
+          const alternativesResult = createAutoEditAlternatives(
+            {
+              clips: contextualClips,
+              tracks,
+              transitions: transitions.map((transition) => ({ ...transition })),
+              markers: markers.map((marker) => ({ ...marker })),
+              frameRate,
+              humanFeedbackByClipId: feedbackByClipId,
+              serverRanking: {
+                clipScores: serverRanking.clipScores,
+                rankedClipIds: serverRanking.rankedClipIds,
+                clipSignalsById: serverRanking.clipSignalsById,
+                beatByClipId: serverRanking.beatByClipId,
+                confidence: serverRanking.confidence,
+                summary: serverRanking.summary,
+                modelUsed: serverRanking.modelUsed,
+                analyzerAvailable: serverRanking.analyzerAvailable,
+                llmBeatClassificationUsed: serverRanking.llmBeatClassificationUsed,
+              },
+            },
+            autoEditOptions
+          );
+          const initialVariant = autoEditOptions.variant || alternativesResult.defaultVariant;
+          const proposal =
+            alternativesResult.alternatives[initialVariant] ||
+            alternativesResult.alternatives.balanced;
+          applyAutoEditProposalPreview(snapshot, proposal, 'resume', alternativesResult.alternatives);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof Error && error.name === 'AbortError') {
+            return;
+          }
+          const message = toErrorMessage(error, 'Unknown error');
+          clearPersistedServerJob('autoEdit');
+          setSnackbar({
+            open: true,
+            message: `Auto Edit resume failed: ${message}`,
+            severity: 'error',
+          });
+        })
+        .finally(() => {
+          setAutoEditRunning(false);
+          setAutoEditJobId(null);
+          setAutoEditServerProgress(null);
+        });
+    }
   }, [
     getPersistedServerJob,
     pollSceneDetectionJob,
     pollSyncServerJob,
     clearPersistedServerJob,
+    pollAutoEditServerJob,
+    createAutoEditSnapshot,
+    buildContextualAutoEditClips,
+    clips,
+    tracks,
+    transitions,
+    markers,
+    frameRate,
+    autoEditOptions,
+    applyAutoEditProposalPreview,
+    autoEditFeedbackByClipKey,
   ]);
+
+  useEffect(() => {
+    if (autoEditPreviewRestoredRef.current) {
+      return;
+    }
+    autoEditPreviewRestoredRef.current = true;
+    const persistedPayload = getSafeLocalStorageJson<{
+      projectKey?: string;
+      previewState?: AutoEditPreviewState;
+      persistedAt?: number;
+    } | null>(AUTO_EDIT_PENDING_PREVIEW_STORAGE_KEY, null);
+    if (!persistedPayload || persistedPayload.projectKey !== autoEditProjectKey) {
+      return;
+    }
+    if (
+      typeof persistedPayload.persistedAt === 'number' &&
+      Date.now() - persistedPayload.persistedAt > 1000 * 60 * 60 * 24
+    ) {
+      clearPersistedAutoEditPreview();
+      return;
+    }
+    const previewState = persistedPayload.previewState;
+    if (!previewState || !previewState.proposal || !previewState.snapshot) {
+      return;
+    }
+    const alternatives =
+      previewState.alternatives ||
+      ({
+        safe: previewState.proposal,
+        balanced: previewState.proposal,
+        bold: previewState.proposal,
+      } as Record<AutoEditVariant, AutoEditProposal>);
+    const selectedVariant = previewState.selectedVariant || previewState.proposal.variant || 'balanced';
+    const proposal = alternatives[selectedVariant] || previewState.proposal;
+    const nextTransitions = proposal.transitions.map((transition) => ({ ...transition }));
+    const nextMarkers = proposal.markers.map((marker) => ({ ...marker }));
+    const selectedIds =
+      proposal.selectedClipIds.length > 0
+        ? new Set(proposal.selectedClipIds)
+        : new Set(proposal.clips.slice(0, 1).map((clip) => clip.id));
+    setTransitions(nextTransitions);
+    setMarkers(nextMarkers);
+    applyClipUpdates(cloneClipList(proposal.clips), selectedIds, nextTransitions);
+    const hydratedPreview: AutoEditPreviewState = {
+      ...previewState,
+      alternatives,
+      selectedVariant,
+      proposal,
+    };
+    setAutoEditPreview(hydratedPreview);
+    setLastAutoEditSnapshot(hydratedPreview);
+    setSnackbar({
+      open: true,
+      message: 'Restored pending Auto Edit preview after refresh.',
+      severity: 'info',
+    });
+  }, [applyClipUpdates, autoEditProjectKey, clearPersistedAutoEditPreview, cloneClipList]);
 
   const runSync = useCallback(() => {
     void executeSyncClips();
@@ -8082,7 +10066,12 @@ export default function StoryArcStudio({
   }, []);
 
   const handleAutoMonitorStatusChange = useCallback((enabled: boolean) => {
-    console.log('Auto monitoring status changed:', enabled);
+    setAutoMonitorEnabled(enabled);
+    setSnackbar({
+      open: true,
+      message: enabled ? 'Auto monitor enabled.' : 'Auto monitor disabled.',
+      severity: 'info',
+    });
   }, []);
 
   const handleAssetBrowserMediaSelect = useCallback((media: SelectedAssetMedia) => {
@@ -8143,12 +10132,162 @@ export default function StoryArcStudio({
   }, [hydrateClipSources, extractRenderableVideoSources]);
 
   const handleAssetBrowserTemplateSelect = useCallback((templateId: string) => {
-    console.log('Template selected:', templateId);
+    if (!templateId) {
+      return;
+    }
+    setSnackbar({
+      open: true,
+      message: `Template selected: ${templateId}. Building timeline...`,
+      severity: 'info',
+    });
   }, []);
 
   const handleAssetBrowserSnippetDrag = useCallback((snippetId: string) => {
-    console.log('Snippet dragged:', snippetId);
+    if (!snippetId) {
+      return;
+    }
+    setSnackbar({
+      open: true,
+      message: `Snippet ${snippetId} is ready. Use "Insert" to add it at playhead.`,
+      severity: 'info',
+    });
   }, []);
+
+  const handleAssetBrowserSnippetInsert = useCallback((snippet: AssetBrowserSnippetDetail) => {
+    const snippetDuration = timelineEngine.snapToFrame(
+      Math.max(
+        frameTime,
+        Number.isFinite(snippet.duration) && snippet.duration > 0 ? snippet.duration : 2
+      )
+    );
+
+    if (snippet.type === 'transition') {
+      const preferredTrackId = selectedPrimaryClip?.trackId;
+      const { time: placeTime, trackId } = findNearestCut(clips, tracks, currentTime, preferredTrackId);
+      const transitionType = snippet.id.replace(/^transition[-_]?/i, '') || 'crossfade';
+      const transitionLayer: 'audio' | 'video' = isAudioTrackId(trackId) ? 'audio' : 'video';
+      const transitionEngine: 'canvas2d' | 'webgl' | 'audio' =
+        transitionLayer === 'audio' ? 'audio' : 'canvas2d';
+      const trackClips = clips
+        .filter((entry) => entry.trackId === trackId)
+        .sort((left, right) => left.start - right.start);
+      const anchorClip = trackClips
+        .slice()
+        .sort((left, right) =>
+          Math.abs((left.start + left.duration) - placeTime) - Math.abs((right.start + right.duration) - placeTime)
+        )[0] || null;
+      if (anchorClip) {
+        addTransitionToClipEdge(anchorClip, 'out', {
+          type: transitionType,
+          duration: snippetDuration,
+          layer: transitionLayer,
+          engine: transitionEngine,
+        });
+      } else {
+        setTransitions((previous) => [
+          ...previous,
+          {
+            id: `snippet-transition-${Date.now()}`,
+            time: placeTime,
+            trackId,
+            type: transitionType,
+            duration: snippetDuration,
+            layer: transitionLayer,
+            engine: transitionEngine,
+          },
+        ]);
+      }
+      setSnackbar({
+        open: true,
+        message: `Inserted ${transitionLayer} transition snippet: ${snippet.name}`,
+        severity: 'success',
+      });
+      return;
+    }
+
+    const targetTrackId = getPrimaryVideoTrackId();
+    setTracks((previous) => {
+      if (previous.some((track) => track.id === targetTrackId)) {
+        return previous;
+      }
+      return [
+        ...previous,
+        {
+          id: targetTrackId,
+          name: targetTrackId,
+          type: 'video',
+          height: 56,
+        },
+      ];
+    });
+
+    const snippetColorByType: Record<AssetBrowserSnippetDetail['type'], string> = {
+      transition: '#8b5cf6',
+      opening: '#22c55e',
+      closing: '#eab308',
+      montage: '#0ea5e9',
+      dialogue: '#f97316',
+      action: '#ef4444',
+    };
+    const snippetClipId = `snippet-${snippet.id}-${Date.now()}`;
+    const start = timelineEngine.snapToFrame(Math.max(0, currentTime));
+    const newClip: BeatClip = {
+      id: snippetClipId,
+      name: snippet.name,
+      beatName: snippet.name,
+      start,
+      duration: snippetDuration,
+      ev: 0.15,
+      synopsis: `Snippet: ${snippet.name}`,
+      trackId: targetTrackId,
+      color: snippetColorByType[snippet.type] || '#2196f3',
+      metadata: {
+        snippetId: snippet.id,
+        snippetType: snippet.type,
+        insertedAt: new Date().toISOString(),
+      },
+      tags: Array.from(new Set([...(snippet.tags || []), 'snippet', snippet.type])),
+    };
+    let next = [...clips, newClip];
+    if (safeTrimMode && hasTimelineOverlapOnTrack(next, targetTrackId)) {
+      showSafeTrimBlockedWarning();
+      return;
+    }
+    if (magneticEnabled) {
+      next = resolveOverlaps(next, targetTrackId);
+    }
+    applyClipUpdates(next, new Set([snippetClipId]));
+    setMarkers((previous) => [
+      ...previous,
+      {
+        id: `marker-${snippetClipId}`,
+        time: start,
+        color: snippetColorByType[snippet.type] || '#2196f3',
+        label: `Snippet: ${snippet.name}`,
+      },
+    ]);
+    setSnackbar({
+      open: true,
+      message: `Inserted snippet: ${snippet.name}`,
+      severity: 'success',
+    });
+  }, [
+    frameTime,
+    selectedPrimaryClip?.trackId,
+    findNearestCut,
+    clips,
+    tracks,
+    currentTime,
+    getPrimaryVideoTrackId,
+    safeTrimMode,
+    hasTimelineOverlapOnTrack,
+    showSafeTrimBlockedWarning,
+    magneticEnabled,
+    resolveOverlaps,
+    applyClipUpdates,
+    isAudioTrackId,
+    addTransitionToClipEdge,
+  ]);
 
   const handleSourceMonitorFocus = useCallback(() => {
     setActiveMonitor('source');
@@ -8343,6 +10482,174 @@ export default function StoryArcStudio({
       case 'delete':
         setClips((previous) => deleteClip(previous, clipId, rippleEnabled));
         break;
+      case 'add-transition': {
+        const clip = clips.find((entry) => entry.id === clipId);
+        if (!clip) {
+          return;
+        }
+        const edge: 'in' | 'out' = payload.edge === 'in' ? 'in' : 'out';
+        const transitionLayer: 'video' | 'audio' =
+          payload.transitionLayer === 'audio' || payload.transitionLayer === 'video'
+            ? payload.transitionLayer
+            : isAudioTrackId(clip.trackId)
+              ? 'audio'
+              : 'video';
+        const transitionType =
+          typeof payload.transitionType === 'string' && payload.transitionType.trim().length > 0
+            ? payload.transitionType
+            : transitionLayer === 'audio'
+              ? 'audio_crossfade'
+              : pendingTransitionType || 'crossfade';
+        const transitionDuration =
+          typeof payload.duration === 'number' && Number.isFinite(payload.duration) && payload.duration > 0
+            ? payload.duration
+            : transitionLayer === 'audio'
+              ? 0.25
+              : pendingTransitionDuration;
+        const transitionEngine: 'canvas2d' | 'webgl' | 'audio' =
+          payload.transitionEngine === 'audio' || payload.transitionEngine === 'webgl' || payload.transitionEngine === 'canvas2d'
+            ? payload.transitionEngine
+            : transitionLayer === 'audio'
+              ? 'audio'
+              : pendingTransitionEngine;
+
+        const transitionResult = addTransitionToClipEdge(clip, edge, {
+          type: transitionType,
+          duration: transitionDuration,
+          layer: transitionLayer,
+          engine: transitionEngine,
+        });
+        setSnackbar({
+          open: true,
+          message: `${transitionResult.layer === 'audio' ? 'Audio' : 'Video'} transition added on ${edge} edge (${transitionResult.transitionType}, ${transitionResult.duration.toFixed(2)}s).`,
+          severity: 'success',
+        });
+        break;
+      }
+      case 'set-clip-fade': {
+        const clip = clips.find((entry) => entry.id === clipId);
+        if (!clip) {
+          return;
+        }
+        const fadeEdge: 'in' | 'out' = payload.fadeEdge === 'in' ? 'in' : 'out';
+        const fadeLayer: 'video' | 'audio' =
+          payload.fadeLayer === 'audio' || payload.fadeLayer === 'video'
+            ? payload.fadeLayer
+            : isAudioTrackId(clip.trackId)
+              ? 'audio'
+              : 'video';
+        const fadeKey = `${fadeLayer}Fade${fadeEdge === 'in' ? 'In' : 'Out'}`;
+        const rawDuration =
+          typeof payload.fadeDuration === 'number' && Number.isFinite(payload.fadeDuration) && payload.fadeDuration > 0
+            ? payload.fadeDuration
+            : fadeLayer === 'audio'
+              ? 0.25
+              : 0.5;
+        const maxDuration = Math.max(frameTime, clip.duration - frameTime);
+        const fadeDuration = timelineEngine.snapToFrame(Math.max(frameTime, Math.min(rawDuration, maxDuration)));
+
+        setClips((previous) =>
+          previous.map((entry) => {
+            if (entry.id !== clipId) {
+              return entry;
+            }
+            const transitions =
+              isRecord(entry.metadata?.transitions) ? (entry.metadata.transitions as Record<string, unknown>) : {};
+            const edgeTransition =
+              isRecord(transitions[fadeEdge]) ? (transitions[fadeEdge] as Record<string, unknown>) : {};
+            return {
+              ...entry,
+              metadata: {
+                ...(entry.metadata || {}),
+                [fadeKey]: {
+                  duration: fadeDuration,
+                  curve: 'linear',
+                  layer: fadeLayer,
+                  edge: fadeEdge,
+                  appliedAt: new Date().toISOString(),
+                },
+                transitions: {
+                  ...transitions,
+                  [fadeEdge]: {
+                    ...edgeTransition,
+                    duration: fadeDuration,
+                    layer: fadeLayer,
+                    type:
+                      typeof edgeTransition.type === 'string'
+                        ? edgeTransition.type
+                        : fadeLayer === 'audio'
+                          ? 'audio_fade'
+                          : 'fade',
+                  },
+                },
+              },
+            };
+          })
+        );
+        setMarkers((previous) => [
+          ...previous,
+          {
+            id: `fade-${clipId}-${fadeLayer}-${fadeEdge}-${Date.now()}`,
+            time: timelineEngine.snapToFrame(
+              Math.max(0, fadeEdge === 'in' ? clip.start : clip.start + clip.duration)
+            ),
+            color: fadeLayer === 'audio' ? '#f59e0b' : '#38bdf8',
+            label: `${fadeLayer === 'audio' ? 'Audio' : 'Video'} Fade ${fadeEdge.toUpperCase()}`,
+          },
+        ]);
+        setSnackbar({
+          open: true,
+          message: `${fadeLayer === 'audio' ? 'Audio' : 'Video'} fade ${fadeEdge} set (${fadeDuration.toFixed(2)}s).`,
+          severity: 'success',
+        });
+        break;
+      }
+      case 'clear-clip-fade': {
+        const clip = clips.find((entry) => entry.id === clipId);
+        if (!clip) {
+          return;
+        }
+        const fadeEdge: 'in' | 'out' = payload.fadeEdge === 'in' ? 'in' : 'out';
+        const fadeLayer: 'video' | 'audio' =
+          payload.fadeLayer === 'audio' || payload.fadeLayer === 'video'
+            ? payload.fadeLayer
+            : isAudioTrackId(clip.trackId)
+              ? 'audio'
+              : 'video';
+        const fadeKey = `${fadeLayer}Fade${fadeEdge === 'in' ? 'In' : 'Out'}`;
+
+        setClips((previous) =>
+          previous.map((entry) => {
+            if (entry.id !== clipId) {
+              return entry;
+            }
+            const metadata = { ...(entry.metadata || {}) } as Record<string, unknown>;
+            delete metadata[fadeKey];
+            const transitions =
+              isRecord(metadata.transitions) ? ({ ...(metadata.transitions as Record<string, unknown>) }) : {};
+            const edgeTransition =
+              isRecord(transitions[fadeEdge]) ? ({ ...(transitions[fadeEdge] as Record<string, unknown>) }) : null;
+            if (edgeTransition) {
+              const linked = typeof edgeTransition.sourceClipId === 'string' || typeof edgeTransition.targetClipId === 'string';
+              const transitionLayer = edgeTransition.layer;
+              if (!linked && (transitionLayer === fadeLayer || transitionLayer === undefined)) {
+                delete transitions[fadeEdge];
+              }
+            }
+            metadata.transitions = transitions;
+            return {
+              ...entry,
+              metadata,
+            };
+          })
+        );
+        setSnackbar({
+          open: true,
+          message: `${fadeLayer === 'audio' ? 'Audio' : 'Video'} fade ${fadeEdge} cleared.`,
+          severity: 'info',
+        });
+        break;
+      }
       case 'color':
         if (typeof payload.color !== 'string') {
           return;
@@ -8372,7 +10679,17 @@ export default function StoryArcStudio({
       default:
         break;
     }
-  }, [currentTime, rippleEnabled]);
+  }, [
+    currentTime,
+    rippleEnabled,
+    clips,
+    isAudioTrackId,
+    pendingTransitionType,
+    pendingTransitionDuration,
+    pendingTransitionEngine,
+    addTransitionToClipEdge,
+    frameTime,
+  ]);
 
   const handleTimelineMediaDrop = useCallback(({
     media,
@@ -8403,8 +10720,38 @@ export default function StoryArcStudio({
   }, [playbackSpeed]);
 
   const handleWaveformRegionCreated = useCallback((region: unknown) => {
-    console.log('✅ Audio region created:', region);
-  }, []);
+    if (!isRecord(region) || typeof region.start !== 'number' || typeof region.end !== 'number') {
+      return;
+    }
+    const start = timelineEngine.snapToFrame(Math.max(0, region.start));
+    const rawEnd = timelineEngine.snapToFrame(Math.max(0, region.end));
+    const end = rawEnd > start ? rawEnd : timelineEngine.snapToFrame(start + frameTime);
+    const regionId = typeof region.id === 'string' ? region.id : String(Date.now());
+
+    setProgramMarkIn(start);
+    setProgramMarkOut(end);
+    setCurrentTime(start);
+    setMarkers((previous) => [
+      ...previous,
+      {
+        id: `wave-in-${regionId}`,
+        time: start,
+        color: '#22d3ee',
+        label: 'Wave In',
+      },
+      {
+        id: `wave-out-${regionId}`,
+        time: end,
+        color: '#06b6d4',
+        label: 'Wave Out',
+      },
+    ]);
+    setSnackbar({
+      open: true,
+      message: `Audio region mapped to Program In/Out (${(end - start).toFixed(2)}s).`,
+      severity: 'success',
+    });
+  }, [frameTime]);
 
   const handleWorkspaceDockMouseMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const navRect = event.currentTarget.getBoundingClientRect();
@@ -8441,7 +10788,7 @@ export default function StoryArcStudio({
     );
   }, []);
 
-  const handleInspectorMetaUpdate = useCallback((clipId: string, updates: Partial<ClipMeta>) => {
+  const handleInspectorMetaUpdate = useCallback((clipId: string, updates: Partial<StoryArcClipMeta>) => {
     setClipMeta((previous) => ({
       ...previous,
       [clipId]: { ...(previous[clipId] || {}), ...updates },
@@ -8535,13 +10882,96 @@ export default function StoryArcStudio({
   }, [closeTransitionLibrary]);
 
   const handleSpeedRampKeyframesChange = useCallback((keyframes: SpeedKeyframe[]) => {
+    if (!selectedPrimaryClipId) {
+      setCurrentSpeedKeyframes(keyframes);
+      setSnackbar({
+        open: true,
+        message: 'Select a clip before applying speed keyframes.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    if (keyframes.length > 0) {
+      const validation = SpeedRampEngine.validateKeyframes(keyframes);
+      if (!validation.valid) {
+        setSnackbar({
+          open: true,
+          message: `Invalid speed ramp: ${validation.errors[0] || 'unknown error'}`,
+          severity: 'error',
+        });
+        return;
+      }
+    }
+
     setCurrentSpeedKeyframes(keyframes);
-    console.log('✅ Speed keyframes updated:', keyframes.length);
-  }, []);
+    const updated = clips.map((clip) => {
+      if (clip.id !== selectedPrimaryClipId) {
+        return clip;
+      }
+
+      const baseDurationRaw =
+        typeof clip.metadata?.speedRampBaseDuration === 'number'
+          ? clip.metadata.speedRampBaseDuration
+          : clip.duration;
+      const baseDuration = Math.max(frameTime, baseDurationRaw);
+      const remappedDuration =
+        keyframes.length > 0
+          ? SpeedRampEngine.getRemappedDuration(baseDuration, keyframes)
+          : baseDuration;
+      const nextDuration = timelineEngine.snapToFrame(Math.max(frameTime, remappedDuration));
+
+      const nextMetadata: Record<string, unknown> = { ...(clip.metadata || {}) };
+      if (keyframes.length === 0) {
+        delete nextMetadata.speedKeyframes;
+        delete nextMetadata.speedRampBaseDuration;
+        delete nextMetadata.speedRampAppliedAt;
+      } else {
+        nextMetadata.speedKeyframes = keyframes;
+        nextMetadata.speedRampBaseDuration = baseDuration;
+        nextMetadata.speedRampAppliedAt = new Date().toISOString();
+      }
+
+      if (typeof nextMetadata.inPoint === 'number') {
+        nextMetadata.outPoint = nextMetadata.inPoint + nextDuration;
+      }
+
+      return {
+        ...clip,
+        duration: nextDuration,
+        metadata: nextMetadata,
+      };
+    });
+    applyClipUpdates(updated, new Set([selectedPrimaryClipId]));
+  }, [selectedPrimaryClipId, clips, frameTime, applyClipUpdates, setSnackbar]);
 
   const handleSpeedRampPreview = useCallback(() => {
-    console.log('🎬 Previewing speed ramp');
-  }, []);
+    if (!selectedPrimaryClip) {
+      setSnackbar({
+        open: true,
+        message: 'Select a clip to preview speed ramp.',
+        severity: 'warning',
+      });
+      return;
+    }
+
+    const baseDurationRaw =
+      typeof selectedPrimaryClip.metadata?.speedRampBaseDuration === 'number'
+        ? selectedPrimaryClip.metadata.speedRampBaseDuration
+        : selectedPrimaryClip.duration;
+    const baseDuration = Math.max(frameTime, baseDurationRaw);
+    const previewDuration =
+      currentSpeedKeyframes.length > 0
+        ? SpeedRampEngine.getRemappedDuration(baseDuration, currentSpeedKeyframes)
+        : baseDuration;
+
+    setCurrentTime(Math.max(0, selectedPrimaryClip.start));
+    setSnackbar({
+      open: true,
+      message: `Speed preview ready: ${baseDuration.toFixed(2)}s -> ${previewDuration.toFixed(2)}s`,
+      severity: 'info',
+    });
+  }, [selectedPrimaryClip, currentSpeedKeyframes, frameTime]);
 
   const handleTextOverlayAdd = useCallback((overlay: TextOverlay) => {
     const defaultAnimation = textAnimationPresets[0]?.animation as TextOverlay['animation'] | undefined;
@@ -8561,8 +10991,20 @@ export default function StoryArcStudio({
     } catch (error) {
       console.warn('Text overlay engine add failed:', error);
     }
-    console.log('✅ Text overlay added:', normalizedOverlay);
-  }, [textAnimationPresets]);
+    const markerTime =
+      typeof normalizedOverlay.startTime === 'number' && Number.isFinite(normalizedOverlay.startTime)
+        ? normalizedOverlay.startTime
+        : currentTime;
+    setMarkers((previous) => [
+      ...previous,
+      {
+        id: `text-overlay-${normalizedOverlay.id}`,
+        time: timelineEngine.snapToFrame(Math.max(0, markerTime)),
+        color: '#38bdf8',
+        label: `Text: ${normalizedOverlay.text.slice(0, 18)}`,
+      },
+    ]);
+  }, [textAnimationPresets, currentTime]);
 
   const handleGPUFilterApply = useCallback((filterId: string, config: FilterConfig) => {
     setAppliedFilters((previous) => new Map(previous).set(filterId, config));
@@ -8571,8 +11013,28 @@ export default function StoryArcStudio({
     } catch (error) {
       console.warn('GPU filter apply failed:', error);
     }
-    console.log('✅ GPU filter applied:', filterId);
-  }, []);
+    if (selectedClips.size > 0) {
+      setClips((previous) =>
+        previous.map((clip) => {
+          if (!selectedClips.has(clip.id)) {
+            return clip;
+          }
+          const existingFilters =
+            isRecord(clip.metadata?.gpuFilters) ? (clip.metadata.gpuFilters as Record<string, unknown>) : {};
+          return {
+            ...clip,
+            metadata: {
+              ...(clip.metadata || {}),
+              gpuFilters: {
+                ...existingFilters,
+                [filterId]: config,
+              },
+            },
+          };
+        })
+      );
+    }
+  }, [selectedClips]);
 
   const handleColorGradeApply = useCallback((grade: ColorGradeSelection) => {
     const presetMatch = colorGradePresets.find((preset) => preset.name === grade?.name);
@@ -8640,27 +11102,147 @@ export default function StoryArcStudio({
   }, [hydrateClipSources, extractRenderableVideoSources]);
 
   const handleBackgroundRemovalProcessed = useCallback((result: unknown) => {
-    console.log('✅ Background processed:', result);
-  }, []);
+    const resolvedClipId =
+      isRecord(result) && typeof result.clipId === 'string'
+        ? result.clipId
+        : selectedPrimaryClipId;
+    const outputVideoPath =
+      isRecord(result) && typeof result.output_video_path === 'string'
+        ? result.output_video_path
+        : isRecord(result) && typeof result.outputPath === 'string'
+          ? result.outputPath
+          : isRecord(result) && typeof result.result_video_path === 'string'
+            ? result.result_video_path
+            : null;
+
+    if (resolvedClipId) {
+      setClips((previous) =>
+        previous.map((clip) =>
+          clip.id === resolvedClipId
+            ? {
+                ...clip,
+                sourceFile: outputVideoPath || clip.sourceFile,
+                metadata: {
+                  ...(clip.metadata || {}),
+                  backgroundRemoval: {
+                    ...(isRecord(result) ? result : {}),
+                    processedAt: new Date().toISOString(),
+                  },
+                },
+              }
+            : clip
+        )
+      );
+      setMarkers((previous) => [
+        ...previous,
+        {
+          id: `bg-processed-${resolvedClipId}-${Date.now()}`,
+          time: timelineEngine.snapToFrame(currentTime),
+          color: '#22c55e',
+          label: 'Background Processed',
+        },
+      ]);
+    }
+
+    setSnackbar({
+      open: true,
+      message: 'Background processing applied to clip.',
+      severity: 'success',
+    });
+  }, [selectedPrimaryClipId, currentTime]);
 
   const handleObjectSegmentationComplete = useCallback((result: unknown) => {
-    console.log('✅ Object segmentation complete:', result);
-  }, []);
+    const resolvedClipId =
+      isRecord(result) && typeof result.clipId === 'string'
+        ? result.clipId
+        : selectedPrimaryClipId;
+    const maskFrames =
+      isRecord(result) && Array.isArray(result.frames) ? result.frames.length : 0;
+
+    if (resolvedClipId) {
+      setClips((previous) =>
+        previous.map((clip) =>
+          clip.id === resolvedClipId
+            ? {
+                ...clip,
+                metadata: {
+                  ...(clip.metadata || {}),
+                  objectSegmentation: {
+                    ...(isRecord(result) ? result : {}),
+                    completedAt: new Date().toISOString(),
+                    maskFrames,
+                  },
+                },
+              }
+            : clip
+        )
+      );
+      setMarkers((previous) => [
+        ...previous,
+        {
+          id: `object-segmentation-${resolvedClipId}-${Date.now()}`,
+          time: timelineEngine.snapToFrame(currentTime),
+          color: '#f97316',
+          label: `Object masks (${maskFrames})`,
+        },
+      ]);
+    }
+
+    setSnackbar({
+      open: true,
+      message: `Object segmentation complete (${maskFrames} frame masks).`,
+      severity: 'success',
+    });
+  }, [selectedPrimaryClipId, currentTime]);
 
   const handleMotionTrackingComplete = useCallback((result: unknown) => {
+    const resolvedClipId =
+      isRecord(result) && typeof result.clipId === 'string'
+        ? result.clipId
+        : selectedPrimaryClipId;
     const trackedFrames =
       isRecord(result) && Array.isArray(result.frames) ? result.frames.length : 0;
     const trackerType =
       isRecord(result) && typeof result.tracker_type === 'string'
         ? result.tracker_type
         : 'tracker';
-    console.log('✅ Motion tracking complete:', result);
+
+    if (resolvedClipId) {
+      setClips((previous) =>
+        previous.map((clip) =>
+          clip.id === resolvedClipId
+            ? {
+                ...clip,
+                metadata: {
+                  ...(clip.metadata || {}),
+                  motionTracking: {
+                    ...(isRecord(result) ? result : {}),
+                    trackedFrames,
+                    trackerType,
+                    completedAt: new Date().toISOString(),
+                  },
+                },
+              }
+            : clip
+        )
+      );
+      setMarkers((previous) => [
+        ...previous,
+        {
+          id: `motion-track-${resolvedClipId}-${Date.now()}`,
+          time: timelineEngine.snapToFrame(currentTime),
+          color: '#6366f1',
+          label: `Motion: ${trackerType}`,
+        },
+      ]);
+    }
+
     setSnackbar({
       open: true,
       message: `Motion tracking complete! Tracked ${trackedFrames} frames using ${trackerType}`,
       severity: 'success',
     });
-  }, []);
+  }, [selectedPrimaryClipId, currentTime]);
 
   const handleAudioEnhanced = useCallback((enhancedUrl: string, metrics: AudioEnhancementMetrics) => {
     const detail = window.__pendingAudioDetail;
@@ -8907,9 +11489,22 @@ export default function StoryArcStudio({
     name: string;
     sourceFile: string;
     type?: 'dialogue' | 'music' | 'sfx';
+    timeline?: {
+      start: number;
+      duration: number;
+      inPoint: number;
+      outPoint: number;
+      linkedVideoClipId?: string;
+      autoEditDucking?: Record<string, unknown>;
+      autoEditJCut?: Record<string, unknown>;
+      autoEditLCut?: Record<string, unknown>;
+      audioFadeIn?: { duration: number; edge: 'in'; layer: 'audio' };
+      audioFadeOut?: { duration: number; edge: 'out'; layer: 'audio' };
+    };
   }>>(
-    () =>
-      clips
+    () => {
+      const clipLookup = new Map(clips.map((clip) => [clip.id, clip]));
+      return clips
         .filter((clip) => clip.trackId?.startsWith('A') || clip.trackId?.startsWith('audio'))
         .map((clip) => {
           const audioRole = trackStates[clip.trackId]?.audioRole;
@@ -8919,16 +11514,87 @@ export default function StoryArcStudio({
               : audioRole === 'music'
                 ? 'music'
                 : audioRole === 'effects' || audioRole === 'ambience'
-                  ? 'sfx'
-                  : undefined;
+                ? 'sfx'
+                : undefined;
+          const metadata = isRecord(clip.metadata) ? clip.metadata : {};
+          const linkedVideoClipId =
+            typeof metadata.linkedVideoClipId === 'string' && metadata.linkedVideoClipId.trim().length > 0
+              ? metadata.linkedVideoClipId
+              : undefined;
+          const linkedVideoMetadata = linkedVideoClipId
+            ? (() => {
+                const linkedClip = clipLookup.get(linkedVideoClipId);
+                return isRecord(linkedClip?.metadata) ? linkedClip.metadata : {};
+              })()
+            : {};
+          const autoEditDucking =
+            isRecord(metadata.autoEditDucking)
+              ? (metadata.autoEditDucking as Record<string, unknown>)
+              : isRecord(linkedVideoMetadata.autoEditDucking)
+                ? (linkedVideoMetadata.autoEditDucking as Record<string, unknown>)
+                : undefined;
+          const autoEditJCut =
+            isRecord(metadata.autoEditJCut)
+              ? (metadata.autoEditJCut as Record<string, unknown>)
+              : isRecord(linkedVideoMetadata.autoEditJCut)
+                ? (linkedVideoMetadata.autoEditJCut as Record<string, unknown>)
+                : undefined;
+          const autoEditLCut =
+            isRecord(metadata.autoEditLCut)
+              ? (metadata.autoEditLCut as Record<string, unknown>)
+              : isRecord(linkedVideoMetadata.autoEditLCut)
+                ? (linkedVideoMetadata.autoEditLCut as Record<string, unknown>)
+                : undefined;
+          const inPoint =
+            typeof metadata.inPoint === 'number'
+              ? metadata.inPoint
+              : typeof linkedVideoMetadata.inPoint === 'number'
+                ? linkedVideoMetadata.inPoint
+                : getClipInPoint(clip);
+          const outPoint =
+            typeof metadata.outPoint === 'number'
+              ? metadata.outPoint
+              : typeof linkedVideoMetadata.outPoint === 'number'
+                ? linkedVideoMetadata.outPoint
+                : inPoint + clip.duration;
+          const fadeInDuration = getClipFadeDuration(clip, 'audio', 'in');
+          const fadeOutDuration = getClipFadeDuration(clip, 'audio', 'out');
+          const timelinePayload = {
+            start: clip.start,
+            duration: clip.duration,
+            inPoint,
+            outPoint,
+            linkedVideoClipId,
+            autoEditDucking,
+            autoEditJCut,
+            autoEditLCut,
+            audioFadeIn:
+              fadeInDuration > 0
+                ? {
+                    duration: fadeInDuration,
+                    edge: 'in' as const,
+                    layer: 'audio' as const,
+                  }
+                : undefined,
+            audioFadeOut:
+              fadeOutDuration > 0
+                ? {
+                    duration: fadeOutDuration,
+                    edge: 'out' as const,
+                    layer: 'audio' as const,
+                  }
+                : undefined,
+          };
           return {
             id: clip.id,
             name: clip.name || clip.id,
             sourceFile: clip.sourceFile || '',
             type: assistantType,
+            timeline: timelinePayload,
           };
-        }),
-    [clips, trackStates]
+        });
+    },
+    [clips, trackStates, getClipInPoint, getClipFadeDuration]
   );
 
   const handleAIAudioMixComplete = useCallback((mixedAudioUrl: string, metrics: AudioEnhancementMetrics) => {
@@ -9525,6 +12191,24 @@ export default function StoryArcStudio({
                   AI Generate
                 </Button>
               </Tooltip>
+
+              <Tooltip title="Auto Edit Assistant - assemble + polish preview">
+                <Button
+                  size="small"
+                  onClick={openAutoEditDialog}
+                  sx={{
+                    background: 'linear-gradient(135deg, #059669 0%, #0f766e 100%)',
+                    color: 'white',
+                    '&:hover': {
+                      background: 'linear-gradient(135deg, #047857 0%, #115e59 100%)',
+                    },
+                    minWidth: 120,
+                  }}
+                  startIcon={<AutoFixHighIcon />}
+                >
+                  Auto Edit
+                </Button>
+              </Tooltip>
               
               {/* Face Detection Worker */}
               <Tooltip title="Detect faces in all clips (background worker)">
@@ -9686,6 +12370,9 @@ export default function StoryArcStudio({
               <Button size="small" variant={reviewerMode ? 'contained' : 'outlined'} onClick={toggleReviewerMode}>{reviewerMode ? 'Reviewer: ON' : 'Reviewer: OFF'}</Button>
               <Button size="small" variant={compareMode ? 'contained' : 'outlined'} onClick={toggleCompareMode}>{compareMode ? 'Compare: ON' : 'Compare: OFF'}</Button>
               <Button size="small" onClick={addMarkerAtPlayhead}>Add Marker</Button>
+              <Button size="small" variant="outlined" onClick={undoLastAutoEdit} disabled={!lastAutoEditSnapshot}>
+                Undo Auto Edit
+              </Button>
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="caption" color="text.secondary">V-Zoom</Typography>
                 <Slider
@@ -9699,12 +12386,139 @@ export default function StoryArcStudio({
                 />
               </Stack>
               {pendingTransitionType && (
-                <Button size="small" variant="outlined" onClick={placePendingTransitionAtNearestCut}>
-                  Place {pendingTransitionType} ({pendingTransitionEngine.toUpperCase()} • {pendingTransitionDuration.toFixed(2)}s)
-                </Button>
+                <Stack direction="row" spacing={0.75}>
+                  <Button size="small" variant="outlined" onClick={placePendingTransitionAtNearestCut}>
+                    Place {pendingTransitionType} ({pendingTransitionEngine.toUpperCase()} • {pendingTransitionDuration.toFixed(2)}s)
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => placePendingTransitionOnSelectedClip('out')}
+                    disabled={!selectedPrimaryClip}
+                  >
+                    Apply To Selected Clip
+                  </Button>
+                </Stack>
               )}
             </Stack>
         </StoryArcTopBar>
+
+        {autoEditPreview && (
+          <Box sx={{ px: 2, py: 1 }}>
+            <Alert
+              severity="info"
+              action={(
+                <Stack direction="row" spacing={1}>
+                  <Button size="small" variant="outlined" onClick={runAutoEdit}>
+                    Regenerate
+                  </Button>
+                  <Button size="small" variant="contained" onClick={acceptAutoEditPreview}>
+                    Apply
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={rejectAutoEditPreview}>
+                    Revert
+                  </Button>
+                </Stack>
+              )}
+            >
+              <Stack spacing={0.5}>
+                <Typography variant="body2">
+                  Auto Edit preview active: {autoEditPreview.proposal.preset} • {autoEditPreview.selectedVariant} • {autoEditPreview.proposal.estimatedDurationSeconds.toFixed(1)}s • {(autoEditPreview.proposal.confidence * 100).toFixed(0)}% confidence
+                </Typography>
+                <Stack direction="row" spacing={0.75} flexWrap="wrap">
+                  {(['safe', 'balanced', 'bold'] as AutoEditVariant[]).map((variant) => (
+                    <Button
+                      key={variant}
+                      size="small"
+                      variant={autoEditPreview.selectedVariant === variant ? 'contained' : 'outlined'}
+                      onClick={() => previewAutoEditVariant(variant)}
+                    >
+                      {variant}
+                    </Button>
+                  ))}
+                </Stack>
+                {autoEditPreview.proposal.summary.slice(0, 3).map((line) => (
+                  <Typography key={line} variant="caption" color="text.secondary">
+                    {line}
+                  </Typography>
+                ))}
+                <Stack spacing={0.75} sx={{ pt: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                    Narrative Explainability
+                  </Typography>
+                  {autoEditPreview.proposal.selectedClipIds.slice(0, 5).map((clipId) => {
+                    const clip = autoEditPreview.proposal.clips.find((candidate) => candidate.id === clipId);
+                    if (!clip) {
+                      return null;
+                    }
+                    const explainability = autoEditPreview.proposal.clipExplainabilityById[clipId];
+                    const feedback = getAutoEditClipFeedback(clip);
+                    return (
+                      <Card key={clipId} variant="outlined" sx={{ px: 1, py: 0.75 }}>
+                        <Stack spacing={0.5}>
+                          <Typography variant="caption" fontWeight={600}>
+                            {clip.name || clip.id}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Goal {(explainability?.goalMatch ?? 0).toFixed(2)} • Emotion {(explainability?.emotion ?? 0).toFixed(2)} • Beat {explainability?.beat?.beat || 'n/a'} • Face {(explainability?.faceConfidence ?? 0).toFixed(2)} • Audio {(explainability?.audioConfidence ?? 0).toFixed(2)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Narrative: Coverage {(explainability?.narrative?.transcriptCoverage ?? 0).toFixed(2)} • Connectors {explainability?.narrative?.connectorHits ?? 0} • Impact {explainability?.narrative?.impactPhraseHits ?? 0} • Filler {explainability?.narrative?.fillerHits ?? 0}
+                          </Typography>
+                          <Box
+                            sx={{
+                              px: 1,
+                              py: 0.75,
+                              borderRadius: 1,
+                              bgcolor: 'background.default',
+                              border: 1,
+                              borderColor: 'divider',
+                            }}
+                          >
+                            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                              Narrative Explainability
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                              {explainability?.narrative?.transcriptExcerpt || 'No aligned transcript excerpt for this clip.'}
+                            </Typography>
+                          </Box>
+                          <Typography variant="caption" color="text.secondary">
+                            {(explainability?.reasons || ['Selected by ranking signals.']).slice(0, 2).join(' ')}
+                          </Typography>
+                          <Stack direction="row" spacing={0.5}>
+                            <Button
+                              size="small"
+                              variant={feedback === 'approved' ? 'contained' : 'outlined'}
+                              color="success"
+                              onClick={() => setAutoEditClipFeedback(clipId, 'approved')}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="small"
+                              variant={feedback === 'rejected' ? 'contained' : 'outlined'}
+                              color="error"
+                              onClick={() => setAutoEditClipFeedback(clipId, 'rejected')}
+                            >
+                              Reject
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => setAutoEditClipFeedback(clipId, null)}
+                            >
+                              Clear
+                            </Button>
+                          </Stack>
+                        </Stack>
+                      </Card>
+                    );
+                  })}
+                </Stack>
+              </Stack>
+            </Alert>
+          </Box>
+        )}
 
         {(timelineErrors.length > 0 || timelineWarnings.length > 0) && (
           <Box sx={{ px: 2, py: 1 }}>
@@ -10108,14 +12922,22 @@ export default function StoryArcStudio({
                   <Typography variant="subtitle2" fontWeight={600}>
                     Asset Browser
                   </Typography>
-                  <Button
-                    size="small"
-                    variant={showAutoMonitor ? 'contained' : 'outlined'}
-                    onClick={toggleAutoMonitorPanel}
-                    sx={{ minWidth: 120 }}
-                  >
-                    {showAutoMonitor ? 'Hide Monitor' : 'Auto Monitor'}
-                  </Button>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Chip
+                      size="small"
+                      variant={autoMonitorEnabled ? 'filled' : 'outlined'}
+                      color={autoMonitorEnabled ? 'success' : 'default'}
+                      label={autoMonitorEnabled ? 'Monitoring On' : 'Monitoring Off'}
+                    />
+                    <Button
+                      size="small"
+                      variant={showAutoMonitor ? 'contained' : 'outlined'}
+                      onClick={toggleAutoMonitorPanel}
+                      sx={{ minWidth: 120 }}
+                    >
+                      {showAutoMonitor ? 'Hide Monitor' : 'Auto Monitor'}
+                    </Button>
+                  </Stack>
                 </Box>
 
                 {showAutoMonitor && (
@@ -10135,6 +12957,7 @@ export default function StoryArcStudio({
                     onTimelineInit={handleAssetBrowserTimelineInit}
                     onTemplateSelect={handleAssetBrowserTemplateSelect}
                     onSnippetDrag={handleAssetBrowserSnippetDrag}
+                    onSnippetInsert={handleAssetBrowserSnippetInsert}
                   />
                 </Box>
               </Paper>
@@ -10318,6 +13141,7 @@ export default function StoryArcStudio({
                               height: '100%',
                               objectFit: monitorFitMode === 'fill' ? 'cover' : 'contain',
                               backgroundColor: '#000',
+                              opacity: programMonitorOpacity,
                             }}
                             onLoadedMetadata={sourceVideoHandlers.onLoadedMetadata}
                             onTimeUpdate={sourceVideoHandlers.onTimeUpdate}
@@ -11783,6 +14607,238 @@ export default function StoryArcStudio({
               disabled={isCreatingProject || newProjectName.trim().length === 0}
             >
               {isCreatingProject ? 'Creating…' : 'Create'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog
+          open={showAutoEditDialog}
+          onClose={closeAutoEditDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Auto Edit Assistant</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="auto-edit-intent-profile-label">Story Intent</InputLabel>
+                <Select
+                  labelId="auto-edit-intent-profile-label"
+                  value={autoEditIntentProfileId}
+                  label="Story Intent"
+                  onChange={updateAutoEditIntentProfile}
+                >
+                  {storyIntentProfiles.map((profile) => (
+                    <MenuItem key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small">
+                <InputLabel id="auto-edit-variant-label">Alternative</InputLabel>
+                <Select
+                  labelId="auto-edit-variant-label"
+                  value={autoEditOptions.variant}
+                  label="Alternative"
+                  onChange={updateAutoEditVariant}
+                >
+                  <MenuItem value="safe">Safe</MenuItem>
+                  <MenuItem value="balanced">Balanced</MenuItem>
+                  <MenuItem value="bold">Bold</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth size="small">
+                <InputLabel id="auto-edit-preset-label">Preset</InputLabel>
+                <Select
+                  labelId="auto-edit-preset-label"
+                  value={autoEditOptions.preset}
+                  label="Preset"
+                  onChange={updateAutoEditPreset}
+                >
+                  <MenuItem value="reel-30">30s Reel</MenuItem>
+                  <MenuItem value="story-60">60s Story</MenuItem>
+                  <MenuItem value="interview">Interview Cut</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Target Duration: {autoEditOptions.targetDurationSeconds.toFixed(1)}s
+                </Typography>
+                <Slider
+                  value={autoEditOptions.targetDurationSeconds}
+                  min={10}
+                  max={180}
+                  step={1}
+                  onChange={updateAutoEditTargetDuration}
+                />
+              </Box>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary">
+                  Transition Density: {Math.round(autoEditOptions.transitionDensity * 100)}%
+                </Typography>
+                <Slider
+                  value={autoEditOptions.transitionDensity}
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  onChange={updateAutoEditTransitionDensity}
+                />
+              </Box>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Min Shot: {autoEditOptions.minShotDurationSeconds.toFixed(2)}s
+                  </Typography>
+                  <Slider
+                    value={autoEditOptions.minShotDurationSeconds}
+                    min={0.2}
+                    max={8}
+                    step={0.05}
+                    onChange={updateAutoEditMinShotDuration}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Max Shot: {autoEditOptions.maxShotDurationSeconds.toFixed(2)}s
+                  </Typography>
+                  <Slider
+                    value={autoEditOptions.maxShotDurationSeconds}
+                    min={0.8}
+                    max={20}
+                    step={0.1}
+                    onChange={updateAutoEditMaxShotDuration}
+                  />
+                </Box>
+              </Stack>
+
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.includeAssemble}
+                      onChange={handleAutoEditOptionToggle('includeAssemble')}
+                    />
+                  }
+                  label="Auto Assemble"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.includePolish}
+                      onChange={handleAutoEditOptionToggle('includePolish')}
+                    />
+                  }
+                  label="Auto Polish"
+                />
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.addMarkers}
+                      onChange={handleAutoEditOptionToggle('addMarkers')}
+                    />
+                  }
+                  label="Add markers"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.addAudioBed}
+                      onChange={handleAutoEditOptionToggle('addAudioBed')}
+                    />
+                  }
+                  label="Audio bed"
+                />
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.enforceNoOverlap}
+                      onChange={handleAutoEditOptionToggle('enforceNoOverlap')}
+                    />
+                  }
+                  label="No overlap constraints"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.cleanupFillerPauses}
+                      onChange={handleAutoEditOptionToggle('cleanupFillerPauses')}
+                    />
+                  }
+                  label="Filler/pause cleanup"
+                />
+              </Stack>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.enableDucking}
+                      onChange={handleAutoEditOptionToggle('enableDucking')}
+                    />
+                  }
+                  label="Auto ducking"
+                />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autoEditOptions.enableJCutLCut}
+                      onChange={handleAutoEditOptionToggle('enableJCutLCut')}
+                    />
+                  }
+                  label="J/L cuts"
+                />
+              </Stack>
+
+              {autoEditHistoryForProject.length > 0 && (
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Recent Auto Edit Jobs
+                  </Typography>
+                  <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                    {autoEditHistoryForProject.slice(0, 4).map((entry) => (
+                      <Typography key={entry.id} variant="caption" color="text.secondary">
+                        {new Date(entry.generatedAt).toLocaleString()} • {entry.preset}/{entry.variant} • {(entry.confidence * 100).toFixed(0)}% • {entry.status}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+
+              <Alert severity="info">
+                Auto Edit creates a non-destructive preview first. Review, then Apply or Revert.
+              </Alert>
+              {autoEditRunning && (
+                <Alert severity="info">
+                  Running server ranking{autoEditJobId ? ` (job ${autoEditJobId.slice(0, 8)})` : ''}...
+                  {typeof autoEditServerProgress === 'number'
+                    ? ` ${Math.round(autoEditServerProgress)}%`
+                    : ''}
+                </Alert>
+              )}
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeAutoEditDialog}>
+              {autoEditRunning ? 'Stop' : 'Cancel'}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={runAutoEdit}
+              disabled={autoEditRunning || clips.length === 0}
+              startIcon={autoEditRunning ? <CircularProgress size={14} /> : <AutoFixHighIcon />}
+            >
+              {autoEditRunning
+                ? `Generating${typeof autoEditServerProgress === 'number' ? ` (${Math.round(autoEditServerProgress)}%)` : '…'}`
+                : 'Generate Preview'}
             </Button>
           </DialogActions>
         </Dialog>

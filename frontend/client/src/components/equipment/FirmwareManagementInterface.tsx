@@ -1,4 +1,3 @@
-import { useTheming } from '../../utils/theming-helper';
 import React, { useState } from 'react';
 import {
   Box,
@@ -143,6 +142,29 @@ const RISK_COLORS = {
   high: '#F44330',
 };
 
+const ROLE_ROOM_BRAND = {
+  pageBackground:
+    'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 48%, rgba(30,41,59,0.82) 100%)',
+  panelBackground: 'rgba(15,23,42,0.72)',
+  panelBorder: '1px solid rgba(148,163,184,0.24)',
+  textPrimary: '#f8fafc',
+  textSecondary: 'rgba(226,232,240,0.78)',
+  accent: '#a78bfa',
+  accentSoft: 'rgba(167,139,250,0.18)',
+  accentBlue: '#38bdf8',
+  accentBlueSoft: 'rgba(56,189,248,0.18)',
+};
+
+const getRecommendationTone = (recommendation: string) => {
+  if (recommendation === 'critical') {
+    return { label: 'Kritisk', color: '#fca5a5', background: 'rgba(239,68,68,0.2)', border: 'rgba(248,113,113,0.5)' };
+  }
+  if (recommendation === 'recommended') {
+    return { label: 'Anbefalt', color: '#fcd34d', background: 'rgba(245,158,11,0.18)', border: 'rgba(251,191,36,0.5)' };
+  }
+  return { label: 'Valgfri', color: '#cbd5e1', background: 'rgba(148,163,184,0.2)', border: 'rgba(148,163,184,0.45)' };
+};
+
 const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = ({
   profession,
   userId,
@@ -154,9 +176,6 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
   const [firmwareEndpointUnavailable, setFirmwareEndpointUnavailable] = useState(false);
   const queryClient = useQueryClient();
   
-  // Theming system
-  const theming = useTheming('photographer');
-
   const professionColor = PROFESSION_COLORS[profession];
 
   // Fetch firmware updates
@@ -215,8 +234,11 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               bgcolor: sourceConfig.color + '20',
               color: sourceConfig.color,
               borderColor: sourceConfig.color,
+              border: `1px solid ${sourceConfig.color}66`,
               fontSize: '0.7rem',
-              height: 22}}
+              height: 22,
+              '& .MuiChip-icon': { color: sourceConfig.color },
+            }}
             variant="outlined"
           />
         </Tooltip>
@@ -228,8 +250,10 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               sx={{
                 bgcolor: confidenceConfig.color + '20',
                 color: confidenceConfig.color,
+                border: `1px solid ${confidenceConfig.color}66`,
                 fontSize: '0.7rem',
-                height: 22}}
+                height: 22,
+              }}
             />
           </Tooltip>
         )}
@@ -306,23 +330,58 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
   const renderUpdateCard = (update: FirmwareUpdate) => {
     const benefits = getBenefitsForProfession(update);
-    const recommendation = getRecommendationForProfession(update);
+    const recommendation = getRecommendationForProfession(update) || 'optional';
+    const recommendationTone = getRecommendationTone(recommendation);
+    const riskColor = RISK_COLORS[update.firmwareUpdate.riskLevel as keyof typeof RISK_COLORS] ?? '#94a3b8';
+    const currentVersion = update.equipment.currentFirmwareVersion || 'Ukjent';
 
     return (
       <MuiCard
         key={update.equipment.id}
         sx={{
-          border: update.firmwareUpdate.isCritical ? '2px solid #F44336' : '1px solid #e0e0e0',
+          border: update.firmwareUpdate.isCritical
+            ? '1px solid rgba(248,113,113,0.62)'
+            : `1px solid ${recommendationTone.border}`,
+          background:
+            'linear-gradient(155deg, rgba(2,6,23,0.86) 0%, rgba(15,23,42,0.78) 52%, rgba(30,41,59,0.64) 100%)',
           cursor: 'pointer',
-          transition: 'all 0.3s ease', '&:hover': {
+          transition: 'all 0.28s ease',
+          position: 'relative',
+          overflow: 'hidden',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: update.firmwareUpdate.isCritical
+              ? 'linear-gradient(90deg, #f87171, #fb7185)'
+              : 'linear-gradient(90deg, #a78bfa, #38bdf8)',
+          },
+          '&:hover': {
             transform: 'translateY(-2px)',
-            boxShadow: 4,
-          }}}
+            boxShadow: '0 14px 28px rgba(2,6,23,0.44)',
+            borderColor: 'rgba(125,211,252,0.52)',
+          },
+        }}
         onClick={() => setSelectedUpdate(update)}
       >
-        <CardContent sx={theming.getThemedCardSx()}>
+        <CardContent
+          sx={{
+            p: 2,
+            color: ROLE_ROOM_BRAND.textPrimary,
+            '&:last-child': { pb: 2 },
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <Avatar sx={{ bgcolor: professionColor, mr: 2 }}>
+            <Avatar
+              sx={{
+                mr: 2,
+                background: `linear-gradient(140deg, ${professionColor}, ${ROLE_ROOM_BRAND.accentBlue})`,
+                boxShadow: '0 0 0 1px rgba(255,255,255,0.18) inset',
+              }}
+            >
               {profession === 'photographer' ? (
                 <PhotoCamera />
               ) : profession === 'videographer' ? (
@@ -334,11 +393,11 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               )}
             </Avatar>
             <Box sx={{ flex: 1 }}>
-              <Typography variant="h6" sx={{ fontSize: '1.1rem', color: theming.colors.primary }}>
+              <Typography variant="h6" sx={{ fontSize: '1.1rem', color: ROLE_ROOM_BRAND.textPrimary, fontWeight: 700 }}>
                 {update.equipment.brand} {update.equipment.model}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {update.equipment.currentFirmwareVersion} → {update.firmwareUpdate.version}
+              <Typography variant="body2" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
+                {currentVersion} → {update.firmwareUpdate.version}
               </Typography>
               {/* RSS Source Indicator */}
               {renderSourceIndicator(update)}
@@ -351,39 +410,40 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                 alignItems: 'flex-end'}}
             >
               {update.firmwareUpdate.isCritical && (
-                <Chip label="Kritisk" color="error" size="small" icon={<Security />} />
+                <Chip
+                  label="Kritisk"
+                  size="small"
+                  icon={<Security />}
+                  sx={{
+                    bgcolor: 'rgba(239,68,68,0.2)',
+                    color: '#fecaca',
+                    border: '1px solid rgba(248,113,113,0.48)',
+                  }}
+                />
               )}
               <Chip
-                label={
-                  recommendation === 'recommended'
-                    ? 'Anbefalt'
-                    : recommendation === 'critical'
-                      ? 'Kritisk'
-                      : 'Valgfri'
-                }
+                label={recommendationTone.label}
                 size="small"
-                color={
-                  recommendation === 'critical'
-                    ? 'error'
-                    : recommendation === 'recommended'
-                      ? 'warning'
-                      : 'default'
-                }
+                sx={{
+                  bgcolor: recommendationTone.background,
+                  color: recommendationTone.color,
+                  border: `1px solid ${recommendationTone.border}`,
+                }}
               />
             </Box>
           </Box>
 
           <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" sx={{ mb: 1, color: professionColor }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, color: ROLE_ROOM_BRAND.accentBlue, fontWeight: 700 }}>
               {profession === 'music_producer' ? 'Programvareforbedringer: ' : 'Hovedforbedringer:'}
             </Typography>
             {benefits.slice(0, 2).map((benefit, index) => (
-              <Typography key={index} variant="body2" sx={{ mb: 0.5 }}>
-                • {benefit}
+              <Typography key={index} variant="body2" sx={{ mb: 0.5, color: ROLE_ROOM_BRAND.textSecondary }}>
+                {`• ${benefit}`}
               </Typography>
             ))}
             {benefits.length > 2 && (
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: 'rgba(148,163,184,0.95)' }}>
                 +{benefits.length - 2} flere forbedringer...
               </Typography>
             )}
@@ -394,16 +454,30 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               label={`Risiko: ${update.firmwareUpdate.riskLevel}`}
               size="small"
               sx={{
-                bgcolor: RISK_COLORS[update.firmwareUpdate.riskLevel as keyof typeof RISK_COLORS] + '20',
-                color: RISK_COLORS[update.firmwareUpdate.riskLevel as keyof typeof RISK_COLORS]}}
+                bgcolor: `${riskColor}20`,
+                color: riskColor,
+                border: `1px solid ${riskColor}66`,
+              }}
             />
             {update.firmwareUpdate.downloadSize && (
-              <Chip label={update.firmwareUpdate.downloadSize} size="small" variant="outlined" />
+              <Chip
+                label={update.firmwareUpdate.downloadSize}
+                size="small"
+                variant="outlined"
+                sx={{
+                  borderColor: 'rgba(148,163,184,0.45)',
+                  color: 'rgba(226,232,240,0.86)',
+                }}
+              />
             )}
             <Chip
-              label={new Date(update.firmwareUpdate.releaseDate).toLocaleDateString('no')}
+              label={new Date(update.firmwareUpdate.releaseDate).toLocaleDateString('nb-NO')}
               size="small"
               variant="outlined"
+              sx={{
+                borderColor: 'rgba(148,163,184,0.45)',
+                color: 'rgba(226,232,240,0.86)',
+              }}
             />
           </Box>
 
@@ -413,7 +487,12 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                 variant="contained"
                 startIcon={<Download />}
                 size="small"
-                sx={{ bgcolor: professionColor }}
+                sx={{
+                  bgcolor: ROLE_ROOM_BRAND.accent,
+                  color: '#0f172a',
+                  fontWeight: 700,
+                  '&:hover': { bgcolor: '#c4b5fd' },
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   window.open(update.firmwareUpdate.downloadUrl, '_blank');
@@ -426,7 +505,10 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               variant="outlined"
               startIcon={<Info />}
               size="small"
-              sx={{ borderColor: professionColor, color: professionColor }}
+              sx={{
+                borderColor: 'rgba(56,189,248,0.55)',
+                color: ROLE_ROOM_BRAND.accentBlue,
+              }}
             >
               Detaljer
             </Button>
@@ -438,46 +520,87 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 3 }}>
-        <LinearProgress sx={{ mb: 2 }} />
-        <Typography>Sjekker firmware-oppdateringer...</Typography>
+      <Box
+        sx={{
+          p: 3,
+          borderRadius: 2,
+          background: ROLE_ROOM_BRAND.pageBackground,
+          border: ROLE_ROOM_BRAND.panelBorder,
+        }}
+      >
+        <LinearProgress sx={{ mb: 2, bgcolor: 'rgba(255,255,255,0.08)', '& .MuiLinearProgress-bar': { bgcolor: ROLE_ROOM_BRAND.accent } }} />
+        <Typography sx={{ color: ROLE_ROOM_BRAND.textPrimary }}>Sjekker fastvare-oppdateringer...</Typography>
       </Box>
     );
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box
+      sx={{
+        p: { xs: 2, md: 3 },
+        background: ROLE_ROOM_BRAND.pageBackground,
+        border: ROLE_ROOM_BRAND.panelBorder,
+        borderRadius: 2,
+      }}
+    >
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box
+        sx={{
+          mb: 3,
+          p: { xs: 1.5, md: 2 },
+          borderRadius: 2,
+          background: 'linear-gradient(140deg, rgba(30,41,59,0.52) 0%, rgba(15,23,42,0.62) 100%)',
+          border: '1px solid rgba(148,163,184,0.22)',
+        }}
+      >
         <Box
           sx={{
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
             mb: 2}}
         >
-          <Typography
-            variant="h4"
-            sx={{
-              color: theming.colors.primary,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 2}}
-          >
-            <Update />
-            Firmware-administrasjon
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Avatar
+              sx={{
+                width: 38,
+                height: 38,
+                background: `linear-gradient(135deg, ${ROLE_ROOM_BRAND.accent}, ${ROLE_ROOM_BRAND.accentBlue})`,
+              }}
+            >
+              <Update fontSize="small" />
+            </Avatar>
+            <Typography
+              variant="h5"
+              sx={{
+                color: ROLE_ROOM_BRAND.textPrimary,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                fontWeight: 800,
+                letterSpacing: 0.2,
+              }}
+            >
+              Fastvare-oppdateringer
+            </Typography>
+          </Box>
           <Button
             variant="contained"
             startIcon={checkAllFirmwareMutation.isPending ? <Cached className="animate-spin" /> : <Refresh />}
             onClick={() => checkAllFirmwareMutation.mutate()}
             disabled={checkAllFirmwareMutation.isPending}
-            sx={{ bgcolor: professionColor }}
+            sx={{
+              bgcolor: ROLE_ROOM_BRAND.accent,
+              color: '#0f172a',
+              fontWeight: 700,
+              '&:hover': { bgcolor: '#c4b5fd' },
+            }}
           >
             {checkAllFirmwareMutation.isPending ? 'Sjekker...' : 'Sjekk oppdateringer'}
           </Button>
         </Box>
-        <Typography variant="body1" color="text.secondary">
+        <Typography variant="body1" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
           Hold {profession === 'music_producer' ? 'programvaren og utstyret' : 'utstyret'} ditt
           oppdatert med de nyeste {profession === 'music_producer' ? 'programvare-' : 'firmware-'}
           versjonene fra produsentene
@@ -487,12 +610,12 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
       {/* Statistics */}
       <Grid container spacing={2} sx={{ mb: 4 }}>
         <Grid item xs={6} sm={3}>
-          <MuiCard>
-            <CardContent sx={{ textAlign: 'center' }}>
+          <MuiCard sx={{ background: ROLE_ROOM_BRAND.panelBackground, border: ROLE_ROOM_BRAND.panelBorder }}>
+            <CardContent sx={{ textAlign: 'center', color: ROLE_ROOM_BRAND.textPrimary }}>
               <Typography variant="h4" sx={{ color: '#F44336' }}>
                 {criticalCount}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
                 {profession === 'music_producer'
                   ? 'Kritiske programvareoppdateringer'
                   : 'Kritiske oppdateringer'}
@@ -501,12 +624,12 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
           </MuiCard>
         </Grid>
         <Grid item xs={6} sm={3}>
-          <MuiCard>
-            <CardContent sx={{ textAlign: 'center' }}>
+          <MuiCard sx={{ background: ROLE_ROOM_BRAND.panelBackground, border: ROLE_ROOM_BRAND.panelBorder }}>
+            <CardContent sx={{ textAlign: 'center', color: ROLE_ROOM_BRAND.textPrimary }}>
               <Typography variant="h4" sx={{ color: '#FF9800' }}>
                 {recommendedCount}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
                 {profession === 'music_producer'
                   ? 'Anbefalte programvareoppdateringer'
                   : 'Anbefalte oppdateringer'}
@@ -515,20 +638,20 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
           </MuiCard>
         </Grid>
         <Grid item xs={6} sm={3}>
-          <MuiCard>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ color: professionColor }}>
+          <MuiCard sx={{ background: ROLE_ROOM_BRAND.panelBackground, border: ROLE_ROOM_BRAND.panelBorder }}>
+            <CardContent sx={{ textAlign: 'center', color: ROLE_ROOM_BRAND.textPrimary }}>
+              <Typography variant="h4" sx={{ color: ROLE_ROOM_BRAND.accentBlue }}>
                 {firmwareUpdates.length}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
                 Totalt tilgjengelige
               </Typography>
             </CardContent>
           </MuiCard>
         </Grid>
         <Grid item xs={6} sm={3}>
-          <MuiCard>
-            <CardContent sx={{ textAlign: 'center' }}>
+          <MuiCard sx={{ background: ROLE_ROOM_BRAND.panelBackground, border: ROLE_ROOM_BRAND.panelBorder }}>
+            <CardContent sx={{ textAlign: 'center', color: ROLE_ROOM_BRAND.textPrimary }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -537,9 +660,9 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                     color="default"
                     sx={{
                       '& .MuiSwitch-switchBase.Mui-checked': {
-                        color: professionColor,
+                        color: ROLE_ROOM_BRAND.accentBlue,
                       }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                        backgroundColor: professionColor,
+                        backgroundColor: ROLE_ROOM_BRAND.accentBlue,
                       }}}
                   />
                 }
@@ -549,7 +672,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                   flexDirection: 'column',
                   alignItems: 'center','& .MuiFormControlLabel-label': {
                     fontSize: '0.875rem',
-                    color: 'text.secondary',
+                    color: ROLE_ROOM_BRAND.textSecondary,
                   }}}
               />
             </CardContent>
@@ -564,14 +687,24 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
           gap: 2,
           mb: 3,
           alignItems: 'center',
-          flexWrap: 'wrap'}}
+          flexWrap: 'wrap',
+          p: 1.5,
+          borderRadius: 2,
+          bgcolor: 'rgba(15,23,42,0.58)',
+          border: '1px solid rgba(148,163,184,0.24)',
+        }}
       >
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Filter</InputLabel>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>Filter</InputLabel>
           <Select
             value={filterBy}
             label="Filter"
             onChange={(e) => setFilterBy(e.target.value as any)}
+            sx={{
+              color: ROLE_ROOM_BRAND.textPrimary,
+              bgcolor: 'rgba(2,6,23,0.5)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.34)' },
+            }}
           >
             <MenuItem value="all">Alle</MenuItem>
             <MenuItem value="critical">Kritiske</MenuItem>
@@ -580,9 +713,18 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
           </Select>
         </FormControl>
 
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Sorter</InputLabel>
-          <Select value={sortBy} label="Sorter" onChange={(e) => setSortBy(e.target.value as any)}>
+        <FormControl size="small" sx={{ minWidth: 140 }}>
+          <InputLabel sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>Sorter</InputLabel>
+          <Select
+            value={sortBy}
+            label="Sorter"
+            onChange={(e) => setSortBy(e.target.value as any)}
+            sx={{
+              color: ROLE_ROOM_BRAND.textPrimary,
+              bgcolor: 'rgba(2,6,23,0.5)',
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.34)' },
+            }}
+          >
             <MenuItem value="priority">Prioritet</MenuItem>
             <MenuItem value="date">Dato</MenuItem>
             <MenuItem value="brand">Merke</MenuItem>
@@ -591,29 +733,59 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
         <Chip
           label={`${sortedUpdates.length} oppdateringer`}
-          sx={{ bgcolor: professionColor + '20', color: professionColor }}
+          sx={{ bgcolor: ROLE_ROOM_BRAND.accentBlueSoft, color: ROLE_ROOM_BRAND.accentBlue, border: '1px solid rgba(56,189,248,0.34)' }}
         />
       </Box>
 
       {/* Updates List */}
       {firmwareEndpointUnavailable && !isLoading && (
-        <Alert severity="info" sx={{ textAlign: 'center', py: 4 }}>
-          <Info sx={{ fontSize: '3rem', mb: 2, color: 'info.main' }} />
-          <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
-            Firmware-data er ikke tilgjengelig i dette miljøet ennå
-          </Typography>
-          <Typography>Panelet viser oppdateringer automatisk når endepunktet blir aktivt.</Typography>
-        </Alert>
+        <Box sx={{ minHeight: { xs: 260, md: 320 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              width: '100%',
+              maxWidth: 860,
+              textAlign: 'center',
+              py: { xs: 5, md: 6 },
+              px: { xs: 2.5, md: 4 },
+              borderRadius: 2,
+              background: 'linear-gradient(140deg, rgba(30,58,138,0.2) 0%, rgba(15,23,42,0.62) 100%)',
+              border: '1px solid rgba(96,165,250,0.34)',
+            }}
+          >
+            <Info sx={{ fontSize: '3.2rem', mb: 1.5, color: '#60a5fa' }} />
+            <Typography variant="h5" sx={{ mb: 1, color: ROLE_ROOM_BRAND.textPrimary, fontWeight: 700 }}>
+              Fastvaredata er ikke tilgjengelig ennå
+            </Typography>
+            <Typography sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
+              Panelet viser oppdateringer automatisk når endepunktet blir aktivt.
+            </Typography>
+          </Box>
+        </Box>
       )}
 
       {!firmwareEndpointUnavailable && sortedUpdates.length === 0 && !isLoading && (
-        <Alert severity="info" sx={{ textAlign: 'center', py: 4 }}>
-          <CheckCircle sx={{ fontSize: '3rem', mb: 2, color: 'success.main' }} />
-          <Typography variant="h6" sx={{ mb: 1, color: theming.colors.primary }}>
-            Alle firmware-versjoner er oppdaterte!
-          </Typography>
-          <Typography>Ditt utstyr har de nyeste firmware-versjonene tilgjengelig.</Typography>
-        </Alert>
+        <Box sx={{ minHeight: { xs: 260, md: 320 }, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              width: '100%',
+              maxWidth: 860,
+              textAlign: 'center',
+              py: { xs: 5, md: 6 },
+              px: { xs: 2.5, md: 4 },
+              borderRadius: 2,
+              background: 'linear-gradient(140deg, rgba(16,185,129,0.14) 0%, rgba(15,23,42,0.62) 100%)',
+              border: '1px solid rgba(74,222,128,0.35)',
+            }}
+          >
+            <CheckCircle sx={{ fontSize: '3.2rem', mb: 1.5, color: '#4ade80' }} />
+            <Typography variant="h4" sx={{ mb: 1, color: ROLE_ROOM_BRAND.textPrimary, fontWeight: 700 }}>
+              Alle firmware-versjoner er oppdaterte!
+            </Typography>
+            <Typography sx={{ color: ROLE_ROOM_BRAND.textSecondary, fontSize: '1.15rem' }}>
+              Ditt utstyr har de nyeste firmware-versjonene tilgjengelig.
+            </Typography>
+          </Box>
+        </Box>
       )}
 
       <Grid container spacing={3}>
@@ -626,10 +798,17 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
         onClose={() => setSelectedUpdate(null)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            background: ROLE_ROOM_BRAND.pageBackground,
+            border: ROLE_ROOM_BRAND.panelBorder,
+            color: ROLE_ROOM_BRAND.textPrimary,
+          },
+        }}
       >
         {selectedUpdate && (
           <>
-            <DialogTitle component="div">
+            <DialogTitle component="div" sx={{ borderBottom: '1px solid rgba(148,163,184,0.24)' }}>
               <Box
                 sx={{
                   display: 'flex',
@@ -637,32 +816,37 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                   justifyContent: 'space-between'}}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Avatar sx={{ bgcolor: professionColor }}>
+                  <Avatar sx={{ background: `linear-gradient(135deg, ${professionColor}, ${ROLE_ROOM_BRAND.accentBlue})` }}>
                     <Update />
                   </Avatar>
                   <Box>
-                    <Typography variant="h6" sx={{ color: theming.colors.primary }}>
+                    <Typography variant="h6" sx={{ color: ROLE_ROOM_BRAND.textPrimary }}>
                       {selectedUpdate.equipment.brand} {selectedUpdate.equipment.model}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    <Typography variant="body2" sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
                       Firmware {selectedUpdate.firmwareUpdate.version}
                     </Typography>
                     {/* Source indicator in dialog header */}
                     {renderSourceIndicator(selectedUpdate)}
                   </Box>
                 </Box>
-                <IconButton onClick={() => setSelectedUpdate(null)}>
+                <IconButton onClick={() => setSelectedUpdate(null)} sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>
                   <Close />
                 </IconButton>
               </Box>
             </DialogTitle>
-            <DialogContent>
+            <DialogContent sx={{ pt: 2 }}>
               {/* Source Information Box */}
               {selectedUpdate.firmwareUpdate.sourceType && (
                 <Alert
                   severity="info"
                   icon={<RssFeed />}
-                  sx={{ mb: 3 }}
+                  sx={{
+                    mb: 3,
+                    bgcolor: 'rgba(30,58,138,0.16)',
+                    border: '1px solid rgba(96,165,250,0.34)',
+                    color: ROLE_ROOM_BRAND.textPrimary,
+                  }}
                 >
                   <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
                     Kildeinformasjon
@@ -682,7 +866,15 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
               {/* Critical warning */}
               {selectedUpdate.firmwareUpdate.isCritical && (
-                <Alert severity="error" sx={{ mb: 3 }}>
+                <Alert
+                  severity="error"
+                  sx={{
+                    mb: 3,
+                    bgcolor: 'rgba(239,68,68,0.15)',
+                    border: '1px solid rgba(248,113,113,0.4)',
+                    color: ROLE_ROOM_BRAND.textPrimary,
+                  }}
+                >
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
                     Kritisk sikkerhetsoppdatering
                   </Typography>
@@ -695,7 +887,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
               {/* All benefits */}
               <Box sx={{ mb: 3 }}>
-                <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                <Typography variant="h6" sx={{ mb: 2, color: ROLE_ROOM_BRAND.textPrimary }}>
                   Forbedringer for{', '}
                   {profession === 'photographer'
                     ? 'fotografer'
@@ -718,7 +910,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
               {/* New features */}
               {selectedUpdate.firmwareUpdate.newFeatures && selectedUpdate.firmwareUpdate.newFeatures.length > 0 && (
-                <Accordion sx={{ mb: 2 }}>
+                <Accordion sx={{ mb: 2, bgcolor: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.2)' }}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Typography>
                       <NewReleases sx={{ mr: 1, verticalAlign: 'middle' }} />
@@ -742,7 +934,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
               {/* Bug fixes */}
               {selectedUpdate.firmwareUpdate.bugFixes && selectedUpdate.firmwareUpdate.bugFixes.length > 0 && (
-                <Accordion sx={{ mb: 2 }}>
+                <Accordion sx={{ mb: 2, bgcolor: 'rgba(15,23,42,0.62)', border: '1px solid rgba(148,163,184,0.2)' }}>
                   <AccordionSummary expandIcon={<ExpandMore />}>
                     <Typography>
                       <BugReport sx={{ mr: 1, verticalAlign: 'middle' }} />
@@ -767,7 +959,7 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
               {/* Requirements */}
               {selectedUpdate.firmwareUpdate.requirements && selectedUpdate.firmwareUpdate.requirements.length > 0 && (
                 <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 2, color: theming.colors.primary }}>
+                  <Typography variant="h6" sx={{ mb: 2, color: ROLE_ROOM_BRAND.textPrimary }}>
                     Systemkrav
                   </Typography>
                   <List dense>
@@ -785,7 +977,15 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
 
               {/* Known issues */}
               {selectedUpdate.firmwareUpdate.knownIssues && selectedUpdate.firmwareUpdate.knownIssues.length > 0 && (
-                <Alert severity="warning" sx={{ mb: 3 }}>
+                <Alert
+                  severity="warning"
+                  sx={{
+                    mb: 3,
+                    bgcolor: 'rgba(245,158,11,0.15)',
+                    border: '1px solid rgba(251,191,36,0.4)',
+                    color: ROLE_ROOM_BRAND.textPrimary,
+                  }}
+                >
                   <Typography variant="subtitle2" sx={{ mb: 1 }}>
                     Kjente problemer
                   </Typography>
@@ -799,12 +999,13 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                 </Alert>
               )}
             </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setSelectedUpdate(null)}>Lukk</Button>
+            <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.24)', px: 2, py: 1.5 }}>
+              <Button onClick={() => setSelectedUpdate(null)} sx={{ color: ROLE_ROOM_BRAND.textSecondary }}>Lukk</Button>
               {selectedUpdate.firmwareUpdate.sourceUrl && (
                 <Button
                   startIcon={<Launch />}
                   onClick={() => window.open(selectedUpdate.firmwareUpdate.sourceUrl, '_blank')}
+                  sx={{ color: ROLE_ROOM_BRAND.accentBlue }}
                 >
                   Produsent
                 </Button>
@@ -817,7 +1018,12 @@ const FirmwareManagementInterface: React.FC<FirmwareManagementInterfaceProps> = 
                     window.open(selectedUpdate.firmwareUpdate.downloadUrl, '_blank');
                     setSelectedUpdate(null);
                   }}
-                  sx={{ bgcolor: professionColor }}
+                  sx={{
+                    bgcolor: ROLE_ROOM_BRAND.accent,
+                    color: '#0f172a',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: '#c4b5fd' },
+                  }}
                 >
                   Last ned firmware
                 </Button>

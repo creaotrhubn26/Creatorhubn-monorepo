@@ -37,6 +37,8 @@ import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 import AcademyVideoPlayer from './AcademyVideoPlayer';
 
 interface CourseCreatorProps {
@@ -62,6 +64,8 @@ interface CreatorModule {
   lessons: CreatorLesson[];
 }
 
+type AcademyTextFn = (no: string, en: string) => string;
+
 const fallbackCourseTitle = 'Directing Masterclass';
 
 const createLesson = (title: string, durationMin: number): CreatorLesson => ({
@@ -74,24 +78,28 @@ const createLesson = (title: string, durationMin: number): CreatorLesson => ({
   resources: [],
 });
 
-const createDefaultModules = (): CreatorModule[] => [
+const createDefaultModules = (tt: AcademyTextFn): CreatorModule[] => [
   {
     id: `module-${Date.now()}-1`,
-    title: 'Module 1: Foundations',
+    title: tt('Modul 1: Grunnlag', 'Module 1: Foundations'),
     collapsed: false,
-    lessons: [createLesson('Introduction', 17), createLesson('Lighting Basics', 5), createLesson('Practical Setup', 10)],
+    lessons: [
+      createLesson(tt('Introduksjon', 'Introduction'), 17),
+      createLesson(tt('Lyssetting grunnleggende', 'Lighting Basics'), 5),
+      createLesson(tt('Praktisk oppsett', 'Practical Setup'), 10),
+    ],
   },
   {
     id: `module-${Date.now()}-2`,
-    title: 'Module 2: Advanced Techniques',
+    title: tt('Modul 2: Avanserte teknikker', 'Module 2: Advanced Techniques'),
     collapsed: true,
-    lessons: [createLesson('Advanced Shot Planning', 12)],
+    lessons: [createLesson(tt('Avansert shot-planlegging', 'Advanced Shot Planning'), 12)],
   },
   {
     id: `module-${Date.now()}-3`,
-    title: 'Module 3: Directing Actors',
+    title: tt('Modul 3: Instruksjon av skuespillere', 'Module 3: Directing Actors'),
     collapsed: true,
-    lessons: [createLesson('Blocking and Performance Notes', 11)],
+    lessons: [createLesson(tt('Blocking og notater', 'Blocking and Performance Notes'), 11)],
   },
 ];
 
@@ -105,6 +113,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
   const [, setLocation] = useLocation();
   const { createCourse, updateCourse, getCourse } = useAcademy();
   const { analytics, debugging } = useEnhancedMasterIntegration();
+  const { tt, navLabel } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('curriculum');
   const [centerTab, setCenterTab] = useState<'curriculum' | 'settings' | 'lessons' | 'media'>('curriculum');
@@ -141,7 +150,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
     resources: [],
   });
 
-  const [modules, setModules] = useState<CreatorModule[]>(createDefaultModules());
+  const [modules, setModules] = useState<CreatorModule[]>(() => createDefaultModules(tt));
 
   useEffect(() => {
     if (!courseId) return;
@@ -159,11 +168,11 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
     if (existingLessons.length > 0) {
       const moduleFromExisting: CreatorModule = {
         id: `module-${existing.id}`,
-        title: 'Module 1: Imported Lessons',
+        title: tt('Modul 1: Importerte leksjoner', 'Module 1: Imported Lessons'),
         collapsed: false,
         lessons: existingLessons.map((lesson: any) => ({
           id: String(lesson.id),
-          title: String(lesson.title || 'Untitled Lesson'),
+          title: String(lesson.title || tt('Leksjon uten tittel', 'Untitled Lesson')),
           duration: Number(lesson.duration || 0),
           videoUrl: lesson.videoUrl || '/assets/academy/intro-video.mp4',
           thumbnail: '',
@@ -173,7 +182,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
       };
       setModules([moduleFromExisting]);
     }
-  }, [courseId, getCourse]);
+  }, [courseId, getCourse, tt]);
 
   const flattenedLessons = useMemo(() => {
     return modules.flatMap((module, moduleIndex) =>
@@ -210,12 +219,12 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
       ...prev,
       {
         id: `module-${Date.now()}-${prev.length + 1}`,
-        title: `Module ${prev.length + 1}: New Module`,
+        title: `${tt('Modul', 'Module')} ${prev.length + 1}: ${tt('Ny modul', 'New Module')}`,
         collapsed: false,
-        lessons: [createLesson('New Lesson', 8)],
+        lessons: [createLesson(tt('Ny leksjon', 'New Lesson'), 8)],
       },
     ]);
-  }, []);
+  }, [tt]);
 
   const addLessonToModule = useCallback((moduleId: string) => {
     setModules((prev) =>
@@ -223,11 +232,11 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
         if (module.id !== moduleId) return module;
         return {
           ...module,
-          lessons: [...module.lessons, createLesson('New Lesson', 7)],
+          lessons: [...module.lessons, createLesson(tt('Ny leksjon', 'New Lesson'), 7)],
         };
       }),
     );
-  }, []);
+  }, [tt]);
 
   const updateLessonField = useCallback((moduleId: string, lessonId: string, field: keyof CreatorLesson, value: string | number | boolean) => {
     setModules((prev) =>
@@ -285,7 +294,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
           setCourse((prev: any) => ({ ...prev, ...created }));
         }
 
-        const message = publish ? 'Course published.' : 'Draft saved.';
+        const message = publish ? tt('Kurs publisert.', 'Course published.') : tt('Utkast lagret.', 'Draft saved.');
         setSaveMessage(message);
         analytics.trackEvent(publish ? 'course_creator_publish' : 'course_creator_save', {
           courseTitle: payload.title,
@@ -294,24 +303,24 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
         });
         onSave?.(payload);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save course.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre kurs.', 'Failed to save course.');
         setSaveMessage(message);
         debugging.logIntegration('error', 'Course creator save failed', { error: message });
       } finally {
         setSaving(false);
       }
     },
-    [analytics, course, courseId, createCourse, debugging, flattenedLessons, modules.length, onSave, totalDurationMinutes, updateCourse],
+    [analytics, course, courseId, createCourse, debugging, flattenedLessons, modules.length, onSave, totalDurationMinutes, tt, updateCourse],
   );
 
   const addTag = useCallback(() => {
-    const newTag = window.prompt('Enter new tag');
+    const newTag = window.prompt(tt('Skriv inn ny tagg', 'Enter new tag'));
     if (!newTag) return;
     setCourse((prev: any) => {
       if (prev.tags.includes(newTag.trim().toLowerCase())) return prev;
       return { ...prev, tags: [...prev.tags, newTag.trim().toLowerCase()] };
     });
-  }, []);
+  }, [tt]);
 
   if (previewMode && previewLesson) {
     return (
@@ -327,7 +336,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
               border: '1px solid rgba(245,166,35,0.4)',
             }}
           >
-            Back to Course Creator
+            {tt('Tilbake til kursredigering', 'Back to Course Creator')}
           </Button>
         </Box>
         <AcademyVideoPlayer course={previewCourse} lesson={previewLesson} />
@@ -360,19 +369,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
           }}
         >
           <Box sx={{ p: 2, borderBottom: '1px solid rgba(245,166,35,0.15)' }}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Box
-                sx={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: '6px',
-                  background: 'linear-gradient(135deg, #f5a623 0%, #f59e0b 100%)',
-                }}
-              />
-              <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', letterSpacing: '0.08em', fontSize: '1.1rem' }}>
-                CREATORHUB ACADEMY
-              </Typography>
-            </Stack>
+            <AcademyBrandMark />
           </Box>
 
           <Box sx={{ p: 1.5 }}>
@@ -380,8 +377,8 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
               fullWidth
               startIcon={<Add />}
               onClick={() => {
-                setCourse((prev: any) => ({ ...prev, title: 'New Course Draft' }));
-                setModules(createDefaultModules());
+                setCourse((prev: any) => ({ ...prev, title: tt('Nytt kursutkast', 'New Course Draft') }));
+                setModules(createDefaultModules(tt));
               }}
               sx={{
                 justifyContent: 'flex-start',
@@ -392,7 +389,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 mb: 1.2,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
 
             <Stack spacing={0.6}>
@@ -448,7 +445,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                       border: active ? '1px solid rgba(245,166,35,0.42)' : '1px solid transparent',
                     }}
                   >
-                    {label}
+                    {navLabel(label)}
                   </Button>
                 );
               })}
@@ -468,7 +465,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 borderRadius: '8px',
               }}
             >
-              New Module
+              {tt('Ny modul', 'New Module')}
             </Button>
           </Box>
         </Box>
@@ -490,7 +487,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 </Typography>
                 <TextField
                   size="small"
-                  placeholder="Search modules..."
+                  placeholder={tt('Søk moduler...', 'Search modules...')}
                   InputProps={{
                     startAdornment: (
                       <Box sx={{ display: 'flex', alignItems: 'center', mr: 0.8 }}>
@@ -541,7 +538,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 />
                 <Chip
                   size="small"
-                  label={course.isPublished ? 'Published' : 'Draft'}
+                  label={course.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
                   sx={{
                     bgcolor: course.isPublished ? alpha('#f5a623', 0.26) : alpha('#9aa5b6', 0.2),
                     color: '#f4ede1',
@@ -564,7 +561,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Module Manager
+                  {tt('Moduladministrator', 'Module Manager')}
                 </Button>
                 <Button
                   startIcon={<Edit />}
@@ -577,7 +574,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Lesson Editor
+                  {tt('Leksjonsredigering', 'Lesson Editor')}
                 </Button>
                 <Button
                   startIcon={<Add />}
@@ -590,7 +587,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Cohort Settings
+                  {tt('Kohortinnstillinger', 'Cohort Settings')}
                 </Button>
                 <Button
                   startIcon={<Edit />}
@@ -603,7 +600,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Annotation
+                  {tt('Annotering', 'Annotation')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -616,7 +613,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Quiz
+                  {tt('Quiz', 'Quiz')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -629,7 +626,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Assignments
+                  {tt('Oppgaver', 'Assignments')}
                 </Button>
                 <Button
                   startIcon={<Campaign />}
@@ -655,7 +652,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
                 <Button
                   startIcon={<Movie />}
@@ -668,7 +665,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Player
+                  {tt('Spiller', 'Player')}
                 </Button>
                 <Button
                   startIcon={<MonetizationOn />}
@@ -681,7 +678,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Monetize
+                  {tt('Monetiser', 'Monetize')}
                 </Button>
                 <Button
                   startIcon={<PlayArrow />}
@@ -694,7 +691,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Preview
+                  {tt('Forhåndsvis', 'Preview')}
                 </Button>
                 <Button
                   startIcon={<Save />}
@@ -708,7 +705,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2,
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   startIcon={<Publish />}
@@ -724,7 +721,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     '&:hover': { background: 'linear-gradient(180deg, #ffe08d 0%, #f6b640 100%)' },
                   }}
                 >
-                  Publish
+                  {tt('Publiser', 'Publish')}
                 </Button>
               </Stack>
             </Stack>
@@ -750,7 +747,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     fontWeight: centerTab === key ? 700 : 500,
                   }}
                 >
-                  {label}
+                  {navLabel(label)}
                 </Button>
               ))}
             </Stack>
@@ -951,7 +948,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                               fontFamily: 'Rajdhani, sans-serif',
                             }}
                           >
-                            New Lesson
+                            {tt('Ny leksjon', 'New Lesson')}
                           </Button>
                         </Box>
                       )}
@@ -971,7 +968,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     px: 2.2,
                   }}
                 >
-                  Add Module
+                  {tt('Legg til modul', 'Add Module')}
                 </Button>
               </Stack>
             )}
@@ -986,10 +983,19 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 }}
               >
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.9rem', mb: 0.7 }}>
-                  {centerTab.charAt(0).toUpperCase() + centerTab.slice(1)}
+                  {centerTab === 'curriculum'
+                    ? navLabel('Curriculum')
+                    : centerTab === 'settings'
+                      ? navLabel('Settings')
+                      : centerTab === 'lessons'
+                        ? navLabel('Lessons')
+                        : navLabel('Media')}
                 </Typography>
                 <Typography sx={{ opacity: 0.75, fontFamily: 'Rajdhani, sans-serif' }}>
-                  Existing functionality is active. Use Curriculum for full module and lesson editing.
+                  {tt(
+                    'Eksisterende funksjonalitet er aktiv. Bruk Læreplan for full redigering av moduler og leksjoner.',
+                    'Existing functionality is active. Use Curriculum for full module and lesson editing.',
+                  )}
                 </Typography>
               </Box>
             )}
@@ -1005,16 +1011,16 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             >
               <Box sx={{ px: 1.4, py: 1, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.85rem' }}>
-                  Performance Analytics
+                  {tt('Ytelsesanalyse', 'Performance Analytics')}
                 </Typography>
               </Box>
 
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 1.2, p: 1.2 }}>
                 {[
-                  { label: 'Total Learners', value: String(Math.max(825, course.studentCount * 7)) },
-                  { label: 'Avg Watch Time', value: `${Math.max(41, Math.min(95, completionRate))}%` },
-                  { label: 'Completion Rate', value: `${completionRate}%` },
-                  { label: 'Revenue', value: `$${(course.price * Math.max(1, course.studentCount || 14) / 1000).toFixed(1)}k` },
+                  { label: tt('Totalt antall deltakere', 'Total Learners'), value: String(Math.max(825, course.studentCount * 7)) },
+                  { label: tt('Gj.sn. seertid', 'Avg Watch Time'), value: `${Math.max(41, Math.min(95, completionRate))}%` },
+                  { label: tt('Fullføringsrate', 'Completion Rate'), value: `${completionRate}%` },
+                  { label: tt('Inntekt', 'Revenue'), value: `$${(course.price * Math.max(1, course.studentCount || 14) / 1000).toFixed(1)}k` },
                 ].map((card, index) => (
                   <Box
                     key={card.label}
@@ -1060,7 +1066,11 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   fontWeight: rightTab === tab ? 700 : 500,
                 }}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'settings'
+                  ? navLabel('Settings')
+                  : tab === 'details'
+                    ? tt('Detaljer', 'Details')
+                    : tt('Prising', 'Pricing')}
               </Button>
             ))}
             <IconButton size="small" sx={{ color: 'rgba(244,237,225,0.6)', ml: 'auto' }}>
@@ -1090,7 +1100,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
 
           <Stack spacing={1.2} sx={{ mt: 1.5 }}>
             <TextField
-              label="Category"
+              label={tt('Kategori', 'Category')}
               value={course.category}
               onChange={(event) => setCourse((prev: any) => ({ ...prev, category: event.target.value }))}
               select
@@ -1112,7 +1122,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             </TextField>
 
             <TextField
-              label="Skill Level"
+              label={tt('Nivå', 'Skill Level')}
               value={course.level}
               onChange={(event) => setCourse((prev: any) => ({ ...prev, level: event.target.value }))}
               select
@@ -1134,7 +1144,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             </TextField>
 
             <TextField
-              label="Price (NOK)"
+              label={tt('Pris (NOK)', 'Price (NOK)')}
               value={course.price}
               onChange={(event) => setCourse((prev: any) => ({ ...prev, price: Number(event.target.value || 0) }))}
               size="small"
@@ -1176,16 +1186,16 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   px: 1.2,
                 }}
               >
-                Add Tag
+                {tt('Legg til tagg', 'Add Tag')}
               </Button>
             </Box>
 
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
             <Select
-              value={course.isPublished ? 'Published' : 'Draft'}
+              value={course.isPublished ? 'published' : 'draft'}
               size="small"
-              onChange={(event) => setCourse((prev: any) => ({ ...prev, isPublished: event.target.value === 'Published' }))}
+              onChange={(event) => setCourse((prev: any) => ({ ...prev, isPublished: event.target.value === 'published' }))}
               sx={{
                 color: '#f4ede1',
                 borderRadius: '8px',
@@ -1194,8 +1204,8 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 },
               }}
             >
-              <MenuItem value="Draft">Draft</MenuItem>
-              <MenuItem value="Published">Published</MenuItem>
+              <MenuItem value="draft">{tt('Utkast', 'Draft')}</MenuItem>
+              <MenuItem value="published">{tt('Publisert', 'Published')}</MenuItem>
             </Select>
 
             <Stack direction="row" spacing={1}>
@@ -1210,7 +1220,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   flex: 1,
                 }}
               >
-                Unpublish
+                {tt('Avpubliser', 'Unpublish')}
               </Button>
               <Button
                 variant="outlined"
@@ -1223,12 +1233,12 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   flex: 1,
                 }}
               >
-                Duplicate
+                {tt('Dupliser', 'Duplicate')}
               </Button>
               <Button
                 variant="outlined"
                 onClick={() => {
-                  setModules(createDefaultModules());
+                  setModules(createDefaultModules(tt));
                   setCourse((prev: any) => ({ ...prev, lessons: [] }));
                 }}
                 sx={{
@@ -1239,7 +1249,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   flex: 1,
                 }}
               >
-                Delete
+                {tt('Slett', 'Delete')}
               </Button>
             </Stack>
 
@@ -1252,19 +1262,25 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
               }}
             >
               <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Lessons</Typography>
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>
+                  {navLabel('Lessons')}
+                </Typography>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                   {flattenedLessons.length}
                 </Typography>
               </Stack>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.8 }}>
-                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Learners</Typography>
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>
+                  {tt('Deltakere', 'Learners')}
+                </Typography>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                   {Math.max(course.studentCount, 120)}
                 </Typography>
               </Stack>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.8 }}>
-                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>Completion</Typography>
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.8 }}>
+                  {tt('Fullføring', 'Completion')}
+                </Typography>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.6rem' }}>
                   {completionRate}%
                 </Typography>
@@ -1284,7 +1300,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 flex: 1,
               }}
             >
-              Back
+              {tt('Tilbake', 'Back')}
             </Button>
             <Button
               startIcon={<Save />}
@@ -1298,7 +1314,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
               }}
             >
-              Save Draft
+              {tt('Lagre utkast', 'Save Draft')}
             </Button>
           </Stack>
         </Box>

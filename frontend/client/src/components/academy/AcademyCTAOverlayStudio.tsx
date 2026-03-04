@@ -38,8 +38,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyCTAOverlayStudioProps {
   courseId?: string;
@@ -210,7 +211,8 @@ const defaultOverlays = (): CTAOverlayItem[] => [
 function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverlayStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('monetization');
   const [rightTab, setRightTab] = useState<RightTab>('performance');
@@ -476,15 +478,15 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
   );
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'lower-thirds', label: 'Animated Lower Thirds', route: '/academy/lower-thirds' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -508,21 +510,20 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -694,7 +695,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                   value={selectedCourseId || activeCourse?.id || ''}
                   onChange={(event) => setSelectedCourseId(String(event.target.value))}
                   sx={{
-                    minWidth: 250,
+                    minWidth: { xs: '100%', md: 250 },
                     color: '#edf0f7',
                     bgcolor: 'rgba(255,255,255,0.04)',
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
@@ -717,7 +718,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     setCurrentTime((prev) => Math.min(prev, next));
                   }}
                   sx={{
-                    width: 140,
+                    width: { xs: '100%', md: 140 },
                     '& .MuiInputBase-root': { color: '#edf0f7' },
                     '& .MuiInputLabel-root': { color: 'rgba(237,240,247,0.64)' },
                     '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
@@ -908,9 +909,9 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                       '& .Mui-selected': { color: '#f7f8fb' },
                     }}
                   >
-                    <Tab value="content" label="Content" />
-                    <Tab value="design" label="Design" />
-                    <Tab value="analytics" label="Analytics" />
+                    <Tab value="content" label={tt('Innhold', 'Content')} />
+                    <Tab value="design" label={tt('Design', 'Design')} />
+                    <Tab value="analytics" label={tt('Analyser', 'Analytics')} />
                   </Tabs>
 
                   {editorTab === 'content' && selectedOverlay && (
@@ -1203,9 +1204,9 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                   '& .Mui-selected': { color: '#f7f8fb' },
                 }}
               >
-                <Tab label="CTA Performance" value="performance" />
-                <Tab label="A/B Test" value="abtest" />
-                <Tab label="Analytics" value="analytics" />
+                <Tab label={tt('CTA-ytelse', 'CTA Performance')} value="performance" />
+                <Tab label={tt('A/B-test', 'A/B Test')} value="abtest" />
+                <Tab label={tt('Analyser', 'Analytics')} value="analytics" />
               </Tabs>
 
               <Box sx={{ p: 1.2, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>

@@ -38,8 +38,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Lesson, type LessonResource } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyLessonStudioProps {
   courseId?: string;
@@ -223,7 +224,8 @@ const buildSummaryFromDescription = (description: string): string[] => {
 function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLessonStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const fallbackCourse = useMemo(() => createFallbackCourse(), []);
 
@@ -236,7 +238,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
   const [saveMessage, setSaveMessage] = useState('');
   const [searchValue, setSearchValue] = useState('');
   const [summaryPoints, setSummaryPoints] = useState<string[]>([]);
-  const [lessonTitle, setLessonTitle] = useState('Lighting Basics');
+  const [lessonTitle, setLessonTitle] = useState(tt('Lyssetting grunnleggende', 'Lighting Basics'));
   const [chapterItems, setChapterItems] = useState<LessonChapter[]>(createDefaultChapters);
   const [resourceItems, setResourceItems] = useState<LessonResourceItem[]>([]);
 
@@ -296,11 +298,11 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
   }, [activeCourse?.id, selectedCourseId]);
 
   useEffect(() => {
-    setLessonTitle(String(activeLesson?.title || 'Lighting Basics'));
+    setLessonTitle(String(activeLesson?.title || tt('Lyssetting grunnleggende', 'Lighting Basics')));
     setSummaryPoints(buildSummaryFromDescription(String(activeLesson?.description || '')));
     setChapterItems(lessonToChapterList(activeLesson));
     setResourceItems(lessonToResourceList(activeLesson));
-  }, [activeLesson]);
+  }, [activeLesson, tt]);
 
   useEffect(() => {
     analytics.trackEvent('academy_lesson_studio_opened', {
@@ -367,8 +369,8 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
         type: 'video',
       },
     ]);
-    setSaveMessage('Lesson duplicated into chapter draft.');
-  }, [duration, lessonTitle]);
+    setSaveMessage(tt('Leksjon duplisert til kapittelutkast.', 'Lesson duplicated into chapter draft.'));
+  }, [duration, lessonTitle, tt]);
 
   const addResource = useCallback(() => {
     setResourceItems((prev) => [
@@ -445,7 +447,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
         }
 
         onSave?.(payload);
-        setSaveMessage(publish ? 'Lesson published.' : 'Lesson saved.');
+        setSaveMessage(publish ? tt('Leksjon publisert.', 'Lesson published.') : tt('Leksjon lagret.', 'Lesson saved.'));
 
         analytics.trackEvent(publish ? 'academy_lesson_publish' : 'academy_lesson_save', {
           courseId: activeCourse?.id || null,
@@ -455,7 +457,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
           timestamp: Date.now(),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save lesson.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre leksjon.', 'Failed to save lesson.');
         setSaveMessage(message);
         debugging.logIntegration('error', 'Academy lesson save failed', {
           message,
@@ -480,21 +482,22 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
       resourceItems,
       state.courses,
       summaryPoints,
+      tt,
       updateCourse,
     ],
   );
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'lesson-current', label: lessonTitle || 'Lighting Basics', route: '/academy/lesson-editor', inset: true },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'lesson-current', label: lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics'), route: '/academy/lesson-editor', inset: true },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -518,21 +521,20 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -546,7 +548,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -594,7 +596,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 borderRadius: 1,
               }}
             >
-              New Module
+              {tt('Ny modul', 'New Module')}
             </Button>
           </Box>
         </Box>
@@ -616,7 +618,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 CREATOR STUDIO
               </Typography>
               <Chip
-                label={activeCourse?.isPublished ? 'Published' : 'Draft'}
+                label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
                 size="small"
                 sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
               />
@@ -655,7 +657,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
               >
                 <Stack direction="row" spacing={1.2} alignItems="center" flexWrap="wrap" useFlexGap>
                   <Typography sx={{ fontSize: 36, fontWeight: 600, letterSpacing: '0.02em' }}>
-                    Lesson Editor
+                    {tt('Leksjonsredigering', 'Lesson Editor')}
                   </Typography>
                   <Select
                     size="small"
@@ -690,7 +692,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       borderRadius: 1,
                     }}
                   >
-                    Preview
+                    {tt('Forhåndsvis', 'Preview')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -703,7 +705,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       borderRadius: 1,
                     }}
                   >
-                    Player
+                    {tt('Spiller', 'Player')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -716,7 +718,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       borderRadius: 1,
                     }}
                   >
-                    Save
+                    {tt('Lagre', 'Save')}
                   </Button>
                   <Button
                     variant="contained"
@@ -730,7 +732,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                     }}
                   >
-                    Publish
+                    {tt('Publiser', 'Publish')}
                   </Button>
                 </Stack>
               </Stack>
@@ -760,7 +762,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
                     <DragIndicator sx={{ color: '#f8b321' }} />
-                    <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{lessonTitle || 'Lighting Basics'}</Typography>
+                    <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics')}</Typography>
                   </Stack>
 
                   <Button
@@ -773,7 +775,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       fontWeight: 700,
                     }}
                   >
-                    Add Chapter
+                    {tt('Legg til kapittel', 'Add Chapter')}
                   </Button>
                 </Stack>
 
@@ -971,10 +973,10 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       '& .Mui-selected': { color: '#f7f8fb' },
                     }}
                   >
-                    <Tab label="Content" value="content" />
-                    <Tab label="Engagement" value="engagement" />
-                    <Tab label="Quiz & Assignments" value="quiz" />
-                    <Tab label="Monetization" value="monetization" />
+                    <Tab label={tt('Innhold', 'Content')} value="content" />
+                    <Tab label={tt('Engasjement', 'Engagement')} value="engagement" />
+                    <Tab label={tt('Quiz og oppgaver', 'Quiz & Assignments')} value="quiz" />
+                    <Tab label={tt('Monetisering', 'Monetization')} value="monetization" />
                   </Tabs>
 
                   <Box sx={{ p: 1 }}>
@@ -1030,7 +1032,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
                     {centerTab === 'engagement' && (
                       <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
-                        <Typography sx={{ fontSize: 18, fontWeight: 600, mb: 1 }}>Lesson Visibility</Typography>
+                        <Typography sx={{ fontSize: 18, fontWeight: 600, mb: 1 }}>{tt('Leksjonssynlighet', 'Lesson Visibility')}</Typography>
                         <Stack spacing={0.9}>
                           <Stack direction="row" justifyContent="space-between">
                             <Typography>Completion Heatmap Coverage</Typography>
@@ -1133,13 +1135,13 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       fontWeight: 700,
                     }}
                   >
-                    Add Chapter
+                    {tt('Legg til kapittel', 'Add Chapter')}
                   </Button>
 
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Lesson Visibility</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Leksjonssynlighet', 'Lesson Visibility')}</Typography>
                     <Chip
-                      label={activeCourse?.isPublished ? 'Published' : 'Draft'}
+                      label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
                       size="small"
                       sx={{
                         bgcolor: activeCourse?.isPublished
@@ -1165,10 +1167,10 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   '& .Mui-selected': { color: '#f7f8fb' },
                 }}
               >
-                <Tab label="Info" value="info" />
-                <Tab label="Resources" value="resources" />
-                <Tab label="Comments & QA" value="comments" />
-                <Tab label="Settings" value="settings" />
+                <Tab label={tt('Info', 'Info')} value="info" />
+                <Tab label={tt('Ressurser', 'Resources')} value="resources" />
+                <Tab label={tt('Kommentarer og spørsmål', 'Comments & QA')} value="comments" />
+                <Tab label={tt('Innstillinger', 'Settings')} value="settings" />
               </Tabs>
 
               {rightTab === 'info' && (
@@ -1215,7 +1217,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
                   <Button
                     startIcon={<Add />}
-                    onClick={() => setSummaryPoints((prev) => [...prev, 'New lesson objective'])}
+                    onClick={() => setSummaryPoints((prev) => [...prev, tt('Nytt læringsmål', 'New lesson objective')])}
                     sx={{
                       alignSelf: 'flex-start',
                       textTransform: 'none',
@@ -1223,12 +1225,12 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       border: '1px solid rgba(255,255,255,0.16)',
                     }}
                   >
-                    Add Objective
+                    {tt('Legg til læringsmål', 'Add Objective')}
                   </Button>
 
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
-                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>Resource Set</Typography>
+                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{tt('Ressurssamling', 'Resource Set')}</Typography>
                   <Box
                     sx={{
                       borderRadius: 1,
@@ -1238,7 +1240,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       color: 'rgba(237,240,247,0.68)',
                     }}
                   >
-                    Drag & drop resource items into this lesson.
+                    {tt('Dra og slipp ressurser inn i denne leksjonen.', 'Drag & drop resource items into this lesson.')}
                   </Box>
 
                   <Box sx={{ ...cinematicPanelSx, p: 1 }}>
@@ -1275,7 +1277,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
-                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>Chapters</Typography>
+                  <Typography sx={{ fontWeight: 700, fontSize: 18 }}>{tt('Kapitler', 'Chapters')}</Typography>
                   <Stack spacing={0.8}>
                     {chapterItems.map((chapter) => (
                       <Stack
@@ -1316,7 +1318,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                         background: 'linear-gradient(180deg, #ffd44e, #f2a616)',
                       }}
                     >
-                      Add Chapter
+                      {tt('Legg til kapittel', 'Add Chapter')}
                     </Button>
                     <Button
                       sx={{
@@ -1325,7 +1327,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                         border: '1px solid rgba(255,255,255,0.18)',
                       }}
                     >
-                      Export Outline
+                      {tt('Eksporter disposisjon', 'Export Outline')}
                     </Button>
                   </Stack>
                 </Box>
@@ -1336,7 +1338,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   <TextField
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
-                    placeholder="Search resources..."
+                    placeholder={tt('Søk ressurser...', 'Search resources...')}
                     size="small"
                     InputProps={{
                       startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -1440,28 +1442,31 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
               {rightTab === 'settings' && (
                 <Box sx={{ p: 1.3, display: 'flex', flexDirection: 'column', gap: 1.1 }}>
                   <TextField
-                    label="Access Level"
-                    value={activeLesson?.isPreview ? 'Preview Enabled' : 'Members Only'}
+                    label={tt('Tilgangsnivå', 'Access Level')}
+                    value={activeLesson?.isPreview ? tt('Forhåndsvisning aktivert', 'Preview Enabled') : tt('Kun medlemmer', 'Members Only')}
                     size="small"
                     sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
                   />
                   <TextField
-                    label="Release Date"
+                    label={tt('Publiseringsdato', 'Release Date')}
                     value={new Date().toISOString().slice(0, 16)}
                     size="small"
                     sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
                   />
                   <TextField
-                    label="Localization"
+                    label={tt('Lokalisering', 'Localization')}
                     value="Norwegian (nb-NO)"
                     size="small"
                     sx={{ '& .MuiInputBase-root': { color: '#edf0f7' } }}
                   />
 
                   <Box sx={{ ...cinematicPanelSx, p: 1 }}>
-                    <Typography sx={{ fontWeight: 700, mb: 0.7 }}>Automation</Typography>
+                    <Typography sx={{ fontWeight: 700, mb: 0.7 }}>{tt('Automatisering', 'Automation')}</Typography>
                     <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                      Auto-generate transcript, chapter markers and learning objectives after upload.
+                      {tt(
+                        'Autogenerer transkripsjon, kapittelmarkører og læringsmål etter opplasting.',
+                        'Auto-generate transcript, chapter markers and learning objectives after upload.',
+                      )}
                     </Typography>
                   </Box>
                 </Box>
@@ -1492,7 +1497,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
               </Stack>
 
@@ -1506,7 +1511,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Duplicate Lesson
+                  {tt('Dupliser leksjon', 'Duplicate Lesson')}
                 </Button>
                 <Button
                   onClick={() => void saveLesson(true)}
@@ -1518,7 +1523,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     fontWeight: 700,
                   }}
                 >
-                  Publish
+                  {tt('Publiser', 'Publish')}
                 </Button>
               </Stack>
 
@@ -1533,7 +1538,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Monetize
+                  {tt('Monetiser', 'Monetize')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -1560,7 +1565,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Save Draft
+                  {tt('Lagre utkast', 'Save Draft')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1576,7 +1581,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Close
+                  {tt('Lukk', 'Close')}
                 </Button>
               </Stack>
             </Box>

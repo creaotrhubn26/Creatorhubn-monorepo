@@ -1,0 +1,111 @@
+{
+  "datasetName": "ifaa-web-speech-intelligibility-r2",
+  "description": "Public web-hosted speech degradation samples from IFAA, paired with the original clean speech reference. (ingested to Cloudflare R2 with signed URLs)",
+  "sourceManifest": "/Users/usmanqazi/github/creatorhub/backend/scripts/storyarc-audio-benchmark.manifest.ifaa-web.json",
+  "generatedAt": "2026-03-04T12:50:53.060Z",
+  "r2": {
+    "bucket": "ml-models",
+    "prefix": "datasets/storyarc-audio-benchmark/ifaa/2026-03-04",
+    "endpoint": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com",
+    "signedUrlExpiresSeconds": 259200
+  },
+  "counts": {
+    "sourceCases": 13,
+    "outputCases": 13,
+    "uniqueUploadedObjects": 14,
+    "reusedObjects": 12
+  },
+  "cases": [
+    {
+      "id": "ifaa-pink-noise",
+      "category": "noise_pink",
+      "weight": 1.2,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-pink-noise-ea02d58ed489.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125044Z&X-Amz-Expires=259200&X-Amz-Signature=2b4859dc08f354d024ae9da9089b1c7796c81181530ffe2d30d63f53b32dda43&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-vocal-spectrum-noise",
+      "category": "noise_vocal_spectrum",
+      "weight": 1.2,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-vocal-spectrum-noise-e948ef934fd6.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=44d76cb4f4bf0c2cf92bf87f41160020de45dc904f57ad9556bfbd938bbcbe9a&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-1khz-band-noise",
+      "category": "noise_1khz_band",
+      "weight": 1.1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-1khz-band-noise-949fab9ffb2a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125046Z&X-Amz-Expires=259200&X-Amz-Signature=aae5f690370951492710f0beb2d360ac824b1ab3113761798ec8244bf31f1393&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-two-speakers",
+      "category": "interfering_talker",
+      "weight": 1.3,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-two-speakers-7442fec4d716.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125047Z&X-Amz-Expires=259200&X-Amz-Signature=48b19dc5a0495ef317a19215ff53bc9bc93e425fddc770bc0a28861468b60a40&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-reverb-short",
+      "category": "reverb_short",
+      "weight": 1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-reverb-short-189e35944ea0.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125047Z&X-Amz-Expires=259200&X-Amz-Signature=4995d76cc5daa5543a7970f119a7d7dc49cfc4175694412e1398fc403122d7c1&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-reverb-medium",
+      "category": "reverb_medium",
+      "weight": 1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-reverb-medium-461ee261454a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125048Z&X-Amz-Expires=259200&X-Amz-Signature=adecc038b5be0afcc02bfff4ca227713673342ce40f4b466296f8c4a386517d0&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-reverb-long",
+      "category": "reverb_long",
+      "weight": 1.1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-reverb-long-81da613da368.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125048Z&X-Amz-Expires=259200&X-Amz-Signature=0e86a5f73a2880dd3231c997b20e4c65f76bf4eb2d78f9af9d8019a42f4a69da&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-echo",
+      "category": "echo",
+      "weight": 1.1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-echo-d6dcfbbc951e.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125049Z&X-Amz-Expires=259200&X-Amz-Signature=e060f60c0f4a4c19433282199e4f8c5ac645074aa15c7e4efdf15965bc396831&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-band-100-10k",
+      "category": "band_limit_wide",
+      "weight": 0.9,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-band-100-10k-e4e43f3c97bb.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125050Z&X-Amz-Expires=259200&X-Amz-Signature=ec2375975213da1f683db8153a512058b98072503bec72b013b3209be574ff54&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-band-300-3400",
+      "category": "band_limit_telephone",
+      "weight": 1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-band-300-3400-eb0020ad9701.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125050Z&X-Amz-Expires=259200&X-Amz-Signature=fe16c7db242d557d1e51b563a11f64607e85d9ae5ed2ca0268f17c8833d56872&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-band-1k-octave",
+      "category": "band_limit_narrow",
+      "weight": 1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-band-1k-octave-ae50798621c1.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125051Z&X-Amz-Expires=259200&X-Amz-Signature=52c6a537f0e864ee4e1684b2d4cd94435aa0ec289a2fb4a1c8d608b77103637f&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-clipping",
+      "category": "clipping",
+      "weight": 1.1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-clipping-b17b01e23de3.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125052Z&X-Amz-Expires=259200&X-Amz-Signature=5504b024fb475ece100394b1709856c91d10e9541091dd43d551ecb536093819&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    },
+    {
+      "id": "ifaa-compressed",
+      "category": "dynamic_compression",
+      "weight": 1,
+      "noisyPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/noisy/ifaa-compressed-e16cf79e5012.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125053Z&X-Amz-Expires=259200&X-Amz-Signature=c07de2dcb82ef0da41edacc62a97356a9148ad82f749f34e9819b7c7fd3c5785&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject",
+      "cleanPath": "https://bbda9f467577de94fefbc4f2954db032.r2.cloudflarestorage.com/ml-models/datasets/storyarc-audio-benchmark/ifaa/2026-03-04/clean/ifaa-pink-noise-9f5885e3910a.wav?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=107a6c5e37766594a68710672c96666a%2F20260304%2Fauto%2Fs3%2Faws4_request&X-Amz-Date=20260304T125045Z&X-Amz-Expires=259200&X-Amz-Signature=9aab0879c14f398477653cd41d4cbc801d2331facfccc530cdcad4c9346778ea&X-Amz-SignedHeaders=host&x-amz-checksum-mode=ENABLED&x-id=GetObject"
+    }
+  ]
+}

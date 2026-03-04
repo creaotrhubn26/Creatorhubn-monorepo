@@ -24,6 +24,7 @@ import {
 import { useAcademyContext } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
 import AcademyVideoPlayer from './AcademyVideoPlayer';
 import { useLocation } from 'wouter';
 
@@ -212,6 +213,7 @@ function AcademyDashboardCinematic() {
     setCurrentLesson,
   } = useAcademyContext();
   const { analytics, auth } = useEnhancedMasterIntegration();
+  const { tt } = useAcademyLocale();
 
   const [search, setSearch] = useState('');
   const [selectedCourse, setSelectedCourse] = useState<any | null>(null);
@@ -374,7 +376,7 @@ function AcademyDashboardCinematic() {
               borderRadius: '10px',
             }}
           >
-            Tilbake til Academy Dashboard
+            {tt('Tilbake til Academy Dashboard', 'Back to Academy Dashboard')}
           </Button>
         </Box>
         <AcademyVideoPlayer
@@ -445,7 +447,7 @@ function AcademyDashboardCinematic() {
               setSearch(value);
               setSearchQuery(value);
             }}
-            placeholder="Search courses, mentors, modules..."
+            placeholder={tt('Søk kurs, mentorer, moduler...', 'Search courses, mentors, modules...')}
             fullWidth
             InputProps={{
               startAdornment: (
@@ -507,10 +509,10 @@ function AcademyDashboardCinematic() {
                     mb: 1.3,
                   }}
                 >
-                  Welcome back, {profileName}
+                  {tt('Velkommen tilbake,', 'Welcome back,')} {profileName}
                 </Typography>
                 <Typography sx={{ opacity: 0.84, mb: 1.2, fontFamily: 'Rajdhani, sans-serif' }}>
-                  Current Track Progress:
+                  {tt('Nåværende sporprogresjon:', 'Current Track Progress:')}
                 </Typography>
                 <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 2 }}>
                   <LinearProgress
@@ -528,7 +530,7 @@ function AcademyDashboardCinematic() {
                     }}
                   />
                   <Typography sx={{ minWidth: 112, fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>
-                    {heroCourse?.progress || 0}% Complete
+                    {heroCourse?.progress || 0}% {tt('fullført', 'Complete')}
                   </Typography>
                 </Stack>
                 <Button
@@ -550,7 +552,7 @@ function AcademyDashboardCinematic() {
                     },
                   }}
                 >
-                  Continue Masterclass
+                  {tt('Fortsett masterclass', 'Continue Masterclass')}
                 </Button>
                 <Button
                   variant="text"
@@ -567,7 +569,7 @@ function AcademyDashboardCinematic() {
                     background: 'rgba(245,166,35,0.08)',
                   }}
                 >
-                  Open Module Manager
+                  {tt('Åpne moduladministrator', 'Open Module Manager')}
                 </Button>
                 <Button
                   variant="text"
@@ -584,7 +586,7 @@ function AcademyDashboardCinematic() {
                     background: 'rgba(245,166,35,0.08)',
                   }}
                 >
-                  Open Course Creator
+                  {tt('Åpne kursbygger', 'Open Course Creator')}
                 </Button>
                 <Button
                   variant="text"
@@ -603,7 +605,7 @@ function AcademyDashboardCinematic() {
                     border: '1px solid rgba(255,255,255,0.22)',
                   }}
                 >
-                  Open Full Workspace
+                  {tt('Åpne full arbeidsflate', 'Open Full Workspace')}
                 </Button>
               </Box>
 
@@ -653,7 +655,7 @@ function AcademyDashboardCinematic() {
 
         <Box sx={{ mt: 2.8 }}>
           <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.6rem', md: '2rem' }, mb: 1.4 }}>
-            Continue Learning
+            {tt('Fortsett læring', 'Continue Learning')}
           </Typography>
 
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', xl: 'repeat(4, 1fr)' }, gap: 1.5 }}>
@@ -724,7 +726,7 @@ function AcademyDashboardCinematic() {
         <Box sx={{ mt: 2.2, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.15fr 0.85fr' }, gap: 2 }}>
           <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.6rem', md: '2rem' }, mb: 1.2 }}>
-              My Tracks
+              {tt('Mine spor', 'My Tracks')}
             </Typography>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', xl: 'repeat(4, 1fr)' }, gap: 1.2 }}>
@@ -773,7 +775,7 @@ function AcademyDashboardCinematic() {
               }}
             >
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.45rem', md: '1.75rem' }, mb: 1.2 }}>
-                Performance Analytics
+                {tt('Ytelsesanalyse', 'Performance Analytics')}
               </Typography>
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3}>
@@ -782,19 +784,19 @@ function AcademyDashboardCinematic() {
                     <Typography sx={{ color: '#ffcb63', fontSize: '2rem', fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
                       {completionRate}%
                     </Typography>
-                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>Course Completion</Typography>
+                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>{tt('Kursfullføring', 'Course Completion')}</Typography>
                   </Box>
                   <Box>
                     <Typography sx={{ color: '#f8f1e7', fontSize: '2rem', fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
-                      Expert
+                      {tt('Ekspert', 'Expert')}
                     </Typography>
-                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>Skill Level</Typography>
+                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>{tt('Ferdighetsnivå', 'Skill Level')}</Typography>
                   </Box>
                   <Box>
                     <Typography sx={{ color: '#f8f1e7', fontSize: '2rem', fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
                       {Math.max(4, inProgressCourses.length * 3 + completedCourses.length * 2)}
                     </Typography>
-                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>Day Streak</Typography>
+                    <Typography sx={{ opacity: 0.72, fontFamily: 'Rajdhani, sans-serif' }}>{tt('Dagsrekke', 'Day Streak')}</Typography>
                   </Box>
                 </Stack>
 
@@ -824,7 +826,7 @@ function AcademyDashboardCinematic() {
           <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.6rem', md: '2rem' } }}>
-                Upcoming Sessions
+                {tt('Kommende sesjoner', 'Upcoming Sessions')}
               </Typography>
               <Button
                 endIcon={<ChevronRight />}
@@ -838,9 +840,7 @@ function AcademyDashboardCinematic() {
                   py: 0.45,
                   fontFamily: 'Rajdhani, sans-serif',
                 }}
-              >
-                All
-              </Button>
+              >{tt('Alle', 'All')}</Button>
             </Stack>
 
             <Stack spacing={1}>
@@ -883,7 +883,7 @@ function AcademyDashboardCinematic() {
                       },
                     }}
                   >
-                    Join
+                    {tt('Bli med', 'Join')}
                   </Button>
                 </Box>
               ))}

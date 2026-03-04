@@ -87,4 +87,108 @@ describe('timelineInvariants', () => {
     expect(result.clips[1].start).toBe(5);
     expect(result.issues.some((issue) => issue.code === 'clip_overlap')).toBe(true);
   });
+
+  it('keeps overlap position when enforceNoOverlap is false, but still reports issue', () => {
+    const result = enforceTimelineInvariants(
+      [
+        buildClip({ id: 'clip-a', start: 0, duration: 5 }),
+        buildClip({ id: 'clip-b', start: 3, duration: 4 }),
+      ],
+      {
+        frameTime: 1 / 30,
+        tracks,
+        enforceNoOverlap: false,
+      }
+    );
+
+    expect(result.clips[1].start).toBe(3);
+    expect(result.issues.some((issue) => issue.code === 'clip_overlap')).toBe(true);
+  });
+
+  it('reports invalid track even when no tracks are available for fallback', () => {
+    const result = enforceTimelineInvariants(
+      [buildClip({ id: 'orphan', trackId: 'missing-track' })],
+      {
+        frameTime: 1 / 30,
+        tracks: [],
+      }
+    );
+
+    expect(result.clips[0].trackId).toBe('missing-track');
+    expect(result.issues.some((issue) => issue.code === 'invalid_track')).toBe(true);
+  });
+
+  it('snaps start and duration to frame boundaries', () => {
+    const frameTime = 1 / 30;
+    const result = enforceTimelineInvariants(
+      [buildClip({ id: 'off-grid', start: 1.234, duration: 2.345 })],
+      {
+        frameTime,
+        tracks,
+      }
+    );
+
+    expect(Math.round(result.clips[0].start / frameTime) * frameTime).toBe(result.clips[0].start);
+    expect(Math.round(result.clips[0].duration / frameTime) * frameTime).toBe(result.clips[0].duration);
+  });
+
+  it('allows overlap when linked transition metadata is present', () => {
+    const result = enforceTimelineInvariants(
+      [
+        buildClip({
+          id: 'left',
+          start: 0,
+          duration: 5,
+          metadata: {
+            transitions: {
+              out: { targetClipId: 'right', duration: 0.5, type: 'crossfade' },
+            },
+          },
+        }),
+        buildClip({
+          id: 'right',
+          start: 4.5,
+          duration: 5,
+          metadata: {
+            transitions: {
+              in: { sourceClipId: 'left', duration: 0.5, type: 'crossfade' },
+            },
+          },
+        }),
+      ],
+      {
+        frameTime: 1 / 30,
+        tracks,
+        enforceNoOverlap: true,
+      }
+    );
+
+    expect(result.clips[1].start).toBe(4.5);
+    expect(result.issues.some((issue) => issue.code === 'clip_overlap')).toBe(false);
+  });
+
+  it('allows overlap when transition list links the cut pair', () => {
+    const result = enforceTimelineInvariants(
+      [
+        buildClip({ id: 'left', start: 0, duration: 5 }),
+        buildClip({ id: 'right', start: 4.6, duration: 5 }),
+      ],
+      {
+        frameTime: 1 / 30,
+        tracks,
+        enforceNoOverlap: true,
+        transitions: [
+          {
+            trackId: 'video-1',
+            time: 5,
+            clipId: 'left',
+            edge: 'out',
+          },
+        ],
+      }
+    );
+
+    expect(result.clips[1].start).toBe(4.6);
+    expect(result.issues.some((issue) => issue.code === 'clip_overlap')).toBe(false);
+  });
 });

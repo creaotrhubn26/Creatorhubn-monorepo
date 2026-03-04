@@ -25,6 +25,29 @@ export interface RippleEditResult {
   newPositions: Map<string, number>;
 }
 
+export interface TimelineValidationTransition {
+  id?: string;
+  time: number;
+  trackId: string;
+  type?: string;
+  duration?: number;
+  clipId?: string;
+  edge?: 'in' | 'out';
+  layer?: 'video' | 'audio';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getTransitionEdgeMetadata(clip: BeatClip, edge: 'in' | 'out'): Record<string, unknown> | null {
+  if (!isRecord(clip.metadata) || !isRecord(clip.metadata.transitions)) {
+    return null;
+  }
+  const entry = clip.metadata.transitions[edge];
+  return isRecord(entry) ? entry : null;
+}
+
 class TimelineEngine {
   private config: TimelineConfig = {
     frameRate: 25,
@@ -172,10 +195,60 @@ class TimelineEngine {
     return this.snapToFrame(maxEnd);
   }
   
+  private isTransitionOverlapPair(
+    left: BeatClip,
+    right: BeatClip,
+    transitions: TimelineValidationTransition[],
+    frameTime: number
+  ): boolean {
+    if (left.trackId !== right.trackId) {
+      return false;
+    }
+
+    const overlapStart = Math.max(left.start, right.start);
+    const overlapEnd = Math.min(left.start + left.duration, right.start + right.duration);
+    if (overlapEnd - overlapStart <= frameTime / 3) {
+      return false;
+    }
+
+    const transitionAtCut = transitions.some((transition) => {
+      if (transition.trackId !== left.trackId) {
+        return false;
+      }
+      if (transition.edge === 'out' && transition.clipId === left.id) {
+        return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+      }
+      if (transition.edge === 'in' && transition.clipId === right.id) {
+        return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+      }
+      if (transition.clipId && transition.clipId !== left.id && transition.clipId !== right.id) {
+        return false;
+      }
+      return transition.time >= overlapStart - frameTime && transition.time <= overlapEnd + frameTime;
+    });
+    if (transitionAtCut) {
+      return true;
+    }
+
+    const leftOut = getTransitionEdgeMetadata(left, 'out');
+    const rightIn = getTransitionEdgeMetadata(right, 'in');
+    const leftTargetsRight = leftOut?.targetClipId === right.id;
+    const rightTargetsLeft = rightIn?.sourceClipId === left.id;
+    if (leftTargetsRight || rightTargetsLeft) {
+      return true;
+    }
+
+    return false;
+  }
+
   /**
    * Validate timeline (check for overlaps, gaps, etc.)
    */
-  validateTimeline(clips: BeatClip[], tracks: Track[]): {
+  validateTimeline(
+    clips: BeatClip[],
+    tracks: Track[],
+    transitions: TimelineValidationTransition[] = []
+  ): {
     valid: boolean;
     errors: string[];
     warnings: string[];
@@ -183,7 +256,9 @@ class TimelineEngine {
     const errors: string[] = [];
     const warnings: string[] = [];
     
-    // Check for overlaps on video tracks
+    const effectiveFrameTime = this.frameRate > 0 ? 1 / this.frameRate : this.frameTime;
+
+    // Check for overlaps on video tracks (ignore explicit transition overlaps)
     const videoTracks = tracks.filter(t => t.type === 'video');
     videoTracks.forEach(track => {
       const trackClips = clips
@@ -195,6 +270,9 @@ class TimelineEngine {
         const next = trackClips[i + 1];
         
         if (current.start + current.duration > next.start) {
+          if (this.isTransitionOverlapPair(current, next, transitions, effectiveFrameTime)) {
+            continue;
+          }
           errors.push(`Clips ${current.id} and ${next.id} overlap on track ${track.id}`);
         }
       }
@@ -253,6 +331,10 @@ class TimelineEngine {
    */
   setConfig(config: Partial<TimelineConfig>) {
     this.config = { ...this.config, ...config };
+    if (typeof this.config.frameRate === 'number' && this.config.frameRate > 0) {
+      this.frameRate = this.config.frameRate;
+      this.frameTime = 1 / this.config.frameRate;
+    }
   }
   
   /**
@@ -265,5 +347,3 @@ class TimelineEngine {
 
 // Singleton instance
 export const timelineEngine = new TimelineEngine();
-
-

@@ -34,8 +34,9 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
-import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import { useAcademyLocale } from './academyLocale';
+import AcademyBrandMark from './AcademyBrandMark';
 
 interface AcademyCohortSettingsStudioProps {
   courseId?: string;
@@ -215,17 +216,11 @@ const toNok = (value: number): string =>
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
 
-const statusLabel = (status: CohortStatus): string => {
-  if (status === 'early_access') return 'Early Access';
-  if (status === 'invitation_only') return 'Invitation Only';
-  if (status === 'closed') return 'Closed';
-  return 'Active';
-};
-
 function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCohortSettingsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  const { analytics, debugging } = useEnhancedMasterIntegration();
+  
+  const { navLabel, tt } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('cohort');
   const [filter, setFilter] = useState<CohortFilter>('all');
@@ -247,6 +242,16 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
   });
 
   const [tagDraft, setTagDraft] = useState('');
+
+  const localizedStatusLabel = useCallback(
+    (status: CohortStatus): string => {
+      if (status === 'early_access') return tt('Tidlig tilgang', 'Early Access');
+      if (status === 'invitation_only') return tt('Kun invitasjon', 'Invitation Only');
+      if (status === 'closed') return tt('Lukket', 'Closed');
+      return tt('Aktiv', 'Active');
+    },
+    [tt],
+  );
 
   const courseItems = useMemo(() => {
     if (Array.isArray(state.courses) && state.courses.length > 0) {
@@ -423,7 +428,11 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
           });
         }
 
-        setSaveMessage(publish ? 'Cohort settings published.' : 'Cohort settings saved.');
+        setSaveMessage(
+          publish
+            ? tt('Kohortinnstillinger publisert.', 'Cohort settings published.')
+            : tt('Kohortinnstillinger lagret.', 'Cohort settings saved.'),
+        );
         onSave?.(payload);
 
         analytics.trackEvent(publish ? 'academy_cohort_settings_publish' : 'academy_cohort_settings_save', {
@@ -433,7 +442,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
           timestamp: Date.now(),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save cohort settings.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre kohortinnstillinger.', 'Failed to save cohort settings.');
         setSaveMessage(message);
         debugging.logIntegration('error', 'Academy cohort settings save failed', {
           courseId: activeCourse?.id || null,
@@ -450,6 +459,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
       onSave,
       selectedCohortId,
       state.courses,
+      tt,
       updateCourse,
     ],
   );
@@ -457,33 +467,33 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
   const addDiscussion = useCallback(() => {
     const draft = discussionDraft.trim();
     if (!draft) {
-      setSaveMessage('Write a discussion note before posting.');
+      setSaveMessage(tt('Skriv et diskusjonsnotat før publisering.', 'Write a discussion note before posting.'));
       return;
     }
 
     const newDiscussion: DiscussionItem = {
       id: `discussion-${Date.now()}`,
-      author: discussionAuthor.trim() || 'You',
+      author: discussionAuthor.trim() || tt('Du', 'You'),
       message: draft,
-      timestamp: 'now',
+      timestamp: tt('nå', 'now'),
     };
 
     setDiscussionItems((prev) => [newDiscussion, ...prev]);
     setDiscussionDraft('');
-    setSaveMessage('Discussion note added.');
-  }, [discussionAuthor, discussionDraft]);
+    setSaveMessage(tt('Diskusjonsnotat lagt til.', 'Discussion note added.'));
+  }, [discussionAuthor, discussionDraft, tt]);
 
   const leftNavItems = [
-    { id: 'overview', label: 'Overview', route: '/academy-dashboard' },
-    { id: 'curriculum', label: 'Curriculum', route: '/academy/curriculum' },
-    { id: 'lessons', label: 'Lessons', route: '/academy/lesson-editor' },
-    { id: 'media', label: 'Media', route: '/academy/media' },
-    { id: 'assignments', label: 'Assignments', route: '/academy/assignments' },
-    { id: 'enrollment', label: 'Enrollment', route: '/academy/enrollment' },
-    { id: 'cohort', label: 'Cohort Settings', route: '/academy/cohort-settings' },
-    { id: 'analytics', label: 'Analytics', route: '/academy/analytics' },
-    { id: 'monetization', label: 'Monetization', route: '/academy/monetization' },
-    { id: 'settings', label: 'Settings', route: '/academy/course-creator' },
+    { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
+    { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+    { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
   return (
@@ -507,21 +517,20 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
         }}
       />
 
-      <Box sx={{ display: 'flex', minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
         <Box
           component="aside"
           sx={{
-            width: 252,
-            borderRight: '1px solid rgba(255,255,255,0.08)',
+            width: { xs: '100%', lg: 252 },
+            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
           <Stack spacing={2} sx={{ px: 2.5, py: 2.4 }}>
-            <Typography sx={{ letterSpacing: '0.13em', fontSize: 19, fontWeight: 700 }}>
-              CREATORHUB ACADEMY
-            </Typography>
+            <AcademyBrandMark />
             <Button
               variant="outlined"
               startIcon={<Add />}
@@ -535,7 +544,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -582,7 +591,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 borderRadius: 1,
               }}
             >
-              New Module
+              {tt('Ny modul', 'New Module')}
             </Button>
           </Box>
         </Box>
@@ -604,7 +613,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 CREATOR STUDIO
               </Typography>
               <Chip
-                label={activeCourse?.isPublished ? 'Published' : 'Draft'}
+                label={activeCourse?.isPublished ? tt('Publisert', 'Published') : tt('Utkast', 'Draft')}
                 size="small"
                 sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7', fontWeight: 600 }}
               />
@@ -642,7 +651,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
                 <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  Cohort Settings
+                  {tt('Kohortinnstillinger', 'Cohort Settings')}
                 </Typography>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -656,7 +665,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       borderRadius: 1,
                     }}
                   >
-                    Export
+                    {tt('Eksporter', 'Export')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -668,7 +677,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       borderRadius: 1,
                     }}
                   >
-                    Reports
+                    {tt('Rapporter', 'Reports')}
                   </Button>
                   <Button
                     variant="contained"
@@ -682,7 +691,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       boxShadow: '0 10px 24px rgba(248,179,33,0.26)',
                     }}
                   >
-                    Create Chart
+                    {tt('Opprett diagram', 'Create Chart')}
                   </Button>
                 </Stack>
               </Stack>
@@ -739,11 +748,11 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">All Cohorts</MenuItem>
-                      <MenuItem value="active">Active</MenuItem>
-                      <MenuItem value="early_access">Early Access</MenuItem>
-                      <MenuItem value="invitation_only">Invitation Only</MenuItem>
-                      <MenuItem value="closed">Closed</MenuItem>
+                      <MenuItem value="all">{tt('Alle kohorter', 'All Cohorts')}</MenuItem>
+                      <MenuItem value="active">{tt('Aktiv', 'Active')}</MenuItem>
+                      <MenuItem value="early_access">{tt('Tidlig tilgang', 'Early Access')}</MenuItem>
+                      <MenuItem value="invitation_only">{tt('Kun invitasjon', 'Invitation Only')}</MenuItem>
+                      <MenuItem value="closed">{tt('Lukket', 'Closed')}</MenuItem>
                     </Select>
                   </Stack>
 
@@ -757,14 +766,14 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       fontWeight: 700,
                     }}
                   >
-                    Add Cohort
+                    {tt('Legg til kohort', 'Add Cohort')}
                   </Button>
                 </Stack>
 
                 <TextField
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder="Search cohorts..."
+                  placeholder={tt('Søk kohorter...', 'Search cohorts...')}
                   size="small"
                   InputProps={{
                     startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -779,8 +788,8 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                 />
 
                 <Stack direction="row" spacing={2} sx={{ mt: 1.1, color: 'rgba(237,240,247,0.7)' }}>
-                  <Typography>{visibleCohorts.length} Cohorts</Typography>
-                  <Typography>Page 1 of {Math.max(1, Math.ceil(visibleCohorts.length / 5))}</Typography>
+                  <Typography>{visibleCohorts.length} {tt('kohorter', 'Cohorts')}</Typography>
+                  <Typography>{tt('Side 1 av', 'Page 1 of')} {Math.max(1, Math.ceil(visibleCohorts.length / 5))}</Typography>
                 </Stack>
 
                 <Box
@@ -803,11 +812,11 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       borderBottom: '1px solid rgba(255,255,255,0.1)',
                     }}
                   >
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Cohort Name</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Start & End</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Enrollments</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Completion Rate</Typography>
-                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)', textAlign: 'right' }}>Actions</Typography>
+                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>{tt('Kohortnavn', 'Cohort Name')}</Typography>
+                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>{tt('Start og slutt', 'Start & End')}</Typography>
+                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>{tt('Påmeldinger', 'Enrollments')}</Typography>
+                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>{tt('Fullføringsrate', 'Completion Rate')}</Typography>
+                    <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)', textAlign: 'right' }}>{tt('Handlinger', 'Actions')}</Typography>
                   </Box>
 
                   <Stack spacing={0}>
@@ -912,7 +921,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                   sx={{ mt: 1.1 }}
                 >
                   <TextField
-                    placeholder="Search lessons..."
+                    placeholder={tt('Søk leksjoner...', 'Search lessons...')}
                     size="small"
                     InputProps={{
                       startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -926,13 +935,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     }}
                   />
                   <Stack direction="row" spacing={1}>
-                    <Button sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>Page 1 of 14</Button>
+                    <Button sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>{tt('Side 1 av 14', 'Page 1 of 14')}</Button>
                     <Button sx={{ minWidth: 36, color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>{'<'}</Button>
                     <Button sx={{ minWidth: 36, color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>{'>'}</Button>
                   </Stack>
                 </Stack>
 
-                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>Upcoming Cohorts</Typography>
+                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>{tt('Kommende kohorter', 'Upcoming Cohorts')}</Typography>
 
                 <Box
                   sx={{
@@ -971,13 +980,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                           size="small"
                           sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                         >
-                          Manage
+                          {tt('Administrer', 'Manage')}
                         </Button>
                         <Button
                           size="small"
                           sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                         >
-                          View
+                          {tt('Vis', 'View')}
                         </Button>
                       </Stack>
                     </Box>
@@ -988,28 +997,28 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
             <Box sx={{ ...panelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ p: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>Cohort Management</Typography>
+                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{tt('Kohortadministrasjon', 'Cohort Management')}</Typography>
                 <Stack direction="row" spacing={0.8} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                   <Chip
-                    label="Early Access"
+                    label={tt('Tidlig tilgang', 'Early Access')}
                     onClick={() => toggleFeatureFlag('earlyAccess')}
                     color={featureFlags.earlyAccess ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Invitation Only"
+                    label={tt('Kun invitasjon', 'Invitation Only')}
                     onClick={() => toggleFeatureFlag('invitationOnly')}
                     color={featureFlags.invitationOnly ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Closed"
+                    label={tt('Lukket', 'Closed')}
                     onClick={() => toggleFeatureFlag('closed')}
                     color={featureFlags.closed ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Drip Release"
+                    label={tt('Dryppslipp', 'Drip Release')}
                     onClick={() => toggleFeatureFlag('dripRelease')}
                     color={featureFlags.dripRelease ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
@@ -1019,13 +1028,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
               <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 18, fontWeight: 700 }}>Cohort Tags</Typography>
+                  <Typography sx={{ fontSize: 18, fontWeight: 700 }}>{tt('Kohorttagger', 'Cohort Tags')}</Typography>
 
                   <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap sx={{ mt: 0.8 }}>
                     {(selectedCohort?.tags || []).map((tag) => (
                       <Chip
                         key={`selected-tag-${tag}`}
-                        label={tag}
+                        label={navLabel(tag)}
                         onDelete={() => removeTagFromSelected(tag)}
                         sx={{
                           color: '#edf0f7',
@@ -1040,7 +1049,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     <TextField
                       value={tagDraft}
                       onChange={(event) => setTagDraft(event.target.value)}
-                      placeholder="Add tag"
+                      placeholder={tt('Legg til tagg', 'Add tag')}
                       size="small"
                       sx={{ flex: 1, '& .MuiInputBase-root': { color: '#edf0f7' } }}
                     />
@@ -1048,31 +1057,31 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       onClick={addTagToSelected}
                       sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                     >
-                      Add
+                      {tt('Legg til', 'Add')}
                     </Button>
                   </Stack>
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>Performance Highlights</Typography>
+                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>{tt('Ytelseshøydepunkter', 'Performance Highlights')}</Typography>
                   <Stack direction="row" spacing={1}>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ fontSize: 30, fontWeight: 700, color: '#f8d56f' }}>+{enrollmentVelocity}%</Typography>
-                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>Enrollment Velocity</Typography>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Påmeldingshastighet', 'Enrollment Velocity')}</Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ fontSize: 30, fontWeight: 700 }}>{averageCompletion}%</Typography>
-                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>Avg Completion</Typography>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Gj.sn. fullføring', 'Avg Completion')}</Typography>
                     </Box>
                     <Box sx={{ flex: 1 }}>
                       <Typography sx={{ fontSize: 30, fontWeight: 700 }}>{toNok(totalRevenue)}</Typography>
-                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>Revenue</Typography>
+                      <Typography sx={{ color: 'rgba(237,240,247,0.7)' }}>{tt('Inntekt', 'Revenue')}</Typography>
                     </Box>
                   </Stack>
                 </Box>
 
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>Cohort Leaderboard</Typography>
+                  <Typography sx={{ fontSize: 32, fontWeight: 600, mb: 0.8 }}>{tt('Kohort-toppliste', 'Cohort Leaderboard')}</Typography>
                   <Stack spacing={0.8}>
                     {leaderboard.map((cohort) => (
                       <Stack
@@ -1112,13 +1121,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
 
                 <Box sx={{ ...panelSx, p: 1 }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
-                    <Typography sx={{ fontSize: 32, fontWeight: 600 }}>New Discussion</Typography>
+                    <Typography sx={{ fontSize: 32, fontWeight: 600 }}>{tt('Ny diskusjon', 'New Discussion')}</Typography>
                     <Button
                       size="small"
                       onClick={addDiscussion}
                       sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                     >
-                      Add
+                      {tt('Legg til', 'Add')}
                     </Button>
                   </Stack>
 
@@ -1127,7 +1136,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                       value={discussionAuthor}
                       onChange={(event) => setDiscussionAuthor(event.target.value)}
                       size="small"
-                      label="Author"
+                      label={tt('Forfatter', 'Author')}
                       sx={{
                         width: 130,
                         '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' },
@@ -1143,8 +1152,8 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                         }
                       }}
                       size="small"
-                      label="Discussion Note"
-                      placeholder="Write cohort discussion note"
+                      label={tt('Diskusjonsnotat', 'Discussion Note')}
+                      placeholder={tt('Skriv notat for kohortdiskusjon', 'Write cohort discussion note')}
                       sx={{
                         flex: 1,
                         '& .MuiInputBase-root': { color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.03)' },
@@ -1233,7 +1242,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Add Cohort
+                  {tt('Legg til kohort', 'Add Cohort')}
                 </Button>
                 <Button
                   startIcon={<Lock />}
@@ -1244,7 +1253,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  {featureFlags.closed ? 'Secured' : 'Secure'}
+                  {featureFlags.closed ? tt('Sikret', 'Secured') : tt('Sikre', 'Secure')}
                 </Button>
               </Stack>
 
@@ -1259,7 +1268,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   startIcon={<Publish />}
@@ -1272,7 +1281,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     fontWeight: 700,
                   }}
                 >
-                  Publish
+                  {tt('Publiser', 'Publish')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1288,7 +1297,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Close
+                  {tt('Lukk', 'Close')}
                 </Button>
               </Stack>
 
@@ -1303,7 +1312,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Monetization
+                  {tt('Monetisering', 'Monetization')}
                 </Button>
                 <Button
                   startIcon={<TrendingUp />}
@@ -1315,13 +1324,13 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Analytics
+                  {tt('Analyser', 'Analytics')}
                 </Button>
               </Stack>
 
               <Stack direction="row" spacing={1} sx={{ p: 1.1, pt: 0 }}>
                 <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 12 }}>
-                  Status: {statusLabel(selectedCohort?.status || 'active')} · {selectedCohort?.enrollments || 0} enrolled
+                  {tt('Status', 'Status')}: {localizedStatusLabel(selectedCohort?.status || 'active')} · {selectedCohort?.enrollments || 0} {tt('påmeldt', 'enrolled')}
                 </Typography>
                 <Box sx={{ ml: 'auto' }}>
                   <Switch

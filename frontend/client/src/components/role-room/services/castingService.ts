@@ -84,7 +84,16 @@ async function checkDatabaseAvailability(): Promise<boolean> {
   dbCheckPromise = (async () => {
     try {
       const response = await fetch('/api/casting/health');
-      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      if (!responseText.trim()) {
+        throw new Error('Health check returned empty response');
+      }
+
+      const result = JSON.parse(responseText);
       dbAvailable = result.status === 'healthy';
       return dbAvailable;
     } catch (error) {
