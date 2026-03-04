@@ -24064,6 +24064,1278 @@ app.post('/api/video-analysis/scene-detection/:jobId/cancel', (req, res) => {
   });
 });
 
+type StoryArcV2JobPhase = 'analyze' | 'script' | 'timeline' | 'apply' | 'export';
+type StoryArcV2JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+type StoryArcV2NarrativeBeat = 'hook' | 'context' | 'conflict' | 'turning_point' | 'resolution';
+type StoryArcV2Variant = 'safe' | 'balanced' | 'bold';
+
+interface StoryArcV2MediaInput {
+  id: string;
+  type: 'video' | 'audio' | 'image';
+  path: string;
+  metadata: Record<string, unknown>;
+}
+
+interface StoryArcV2AnalyzeInput {
+  projectId: string | null;
+  media: StoryArcV2MediaInput[];
+  intentProfileId: string | null;
+  languagePolicy: string;
+  musicTrackId: string | null;
+}
+
+interface StoryArcV2SemanticProfile {
+  clipId: string;
+  mediaId: string;
+  start: number;
+  end: number;
+  people: string[];
+  actions: string[];
+  locationTags: string[];
+  emotion: {
+    label: string;
+    score: number;
+  };
+  quality: {
+    visual: number;
+    audio: number;
+    stability: number;
+  };
+  embeddingRef: string | null;
+}
+
+interface StoryArcV2AnalyzedMedia {
+  mediaId: string;
+  path: string;
+  durationSeconds: number;
+  scenes: VideoAnalysisScene[];
+  transcription: VideoAnalysisTranscriptionResult;
+  warnings: string[];
+  semanticProfiles: StoryArcV2SemanticProfile[];
+}
+
+interface StoryArcV2AnalysisRun {
+  analysisId: string;
+  projectId: string | null;
+  intentProfileId: string | null;
+  languagePolicy: string;
+  musicTrackId: string | null;
+  media: StoryArcV2AnalyzedMedia[];
+  summary: {
+    sceneCount: number;
+    totalDuration: number;
+    transcriptionSegments: number;
+    detectedSpeakers: number;
+  };
+  warnings: string[];
+  createdAt: string;
+}
+
+interface StoryArcV2StoryScriptNode {
+  id: string;
+  beat: StoryArcV2NarrativeBeat;
+  start: number;
+  end: number;
+  duration: number;
+  text: string;
+  speaker: string | null;
+  utteranceRefs: string[];
+  candidateClipIds: string[];
+  locked: boolean;
+  pinned: boolean;
+  rationale: string;
+  confidence: number;
+}
+
+interface StoryArcV2StoryScript {
+  scriptId: string;
+  analysisId: string;
+  revision: number;
+  title: string;
+  targetDurationSeconds: number;
+  nodes: StoryArcV2StoryScriptNode[];
+  bannedClipIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface StoryArcV2TimelineClip {
+  id: string;
+  name: string;
+  beatName: string;
+  start: number;
+  duration: number;
+  trackId: string;
+  sourceFile?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface StoryArcV2TimelineVariantPlan {
+  variant: StoryArcV2Variant;
+  selectedClipIds: string[];
+  timeline: {
+    clips: StoryArcV2TimelineClip[];
+    totalDuration: number;
+  };
+  summary: string[];
+}
+
+interface StoryArcV2TimelineProposal {
+  proposalId: string;
+  scriptId: string;
+  revision: number;
+  generatedAt: string;
+  selectedVariant: StoryArcV2Variant;
+  variants: Record<StoryArcV2Variant, StoryArcV2TimelineVariantPlan>;
+  explainabilityByClipId: Record<string, Record<string, unknown>>;
+  warnings: string[];
+}
+
+interface StoryArcV2Job {
+  jobId: string;
+  phase: StoryArcV2JobPhase;
+  status: StoryArcV2JobStatus;
+  progress: number;
+  checkpoint: Record<string, unknown> | null;
+  warnings: string[];
+  resultRef: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  request: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const STORY_ARC_V2_DISABLED_VALUES = new Set(['0', 'false', 'off', 'no', 'disabled']);
+const STORY_ARC_V2_AVAILABLE_BEATS: StoryArcV2NarrativeBeat[] = [
+  'hook',
+  'context',
+  'conflict',
+  'turning_point',
+  'resolution',
+];
+
+const storyArcV2Jobs = new Map<string, StoryArcV2Job>();
+const storyArcV2JobControllers = new Map<string, AbortController>();
+const storyArcV2AnalysisRuns = new Map<string, StoryArcV2AnalysisRun>();
+const storyArcV2Scripts = new Map<string, StoryArcV2StoryScript>();
+const storyArcV2TimelineProposals = new Map<string, StoryArcV2TimelineProposal>();
+const storyArcV2ApplyLedger = new Map<string, { appliedAt: string; applyCount: number }>();
+
+const isStoryArcV2Enabled = (): boolean => {
+  const raw = normalizeModelLookupValue(readString(process.env.STORY_ARC_V2_ENABLED) || 'true');
+  return !STORY_ARC_V2_DISABLED_VALUES.has(raw);
+};
+
+const toStoryArcV2Id = (prefix: string): string => {
+  return `${prefix}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+};
+
+const clampStoryArcV2Number = (value: number, minValue: number, maxValue: number): number => {
+  return Math.max(minValue, Math.min(maxValue, value));
+};
+
+const normalizeStoryArcV2MediaInput = (
+  value: unknown,
+  index: number
+): StoryArcV2MediaInput | null => {
+  if (!isUnknownRecord(value)) {
+    return null;
+  }
+  const id = readString(value.id) || `media-${index + 1}`;
+  const typeRaw = normalizeModelLookupValue(readString(value.type) || 'video');
+  const type: StoryArcV2MediaInput['type'] =
+    typeRaw === 'audio' || typeRaw === 'image' ? typeRaw : 'video';
+  const pathValue =
+    readString(value.path) ||
+    readString(value.videoPath) ||
+    readString(value.sourcePath) ||
+    readString(value.url);
+  if (!pathValue) {
+    return null;
+  }
+  return {
+    id,
+    type,
+    path: pathValue,
+    metadata: isUnknownRecord(value.metadata)
+      ? (value.metadata as Record<string, unknown>)
+      : {},
+  };
+};
+
+const normalizeStoryArcV2Language = (policy: string): string => {
+  const normalized = normalizeModelLookupValue(policy);
+  if (normalized.includes('no') || normalized.includes('norwegian') || normalized.includes('nb')) {
+    return 'no';
+  }
+  if (normalized.includes('en') || normalized.includes('english')) {
+    return 'en';
+  }
+  return 'no';
+};
+
+const inferStoryArcV2Emotion = (
+  text: string
+): { label: string; score: number } => {
+  const normalized = normalizeModelLookupValue(text);
+  if (!normalized) {
+    return { label: 'neutral', score: 0.4 };
+  }
+  if (
+    normalized.includes('love') ||
+    normalized.includes('elsker') ||
+    normalized.includes('takkn') ||
+    normalized.includes('happy') ||
+    normalized.includes('glad')
+  ) {
+    return { label: 'warm', score: 0.82 };
+  }
+  if (
+    normalized.includes('cry') ||
+    normalized.includes('tear') ||
+    normalized.includes('savner') ||
+    normalized.includes('hard')
+  ) {
+    return { label: 'emotional', score: 0.78 };
+  }
+  if (
+    normalized.includes('joke') ||
+    normalized.includes('laugh') ||
+    normalized.includes('morsom')
+  ) {
+    return { label: 'joyful', score: 0.74 };
+  }
+  return { label: 'neutral', score: 0.52 };
+};
+
+const inferStoryArcV2Actions = (text: string): string[] => {
+  const normalized = normalizeModelLookupValue(text);
+  const actions: string[] = [];
+  if (normalized.includes('dance') || normalized.includes('dans')) actions.push('dance');
+  if (normalized.includes('toast') || normalized.includes('skål')) actions.push('toast');
+  if (normalized.includes('ring') || normalized.includes('vow') || normalized.includes('løfte')) {
+    actions.push('ceremony');
+  }
+  if (normalized.includes('speech') || normalized.includes('tale')) actions.push('speech');
+  if (actions.length === 0) actions.push('moment');
+  return actions;
+};
+
+const buildStoryArcV2SemanticProfiles = (
+  mediaId: string,
+  scenes: VideoAnalysisScene[],
+  transcription: VideoAnalysisTranscriptionResult
+): StoryArcV2SemanticProfile[] => {
+  return scenes.map((scene) => {
+    const overlappingSegments = transcription.segments.filter(
+      (segment) => segment.end > scene.start_time && segment.start < scene.end_time
+    );
+    const transcriptText = overlappingSegments.map((segment) => segment.text).join(' ').trim();
+    const speakers = Array.from(
+      new Set(
+        overlappingSegments
+          .map((segment) => readString(segment.speaker))
+          .filter((speaker): speaker is string => Boolean(speaker))
+      )
+    );
+    const emotion = inferStoryArcV2Emotion(transcriptText);
+    const clipId = `${mediaId}:scene-${scene.scene_number}`;
+    const segmentConfidence =
+      overlappingSegments.length > 0
+        ? overlappingSegments.reduce((sum, segment) => sum + segment.confidence, 0) /
+          overlappingSegments.length
+        : 0.55;
+    return {
+      clipId,
+      mediaId,
+      start: Number(scene.start_time.toFixed(3)),
+      end: Number(scene.end_time.toFixed(3)),
+      people: speakers,
+      actions: inferStoryArcV2Actions(transcriptText),
+      locationTags: ['wedding', 'event'],
+      emotion,
+      quality: {
+        visual: 0.72,
+        audio: Number(clampStoryArcV2Number(segmentConfidence, 0.3, 0.95).toFixed(3)),
+        stability: 0.68,
+      },
+      embeddingRef: `r2://models/storyarc-v2/embeddings/${clipId}.json`,
+    };
+  });
+};
+
+const classifyStoryArcV2Beat = (
+  text: string,
+  index: number,
+  total: number
+): StoryArcV2NarrativeBeat => {
+  const normalized = normalizeModelLookupValue(text);
+  const ratio = total > 0 ? index / total : 0;
+
+  if (
+    normalized.includes('remember') ||
+    normalized.includes('visste') ||
+    normalized.includes('first time') ||
+    normalized.includes('første gang')
+  ) {
+    return 'hook';
+  }
+  if (
+    normalized.includes('difficult') ||
+    normalized.includes('challenge') ||
+    normalized.includes('hard') ||
+    normalized.includes('kamp')
+  ) {
+    return 'conflict';
+  }
+  if (
+    normalized.includes('then') ||
+    normalized.includes('suddenly') ||
+    normalized.includes('så') ||
+    normalized.includes('plutselig')
+  ) {
+    return 'turning_point';
+  }
+  if (
+    normalized.includes('today') ||
+    normalized.includes('forever') ||
+    normalized.includes('framtid') ||
+    normalized.includes('takk')
+  ) {
+    return 'resolution';
+  }
+
+  if (ratio < 0.15) return 'hook';
+  if (ratio < 0.4) return 'context';
+  if (ratio < 0.65) return 'conflict';
+  if (ratio < 0.85) return 'turning_point';
+  return 'resolution';
+};
+
+const ensureStoryArcV2BeatCoverage = (
+  nodes: StoryArcV2StoryScriptNode[]
+): StoryArcV2StoryScriptNode[] => {
+  if (nodes.length === 0) return nodes;
+  const byBeat = new Set(nodes.map((node) => node.beat));
+  const fallback = [...nodes];
+  STORY_ARC_V2_AVAILABLE_BEATS.forEach((beat, index) => {
+    if (byBeat.has(beat)) return;
+    const seed = fallback[Math.min(index, fallback.length - 1)];
+    fallback.push({
+      ...seed,
+      id: toStoryArcV2Id(`node-${beat}`),
+      beat,
+      rationale: `Generated fallback beat node for ${beat}.`,
+      confidence: Number(clampStoryArcV2Number(seed.confidence * 0.88, 0.35, 0.95).toFixed(3)),
+    });
+  });
+  return fallback;
+};
+
+const buildStoryArcV2Script = (
+  analysis: StoryArcV2AnalysisRun,
+  targetDurationSeconds: number
+): StoryArcV2StoryScript => {
+  const segmentRows = analysis.media.flatMap((media) =>
+    media.transcription.segments.map((segment, index) => ({
+      mediaId: media.mediaId,
+      segment,
+      index,
+      segmentId: `${media.mediaId}:segment-${segment.id || index + 1}`,
+      candidateClipIds: media.semanticProfiles
+        .filter((profile) => profile.end > segment.start && profile.start < segment.end)
+        .map((profile) => profile.clipId),
+    }))
+  );
+  const totalRows = Math.max(1, segmentRows.length);
+
+  const scoredRows = segmentRows.map((row, index) => {
+    const text = row.segment.text || '';
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    const emphasis = (text.includes('!') ? 0.12 : 0) + (text.includes('?') ? 0.06 : 0);
+    const score = clampStoryArcV2Number(words.length / 18 + emphasis, 0.1, 1);
+    return {
+      ...row,
+      beat: classifyStoryArcV2Beat(text, index, totalRows),
+      score,
+    };
+  });
+
+  scoredRows.sort((left, right) => right.score - left.score);
+  const expectedNodeCount = Math.max(
+    5,
+    Math.min(18, Math.round(targetDurationSeconds / 7))
+  );
+  const chosen = scoredRows.slice(0, expectedNodeCount);
+  const selectedNodes = chosen
+    .sort((left, right) => left.segment.start - right.segment.start)
+    .map((row, index) => {
+      const safeDuration = clampStoryArcV2Number(row.segment.end - row.segment.start, 1.2, 12);
+      return {
+        id: toStoryArcV2Id(`node-${index + 1}`),
+        beat: row.beat,
+        start: Number(row.segment.start.toFixed(3)),
+        end: Number(row.segment.end.toFixed(3)),
+        duration: Number(safeDuration.toFixed(3)),
+        text: row.segment.text || `Story moment ${index + 1}`,
+        speaker: readString(row.segment.speaker) || null,
+        utteranceRefs: [row.segmentId],
+        candidateClipIds:
+          row.candidateClipIds.length > 0 ? row.candidateClipIds.slice(0, 6) : [`${row.mediaId}:fallback`],
+        locked: false,
+        pinned: false,
+        rationale: `Selected for ${row.beat} beat with impact score ${(row.score * 100).toFixed(0)}%.`,
+        confidence: Number(clampStoryArcV2Number(0.5 + row.score * 0.45, 0.4, 0.98).toFixed(3)),
+      } satisfies StoryArcV2StoryScriptNode;
+    });
+
+  const normalizedNodes = ensureStoryArcV2BeatCoverage(selectedNodes);
+  const now = new Date().toISOString();
+  return {
+    scriptId: toStoryArcV2Id('script'),
+    analysisId: analysis.analysisId,
+    revision: 1,
+    title: `Story Script • ${analysis.projectId || 'Wedding Day'}`,
+    targetDurationSeconds,
+    nodes: normalizedNodes,
+    bannedClipIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const buildStoryArcV2TimelineVariant = (
+  script: StoryArcV2StoryScript,
+  variant: StoryArcV2Variant,
+  constraints: {
+    shotMin: number;
+    shotMax: number;
+    noOverlap: boolean;
+    repetitionCaps: Record<string, number>;
+    beatCoverageRequired: boolean;
+  }
+): StoryArcV2TimelineVariantPlan => {
+  const factor = variant === 'safe' ? 1.1 : variant === 'bold' ? 0.78 : 1;
+  const clips: StoryArcV2TimelineClip[] = [];
+  const selectedClipIds: string[] = [];
+  const repetitionTracker: Record<string, number> = {};
+  let cursor = 0;
+
+  script.nodes.forEach((node, index) => {
+    const sourceClipId = node.candidateClipIds.find((clipId) => !script.bannedClipIds.includes(clipId));
+    if (!sourceClipId) {
+      return;
+    }
+    const speakerKey = node.speaker ? `speaker:${normalizeModelLookupValue(node.speaker)}` : '';
+    if (speakerKey) {
+      const cap = Number(constraints.repetitionCaps[speakerKey] ?? 999);
+      const used = repetitionTracker[speakerKey] ?? 0;
+      if (used >= cap) {
+        return;
+      }
+      repetitionTracker[speakerKey] = used + 1;
+    }
+
+    const duration = Number(
+      clampStoryArcV2Number(node.duration * factor, constraints.shotMin, constraints.shotMax).toFixed(3)
+    );
+    const start = Number(cursor.toFixed(3));
+    const clipId = `${variant}-clip-${index + 1}-${node.id}`;
+    clips.push({
+      id: clipId,
+      name: node.text.slice(0, 72),
+      beatName: node.beat,
+      start,
+      duration,
+      trackId: 'video-1',
+      sourceFile: sourceClipId,
+      metadata: {
+        sourceClipId,
+        scriptNodeId: node.id,
+        beat: node.beat,
+        rationale: node.rationale,
+        speaker: node.speaker,
+      },
+    });
+    selectedClipIds.push(sourceClipId);
+    cursor += duration;
+  });
+
+  const summary = [
+    `Variant ${variant} generated from ${script.nodes.length} script nodes.`,
+    `Selected ${clips.length} timeline clips.`,
+    `Estimated duration ${cursor.toFixed(1)}s.`,
+  ];
+
+  return {
+    variant,
+    selectedClipIds,
+    timeline: {
+      clips,
+      totalDuration: Number(cursor.toFixed(3)),
+    },
+    summary,
+  };
+};
+
+const toStoryArcV2XmlSafe = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('\"', '&quot;')
+    .replaceAll('\'', '&apos;');
+
+const buildStoryArcV2Fcpxml = (
+  proposal: StoryArcV2TimelineProposal
+): string => {
+  const selected = proposal.variants[proposal.selectedVariant];
+  const clips = selected?.timeline.clips || [];
+  const clipItems = clips
+    .map((clip, index) => {
+      return `    <clip id=\"${toStoryArcV2XmlSafe(clip.id)}\" name=\"${toStoryArcV2XmlSafe(
+        clip.name
+      )}\" start=\"${clip.start.toFixed(3)}\" duration=\"${clip.duration.toFixed(3)}\" lane=\"${index + 1}\"/>`;
+    })
+    .join('\n');
+  return `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fcpxml version=\"1.10\">\n  <resources/>\n  <library>\n    <event name=\"StoryArcV2\">\n      <project name=\"${toStoryArcV2XmlSafe(proposal.scriptId)}\">\n        <sequence format=\"r1\" tcStart=\"0s\" tcFormat=\"NDF\">\n          <spine>\n${clipItems}\n          </spine>\n        </sequence>\n      </project>\n    </event>\n  </library>\n</fcpxml>`;
+};
+
+const persistStoryArcV2TablePayload = async (
+  tableName: string,
+  idColumn: string,
+  idValue: string,
+  payloadColumn: string,
+  payload: Record<string, unknown>
+): Promise<void> => {
+  try {
+    if (!(await hasTable(tableName))) return;
+    await pool.query(
+      `insert into ${tableName} (${idColumn}, ${payloadColumn}, created_at, updated_at)
+       values ($1, $2::jsonb, now(), now())
+       on conflict (${idColumn})
+       do update set ${payloadColumn} = excluded.${payloadColumn}, updated_at = now()`,
+      [idValue, JSON.stringify(payload)]
+    );
+  } catch (error) {
+    console.warn(`story-arc-v2 persistence warning (${tableName}):`, error);
+  }
+};
+
+const patchStoryArcV2Job = (
+  jobId: string,
+  patch: Partial<Omit<StoryArcV2Job, 'jobId' | 'createdAt' | 'request'>>
+): StoryArcV2Job | null => {
+  const current = storyArcV2Jobs.get(jobId);
+  if (!current) return null;
+  const next: StoryArcV2Job = {
+    ...current,
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  storyArcV2Jobs.set(jobId, next);
+  void persistStoryArcV2TablePayload(
+    'storyarc_job_checkpoints',
+    'job_id',
+    jobId,
+    'checkpoint_payload',
+    {
+      phase: next.phase,
+      status: next.status,
+      progress: next.progress,
+      checkpoint: next.checkpoint,
+      warnings: next.warnings,
+      resultRef: next.resultRef,
+      error: next.error,
+      updatedAt: next.updatedAt,
+    }
+  );
+  return next;
+};
+
+const createStoryArcV2AnalyzeJob = (input: StoryArcV2AnalyzeInput): StoryArcV2Job => {
+  const now = new Date().toISOString();
+  const job: StoryArcV2Job = {
+    jobId: toStoryArcV2Id('storyarc-v2-job'),
+    phase: 'analyze',
+    status: 'queued',
+    progress: 0,
+    checkpoint: { stage: 'queued' },
+    warnings: [],
+    resultRef: null,
+    result: null,
+    error: null,
+    request: {
+      projectId: input.projectId,
+      mediaCount: input.media.length,
+      media: input.media,
+      intentProfileId: input.intentProfileId,
+      languagePolicy: input.languagePolicy,
+      musicTrackId: input.musicTrackId,
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+  storyArcV2Jobs.set(job.jobId, job);
+  storyArcV2JobControllers.set(job.jobId, new AbortController());
+  return job;
+};
+
+const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeInput): Promise<void> => {
+  const controller = storyArcV2JobControllers.get(jobId) || new AbortController();
+  storyArcV2JobControllers.set(jobId, controller);
+  const signal = controller.signal;
+
+  patchStoryArcV2Job(jobId, {
+    status: 'processing',
+    progress: 8,
+    checkpoint: { stage: 'preparing_media', mediaCount: input.media.length },
+  });
+
+  try {
+    const analyzedMedia: StoryArcV2AnalyzedMedia[] = [];
+    const warnings: string[] = [];
+    const language = normalizeStoryArcV2Language(input.languagePolicy);
+
+    for (let index = 0; index < input.media.length; index += 1) {
+      if (signal.aborted) throw createJobAbortError();
+      const media = input.media[index];
+      patchStoryArcV2Job(jobId, {
+        progress: Number((15 + (index / Math.max(1, input.media.length)) * 65).toFixed(1)),
+        checkpoint: {
+          stage: 'analyzing_media',
+          mediaId: media.id,
+          mediaIndex: index + 1,
+          mediaTotal: input.media.length,
+        },
+      });
+
+      const transcribeResult = await transcribeVideoSource(media.path, language, signal);
+      const sceneResult = await detectScenesFromVideo(
+        media.path,
+        0.3,
+        0.5,
+        signal
+      );
+
+      const semanticProfiles = buildStoryArcV2SemanticProfiles(
+        media.id,
+        sceneResult.result.scenes,
+        transcribeResult.transcription
+      );
+
+      analyzedMedia.push({
+        mediaId: media.id,
+        path: media.path,
+        durationSeconds: sceneResult.result.duration_seconds,
+        scenes: sceneResult.result.scenes,
+        transcription: transcribeResult.transcription,
+        warnings: [...transcribeResult.warnings, ...sceneResult.warnings],
+        semanticProfiles,
+      });
+
+      warnings.push(...transcribeResult.warnings, ...sceneResult.warnings);
+    }
+
+    const sceneCount = analyzedMedia.reduce((sum, media) => sum + media.scenes.length, 0);
+    const totalDuration = analyzedMedia.reduce((sum, media) => sum + media.durationSeconds, 0);
+    const transcriptionSegments = analyzedMedia.reduce(
+      (sum, media) => sum + media.transcription.segments.length,
+      0
+    );
+    const detectedSpeakerSet = new Set<string>();
+    analyzedMedia.forEach((media) => {
+      media.transcription.segments.forEach((segment) => {
+        const speaker = readString(segment.speaker);
+        if (speaker) detectedSpeakerSet.add(speaker);
+      });
+    });
+
+    const analysisRun: StoryArcV2AnalysisRun = {
+      analysisId: toStoryArcV2Id('analysis'),
+      projectId: input.projectId,
+      intentProfileId: input.intentProfileId,
+      languagePolicy: input.languagePolicy,
+      musicTrackId: input.musicTrackId,
+      media: analyzedMedia,
+      summary: {
+        sceneCount,
+        totalDuration: Number(totalDuration.toFixed(3)),
+        transcriptionSegments,
+        detectedSpeakers: detectedSpeakerSet.size,
+      },
+      warnings: warnings.slice(0, 120),
+      createdAt: new Date().toISOString(),
+    };
+
+    storyArcV2AnalysisRuns.set(analysisRun.analysisId, analysisRun);
+    void persistStoryArcV2TablePayload(
+      'storyarc_analysis_runs',
+      'analysis_id',
+      analysisRun.analysisId,
+      'analysis_payload',
+      analysisRun as unknown as Record<string, unknown>
+    );
+
+    const primaryMedia = analysisRun.media[0];
+    const resultPayload = {
+      analysisId: analysisRun.analysisId,
+      projectId: analysisRun.projectId,
+      summary: analysisRun.summary,
+      scenes: primaryMedia?.scenes || [],
+      semanticProfiles: analysisRun.media.flatMap((media) => media.semanticProfiles).slice(0, 250),
+      warnings: analysisRun.warnings,
+      createdAt: analysisRun.createdAt,
+    };
+
+    patchStoryArcV2Job(jobId, {
+      status: 'completed',
+      progress: 100,
+      checkpoint: { stage: 'completed' },
+      warnings: analysisRun.warnings,
+      resultRef: analysisRun.analysisId,
+      result: resultPayload,
+      error: null,
+    });
+  } catch (error) {
+    if (isAbortLikeError(error) || signal.aborted) {
+      patchStoryArcV2Job(jobId, {
+        status: 'cancelled',
+        progress: 100,
+        checkpoint: { stage: 'cancelled' },
+        error: 'Cancelled by user',
+      });
+      return;
+    }
+    const message = error instanceof Error ? error.message : 'Story Arc V2 analyze failed';
+    patchStoryArcV2Job(jobId, {
+      status: 'failed',
+      progress: 100,
+      checkpoint: { stage: 'failed' },
+      error: message,
+    });
+  } finally {
+    storyArcV2JobControllers.delete(jobId);
+  }
+};
+
+app.get('/api/story-arc/v2/feature-status', (_req, res) => {
+  return res.json({
+    success: true,
+    enabled: isStoryArcV2Enabled(),
+    mode: 'co-pilot',
+    compute: 'cloud-gpu',
+    priority: 'best-quality',
+  });
+});
+
+app.post('/api/story-arc/v2/analyze/start', (req, res) => {
+  if (!isStoryArcV2Enabled()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Story Arc V2 is disabled by feature flag',
+    });
+  }
+
+  const mediaRaw = Array.isArray(req.body?.media) ? req.body.media : [];
+  const media = mediaRaw
+    .map((entry: unknown, index: number) => normalizeStoryArcV2MediaInput(entry, index))
+    .filter((entry: StoryArcV2MediaInput | null): entry is StoryArcV2MediaInput => entry !== null);
+
+  if (media.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'At least one media item with path is required',
+    });
+  }
+
+  const input: StoryArcV2AnalyzeInput = {
+    projectId: readString(req.body?.projectId),
+    media,
+    intentProfileId: readString(req.body?.intentProfileId),
+    languagePolicy: readString(req.body?.languagePolicy) || 'balanced-no',
+    musicTrackId: readString(req.body?.musicTrackId),
+  };
+
+  const job = createStoryArcV2AnalyzeJob(input);
+  void runStoryArcV2AnalyzeJob(job.jobId, input);
+  return res.status(202).json({
+    success: true,
+    jobId: job.jobId,
+    phase: job.phase,
+    status: job.status,
+    progress: job.progress,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  });
+});
+
+app.get('/api/story-arc/v2/jobs/:jobId', (req, res) => {
+  const job = storyArcV2Jobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Story Arc V2 job not found',
+    });
+  }
+  return res.json({
+    success: true,
+    ...job,
+  });
+});
+
+app.post('/api/story-arc/v2/jobs/:jobId/cancel', (req, res) => {
+  const job = storyArcV2Jobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Story Arc V2 job not found',
+    });
+  }
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    return res.json({
+      success: true,
+      ...job,
+    });
+  }
+  const controller = storyArcV2JobControllers.get(job.jobId);
+  if (controller) {
+    controller.abort();
+  }
+  const next = patchStoryArcV2Job(job.jobId, {
+    status: 'cancelled',
+    progress: 100,
+    checkpoint: { stage: 'cancelled' },
+    error: 'Cancelled by user',
+  });
+  return res.json({
+    success: true,
+    ...(next || job),
+  });
+});
+
+app.post('/api/story-arc/v2/jobs/:jobId/retry', (req, res) => {
+  const job = storyArcV2Jobs.get(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Story Arc V2 job not found',
+    });
+  }
+  if (job.phase !== 'analyze') {
+    return res.status(400).json({
+      success: false,
+      error: 'Only analyze jobs are retryable in V2 foundation',
+    });
+  }
+  if (job.status === 'queued' || job.status === 'processing') {
+    return res.json({
+      success: true,
+      ...job,
+    });
+  }
+  const requestMedia = Array.isArray(job.request?.media)
+    ? job.request.media
+    : [];
+  const media = requestMedia
+    .map((entry: unknown, index: number) => normalizeStoryArcV2MediaInput(entry, index))
+    .filter((entry: StoryArcV2MediaInput | null): entry is StoryArcV2MediaInput => entry !== null);
+  if (media.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Retry payload missing media',
+    });
+  }
+  const input: StoryArcV2AnalyzeInput = {
+    projectId: readString(job.request?.projectId),
+    media,
+    intentProfileId: readString(job.request?.intentProfileId),
+    languagePolicy: readString(job.request?.languagePolicy) || 'balanced-no',
+    musicTrackId: readString(job.request?.musicTrackId),
+  };
+  storyArcV2JobControllers.set(job.jobId, new AbortController());
+  patchStoryArcV2Job(job.jobId, {
+    status: 'queued',
+    progress: 0,
+    checkpoint: { stage: 'queued' },
+    warnings: [],
+    resultRef: null,
+    result: null,
+    error: null,
+  });
+  void runStoryArcV2AnalyzeJob(job.jobId, input);
+  const next = storyArcV2Jobs.get(job.jobId) || job;
+  return res.status(202).json({
+    success: true,
+    ...next,
+  });
+});
+
+app.post('/api/story-arc/v2/script/generate', async (req, res) => {
+  try {
+    const analysisId = readString(req.body?.analysisId);
+    if (!analysisId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing analysisId',
+      });
+    }
+    const analysis = storyArcV2AnalysisRuns.get(analysisId);
+    if (!analysis) {
+      return res.status(404).json({
+        success: false,
+        error: 'Analysis run not found',
+      });
+    }
+    const targetDurationSeconds = Number(
+      clampStoryArcV2Number(readNumber(req.body?.targetDuration) ?? 90, 20, 1800).toFixed(2)
+    );
+    const script = buildStoryArcV2Script(analysis, targetDurationSeconds);
+    storyArcV2Scripts.set(script.scriptId, script);
+    void persistStoryArcV2TablePayload(
+      'storyarc_story_scripts',
+      'script_id',
+      script.scriptId,
+      'script_payload',
+      script as unknown as Record<string, unknown>
+    );
+
+    const storyArc = {
+      id: `story-${script.scriptId}`,
+      title: script.title,
+      beats: script.nodes.map((node) => ({
+        id: node.id,
+        beat: node.beat,
+        text: node.text,
+        start: node.start,
+        end: node.end,
+        confidence: node.confidence,
+      })),
+      musicSuggestions: [
+        {
+          cue: 'build-to-climax',
+          rationale: 'Use energy lift between conflict and turning point.',
+        },
+      ],
+      transitionPoints: script.nodes.slice(0, Math.max(0, script.nodes.length - 1)).map((node) => ({
+        at: Number((node.start + node.duration).toFixed(3)),
+        type: 'cross_dissolve',
+      })),
+    };
+
+    return res.json({
+      success: true,
+      script,
+      storyArc,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to generate script';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/script/edit', async (req, res) => {
+  try {
+    const scriptId = readString(req.body?.scriptId);
+    if (!scriptId) {
+      return res.status(400).json({ success: false, error: 'Missing scriptId' });
+    }
+    const script = storyArcV2Scripts.get(scriptId);
+    if (!script) {
+      return res.status(404).json({ success: false, error: 'Script not found' });
+    }
+    const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
+    const nextScript: StoryArcV2StoryScript = {
+      ...script,
+      nodes: script.nodes.map((node) => ({ ...node, candidateClipIds: [...node.candidateClipIds] })),
+      bannedClipIds: [...script.bannedClipIds],
+    };
+
+    operations.forEach((operationRaw: unknown) => {
+      if (!isUnknownRecord(operationRaw)) return;
+      const op = normalizeModelLookupValue(readString(operationRaw.op) || '');
+      if (op === 'reorder') {
+        const fromIndex = Math.max(0, Math.round(readNumber(operationRaw.fromIndex) ?? -1));
+        const toIndex = Math.max(0, Math.round(readNumber(operationRaw.toIndex) ?? -1));
+        if (fromIndex < nextScript.nodes.length && toIndex < nextScript.nodes.length && fromIndex !== toIndex) {
+          const [moved] = nextScript.nodes.splice(fromIndex, 1);
+          nextScript.nodes.splice(toIndex, 0, moved);
+        }
+        return;
+      }
+      const nodeId = readString(operationRaw.nodeId);
+      const node = nextScript.nodes.find((entry) => entry.id === nodeId);
+      if (op === 'locknode' && node) {
+        node.locked = readBoolean(operationRaw.locked) !== false;
+        return;
+      }
+      if (op === 'replacecandidate' && node) {
+        const clipId = readString(operationRaw.clipId);
+        const replacementClipId = readString(operationRaw.replacementClipId);
+        if (!clipId || !replacementClipId) return;
+        const candidateIndex = node.candidateClipIds.indexOf(clipId);
+        if (candidateIndex >= 0) {
+          node.candidateClipIds[candidateIndex] = replacementClipId;
+        } else {
+          node.candidateClipIds.unshift(replacementClipId);
+        }
+        return;
+      }
+      if (op === 'banclip') {
+        const clipId = readString(operationRaw.clipId);
+        if (clipId && !nextScript.bannedClipIds.includes(clipId)) {
+          nextScript.bannedClipIds.push(clipId);
+          void persistStoryArcV2TablePayload(
+            'storyarc_feedback_events',
+            'event_id',
+            toStoryArcV2Id('feedback'),
+            'event_payload',
+            {
+              scriptId,
+              type: 'ban_clip',
+              clipId,
+              reason: readString(operationRaw.reason),
+              createdAt: new Date().toISOString(),
+            }
+          );
+        }
+        return;
+      }
+      if (op === 'regeneratenode' && node && node.candidateClipIds.length > 1) {
+        const [first] = node.candidateClipIds.splice(0, 1);
+        node.candidateClipIds.push(first);
+      }
+    });
+
+    nextScript.revision += 1;
+    nextScript.updatedAt = new Date().toISOString();
+    storyArcV2Scripts.set(scriptId, nextScript);
+    void persistStoryArcV2TablePayload(
+      'storyarc_story_scripts',
+      'script_id',
+      nextScript.scriptId,
+      'script_payload',
+      nextScript as unknown as Record<string, unknown>
+    );
+    return res.json({
+      success: true,
+      script: nextScript,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to edit script';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
+  try {
+    const scriptId = readString(req.body?.scriptId);
+    if (!scriptId) {
+      return res.status(400).json({ success: false, error: 'Missing scriptId' });
+    }
+    const script = storyArcV2Scripts.get(scriptId);
+    if (!script) {
+      return res.status(404).json({ success: false, error: 'Script not found' });
+    }
+    const variantRaw = normalizeModelLookupValue(readString(req.body?.variant) || 'balanced');
+    const selectedVariant: StoryArcV2Variant =
+      variantRaw === 'safe' || variantRaw === 'bold' ? (variantRaw as StoryArcV2Variant) : 'balanced';
+    const constraintsRecord = isUnknownRecord(req.body?.constraints)
+      ? req.body.constraints
+      : {};
+    const shotMin = Number(
+      clampStoryArcV2Number(readNumber(constraintsRecord.shotMin) ?? 1.2, 0.3, 30).toFixed(3)
+    );
+    const shotMax = Number(
+      clampStoryArcV2Number(readNumber(constraintsRecord.shotMax) ?? 8, shotMin, 90).toFixed(3)
+    );
+    const noOverlap = readBoolean(constraintsRecord.noOverlap) !== false;
+    const beatCoverageRequired = readBoolean(constraintsRecord.beatCoverageRequired) !== false;
+    const repetitionCapsRaw = isUnknownRecord(constraintsRecord.repetitionCaps)
+      ? constraintsRecord.repetitionCaps
+      : {};
+    const repetitionCaps: Record<string, number> = {};
+    Object.entries(repetitionCapsRaw).forEach(([key, value]) => {
+      const numeric = readNumber(value);
+      if (numeric !== null) {
+        repetitionCaps[key] = Math.max(1, Math.round(numeric));
+      }
+    });
+
+    const constraints = {
+      shotMin,
+      shotMax,
+      noOverlap,
+      repetitionCaps,
+      beatCoverageRequired,
+    };
+
+    const safe = buildStoryArcV2TimelineVariant(script, 'safe', constraints);
+    const balanced = buildStoryArcV2TimelineVariant(script, 'balanced', constraints);
+    const bold = buildStoryArcV2TimelineVariant(script, 'bold', constraints);
+    const explainabilityByClipId: Record<string, Record<string, unknown>> = {};
+    [safe, balanced, bold].forEach((variantPlan) => {
+      variantPlan.timeline.clips.forEach((clip) => {
+        explainabilityByClipId[clip.id] = {
+          variant: variantPlan.variant,
+          beat: clip.beatName,
+          reason:
+            readString(clip.metadata?.rationale) ||
+            'Selected by script-to-timeline planner',
+          sourceClipId: readString(clip.metadata?.sourceClipId) || clip.sourceFile || null,
+          speaker: readString(clip.metadata?.speaker) || null,
+        };
+      });
+    });
+
+    const proposal: StoryArcV2TimelineProposal = {
+      proposalId: toStoryArcV2Id('proposal'),
+      scriptId: script.scriptId,
+      revision: script.revision,
+      generatedAt: new Date().toISOString(),
+      selectedVariant,
+      variants: {
+        safe,
+        balanced,
+        bold,
+      },
+      explainabilityByClipId,
+      warnings: [],
+    };
+
+    storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
+    void persistStoryArcV2TablePayload(
+      'storyarc_timeline_proposals',
+      'proposal_id',
+      proposal.proposalId,
+      'proposal_payload',
+      proposal as unknown as Record<string, unknown>
+    );
+
+    return res.json({
+      success: true,
+      proposal,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to plan timeline';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
+  try {
+    const proposalId = readString(req.body?.proposalId);
+    const revision = Math.round(readNumber(req.body?.revision) ?? -1);
+    if (!proposalId) {
+      return res.status(400).json({ success: false, error: 'Missing proposalId' });
+    }
+    const proposal = storyArcV2TimelineProposals.get(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ success: false, error: 'Proposal not found' });
+    }
+    if (revision > 0 && revision !== proposal.revision) {
+      return res.status(409).json({
+        success: false,
+        error: `Revision mismatch. Requested ${revision}, current ${proposal.revision}.`,
+      });
+    }
+    const ledgerKey = `${proposalId}:${proposal.revision}`;
+    const existing = storyArcV2ApplyLedger.get(ledgerKey);
+    if (existing) {
+      return res.json({
+        success: true,
+        idempotent: true,
+        proposalId,
+        revision: proposal.revision,
+        appliedAt: existing.appliedAt,
+        applyCount: existing.applyCount,
+        timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
+      });
+    }
+    const entry = {
+      appliedAt: new Date().toISOString(),
+      applyCount: 1,
+    };
+    storyArcV2ApplyLedger.set(ledgerKey, entry);
+    return res.json({
+      success: true,
+      idempotent: false,
+      proposalId,
+      revision: proposal.revision,
+      appliedAt: entry.appliedAt,
+      applyCount: entry.applyCount,
+      timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to apply timeline';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/export', async (req, res) => {
+  try {
+    const proposalId = readString(req.body?.proposalId);
+    if (!proposalId) {
+      return res.status(400).json({ success: false, error: 'Missing proposalId' });
+    }
+    const proposal = storyArcV2TimelineProposals.get(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ success: false, error: 'Proposal not found' });
+    }
+    const formatRaw = normalizeModelLookupValue(readString(req.body?.format) || 'fcpxml');
+    const format =
+      formatRaw === 'xml' || formatRaw === 'resolve-json'
+        ? formatRaw
+        : 'fcpxml';
+    const includeScriptNotes = readBoolean(req.body?.includeScriptNotes) !== false;
+    const selected = proposal.variants[proposal.selectedVariant];
+    if (!selected) {
+      return res.status(400).json({ success: false, error: 'Selected variant missing in proposal' });
+    }
+
+    const generatedAt = new Date().toISOString();
+    if (format === 'resolve-json') {
+      return res.json({
+        success: true,
+        proposalId,
+        format,
+        fileName: `storyarc-${proposalId}.resolve.json`,
+        content: {
+          proposalId,
+          selectedVariant: proposal.selectedVariant,
+          timeline: selected.timeline,
+          notes: includeScriptNotes
+            ? selected.timeline.clips.map((clip) => ({
+                clipId: clip.id,
+                note: readString(clip.metadata?.rationale) || '',
+              }))
+            : [],
+        },
+        generatedAt,
+      });
+    }
+
+    const content =
+      format === 'xml'
+        ? JSON.stringify(selected.timeline, null, 2)
+        : buildStoryArcV2Fcpxml(proposal);
+
+    return res.json({
+      success: true,
+      proposalId,
+      format,
+      fileName: `storyarc-${proposalId}.${format === 'fcpxml' ? 'fcpxml' : 'xml'}`,
+      content,
+      includeScriptNotes,
+      generatedAt,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to export timeline';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 app.get('/api/camera-formats/latest', (_req, res) => {
   return res.json({
     success: true,

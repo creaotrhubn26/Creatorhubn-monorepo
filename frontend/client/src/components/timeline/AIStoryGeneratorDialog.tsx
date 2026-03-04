@@ -33,13 +33,18 @@ import {
 import {
   CloudUpload,
   AutoAwesome,
-  Movie,
   Timeline as TimelineIcon,
   CheckCircle,
   Psychology,
 } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import {
+  generateStoryArcV2Script,
+  planStoryArcV2Timeline,
+  pollStoryArcV2AnalyzeJob,
+  startStoryArcV2AnalyzeJob,
+} from '@/services/story-arc-v2-server';
 
 interface AIStoryGeneratorDialogProps {
   open: boolean;
@@ -49,6 +54,14 @@ interface AIStoryGeneratorDialogProps {
     storyArc: any;
     timeline: any;
   }) => void;
+}
+
+interface StoryArcAnalyzeUiResult {
+  analysisId: string;
+  sceneCount: number;
+  totalDuration: number;
+  scenes: unknown[];
+  warnings: string[];
 }
 
 export default function AIStoryGeneratorDialog({
@@ -63,59 +76,84 @@ export default function AIStoryGeneratorDialog({
     structure: '3-act' as '3-act' | '5-act',
     analysisSpeed: 'balanced' as 'fast' | 'balanced' | 'detailed'
   });
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [analysisResult, setAnalysisResult] = useState<StoryArcAnalyzeUiResult | null>(null);
   
   // Upload video
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('video', file);
-      
-      const response = await fetch('/api/upload/video', {
+
+      return await apiRequest('/api/video-analysis/upload-source', {
         method: 'POST',
-        body: formData
+        body: formData,
       });
-      
-      return response.json();
     },
     onSuccess: (data) => {
       console.log('✅ Video uploaded: ', data);
       setActiveStep(1);
       // Start analysis automatically
-      analyzeVideoMutation.mutate(data.filePath);
+      const uploadedVideoPath =
+        typeof data?.video_path === 'string'
+          ? data.video_path
+          : typeof data?.filePath === 'string'
+            ? data.filePath
+            : '';
+      analyzeVideoMutation.mutate(uploadedVideoPath);
     }
   });
   
   // Analyze video with AI
   const analyzeVideoMutation = useMutation({
     mutationFn: async (videoPath: string) => {
-      const fps = settings.analysisSpeed === 'fast' ? 0.5 : 
-                  settings.analysisSpeed === 'detailed' ? 2 : 1;
-      
-      return await apiRequest('/api/ai-story/analyze-video', {
-        method: 'POST',
-        body: JSON.stringify({ videoPath, fps })
+      if (!videoPath) {
+        throw new Error('Missing video path after upload');
+      }
+      const languagePolicy = settings.analysisSpeed === 'fast' ? 'fast-no' : 'balanced-no';
+      const jobId = await startStoryArcV2AnalyzeJob({
+        projectId: null,
+        media: [
+          {
+            id: 'primary-video',
+            type: 'video',
+            path: videoPath,
+          },
+        ],
+        intentProfileId: 'balanced-story',
+        languagePolicy,
+      });
+      return await pollStoryArcV2AnalyzeJob(jobId, {
+        intervalMs: 1500,
+        timeoutMs: settings.analysisSpeed === 'detailed' ? 12 * 60 * 1000 : 8 * 60 * 1000,
       });
     },
     onSuccess: (data) => {
-      console.log('✅ Video analyzed:', data.sceneCount, 'scenes');
-      setAnalysisResult(data);
+      console.log('✅ Video analyzed:', data.summary.sceneCount, 'scenes');
+      const uiResult: StoryArcAnalyzeUiResult = {
+        analysisId: data.analysisId,
+        sceneCount: data.summary.sceneCount,
+        totalDuration: data.summary.totalDuration,
+        scenes: data.scenes,
+        warnings: data.warnings,
+      };
+      setAnalysisResult(uiResult);
       setActiveStep(2);
       // Auto-generate story arc
-      generateArcMutation.mutate(data.scenes);
+      generateArcMutation.mutate(uiResult.analysisId);
     }
   });
   
   // Generate story arc
   const generateArcMutation = useMutation({
-    mutationFn: async (scenes: any[]) => {
-      return await apiRequest('/api/ai-story/generate-arc', {
-        method: 'POST',
-        body: JSON.stringify({
-          scenes,
-          targetDuration: settings.targetDuration,
-          structure: settings.structure
-        })
+    mutationFn: async (analysisId: string) => {
+      return await generateStoryArcV2Script({
+        analysisId,
+        targetDuration: settings.targetDuration,
+        styleProfile: {
+          structure: settings.structure,
+          analysisSpeed: settings.analysisSpeed,
+          qualityTier: 'best',
+        },
       });
     },
     onSuccess: (data) => {
@@ -123,23 +161,37 @@ export default function AIStoryGeneratorDialog({
       setActiveStep(3);
       // Auto-build timeline
       buildTimelineMutation.mutate({
+        scriptId: data.script.scriptId,
         storyArc: data.storyArc,
-        scenes: analysisResult.scenes
       });
     }
   });
   
   // Build timeline
   const buildTimelineMutation = useMutation({
-    mutationFn: async ({ storyArc, scenes }: any) => {
-      return await apiRequest('/api/ai-story/build-timeline', {
-        method: 'POST',
-        body: JSON.stringify({
-          storyArc,
-          scenes,
-          videoPath: (uploadMutation.data as any)?.filePath
-        })
+    mutationFn: async ({ scriptId, storyArc }: { scriptId: string; storyArc: Record<string, unknown> }) => {
+      const proposal = await planStoryArcV2Timeline({
+        scriptId,
+        variant: 'balanced',
+        constraints: {
+          shotMin: 1.2,
+          shotMax: 8,
+          noOverlap: true,
+          beatCoverageRequired: true,
+        },
+        musicPolicy: {
+          mode: 'follow-energy',
+          smoothTransitions: true,
+        },
       });
+      const selectedVariant = proposal.variants[proposal.selectedVariant] || proposal.variants.balanced;
+      return {
+        storyArc,
+        proposal,
+        timeline: selectedVariant.timeline,
+        clipCount: selectedVariant.timeline.clips.length,
+        totalDuration: selectedVariant.timeline.totalDuration,
+      };
     },
     onSuccess: (data) => {
       console.log('✅ Timeline built:', data.clipCount, 'clips');
@@ -147,8 +199,8 @@ export default function AIStoryGeneratorDialog({
       
       // Return complete result to parent
       onStoryGenerated({
-        scenes: analysisResult.scenes,
-        storyArc: generateArcMutation.data?.storyArc,
+        scenes: analysisResult?.scenes || [],
+        storyArc: data.storyArc,
         timeline: data.timeline
       });
     }
@@ -495,5 +547,4 @@ export default function AIStoryGeneratorDialog({
     </Dialog>
   );
 }
-
 
