@@ -23,15 +23,16 @@ import {
 } from 'react';
 import { useNodes, useScene } from '../state/selectors';
 import { getActiveCameraId } from '../core/services/viewports';
-import {
-  ViewfinderRenderer,
+import type {
   ViewfinderSettings,
   CameraState,
   ExposureInfo,
   FocusInfo,
   CameraInfoDisplay,
   HistogramData,
-  FrameGuide,
+  FrameGuide} from '../core/rendering/ViewfinderRenderer';
+import {
+  ViewfinderRenderer,
   DEFAULT_VIEWFINDER_SETTINGS,
   calculateEV,
   calculateExposureInfo,

@@ -5,18 +5,20 @@
  * Handles adding students and teachers as actual 3D actor models.
  */
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import { logger } from './logger';
 
 const log = logger.module('ClassPhotoScene');
 
+import type { 
+  ClassPhotoSession} from './classPhotoService';
 import { 
-  ClassPhotoSession, 
   Student,
   TEACHER_COLORS,
   TEACHER_HEIGHT,
 } from './classPhotoService';
-import { virtualActorService, ActorParameters } from './virtualActorService';
+import type { ActorParameters } from './virtualActorService';
+import { virtualActorService } from './virtualActorService';
 
 // =============================================================================
 // School HDRI Presets

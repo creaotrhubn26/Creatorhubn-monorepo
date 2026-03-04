@@ -31,11 +31,13 @@ import { apiRequest } from '@/lib/queryClient';
 import { useDemoMode } from '@/contexts/DemoModeContext';
 import { useDynamicProfessions } from '../universal/hooks/useDynamicProfessions';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  useExternalData,
+import type {
   SSBEconomicIndicators,
   SSBPopulationData,
   SSBDatasets
+} from '../../services/ExternalDataService';
+import {
+  useExternalData
 } from '../../services/ExternalDataService';
 import { useTheming } from '../../utils/theming-helper';
 

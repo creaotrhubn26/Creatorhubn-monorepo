@@ -78,7 +78,7 @@ import {
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { LocationsIcon as LocationIcon, CalendarCustomIcon as CalendarMonthIcon, StatsIcon } from './icons/CastingIcons';
-import { ProductionDay } from '../models/casting';
+import type { ProductionDay } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
 import { castingService } from '../services/castingService';
 import { sceneComposerService } from '../services/sceneComposerService';

@@ -25,7 +25,8 @@ import {
   Person,
   CheckCircle,
 } from '@mui/icons-material';
-import { AIVisionService, AudioSceneAnalysis } from '@/services/ai-vision-service';
+import type { AudioSceneAnalysis } from '@/services/ai-vision-service';
+import { AIVisionService } from '@/services/ai-vision-service';
 
 interface AudioFile {
   id: string;

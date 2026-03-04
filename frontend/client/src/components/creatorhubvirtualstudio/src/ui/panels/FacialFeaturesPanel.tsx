@@ -45,14 +45,15 @@ import {
   Elderly,
   Check,
 } from '@mui/icons-material';
+import type {
+  FacialHairStyle,
+  FacialHairOptions,
+  MakeupOptions,
+  SkinDetailOptions} from '../../core/models/FacialFeaturesModel';
 import {
   EXPRESSION_PRESETS,
   FACIAL_HAIR_PRESETS,
   MAKEUP_PRESETS,
-  FacialHairStyle,
-  FacialHairOptions,
-  MakeupOptions,
-  SkinDetailOptions,
   createFacialHairModel,
   createMakeupOverlay,
 } from '../../core/models/FacialFeaturesModel';

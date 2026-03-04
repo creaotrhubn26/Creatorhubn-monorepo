@@ -1,13 +1,14 @@
 // Revenue Optimizer Hook
 import { useState, useEffect } from 'react';
-import {
-  revenueOptimizer,
+import type {
   MarketRate,
   PricingCalculation,
   PricingTier,
   ProfitAnalysis,
   RevenueForecast,
-  UpsellingSuggestion,
+  UpsellingSuggestion} from '../utils/revenueOptimizer';
+import {
+  revenueOptimizer
 } from'../utils/revenueOptimizer';
 
 export const useRevenueOptimizer = () => {

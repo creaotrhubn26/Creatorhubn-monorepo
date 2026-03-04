@@ -21,7 +21,7 @@ import { logger } from './logger';
 
 const log = logger.module('PropService');
 import * as THREE from 'three';
-import { PropDefinition } from '../data/propDefinitions';
+import type { PropDefinition } from '../data/propDefinitions';
 import { assetLoadingService } from './assetLoadingService';
 
 export interface PropLoadOptions {

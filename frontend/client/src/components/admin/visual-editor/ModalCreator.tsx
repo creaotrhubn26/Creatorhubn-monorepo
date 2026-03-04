@@ -6,7 +6,8 @@
 
 import * as React from 'react';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { MODAL_TEMPLATES, ModalTemplate } from './modalTemplates';
+import type { ModalTemplate } from './modalTemplates';
+import { MODAL_TEMPLATES } from './modalTemplates';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';
 import {

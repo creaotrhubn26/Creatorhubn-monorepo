@@ -4,7 +4,8 @@
  * Error boundary for onboarding flow with user-friendly error messages
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react';
 import {
   Box,
   Container,

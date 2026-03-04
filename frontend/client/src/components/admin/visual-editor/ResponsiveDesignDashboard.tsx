@@ -39,7 +39,8 @@ import {
   Laptop,
   AspectRatio,
 } from '@mui/icons-material';
-import { useResponsiveDesign, UseResponsiveDesignOptions } from '../../../hooks/useResponsiveDesign';
+import type { UseResponsiveDesignOptions } from '../../../hooks/useResponsiveDesign';
+import { useResponsiveDesign } from '../../../hooks/useResponsiveDesign';
 import { ResponsiveConfig } from '../../../utils/responsiveDesignManager';
 
 interface ResponsiveDesignDashboardProps {

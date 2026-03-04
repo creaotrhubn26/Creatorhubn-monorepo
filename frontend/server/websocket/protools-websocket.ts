@@ -13,7 +13,7 @@
  */
 
 import { WebSocketServer, WebSocket } from 'ws';
-import { Server } from 'http';
+import type { Server } from 'http';
 import { db } from '../db';
 import { proToolsSessions, proToolsParticipants, proToolsEvents } from '../../shared/protools-schema';
 import { eq, and } from 'drizzle-orm';

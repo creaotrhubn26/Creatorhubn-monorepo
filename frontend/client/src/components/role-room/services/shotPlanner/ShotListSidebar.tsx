@@ -46,14 +46,15 @@ import {
   PlayCircle as InProgressIcon,
   ArrowDropDown as DropdownIcon,
 } from '@mui/icons-material';
+import type {
+  DragEndEvent} from '@dnd-kit/core';
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
-  useSensors,
-  DragEndEvent,
+  useSensors
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -63,7 +64,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useShotPlannerStore, useShots, useCurrentScene } from './store';
-import { Shot2D, SHOT_TYPE_INFO, ShotType } from './types';
+import type { Shot2D, ShotType } from './types';
+import { SHOT_TYPE_INFO } from './types';
 
 // =============================================================================
 // Shot Categories

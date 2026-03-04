@@ -35,7 +35,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
-import AcademyVideoPlayer from './AcademyVideoPlayer';
+import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
 
 interface ModuleLesson {
   id: string;
@@ -390,7 +390,10 @@ function ModuleManager({
             {tt('Tilbake til moduladministrator', 'Back to Module Manager')}
           </Button>
         </Box>
-        <AcademyVideoPlayer course={previewCourse} lesson={previewLesson} />
+        <AcademyVideoPlayerStudio
+          courseId={previewCourse.id}
+          lessonId={previewLesson.id}
+        />
       </Box>
     );
   }
@@ -450,7 +453,7 @@ function ModuleManager({
                 ['cohorts', 'Cohort Settings'],
                 ['analytics', 'Analytics'],
                 ['monetization', 'Monetization'],
-                ['lowerthirds', 'Animated Lower Thirds'],
+                ['lower-thirds', 'Animated Lower Thirds'],
                 ['settings', 'Settings'],
               ].map(([key, label]) => {
                 const active = leftNav === key;
@@ -468,7 +471,7 @@ function ModuleManager({
                         cohorts: '/academy/cohort-settings',
                         analytics: '/academy/analytics',
                         monetization: '/academy/monetization',
-                        lowerthirds: '/academy/lower-thirds',
+                        'lower-thirds': '/academy/lower-thirds',
                         settings: '/academy/course-creator',
                       };
                       const targetRoute = leftNavRoutes[key];
@@ -805,9 +808,9 @@ function ModuleManager({
                             },
                           }}
                         />
-                        <IconButton size="small" sx={{ color: 'rgba(244,237,225,0.72)' }}>
+                        <Box component="span" sx={{ display: 'inline-flex', color: 'rgba(244,237,225,0.72)' }}>
                           <MoreHoriz fontSize="small" />
-                        </IconButton>
+                        </Box>
                       </Stack>
                     </Button>
 

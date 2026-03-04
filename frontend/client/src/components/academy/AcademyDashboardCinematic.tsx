@@ -25,7 +25,7 @@ import { useAcademyContext } from '@/contexts/AcademyContext';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
-import AcademyVideoPlayer from './AcademyVideoPlayer';
+import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
 import { useLocation } from 'wouter';
 
 interface CourseLike {
@@ -334,28 +334,6 @@ function AcademyDashboardCinematic() {
     openCourse(heroCourse);
   }, [heroCourse, openCourse]);
 
-  const onNextLesson = useCallback(() => {
-    if (!selectedCourse || !selectedLesson) return;
-    const lessons = Array.isArray(selectedCourse.lessons) ? selectedCourse.lessons : [];
-    const currentIndex = lessons.findIndex((lesson: any) => lesson.id === selectedLesson.id);
-    if (currentIndex >= 0 && currentIndex < lessons.length - 1) {
-      const nextLesson = lessons[currentIndex + 1];
-      setCurrentLesson(nextLesson);
-      setSelectedLesson(nextLesson);
-    }
-  }, [selectedCourse, selectedLesson, setCurrentLesson]);
-
-  const onPreviousLesson = useCallback(() => {
-    if (!selectedCourse || !selectedLesson) return;
-    const lessons = Array.isArray(selectedCourse.lessons) ? selectedCourse.lessons : [];
-    const currentIndex = lessons.findIndex((lesson: any) => lesson.id === selectedLesson.id);
-    if (currentIndex > 0) {
-      const previousLesson = lessons[currentIndex - 1];
-      setCurrentLesson(previousLesson);
-      setSelectedLesson(previousLesson);
-    }
-  }, [selectedCourse, selectedLesson, setCurrentLesson]);
-
   if (selectedCourse && selectedLesson) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#04070f' }}>
@@ -379,11 +357,9 @@ function AcademyDashboardCinematic() {
             {tt('Tilbake til Academy Dashboard', 'Back to Academy Dashboard')}
           </Button>
         </Box>
-        <AcademyVideoPlayer
-          course={selectedCourse}
-          lesson={selectedLesson}
-          onNextLesson={onNextLesson}
-          onPreviousLesson={onPreviousLesson}
+        <AcademyVideoPlayerStudio
+          courseId={selectedCourse.id}
+          lessonId={selectedLesson.id}
         />
       </Box>
     );

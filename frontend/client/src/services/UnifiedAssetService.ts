@@ -14,13 +14,14 @@
  */
 
 import { apiRequest } from '@/lib/queryClient';
-import {
+import type {
   MediaAsset,
   PhotoAsset,
   VideoAsset,
   MediaAssetType,
   AssetFilters,
-  AssetSortOptions,
+  AssetSortOptions} from '../types/MediaAssetTypes';
+import {
   AssetSortField,
   AssetSortOrder,
   AssetProcessingStatus,

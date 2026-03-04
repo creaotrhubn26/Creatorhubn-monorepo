@@ -6,9 +6,12 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { directorModeService, DirectorModeState } from '../core/services/directorModeService';
-import { multiCameraRecordingService, CameraRecording } from '../core/services/multiCameraRecordingService';
-import { monitorFeedService, MonitorLayout } from '../core/services/monitorFeedService';
+import type { DirectorModeState } from '../core/services/directorModeService';
+import { directorModeService } from '../core/services/directorModeService';
+import type { CameraRecording } from '../core/services/multiCameraRecordingService';
+import { multiCameraRecordingService } from '../core/services/multiCameraRecordingService';
+import type { MonitorLayout } from '../core/services/monitorFeedService';
+import { monitorFeedService } from '../core/services/monitorFeedService';
 import { logger } from '../core/services/logger';
 
 const log = logger.module('useDirectorMode');

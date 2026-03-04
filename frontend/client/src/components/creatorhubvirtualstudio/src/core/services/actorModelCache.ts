@@ -9,8 +9,9 @@
  */
 
 import { logger } from './logger';
-import { ActorParameters, ActorMeshData, virtualActorService, ActorPreset } from './virtualActorService';
-import { SKIN_TONES } from '../data/actorPresets';
+import type { ActorParameters, ActorMeshData, ActorPreset } from './virtualActorService';
+import { virtualActorService } from './virtualActorService';
+import type { SKIN_TONES } from '../data/actorPresets';
 
 const log = logger.module('ActorModelCache, ');
 

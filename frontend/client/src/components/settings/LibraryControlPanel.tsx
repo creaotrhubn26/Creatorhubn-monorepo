@@ -39,9 +39,10 @@ import {
   Storage,
   CloudDownload,
 } from '@mui/icons-material';
+import type {
+  LibraryMapping} from '@shared/library-feature-mapping';
 import {
   LIBRARY_MAPPINGS,
-  LibraryMapping,
   getLibrariesForFeature,
   calculateBundleSize,
   getLibrariesByCategory,

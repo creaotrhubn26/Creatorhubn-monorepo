@@ -71,7 +71,8 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import VisualPageBuilder, { PageBuilderData } from '../page-builder/VisualPageBuilder';
+import type { PageBuilderData } from '../page-builder/VisualPageBuilder';
+import VisualPageBuilder from '../page-builder/VisualPageBuilder';
 import GoogleDriveMediaPicker from '../scroll-story/GoogleDriveMediaPicker';
 
 // Types

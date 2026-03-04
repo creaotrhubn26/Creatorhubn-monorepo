@@ -1,5 +1,6 @@
 // client/src/contexts/TrialFeatureContext.tsx
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { trialFeatureManager, type TrialFeature, type TrialStatus } from '@/services/TrialFeatureManager';
 
 interface TrialFeatureContextType {

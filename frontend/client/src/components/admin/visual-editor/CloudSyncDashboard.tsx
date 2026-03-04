@@ -234,7 +234,8 @@ import {
   Add as AddIcon,
   CloudSync as CloudSyncIcon4,
 } from '@mui/icons-material';
-import { useCloudSync, UseCloudSyncOptions } from '../../../hooks/useCloudSync';
+import type { UseCloudSyncOptions } from '../../../hooks/useCloudSync';
+import { useCloudSync } from '../../../hooks/useCloudSync';
 import type { CloudSyncConfig, CloudProvider, BackupConfig, SyncItem, SyncConflict, SyncSession } from '../../../utils/cloudSyncManager';
 
 // Type wiring for unused type imports

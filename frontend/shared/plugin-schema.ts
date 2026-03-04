@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { boolean, index, integer, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Plugin lisenser tabell
 export const pluginLicenses = pgTable(

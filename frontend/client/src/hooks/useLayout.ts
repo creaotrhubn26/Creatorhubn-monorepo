@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  layoutManager, 
+import type { 
   LayoutConfig, 
   LayoutState, 
   LayoutElement,
   LayoutRule
+} from '../utils/layoutManager';
+import { 
+  layoutManager
 } from'../utils/layoutManager';
 
 export interface UseLayoutOptions {

@@ -61,6 +61,8 @@ import {
   StepLabel,
   StepContent,
 } from '@mui/material';
+import type {
+  Message} from '@mui/icons-material';
 import {
   Event,
   Add,
@@ -99,7 +101,6 @@ import {
   Camera,
   ExpandMore,
   Close,
-  Message,
   NotificationImportant,
   Bolt,
   Group,

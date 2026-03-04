@@ -1,6 +1,6 @@
 import { pgTable, text, integer, timestamp, boolean, json } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 export const themes = pgTable('themes', {
   id: text('id').primaryKey(),

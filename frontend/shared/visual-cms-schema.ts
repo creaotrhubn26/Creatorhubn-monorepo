@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Page Templates - defines structure and allowed components
 export const pageTemplates = pgTable('page_templates', {

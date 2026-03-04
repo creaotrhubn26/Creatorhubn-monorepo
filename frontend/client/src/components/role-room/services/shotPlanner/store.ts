@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import {
+import type {
   Scene2D,
   Camera2D,
   Actor2D,
@@ -17,17 +17,18 @@ import {
   PlannerTool,
   SelectionState,
   SceneViewport,
+  LensType,
+  HistoryEntry} from './types';
+import {
   DEFAULT_SCENE,
   DEFAULT_CAMERA,
   DEFAULT_ACTOR,
   DEFAULT_PROP,
   LENS_FOV_MAP,
-  LensType,
   ShotType,
   CameraHeight,
   CameraAngleType,
   CameraMovement,
-  HistoryEntry,
   calculateFocusFromFocalLength,
   getFocalLengthFromLensType,
 } from './types';

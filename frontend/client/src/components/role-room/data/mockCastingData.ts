@@ -1,4 +1,4 @@
-import { CastingProject, Candidate, Role, Prop, Location, CrewMember, Schedule, ProductionDay, ShotList, CastingShot } from '../models/casting';
+import type { CastingProject, Candidate, Role, Prop, Location, CrewMember, Schedule, ProductionDay, ShotList, CastingShot } from '../models/casting';
 import settingsService, { getCurrentUserId } from '../services/settingsService';
 
 const PHOTO_BASE_PATH = '/attached_assets';

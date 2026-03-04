@@ -18,7 +18,8 @@ import {
   Chip,
 } from '@mui/material';
 import { Person, SentimentSatisfied, DirectionsWalk } from '@mui/icons-material';
-import { presetLoader, PosePresetData, ExpressionPresetData } from '../../core/services/presetLoader';
+import type { PosePresetData, ExpressionPresetData } from '../../core/services/presetLoader';
+import { presetLoader } from '../../core/services/presetLoader';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('CharacterPresetsPanel');

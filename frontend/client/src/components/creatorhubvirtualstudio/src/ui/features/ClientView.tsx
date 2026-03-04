@@ -41,12 +41,13 @@ import {
   Close,
   ViewInAr,
 } from '@mui/icons-material';
+import type {
+  ShareLink,
+  ClientComment,
+  ApprovalStatus} from '../../core/services/clientSharingService';
 import {
   clientSharingService,
-  ShareLink,
-  SharePermissions,
-  ClientComment,
-  ApprovalStatus,
+  SharePermissions
 } from '../../core/services/clientSharingService';
 
 interface ClientViewProps {

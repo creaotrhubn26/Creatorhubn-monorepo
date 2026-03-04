@@ -36,13 +36,14 @@ import {
   ContentCopy as DuplicateIcon,
 } from '@mui/icons-material';
 import { useShotPlannerStore, useSelectedCamera } from './store';
-import {
+import type {
   Camera2D,
   ShotType,
   LensType,
   CameraHeight,
   CameraAngleType,
-  CameraMovement,
+  CameraMovement} from './types';
+import {
   SHOT_TYPE_INFO,
   CAMERA_COLORS,
   LENS_FOV_MAP,

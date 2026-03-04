@@ -52,10 +52,11 @@ import {
   StepContent,
   Box,
 } from '@mui/material';
+import type {
+  Campaign} from '@mui/icons-material';
 import {
   TrendingUp,
   People,
-  Campaign,
   Analytics,
   Assignment,
   CheckCircle,

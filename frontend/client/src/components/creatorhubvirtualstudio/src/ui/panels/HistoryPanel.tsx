@@ -48,7 +48,8 @@ import {
   PlaylistAdd,
   Circle,
 } from '@mui/icons-material';
-import { undoRedoService, Action, UndoRedoState } from '../../core/services/undoRedoService';
+import type { Action, UndoRedoState } from '../../core/services/undoRedoService';
+import { undoRedoService } from '../../core/services/undoRedoService';
 import { useTabletSupport } from '../../providers/TabletSupportProvider';
 import { TouchIconButton, TouchSwipeListItem } from '../components/TabletAwarePanels';
 import { useAccessibility, useAnnounce, VisuallyHidden } from '../../providers/AccessibilityProvider';

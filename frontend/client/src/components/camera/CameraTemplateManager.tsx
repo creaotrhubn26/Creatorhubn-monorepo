@@ -36,11 +36,12 @@ import {
   Upload as UploadIcon,
 } from '@mui/icons-material';
 import { useTheming } from '../../utils/theming-helper';
-import {
-  cameraTemplateManager,
+import type {
   CameraTemplate,
   CameraTemplateCategory,
-  CameraTemplateSearchFilters,
+  CameraTemplateSearchFilters} from '../../data/camera-templates';
+import {
+  cameraTemplateManager
 } from '../../data/camera-templates';
 
 interface CameraTemplateManagerProps {

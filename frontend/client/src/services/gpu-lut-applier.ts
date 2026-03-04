@@ -4,7 +4,7 @@
  * 10-30x faster than CPU implementation
  */
 
-import { LUT3D } from './lut-engine';
+import type { LUT3D } from './lut-engine';
 
 export class GPULUTApplier {
   private gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;

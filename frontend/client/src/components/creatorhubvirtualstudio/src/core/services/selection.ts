@@ -1,4 +1,4 @@
-import { Scene, SceneNode } from '../models/scene';
+import type { Scene, SceneNode } from '../models/scene';
 
 /**
  * Select nodes by IDs

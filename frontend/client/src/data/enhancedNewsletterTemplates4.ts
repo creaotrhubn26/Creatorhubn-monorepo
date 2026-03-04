@@ -9,7 +9,7 @@
  * - Case Study / Success Story
  */
 
-import { NewsletterTemplate } from './enhancedNewsletterTemplates';
+import type { NewsletterTemplate } from './enhancedNewsletterTemplates';
 
 export const ENHANCED_NEWSLETTER_TEMPLATES_PART4: NewsletterTemplate[] = [
   // ==================== PRODUCT LAUNCH ====================

@@ -159,7 +159,8 @@ import { AdminConsole } from './AdminConsole';
 import { DependenciesManager } from './DependenciesManager';
 import ApiIntegrationProcessMonitor from './ApiIntegrationProcessMonitor';
 import DatabaseIntegrityChecker from './DatabaseIntegrityChecker';
-import { APIVersionReleaseNotesDialog, APIVersionInfo } from './APIVersionReleaseNotesDialog';
+import type { APIVersionInfo } from './APIVersionReleaseNotesDialog';
+import { APIVersionReleaseNotesDialog } from './APIVersionReleaseNotesDialog';
 
 interface ApiKey {
   id: string;

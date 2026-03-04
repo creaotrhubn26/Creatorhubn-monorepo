@@ -6,7 +6,8 @@
  */
 
 import { SVGRendererService, SVGRenderOptions } from '@/services/svg-renderer';
-import { Scene, SceneNode } from '../models/scene';
+import type { Scene} from '../models/scene';
+import { SceneNode } from '../models/scene';
 import { logger } from './logger';
 
 const log = logger.module('SVGExport, ');

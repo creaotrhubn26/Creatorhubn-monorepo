@@ -9,7 +9,7 @@ import {
   integer,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Core schemas
 export const clients = pgTable('clients', {

@@ -4,11 +4,13 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  themeManager, 
+import type { 
   ThemeConfig, 
   ThemeState, 
   Theme 
+} from '../utils/themeManager';
+import { 
+  themeManager 
 } from '../utils/themeManager';
 
 export interface UseThemeOptions {

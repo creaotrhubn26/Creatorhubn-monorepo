@@ -40,10 +40,11 @@ import {
   TouchApp,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import type {
+  PencilPoint,
+  PencilStroke} from '../../hooks/useApplePencil';
 import {
   useApplePencil,
-  PencilPoint,
-  PencilStroke,
   drawPressureStroke,
   drawTiltStroke,
   InputType,

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { googleSSOService, GoogleUser } from '../../services/GoogleSSOService';
+import type { GoogleUser } from '../../services/GoogleSSOService';
+import { googleSSOService } from '../../services/GoogleSSOService';
 
 interface GoogleSignInButtonProps {
   onSuccess?: (user: GoogleUser) => void;

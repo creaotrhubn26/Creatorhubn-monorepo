@@ -739,6 +739,65 @@ export interface MemoryCardControlState {
   updatedAt: string;
 }
 
+export interface MemoryCardControlReport {
+  shootDayLabel: string;
+  updatedAt: string;
+  summary: {
+    total: number;
+    notBackedUp: number;
+    backingUp: number;
+    verified: number;
+    checksumVerified: number;
+    fullyCompliant: number;
+    compliancePercent: number;
+    copyCoveragePercent: number;
+    dualMediaCoveragePercent: number;
+    offsiteCoveragePercent: number;
+  };
+  counts: {
+    status: Record<'not_backed_up' | 'backing_up' | 'verified', number>;
+    lifecycle: Array<{ key: string; value: number }>;
+    crew: Array<{ crewName: string; count: number }>;
+  };
+  alerts: {
+    riskLevel: 'low' | 'medium' | 'high';
+    risks: string[];
+    pendingOverSixHours: Array<{
+      id: string;
+      cardLabel: string;
+      hours: number;
+      updatedAt: string;
+    }>;
+  };
+  rule321: {
+    description: string;
+    original: number;
+    backup1: number;
+    backup2: number;
+    offsite: number;
+  };
+}
+
+export interface MemoryCardQrLabelPayload {
+  schema: string;
+  projectId: string;
+  entryId: string | null;
+  cardLabel: string;
+  cameraLabel: string | null;
+  capacity: string | null;
+  storageType: string | null;
+  shootDayLabel: string | null;
+  generatedAt: string;
+}
+
+export interface MemoryCardQrLabelResponse {
+  ok: boolean;
+  payload: MemoryCardQrLabelPayload;
+  payloadString: string;
+  qrDataUrl: string;
+  suggestedFileName: string;
+}
+
 // ── Check-in / Check-out ─────────────────────────────────
 export interface EquipmentCheckout {
   id: string;
@@ -955,6 +1014,37 @@ export const memoryCardControlApi = {
       return normalizeMemoryCardControlState(result.state);
     }
     return normalizeMemoryCardControlState(result);
+  },
+
+  getReport: async (projectId: string): Promise<MemoryCardControlReport | null> => {
+    try {
+      const result = await apiRequest<{ ok?: boolean; report?: MemoryCardControlReport }>(
+        `/projects/${projectId}/memory-card-control/report`
+      );
+      return result?.report ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  generateQrLabel: async (
+    projectId: string,
+    payload: {
+      entryId?: string;
+      cardLabel?: string;
+      cameraLabel?: string;
+      capacity?: string;
+      storageType?: string;
+      shootDayLabel?: string;
+    }
+  ): Promise<MemoryCardQrLabelResponse> => {
+    return apiRequest<MemoryCardQrLabelResponse>(
+      `/projects/${projectId}/memory-card-control/qr-label`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
   },
 };
 

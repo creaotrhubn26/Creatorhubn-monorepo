@@ -34,7 +34,8 @@ import {
   Redo,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { AdvancedBrushType, BrushConfig, BRUSH_PRESETS } from './AdvancedBrushEngine';
+import type { AdvancedBrushType, BrushConfig} from './AdvancedBrushEngine';
+import { BRUSH_PRESETS } from './AdvancedBrushEngine';
 import ColorWheelPicker from '../ColorWheelPicker';
 
 // =============================================================================

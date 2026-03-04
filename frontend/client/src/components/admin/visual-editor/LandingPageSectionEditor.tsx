@@ -48,7 +48,7 @@ import {
   Undo,
   Redo,
 } from '@mui/icons-material';
-import { PageSection, PageStyles } from '@/hooks/usePageCustomizations';
+import type { PageSection, PageStyles } from '@/hooks/usePageCustomizations';
 
 interface SectionEditorProps {
   sectionId: string;

@@ -3,7 +3,7 @@
  * Automatically discovers and parses pages from the pages folder
  */
 
-import { PageTreeNode } from './PageTreeNavigator';
+import type { PageTreeNode } from './PageTreeNavigator';
 import {
   Home,
   Description,

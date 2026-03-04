@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import ReactECharts from 'echarts-for-react';
 import { useTheming } from '@/utils/theming-helper';
-import { SWOTItem, SWOTTrend } from '@/services/BusinessIntelligenceService';
+import type { SWOTItem, SWOTTrend } from '@/services/BusinessIntelligenceService';
 
 interface SWOTVisualizationsProps {
   items: SWOTItem[];

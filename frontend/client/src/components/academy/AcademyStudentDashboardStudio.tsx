@@ -22,6 +22,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Enrollment, type Lesson } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -247,6 +248,7 @@ const toDisplayName = (value: string, index: number): string => {
 function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, setCurrentCourse, setCurrentLesson } = useAcademy();
+  const { analytics } = useEnhancedMasterIntegration();
   
   const { navLabel } = useAcademyLocale();
 

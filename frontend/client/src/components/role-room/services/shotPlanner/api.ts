@@ -4,7 +4,7 @@
  * Handles communication with the backend for shot planner 2D scenes
  */
 
-import { Scene2D } from './types';
+import type { Scene2D } from './types';
 
 const API_BASE = '/api/shot-planner';
 

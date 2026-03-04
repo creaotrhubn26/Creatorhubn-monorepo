@@ -6,7 +6,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useToast } from '@/hooks/use-toast';
-import { googlePayService, PaymentIntent } from '@/services/GooglePayService';
+import type { PaymentIntent } from '@/services/GooglePayService';
+import { googlePayService } from '@/services/GooglePayService';
 
 // Google Pay API types
 declare global {

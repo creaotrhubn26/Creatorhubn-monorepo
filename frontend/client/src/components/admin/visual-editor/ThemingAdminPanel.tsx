@@ -36,7 +36,8 @@ import {
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { themingAdminService } from '../../../services/ThemingAdminService';
-import { PROFESSION_BRANDING, ProfessionBranding } from '../../../utils/theming-helper';
+import type { ProfessionBranding } from '../../../utils/theming-helper';
+import { PROFESSION_BRANDING } from '../../../utils/theming-helper';
 
 export const ThemingAdminPanel: React.FC = () => {
   const [editingProfession, setEditingProfession] = useState<string | null>(null);

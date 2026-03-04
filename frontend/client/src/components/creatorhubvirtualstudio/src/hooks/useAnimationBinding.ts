@@ -10,13 +10,14 @@
 
 import { useEffect, useCallback, useState, useRef } from 'react';
 import * as THREE from 'three';
-import {
-  animationStateManager,
+import type {
   AnimationState,
   PropertyUpdate,
-  SceneBinding,
+  SceneBinding} from '../core/animation/AnimationStateManager';
+import {
+  animationStateManager
 } from '../core/animation/AnimationStateManager';
-import { AnimationTrack } from '../core/animation/SceneGraphAnimationEngine';
+import type { AnimationTrack } from '../core/animation/SceneGraphAnimationEngine';
 
 // ============================================================================
 // Types

@@ -69,6 +69,7 @@ import {
   Settings,
   Search,
   Add,
+  ArrowBack,
   Upload,
   Download,
   Edit,
@@ -123,13 +124,12 @@ import {
   ToggleVisibilityOffIcon,
   ReportIssueIcon,
 } from '../shared/CreatorHubIcons';
-import { ArrowBack } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useTheming } from '../../utils/theming-helper';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import AcademyVideoPlayer from './AcademyVideoPlayer';
+import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
 import CourseCreator from './CourseCreator';
 import AcademyAssetBrowser from './AcademyAssetBrowser';
 import AcademyFloatingActionMenu from './AcademyFloatingActionMenu';
@@ -1128,8 +1128,15 @@ function AcademyDashboard() {
   // Handle course selection
   const handleCourseSelect = useCallback(
     (course: any) => {
+      const firstLesson = Array.isArray(course?.lessons) && course.lessons.length > 0
+        ? course.lessons[0]
+        : null;
       setSelectedCourse(course);
+      setSelectedLesson(firstLesson);
       setCurrentCourse(course);
+      if (firstLesson) {
+        setCurrentLesson(firstLesson);
+      }
       analytics.trackEvent('course_selected', {
         courseId: course.id,
         courseTitle: course.title,
@@ -1139,7 +1146,7 @@ function AcademyDashboard() {
         isDemoMode,
       });
     },
-    [setCurrentCourse, analytics, isDemoMode, auth.state.user?.role, isAuthenticated],
+    [setCurrentCourse, setCurrentLesson, analytics, isDemoMode, auth.state.user?.role, isAuthenticated],
   );
 
   // Context menu handlers
@@ -2287,21 +2294,6 @@ function AcademyDashboard() {
     </Grid>
   );
 
-  // Handle lesson selection
-  const handleLessonSelect = useCallback(
-    (lesson: any) => {
-      setSelectedLesson(lesson);
-      setCurrentLesson(lesson);
-      analytics.trackEvent('lesson_selected', {
-        courseId: selectedCourse?.id,
-        lessonId: lesson.id,
-        lessonTitle: lesson.title,
-        timestamp: Date.now(),
-      });
-    },
-    [selectedCourse?.id, setCurrentLesson, analytics],
-  );
-
   // Handle enrollment
   const handleEnroll = useCallback(
     async (course: any) => {
@@ -2408,33 +2400,9 @@ function AcademyDashboard() {
 
   if (selectedCourse && selectedLesson) {
     return (
-      <AcademyVideoPlayer
-        course={selectedCourse}
-        lesson={selectedLesson}
-        onLessonComplete={() => {
-          // Handle lesson completion
-          analytics.trackEvent('lesson_completed', {
-            courseId: selectedCourse.id,
-            lessonId: selectedLesson.id,
-            timestamp: Date.now(),
-          });
-        }}
-        onNextLesson={() => {
-          const currentIndex = selectedCourse.lessons.findIndex(
-            (l: any) => l.id === selectedLesson.id,
-          );
-          if (currentIndex < selectedCourse.lessons.length - 1) {
-            handleLessonSelect(selectedCourse.lessons[currentIndex + 1]);
-          }
-        }}
-        onPreviousLesson={() => {
-          const currentIndex = selectedCourse.lessons.findIndex(
-            (l: any) => l.id === selectedLesson.id,
-          );
-          if (currentIndex > 0) {
-            handleLessonSelect(selectedCourse.lessons[currentIndex - 1]);
-          }
-        }}
+      <AcademyVideoPlayerStudio
+        courseId={selectedCourse.id}
+        lessonId={selectedLesson.id}
       />
     );
   }

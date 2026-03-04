@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  canvasOptimizer, 
+import type { 
   CanvasConfig, 
   CanvasMetrics, 
   RenderObject, 
   Viewport, 
   OptimizationResult 
+} from '../utils/canvasOptimizer';
+import { 
+  canvasOptimizer 
 } from'../utils/canvasOptimizer';
 
 export interface UseCanvasOptimizationOptions {

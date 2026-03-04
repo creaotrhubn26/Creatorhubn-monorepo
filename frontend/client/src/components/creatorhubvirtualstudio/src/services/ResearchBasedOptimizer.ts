@@ -4,7 +4,8 @@
  * Analyzes academic papers and applies findings to improve Virtual Studio features
  */
 
-import googleScholarResearchService, { ResearchPaper } from '../../../../services/GoogleScholarResearchService';
+import type { ResearchPaper } from '../../../../services/GoogleScholarResearchService';
+import googleScholarResearchService from '../../../../services/GoogleScholarResearchService';
 import { logger } from '../core/services/logger';
 
 const log = logger.module('ResearchOptimizer');

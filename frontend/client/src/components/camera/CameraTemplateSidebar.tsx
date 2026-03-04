@@ -70,7 +70,8 @@ import {
   CameraSetupIcon,
 } from '../shared/CreatorHubIcons';
 import { useTheming } from '../../utils/theming-helper';
-import { cameraTemplateManager, CameraTemplate, CameraTemplateCategory, CameraTemplateSearchFilters } from '../../data/camera-templates';
+import type { CameraTemplate, CameraTemplateCategory, CameraTemplateSearchFilters } from '../../data/camera-templates';
+import { cameraTemplateManager } from '../../data/camera-templates';
 
 interface CameraTemplateSidebarProps {
   open: boolean;

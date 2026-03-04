@@ -69,7 +69,8 @@ import {
   Create as WriteIcon,
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
-import { ClientSubmission, SubmissionFollowUp } from '@shared/schema';
+import type { ClientSubmission} from '@shared/schema';
+import { SubmissionFollowUp } from '@shared/schema';
 
 interface SubmissionStats {
   total: number;

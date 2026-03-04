@@ -45,7 +45,7 @@ import {
   Star as StarIcon,
 } from '@mui/icons-material';
 import { TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
-import { ProductionDay, SceneBreakdown } from '../models/casting';
+import type { ProductionDay, SceneBreakdown } from '../models/casting';
 
 interface WrapReportData {
   id: string;

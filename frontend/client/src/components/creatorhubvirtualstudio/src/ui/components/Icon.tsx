@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { SvgIconProps } from '@mui/material/SvgIcon';
+import type { SvgIconProps } from '@mui/material/SvgIcon';
 import { colors } from '../../styles/designTokens';
 
 export type IconSize = 16 | 20 | 24 | 32;

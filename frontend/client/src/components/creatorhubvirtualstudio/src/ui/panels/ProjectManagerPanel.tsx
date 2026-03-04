@@ -71,7 +71,8 @@ import {
   Folder,
   InsertDriveFile,
 } from '@mui/icons-material';
-import { useAppStore, SceneNode } from '../../state/store';
+import type { SceneNode } from '../../state/store';
+import { useAppStore } from '../../state/store';
 import { virtualStudioApi, preferencesApi } from '../../core/api/virtualStudioApi';
 import { useVirtualStudio } from '../../../VirtualStudioContext';
 

@@ -11,8 +11,8 @@
  * - Continuous light EV calculation
  */
 
-import { LightSpec } from '../data/LightSpecifications';
-import { LensSpec } from '../data/LensSpecifications';
+import type { LightSpec } from '../data/LightSpecifications';
+import type { LensSpec } from '../data/LensSpecifications';
 
 // =============================================================================
 // TYPES

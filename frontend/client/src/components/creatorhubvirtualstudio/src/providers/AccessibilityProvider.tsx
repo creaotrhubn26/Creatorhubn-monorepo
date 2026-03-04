@@ -26,14 +26,15 @@
  * - 4.1.3 Status Messages (Level AA)
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useEffect,
   useCallback,
-  useRef,
-  ReactNode,
+  useRef
 } from 'react';
 
 // ============================================================================

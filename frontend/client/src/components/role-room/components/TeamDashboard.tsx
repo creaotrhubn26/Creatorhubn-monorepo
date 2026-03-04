@@ -38,11 +38,12 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
+import type {
+  DragEndEvent,
+  DragStartEvent} from '@dnd-kit/core';
 import {
   DndContext,
-  DragEndEvent,
   DragOverlay,
-  DragStartEvent,
   KeyboardSensor,
   PointerSensor,
   TouchSensor,

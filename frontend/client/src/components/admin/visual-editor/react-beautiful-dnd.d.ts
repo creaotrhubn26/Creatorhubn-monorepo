@@ -1,5 +1,5 @@
 declare module 'react-beautiful-dnd' {
-  import * as React from 'react';
+  import type * as React from 'react';
 
   export interface DraggableLocation {
     droppableId: string;

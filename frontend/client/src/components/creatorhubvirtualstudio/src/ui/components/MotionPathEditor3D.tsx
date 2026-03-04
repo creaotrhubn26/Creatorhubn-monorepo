@@ -14,7 +14,8 @@ import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Line, Html, TransformControls } from '@react-three/drei';
-import { AnimationTrack, Keyframe } from '../../core/animation/SceneGraphAnimationEngine';
+import type { AnimationTrack} from '../../core/animation/SceneGraphAnimationEngine';
+import { Keyframe } from '../../core/animation/SceneGraphAnimationEngine';
 
 // ============================================================================
 // Types

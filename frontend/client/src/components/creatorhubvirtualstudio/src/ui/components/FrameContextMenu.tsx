@@ -84,7 +84,8 @@ import {
   Flag,
   Star,
 } from '@mui/icons-material';
-import { StoryboardFrame, useStoryboardStore } from '../../state/storyboardStore';
+import type { StoryboardFrame} from '../../state/storyboardStore';
+import { useStoryboardStore } from '../../state/storyboardStore';
 import { useAppStore } from '../../state/store';
 
 // =============================================================================

@@ -30,7 +30,7 @@ import { ContinuityLogger } from './ContinuityLogger';
 import { VfxNotes } from './VfxNotes';
 import { ScriptSupervisorNotes } from './ScriptSupervisorNotes';
 import { WrapReport } from './WrapReport';
-import { SceneBreakdown, ProductionDay } from '../models/casting';
+import type { SceneBreakdown, ProductionDay } from '../models/casting';
 
 interface ProductionToolsPanelProps {
   productionDay?: ProductionDay;

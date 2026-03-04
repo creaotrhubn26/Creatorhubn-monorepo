@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
-import { CommunicationMessage } from '@/integration/CrossComponentCommunication';
+import type { CommunicationMessage } from '@/integration/CrossComponentCommunication';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';

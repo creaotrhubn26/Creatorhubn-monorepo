@@ -137,8 +137,10 @@ import {
   PanTool,
   Swipe,
 } from '@mui/icons-material';
-import { useGestures, UseGesturesOptions } from '../../../hooks/useGestures';
-import { GestureConfig, Gesture as GestureType, GestureEvent } from '../../../utils/gestureManager';
+import type { UseGesturesOptions } from '../../../hooks/useGestures';
+import { useGestures } from '../../../hooks/useGestures';
+import type { Gesture as GestureType, GestureEvent } from '../../../utils/gestureManager';
+import { GestureConfig } from '../../../utils/gestureManager';
 
 interface GestureDashboardProps {
   showDetails?: boolean;

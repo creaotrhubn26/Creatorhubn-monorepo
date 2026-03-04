@@ -3,9 +3,10 @@
  * Intelligent layout suggestions, responsive breakpoints, and component recommendations
  */
 
+import type {
+  AIContext} from '@/components/admin/visual-editor/AICodeCompletionSystem';
 import {
-  aiCodeCompletionEngine,
-  AIContext,
+  aiCodeCompletionEngine
 } from '@/components/admin/visual-editor/AICodeCompletionSystem';
 
 export interface LayoutSuggestion {

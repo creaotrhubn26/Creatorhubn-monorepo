@@ -10,16 +10,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CreatorHub Norge - Professional Creative Platform</title>
 
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-6E5MJT8REW"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag('js', new Date());
+      window.gtag = window.gtag || function () {
+        window.dataLayer.push(arguments);
+      };
 
-      gtag('config', 'G-6E5MJT8REW');
+      function loadExternalScript(src, options) {
+        var script = document.createElement('script');
+        script.src = src;
+        script.async = options && Object.prototype.hasOwnProperty.call(options, 'async') ? options.async : true;
+        script.defer = options && Object.prototype.hasOwnProperty.call(options, 'defer') ? options.defer : false;
+        if (options && typeof options.onload === 'function') script.onload = options.onload;
+        if (options && typeof options.onerror === 'function') script.onerror = options.onerror;
+        document.head.appendChild(script);
+      }
+
+      function initGooglePicker() {
+        if (window.gapi && typeof window.gapi.load === 'function') {
+          window.gapi.load('picker', function () {});
+        }
+      }
+
+      (function initThirdPartyServices() {
+        var isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        var isOnline = navigator.onLine !== false;
+
+        if (!isLocalhost && isOnline) {
+          loadExternalScript('https://www.googletagmanager.com/gtag/js?id=G-6E5MJT8REW', {
+            onload: function () {
+              window.gtag('js', new Date());
+              window.gtag('config', 'G-6E5MJT8REW');
+            },
+          });
+        }
+
+        if (isOnline) {
+          loadExternalScript('https://apis.google.com/js/api.js', {
+            onload: initGooglePicker,
+          });
+        }
+      })();
     </script>
 
     <!-- Google Fonts - Optimized: Only Roboto with essential weights -->
@@ -29,26 +60,6 @@
       href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-
-    <!-- Google Picker API -->
-    <script src="https://apis.google.com/js/api.js"></script>
-    <script>
-      // Initialize Google Picker API
-      function initializeGooglePicker() {
-        if (window.gapi) {
-          gapi.load('picker', function () {
-            console.log('Google Picker API loaded successfully');
-          });
-        }
-      }
-
-      // Initialize when DOM is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeGooglePicker);
-      } else {
-        initializeGooglePicker();
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>

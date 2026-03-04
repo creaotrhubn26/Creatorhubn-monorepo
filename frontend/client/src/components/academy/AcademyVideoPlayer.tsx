@@ -106,7 +106,8 @@ import {
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useTheming } from '../../utils/theming-helper';
-import CastingService, { CastingDevice } from '../../services/CastingService';
+import type { CastingDevice } from '../../services/CastingService';
+import CastingService from '../../services/CastingService';
 
 interface AcademyVideoPlayerProps {
 	  course: any;

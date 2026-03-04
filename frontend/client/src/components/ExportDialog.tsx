@@ -33,7 +33,7 @@ import {
   AspectRatio,
   Movie,
 } from '@mui/icons-material';
-import { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
+import type { BeatClip, Track, StoryArc } from '../services/storyArcDataIntegration';
 // DaVinci Resolve export functionality
 interface ResolveExportOptions {
   projectName: string;

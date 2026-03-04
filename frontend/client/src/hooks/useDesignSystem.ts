@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  designSystemManager, 
+import type { 
   DesignSystemConfig, 
   DesignSystemState, 
   DesignToken,
   DesignGuideline,
   DesignTheme
+} from '../utils/designSystemManager';
+import { 
+  designSystemManager
 } from'../utils/designSystemManager';
 
 export interface UseDesignSystemOptions {

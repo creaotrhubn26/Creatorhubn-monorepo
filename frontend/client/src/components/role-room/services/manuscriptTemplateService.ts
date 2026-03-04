@@ -3,14 +3,16 @@
  * Manages screenplay templates and auto-completion
  */
 
-import {
+import type {
   Template,
   TemplateLibrary,
   AutoCompleteSuggestion,
+  StructureTemplate
+} from '../data/manuscriptTemplates';
+import {
   buildTemplateLibrary,
   AUTO_COMPLETE_SUGGESTIONS,
-  STRUCTURE_TEMPLATES,
-  StructureTemplate
+  STRUCTURE_TEMPLATES
 } from '../data/manuscriptTemplates';
 import settingsService, { getCurrentUserId } from './settingsService';
 

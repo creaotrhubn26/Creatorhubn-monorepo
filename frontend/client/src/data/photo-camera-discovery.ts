@@ -4,7 +4,8 @@
  */
 
 import { getAuthHeader } from '../lib/queryClient';
-import { PHOTO_CAMERA_DATABASE, PhotoCamera } from './photo-camera-database';
+import type { PhotoCamera } from './photo-camera-database';
+import { PHOTO_CAMERA_DATABASE } from './photo-camera-database';
 
 export interface CameraDataSource {
   name: string;

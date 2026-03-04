@@ -204,7 +204,7 @@ const LIGHTING_PRESETS: LightingPreset[] = [
     ]
   },
 ];
-import { Candidate, Role } from '../models/casting';
+import type { Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { castingAuthService } from '../services/castingAuthService';
 import { castingToSceneService } from '../services/castingToSceneService';

@@ -6,7 +6,7 @@
 
 import * as THREE from 'three';
 import { logger } from './logger';
-import { LightProbeSystem } from '../rendering/LightProbeSystem';
+import type { LightProbeSystem } from '../rendering/LightProbeSystem';
 
 const log = logger.module('RoomLoader');
 

@@ -17,7 +17,7 @@ import {
   LinearProgress,
   Stack,
 } from '@mui/material';
-import {
+import type {
   FrameGuide,
   CameraInfoDisplay,
   HistogramData,

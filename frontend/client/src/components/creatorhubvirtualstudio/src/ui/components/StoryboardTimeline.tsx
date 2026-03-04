@@ -28,11 +28,12 @@ import {
   ZoomIn,
   ZoomOut,
 } from '@mui/icons-material';
+import type {
+  StoryboardFrame} from '../../state/storyboardStore';
 import {
   useStoryboardStore,
   useCurrentStoryboard,
   useSelectedFrame,
-  StoryboardFrame,
   getShotTypeColor,
   formatDuration,
 } from '../../state/storyboardStore';

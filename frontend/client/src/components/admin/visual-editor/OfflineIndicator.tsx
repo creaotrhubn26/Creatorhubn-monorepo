@@ -53,8 +53,9 @@ import {
   Download,
   Upload,
 } from '@mui/icons-material';
-import { useOffline, UseOfflineOptions } from '../../../hooks/useOffline';
-import { OfflineData, SyncResult } from '../../../utils/offlineManager';
+import type { UseOfflineOptions } from '../../../hooks/useOffline';
+import { useOffline } from '../../../hooks/useOffline';
+import type { OfflineData, SyncResult } from '../../../utils/offlineManager';
 
 interface OfflineIndicatorProps {
   showDetails?: boolean;

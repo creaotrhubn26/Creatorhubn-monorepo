@@ -20,7 +20,7 @@ import {
   AccessTime as TimeIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import { ProductionDay, CastingShot } from '../models/casting';
+import type { ProductionDay, CastingShot } from '../models/casting';
 import { productionPlanningService } from '../services/productionPlanningService';
 
 interface ProductionDayCardInfoProps {

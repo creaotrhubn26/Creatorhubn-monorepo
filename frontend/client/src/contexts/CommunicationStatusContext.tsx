@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 interface CommunicationStatus {
   isConnected: boolean;

@@ -65,11 +65,12 @@ import {
   DirectionsRun,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
-import {
-  virtualActorService,
+import type {
   ActorParameters,
   ActorMeshData,
-  AnnyModelInfo,
+  AnnyModelInfo} from '../../core/services/virtualActorService';
+import {
+  virtualActorService
 } from '../../core/services/virtualActorService';
 import {
   getPresetsByCategory,
@@ -81,7 +82,8 @@ import {
   getHairStyleById,
 } from '../../core/data/hairStyles';
 import { GlassesSelector } from '../../ui/components/GlassesSelector';
-import { createGlassesModel, GlassesOptions } from '../../core/models/GlassesModel';
+import type { GlassesOptions } from '../../core/models/GlassesModel';
+import { createGlassesModel } from '../../core/models/GlassesModel';
 import { ActorLibraryPanel } from '../../ui/components/ActorLibraryPanel';
 
 interface VirtualActorPanelProps {

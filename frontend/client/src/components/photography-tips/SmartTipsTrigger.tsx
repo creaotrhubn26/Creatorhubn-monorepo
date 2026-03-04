@@ -10,9 +10,9 @@ import {
   Typography,
 } from '@mui/material';
 import { Close as CloseIcon, TipsAndUpdates as TipsIcon } from '@mui/icons-material';
-import { TransitionProps } from '@mui/material/transitions';
+import type { TransitionProps } from '@mui/material/transitions';
 import { usePhotographyTips, PhotographyContextDetector } from '../../hooks/usePhotographyTips';
-import { PhotographyTip, TipContext } from '../../../shared/photography-tips-schema';
+import type { PhotographyTip, TipContext } from '../../../shared/photography-tips-schema';
 
 const SlideUpTransition = React.forwardRef(function SlideUpTransition(
   props: TransitionProps & { children: React.ReactElement<unknown, string | React.JSXElementConstructor<unknown>> },

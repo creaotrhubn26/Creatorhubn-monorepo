@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { BeatClip, Track } from'../services/storyArcDataIntegration';
+import type { BeatClip, Track } from'../services/storyArcDataIntegration';
 
 interface TimelineState {
   // Timeline data

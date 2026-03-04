@@ -36,8 +36,9 @@ import {
   Videocam,
   CameraAlt,
 } from '@mui/icons-material';
+import type {
+  MemoryCardTemplate} from '../../data/memory-card-templates';
 import {
-  MemoryCardTemplate,
   MemoryCardTemplateManager,
 } from '../../data/memory-card-templates';
 import { useTheming } from '../../utils/theming-helper';

@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
-import { useProfessionConfigs, ProfessionConfig } from './useProfessionConfigs';
+import type { ProfessionConfig } from './useProfessionConfigs';
+import { useProfessionConfigs } from './useProfessionConfigs';
 
 export interface AdaptedProfession {
   config: ProfessionConfig;

@@ -49,7 +49,7 @@ import {
   MusicNote,
   ContactPage,
 } from '@mui/icons-material';
-import { ProjectCollaborator } from '@/types/project-collaborator';
+import type { ProjectCollaborator } from '@/types/project-collaborator';
 
 interface ExistingUser {
   id: string;

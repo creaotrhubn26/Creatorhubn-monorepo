@@ -158,8 +158,10 @@ import {
   CompareArrowsSharp as CompareArrowsSharpIcon,
   CompareArrowsTwoTone as CompareArrowsTwoToneIcon,
 } from '@mui/icons-material';
-import { useDragDrop, UseDragDropOptions } from '../../../hooks/useDragDrop';
-import { DragDropConfig, DragItem, DropZone } from '../../../utils/dragDropManager';
+import type { UseDragDropOptions } from '../../../hooks/useDragDrop';
+import { useDragDrop } from '../../../hooks/useDragDrop';
+import type { DragItem, DropZone } from '../../../utils/dragDropManager';
+import { DragDropConfig } from '../../../utils/dragDropManager';
 
 interface DragDropDashboardProps {
   showDetails?: boolean;

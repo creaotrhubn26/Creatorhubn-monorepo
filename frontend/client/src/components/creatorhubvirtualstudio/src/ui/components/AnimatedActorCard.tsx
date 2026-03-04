@@ -19,7 +19,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { Add, Delete } from '@mui/icons-material';
-import { CachedActor } from '../../core/services/actorModelCache';
+import type { CachedActor } from '../../core/services/actorModelCache';
 import { SKIN_TONES } from '../../core/data/actorPresets';
 import { getPreviewAnimation, getMoodAnimation, PREVIEW_ANIMATIONS } from '../../core/animations/CharacterAnimations';
 

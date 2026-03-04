@@ -72,7 +72,8 @@ import {
   ContentCopy as CopyIcon,
   CheckCircle as CheckIcon,
 } from '@mui/icons-material';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
 // ============================================================================
 // TYPES & INTERFACES

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useLoader, useThree } from '@react-three/fiber';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { useAppStore } from '../../state/store';
-import { SceneNode } from '../../core/models/scene';
+import type { SceneNode } from '../../core/models/scene';
 
 // Lazy load mesh components
 const ClothingMesh = React.lazy(() => import('../../ui/components/ClothingMesh').then(m => ({ default: m.ClothingMesh })));

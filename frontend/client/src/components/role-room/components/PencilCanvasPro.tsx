@@ -56,23 +56,26 @@ import {
   Build,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
+import type {
+  PencilPoint,
+  PencilStroke} from '../hooks/useApplePencil';
 import {
   useApplePencil,
-  PencilPoint,
-  PencilStroke,
   InputType,
 } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
+import type {
+  ProBrushType,
+  ProBrushSettings} from './drawing/AdvancedBrushEngine';
 import {
   AdvancedBrushEngine,
-  ProBrushType,
-  ProBrushSettings,
   DEFAULT_BRUSH_SETTINGS,
   BrushConfig,
 } from './drawing/AdvancedBrushEngine';
+import type {
+  DrawingState} from './drawing/DrawingToolsPanel';
 import {
   DrawingToolsPanel,
-  DrawingState,
   DEFAULT_DRAWING_STATE,
   ActiveTool,
 } from './drawing/DrawingToolsPanel';
@@ -85,9 +88,10 @@ import {
   evaluatePressureCurve,
   PressureCurve,
 } from './drawing/PressureCurveEditor';
+import type {
+  GestureAction} from './drawing/GestureShortcuts';
 import {
   useGestureHandler,
-  GestureAction,
   GestureSettings,
 } from './drawing/GestureShortcuts';
 import {
@@ -100,15 +104,16 @@ import {
   ShapeType,
   ShapeStyle,
 } from './drawing/ShapeTools';
+import type {
+  ExportSettings} from './drawing/ExportOptions';
 import {
-  ExportSettings,
   ExportFrame,
   exportAsImage,
   downloadBlob,
   generateFilename,
 } from './drawing/ExportOptions';
 import { drawGuides } from './drawing/StoryboardTemplates';
-import { DrawingLayer } from './drawing/LayersPanel';
+import type { DrawingLayer } from './drawing/LayersPanel';
 
 // =============================================================================
 // Types

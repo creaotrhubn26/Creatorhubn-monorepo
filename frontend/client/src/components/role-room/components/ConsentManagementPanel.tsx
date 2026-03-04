@@ -39,7 +39,7 @@ import {
   Visibility as ViewedIcon,
 } from '@mui/icons-material';
 import { ConsentsIcon as DescriptionIcon } from './icons/CastingIcons';
-import { Consent, ConsentType, Candidate, ConsentInvitationStatus } from '../models/casting';
+import type { Consent, ConsentType, Candidate, ConsentInvitationStatus } from '../models/casting';
 import { consentService } from '../services/consentService';
 import { castingService } from '../services/castingService';
 import { Z_INDEX } from '../config/zIndex';

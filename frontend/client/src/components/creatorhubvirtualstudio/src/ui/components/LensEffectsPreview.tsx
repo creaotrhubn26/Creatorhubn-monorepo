@@ -31,7 +31,8 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { useNodes } from '@/state/selectors';
-import { LensEffectsParams, DEFAULT_LENS_EFFECTS, lensSpecToEffects, drawVignetteOverlay } from '@/core/rendering/LensEffectsRenderer';
+import type { LensEffectsParams} from '@/core/rendering/LensEffectsRenderer';
+import { DEFAULT_LENS_EFFECTS, lensSpecToEffects, drawVignetteOverlay } from '@/core/rendering/LensEffectsRenderer';
 
 // =============================================================================
 // VIGNETTE CANVAS PREVIEW

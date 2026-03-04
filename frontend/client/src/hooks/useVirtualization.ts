@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  virtualizationManager, 
+import type { 
   VirtualizationConfig, 
   VirtualItem, 
   VirtualizationState, 
   VirtualizationMetrics 
+} from '../utils/virtualizationUtils';
+import { 
+  virtualizationManager 
 } from '../utils/virtualizationUtils';
 
 export interface UseVirtualizationOptions {

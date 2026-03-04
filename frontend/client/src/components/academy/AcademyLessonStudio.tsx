@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Lesson, type LessonResource } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -224,7 +225,7 @@ const buildSummaryFromDescription = (description: string): string[] => {
 function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLessonStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
-  
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   const { navLabel, tt } = useAcademyLocale();
 
   const fallbackCourse = useMemo(() => createFallbackCourse(), []);
@@ -249,6 +250,11 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     return [fallbackCourse];
   }, [fallbackCourse, state.courses]);
 
+  const courseOptionIds = useMemo(
+    () => courseItems.map((course) => String(course.id)),
+    [courseItems],
+  );
+
   const activeCourse = useMemo(() => {
     const fromParam = courseId ? getCourse(courseId) : null;
     if (fromParam) return fromParam;
@@ -260,6 +266,14 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
     return state.currentCourse || courseItems[0] || fallbackCourse;
   }, [courseId, courseItems, fallbackCourse, getCourse, selectedCourseId, state.currentCourse]);
+
+  const selectedCourseValue = useMemo(() => {
+    const preferredId = String(selectedCourseId || activeCourse?.id || '');
+    if (preferredId && courseOptionIds.includes(preferredId)) {
+      return preferredId;
+    }
+    return courseOptionIds[0] || '';
+  }, [activeCourse?.id, courseOptionIds, selectedCourseId]);
 
   const courseLessons = useMemo(() => {
     if (Array.isArray(activeCourse?.lessons) && activeCourse.lessons.length > 0) {
@@ -296,6 +310,12 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
       setSelectedCourseId(String(activeCourse.id));
     }
   }, [activeCourse?.id, selectedCourseId]);
+
+  useEffect(() => {
+    if (selectedCourseValue && selectedCourseId !== selectedCourseValue) {
+      setSelectedCourseId(selectedCourseValue);
+    }
+  }, [selectedCourseId, selectedCourseValue]);
 
   useEffect(() => {
     setLessonTitle(String(activeLesson?.title || tt('Lyssetting grunnleggende', 'Lighting Basics')));
@@ -491,8 +511,8 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
     { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'lesson-current', label: lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics'), route: '/academy/lesson-editor', inset: true },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
@@ -554,7 +574,8 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
 
           <Stack spacing={0.5} sx={{ px: 1.5 }}>
             {leftNavItems.map((item) => {
-              const active = item.id === leftNav || item.id === 'lesson-current';
+              const active = item.id === leftNav;
+              const isSubItem = item.id === 'lesson-current';
               return (
                 <Button
                   key={item.id}
@@ -564,16 +585,23 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   }}
                   sx={{
                     justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                    borderRadius: 1,
+                    color: active ? '#fce3a1' : isSubItem ? 'rgba(237,240,247,0.74)' : 'rgba(237,240,247,0.82)',
+                    borderRadius: isSubItem ? 0.8 : 1,
                     textTransform: 'none',
-                    px: item.inset ? 3.2 : 2,
-                    py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
-                    background: active
-                      ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
-                      : 'transparent',
-                    fontSize: item.inset ? 14 : 15,
+                    px: isSubItem ? 1.4 : 2,
+                    py: isSubItem ? 0.75 : 1.15,
+                    ml: isSubItem ? 2.1 : 0,
+                    width: isSubItem ? 'calc(100% - 16px)' : '100%',
+                    border: isSubItem ? '1px solid transparent' : active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    borderLeft: isSubItem ? (active ? '2px solid rgba(248,179,33,0.55)' : '2px solid rgba(255,255,255,0.18)') : 'none',
+                    background: isSubItem
+                      ? active
+                        ? 'rgba(248,179,33,0.08)'
+                        : 'transparent'
+                      : active
+                        ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
+                        : 'transparent',
+                    fontSize: isSubItem ? 13.5 : 15,
                   }}
                 >
                   {item.label}
@@ -661,7 +689,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   </Typography>
                   <Select
                     size="small"
-                    value={selectedCourseId || activeCourse?.id || ''}
+                    value={selectedCourseValue}
                     onChange={(event) => setSelectedCourseId(String(event.target.value))}
                     sx={{
                       minWidth: 200,
@@ -814,25 +842,36 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                       />
 
-                      <IconButton
-                        onClick={() => setIsPlaying((prev) => !prev)}
+                      <Box
                         sx={{
                           position: 'absolute',
                           left: '50%',
                           top: '50%',
                           transform: 'translate(-50%, -50%)',
-                          width: 84,
-                          height: 84,
-                          border: '2px solid rgba(255,255,255,0.45)',
-                          color: '#f7f8fb',
-                          bgcolor: 'rgba(4,5,8,0.42)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0,0,0,0.56)',
-                          },
                         }}
                       >
-                        {isPlaying ? <Pause sx={{ fontSize: 42 }} /> : <PlayArrow sx={{ fontSize: 42 }} />}
-                      </IconButton>
+                        <IconButton
+                          onClick={() => setIsPlaying((prev) => !prev)}
+                          sx={{
+                            width: 84,
+                            height: 84,
+                            border: '2px solid rgba(255,255,255,0.45)',
+                            color: '#f7f8fb',
+                            bgcolor: 'rgba(4,5,8,0.42)',
+                            transition: 'background-color 0.2s ease',
+                            transform: 'none !important',
+                            '&:hover': {
+                              bgcolor: 'rgba(0,0,0,0.56)',
+                              transform: 'none !important',
+                            },
+                            '&:active': {
+                              transform: 'none !important',
+                            },
+                          }}
+                        >
+                          {isPlaying ? <Pause sx={{ fontSize: 42 }} /> : <PlayArrow sx={{ fontSize: 42 }} />}
+                        </IconButton>
+                      </Box>
 
                       <Box
                         sx={{

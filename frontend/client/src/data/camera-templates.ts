@@ -3,8 +3,8 @@
  * Allows users to save and reuse camera setups for different project types
  */
 
-import { Camera } from './video-camera-database';
-import { PhotoCamera } from './photo-camera-database';
+import type { Camera } from './video-camera-database';
+import type { PhotoCamera } from './photo-camera-database';
 
 export interface CameraTemplate {
   id: string;

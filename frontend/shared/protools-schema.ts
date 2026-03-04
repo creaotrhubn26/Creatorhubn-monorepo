@@ -15,7 +15,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Pro Tools Sessions - Core collaboration management
 export const proToolsSessions = pgTable('protools_sessions', {

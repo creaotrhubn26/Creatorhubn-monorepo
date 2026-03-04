@@ -3,7 +3,8 @@
  * Client-side authentication utilities for Fiken API integration
  */
 
-import { FikenAuthState, FikenOAuthTokens } from '@/../../shared/types/fiken';
+import type { FikenOAuthTokens } from '@/../../shared/types/fiken';
+import { FikenAuthState } from '@/../../shared/types/fiken';
 
 const FIKEN_OAUTH_URL = 'https://fiken.no/oauth/authorize';
 const FIKEN_TOKEN_URL = 'https://fiken.no/oauth/token';

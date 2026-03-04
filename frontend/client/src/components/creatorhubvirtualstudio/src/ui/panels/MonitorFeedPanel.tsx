@@ -64,8 +64,10 @@ import {
   Movie,
 } from '@mui/icons-material';
 import { useNodes } from '../../state/store';
-import { monitorFeedService, MonitorLayout } from '../../core/services/monitorFeedService';
-import { multiCameraRecordingService, CameraRecording, RECORDING_QUALITY } from '../../core/services/multiCameraRecordingService';
+import type { MonitorLayout } from '../../core/services/monitorFeedService';
+import { monitorFeedService } from '../../core/services/monitorFeedService';
+import type { CameraRecording, RECORDING_QUALITY } from '../../core/services/multiCameraRecordingService';
+import { multiCameraRecordingService } from '../../core/services/multiCameraRecordingService';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('MonitorFeedPanel, ');

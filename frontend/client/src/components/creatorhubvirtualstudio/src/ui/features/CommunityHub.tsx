@@ -28,7 +28,8 @@ import {
   LightMode,
   People,
 } from '@mui/icons-material';
-import { communityService, CommunitySetup } from '../../core/services/community';
+import type { CommunitySetup } from '../../core/services/community';
+import { communityService } from '../../core/services/community';
 
 export default function CommunityHub() {
   const [list, setList] = React.useState<CommunitySetup[]>([]);

@@ -177,8 +177,10 @@ import {
   AutoAwesomeSharp,
   AutoAwesomeTwoTone,
 } from '@mui/icons-material';
-import { useTheme, UseThemeOptions } from '../../../hooks/useTheme';
-import { ThemeConfig, Theme } from '../../../utils/themeManager';
+import type { UseThemeOptions } from '../../../hooks/useTheme';
+import { useTheme } from '../../../hooks/useTheme';
+import type { Theme } from '../../../utils/themeManager';
+import { ThemeConfig } from '../../../utils/themeManager';
 
 interface ThemeDashboardProps {
   showDetails?: boolean;

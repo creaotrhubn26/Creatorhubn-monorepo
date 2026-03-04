@@ -25,8 +25,9 @@ import {
   Add,
   Remove,
 } from '@mui/icons-material';
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import {
+import type { PanInfo } from 'framer-motion';
+import { motion, useMotionValue, useTransform } from 'framer-motion';
+import type {
   CastingShot,
   ShotStatus,
   MediaType,

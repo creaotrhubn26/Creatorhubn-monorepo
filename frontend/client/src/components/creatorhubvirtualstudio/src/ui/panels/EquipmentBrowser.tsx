@@ -62,7 +62,10 @@ import {
   Build as ConditionIcon,
   LocationOn as LocationIcon,
 } from '@mui/icons-material';
-import { useUserEquipmentInventory, getEquipmentImageUrl, UserEquipmentItem } from '../../hooks/useUserEquipmentInventory';
+import type { UserEquipmentItem } from '../../hooks/useUserEquipmentInventory';
+import { useUserEquipmentInventory, getEquipmentImageUrl } from '../../hooks/useUserEquipmentInventory';
+import type {
+  EquipmentSpec} from '@/core/services/equipment-integration';
 import {
   searchEquipment,
   getLightingEquipment,
@@ -70,22 +73,24 @@ import {
   getLensEquipment,
   getPopularSetups,
   equipmentToLightNode,
-  equipmentToCameraNode,
-  EquipmentSpec,
+  equipmentToCameraNode
 } from '@/core/services/equipment-integration';
+import type {
+  LightSpec 
+} from '../../core/data/LightSpecifications';
 import { 
   findLightSpec, 
   findLightSpecByBrand, 
   getDefaultLightSpec,
-  lightSpecToNodeData,
-  LightSpec 
+  lightSpecToNodeData 
 } from '../../core/data/LightSpecifications';
+import type {
+  LensSpec} from '../../core/data/LensSpecifications';
 import {
   findLensSpec,
   findLensSpecByBrand,
   getDefaultLensSpec,
-  lensSpecToCameraData,
-  LensSpec,
+  lensSpecToCameraData
 } from '../../core/data/LensSpecifications';
 import { useAppStore } from '@/state/store';
 import { useVirtualStudio } from '../../../VirtualStudioContext';

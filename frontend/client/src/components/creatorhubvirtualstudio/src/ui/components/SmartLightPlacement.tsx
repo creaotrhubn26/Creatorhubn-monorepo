@@ -25,7 +25,7 @@ import {
   ExpandLess as CollapseIcon,
   AutoAwesome,
 } from '@mui/icons-material';
-import { DetectedPattern, LightPlacementTip } from '@/core/services/patternDetectionService';
+import type { DetectedPattern, LightPlacementTip } from '@/core/services/patternDetectionService';
 import { sam2Service } from '@/services/SAM2Service';
 import { useMutation } from '@tanstack/react-query';
 

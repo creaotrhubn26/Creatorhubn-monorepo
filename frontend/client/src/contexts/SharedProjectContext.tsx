@@ -14,26 +14,30 @@
  * - Persistent state with localStorage
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useEffect,
-  useCallback,
-  ReactNode,
+  useCallback
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import type {
+  WorkflowState} from '@/services/WorkflowOrchestrator';
 import {
   workflowOrchestrator,
-  WorkflowState,
   WorkflowComponent,
 } from '@/services/WorkflowOrchestrator';
+import type {
+  CrossComponentEvent} from '@/services/CrossComponentEventBus';
 import {
   crossComponentEventBus,
-  CrossComponentEvent,
   CrossComponentEventType,
 } from '@/services/CrossComponentEventBus';
-import { unifiedAssetService, MediaAsset } from '@/services/UnifiedAssetService';
+import type { MediaAsset } from '@/services/UnifiedAssetService';
+import { unifiedAssetService } from '@/services/UnifiedAssetService';
 
 // ==========================================
 // TYPES

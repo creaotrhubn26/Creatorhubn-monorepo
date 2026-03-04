@@ -48,21 +48,33 @@ import {
 import { styled } from '@mui/material/styles';
 
 // Import all drawing components
-import { LayersPanel, DrawingLayer, BlendMode } from './LayersPanel';
+import type { DrawingLayer} from './LayersPanel';
+import { LayersPanel, BlendMode } from './LayersPanel';
 import { BrushLibrary } from './BrushLibrary';
-import { ShapeTools, ShapeType, ShapeStyle, DEFAULT_SHAPE_STYLE } from './ShapeTools';
-import { TextAnnotation, TextStyle, DEFAULT_TEXT_STYLE } from './TextAnnotations';
+import type { ShapeType, ShapeStyle} from './ShapeTools';
+import { ShapeTools, DEFAULT_SHAPE_STYLE } from './ShapeTools';
+import type { TextStyle} from './TextAnnotations';
+import { TextAnnotation, DEFAULT_TEXT_STYLE } from './TextAnnotations';
 import TextAnnotationsToolbar from './TextAnnotations';
-import { SelectionTools, SelectionMode, SelectionBounds, Transform } from './SelectionTools';
-import { SymmetryMode, SymmetryType, SymmetrySettings, DEFAULT_SYMMETRY_SETTINGS } from './SymmetryMode';
-import { PressureCurveEditor, PressureCurve, DEFAULT_PRESSURE_CURVE } from './PressureCurveEditor';
-import { OnionSkinning, OnionSkinSettings, DEFAULT_ONION_SKIN_SETTINGS } from './OnionSkinning';
-import { Eyedropper, SampledColor } from './Eyedropper';
-import { ExportOptions, ExportSettings, ExportFrame, DEFAULT_EXPORT_SETTINGS } from './ExportOptions';
-import { GestureShortcuts, GestureSettings, GestureAction, DEFAULT_GESTURE_SETTINGS } from './GestureShortcuts';
-import { StoryboardTemplates, StoryboardTemplate, FrameGuides, DEFAULT_GUIDES, drawGuides } from './StoryboardTemplates';
-import { BrushConfig, DEFAULT_BRUSH_CONFIG } from './AdvancedBrushEngine';
-import { PencilStroke } from '../../hooks/useApplePencil';
+import type { SelectionMode, SelectionBounds, Transform } from './SelectionTools';
+import { SelectionTools } from './SelectionTools';
+import type { SymmetrySettings} from './SymmetryMode';
+import { SymmetryMode, SymmetryType, DEFAULT_SYMMETRY_SETTINGS } from './SymmetryMode';
+import type { PressureCurve} from './PressureCurveEditor';
+import { PressureCurveEditor, DEFAULT_PRESSURE_CURVE } from './PressureCurveEditor';
+import type { OnionSkinSettings} from './OnionSkinning';
+import { OnionSkinning, DEFAULT_ONION_SKIN_SETTINGS } from './OnionSkinning';
+import type { SampledColor } from './Eyedropper';
+import { Eyedropper } from './Eyedropper';
+import type { ExportSettings, ExportFrame} from './ExportOptions';
+import { ExportOptions, DEFAULT_EXPORT_SETTINGS } from './ExportOptions';
+import type { GestureSettings, GestureAction} from './GestureShortcuts';
+import { GestureShortcuts, DEFAULT_GESTURE_SETTINGS } from './GestureShortcuts';
+import type { StoryboardTemplate} from './StoryboardTemplates';
+import { StoryboardTemplates, FrameGuides, DEFAULT_GUIDES, drawGuides } from './StoryboardTemplates';
+import type { BrushConfig} from './AdvancedBrushEngine';
+import { DEFAULT_BRUSH_CONFIG } from './AdvancedBrushEngine';
+import type { PencilStroke } from '../../hooks/useApplePencil';
 
 // =============================================================================
 // Types

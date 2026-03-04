@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Family tree system for wedding couples and VIP clients
 export const familyTrees = pgTable('family_trees', {

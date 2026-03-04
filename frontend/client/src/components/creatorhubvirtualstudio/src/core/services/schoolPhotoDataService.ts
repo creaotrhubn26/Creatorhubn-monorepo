@@ -9,7 +9,8 @@
  */
 
 import { logger } from './logger';
-import { ClassPhotoSession, ClassPhotoSetup, TeacherConfig, Student, ClassPhotoRow, ClassPhotoProp } from './classPhotoService';
+import type { ClassPhotoSession, TeacherConfig, Student, ClassPhotoRow, ClassPhotoProp } from './classPhotoService';
+import { ClassPhotoSetup } from './classPhotoService';
 
 const log = logger.module('SchoolPhotoData, ');
 const API_BASE = '/api/virtual-studio/school-photo';

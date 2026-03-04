@@ -13,15 +13,17 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { Html, Line, Text } from '@react-three/drei';
 import * as THREE from 'three';
-import { EyeSystem, useEyeMovement, CatchlightPreview, EYE_COLORS, LightSourceData, useLightSourcesFromNodes } from './EyeSystem';
+import type { LightSourceData} from './EyeSystem';
+import { EyeSystem, useEyeMovement, CatchlightPreview, EYE_COLORS, useLightSourcesFromNodes } from './EyeSystem';
 import { useNodes } from '../../state/selectors';
+import type {
+  HEAD_PRESETS,
+  HAND_PRESETS,
+  HandGesture} from '../../core/animations/BodyAnimations';
 import { 
   BodyAnimationController, 
   BODY_ANIMATION_PRESETS,
-  HEAD_PRESETS,
-  HAND_PRESETS,
-  FULL_BODY_POSES,
-  HandGesture,
+  FULL_BODY_POSES
 } from '../../core/animations/BodyAnimations';
 
 interface StudioGuidesProps {

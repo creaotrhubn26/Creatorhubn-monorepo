@@ -5,7 +5,7 @@
 
 import React from 'react';
 import ScrollStory from './ScrollStory.enhanced';
-import { ScrollStory as ScrollStoryType } from './useScrollStory';
+import type { ScrollStory as ScrollStoryType } from './useScrollStory';
 
 export default function ScrollStoryExample() {
   // Sample story data

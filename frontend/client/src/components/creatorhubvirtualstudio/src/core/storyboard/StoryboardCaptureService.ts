@@ -10,13 +10,14 @@ import { logger } from '../services/logger';
 
 const log = logger.module('StoryboardCapture');
 
-import {
-  StoryboardFrame,
+import type {
   SceneSnapshot,
   CapturedCameraState,
   CapturedLightState,
   ShotType,
-  CameraAngle,
+  CameraAngle} from '../../state/storyboardStore';
+import {
+  StoryboardFrame,
   CameraMovement,
 } from '../../state/storyboardStore';
 

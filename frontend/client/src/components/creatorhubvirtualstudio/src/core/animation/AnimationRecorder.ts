@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import {
+import type {
   Keyframe,
   AnimationTrack,
   AnimationClip,

@@ -48,7 +48,7 @@ import {
   Add as AddIcon,
 } from '@mui/icons-material';
 import { TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
-import { SceneBreakdown } from '../models/casting';
+import type { SceneBreakdown } from '../models/casting';
 
 // Internal shot type for tracking
 interface TrackedShot {

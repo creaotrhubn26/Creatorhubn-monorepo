@@ -3,6 +3,8 @@
  * Full administrative control for different professions with extensive display options
  */
 
+import type {
+  AnyPgColumn} from 'drizzle-orm/pg-core';
 import {
   pgTable,
   text,
@@ -14,12 +16,11 @@ import {
   decimal,
   uuid,
   index,
-  bigint,
-  AnyPgColumn,
+  bigint
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Showcase Configuration for Each Profession
 export const showcaseConfigurations = pgTable('showcase_configurations', {

@@ -13,6 +13,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import QRCode from 'qrcode';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { eq, and, desc, sql, or, gte, lte, isNull, isNotNull } from 'drizzle-orm';
@@ -1588,6 +1589,135 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   };
 
+  const computeMemoryCardControlReport = (state: {
+    shootDayLabel: string;
+    entries: Array<Record<string, unknown>>;
+    updatedAt: string;
+  }) => {
+    const total = state.entries.length;
+    const statusCounts = {
+      not_backed_up: 0,
+      backing_up: 0,
+      verified: 0,
+    };
+    const lifecycleCounts = new Map<string, number>();
+    const crewCounts = new Map<string, number>();
+    let checksumVerifiedCount = 0;
+    let fullyCompliantCount = 0;
+    let offsiteCount = 0;
+    let backup1Count = 0;
+    let backup2Count = 0;
+
+    const pendingOverSixHours: Array<{
+      id: string;
+      cardLabel: string;
+      hours: number;
+      updatedAt: string;
+    }> = [];
+
+    const duplicateLabelSet = new Set<string>();
+    const knownLabels = new Set<string>();
+
+    for (const entry of state.entries) {
+      const status = typeof entry.status === 'string' ? entry.status : 'not_backed_up';
+      if (status in statusCounts) {
+        statusCounts[status as keyof typeof statusCounts] += 1;
+      }
+
+      const lifecycleStage = typeof entry.lifecycleStage === 'string' ? entry.lifecycleStage : 'in_use';
+      lifecycleCounts.set(lifecycleStage, (lifecycleCounts.get(lifecycleStage) ?? 0) + 1);
+
+      const crewName = typeof entry.assignedCrewName === 'string' ? entry.assignedCrewName.trim() : '';
+      if (crewName) {
+        crewCounts.set(crewName, (crewCounts.get(crewName) ?? 0) + 1);
+      }
+
+      const cardLabel = typeof entry.cardLabel === 'string' ? entry.cardLabel.trim().toUpperCase() : '';
+      if (cardLabel) {
+        if (knownLabels.has(cardLabel)) duplicateLabelSet.add(cardLabel);
+        knownLabels.add(cardLabel);
+      }
+
+      const backups = entry.backups && typeof entry.backups === 'object'
+        ? (entry.backups as Record<string, unknown>)
+        : {};
+      const backup1 = Boolean(backups.backup1);
+      const backup2 = Boolean(backups.backup2);
+      const offsite = Boolean(backups.offsite);
+      const checksumVerified = Boolean(entry.checksumVerified);
+
+      if (backup1) backup1Count += 1;
+      if (backup2) backup2Count += 1;
+      if (offsite) offsiteCount += 1;
+      if (checksumVerified) checksumVerifiedCount += 1;
+      if (backup1 && backup2 && offsite && checksumVerified) {
+        fullyCompliantCount += 1;
+      }
+
+      const updatedAt = typeof entry.updatedAt === 'string' ? entry.updatedAt : '';
+      const updatedTime = Date.parse(updatedAt);
+      if (status !== 'verified' && Number.isFinite(updatedTime)) {
+        const ageHours = (Date.now() - updatedTime) / (1000 * 60 * 60);
+        if (ageHours >= 6) {
+          pendingOverSixHours.push({
+            id: typeof entry.id === 'string' ? entry.id : `entry-${pendingOverSixHours.length + 1}`,
+            cardLabel: cardLabel || 'Uten etikett',
+            hours: Math.round(ageHours),
+            updatedAt,
+          });
+        }
+      }
+    }
+
+    const compliancePercent = total > 0 ? Math.round((fullyCompliantCount / total) * 100) : 100;
+    const copyCoveragePercent = total > 0 ? Math.round((backup1Count / total) * 100) : 100;
+    const dualMediaCoveragePercent = total > 0 ? Math.round((backup2Count / total) * 100) : 100;
+    const offsiteCoveragePercent = total > 0 ? Math.round((offsiteCount / total) * 100) : 100;
+
+    const risks: string[] = [];
+    if (statusCounts.not_backed_up > 0) risks.push(`${statusCounts.not_backed_up} lagringsenheter er ikke sikkerhetskopiert`);
+    if (offsiteCount < total && total > 0) risks.push(`Manglende offsite-kopi på ${total - offsiteCount} lagringsenheter`);
+    if (duplicateLabelSet.size > 0) risks.push(`Dupliserte etiketter: ${Array.from(duplicateLabelSet).join(', ')}`);
+    if (pendingOverSixHours.length > 0) risks.push(`${pendingOverSixHours.length} enheter har vært uverifisert i over 6 timer`);
+
+    return {
+      shootDayLabel: state.shootDayLabel,
+      updatedAt: state.updatedAt,
+      summary: {
+        total,
+        notBackedUp: statusCounts.not_backed_up,
+        backingUp: statusCounts.backing_up,
+        verified: statusCounts.verified,
+        checksumVerified: checksumVerifiedCount,
+        fullyCompliant: fullyCompliantCount,
+        compliancePercent,
+        copyCoveragePercent,
+        dualMediaCoveragePercent,
+        offsiteCoveragePercent,
+      },
+      counts: {
+        status: statusCounts,
+        lifecycle: Array.from(lifecycleCounts.entries()).map(([key, value]) => ({ key, value })),
+        crew: Array.from(crewCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 20)
+          .map(([crewName, count]) => ({ crewName, count })),
+      },
+      alerts: {
+        riskLevel: compliancePercent >= 90 ? 'low' : compliancePercent >= 70 ? 'medium' : 'high',
+        risks,
+        pendingOverSixHours: pendingOverSixHours.slice(0, 50),
+      },
+      rule321: {
+        description: '3-2-1-regel: 3 kopier (original + 2 backup), 2 medier (SSD + RAID/NAS), 1 offsite.',
+        original: total,
+        backup1: backup1Count,
+        backup2: backup2Count,
+        offsite: offsiteCount,
+      },
+    };
+  };
+
   router.get('/projects/:projectId/memory-card-control', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
     try {
       const { projectId } = req.params;
@@ -1665,6 +1795,132 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     } catch (err) {
       console.error('PUT memory-card-control error:', err);
       res.status(500).json({ error: 'Kunne ikke lagre minnekortkontroll' });
+    }
+  });
+
+  router.get('/projects/:projectId/memory-card-control/report', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const result = await pool.query<{ settings: unknown }>(
+        'SELECT settings FROM casting_projects WHERE id = $1',
+        [projectId]
+      );
+
+      if (result.rowCount === 0) {
+        res.status(404).json({ error: 'Prosjekt ikke funnet' });
+        return;
+      }
+
+      const settingsValue = result.rows[0]?.settings;
+      const settings =
+        settingsValue && typeof settingsValue === 'object'
+          ? (settingsValue as Record<string, unknown>)
+          : {};
+      const state = sanitizeMemoryCardControlState(settings.memoryCardControl);
+      const report = computeMemoryCardControlReport(state);
+
+      res.json({
+        ok: true,
+        projectId,
+        report,
+      });
+    } catch (err) {
+      console.error('GET memory-card-control report error:', err);
+      res.status(500).json({ error: 'Kunne ikke hente minnekort-rapport' });
+    }
+  });
+
+  router.post('/projects/:projectId/memory-card-control/qr-label', apiKeyAuth(pool, activeSessions), async (req: Request, res: Response) => {
+    try {
+      const { projectId } = req.params;
+      const body = req.body as Record<string, unknown>;
+      const requestedEntryId = typeof body.entryId === 'string' ? body.entryId : '';
+
+      let selectedEntry: Record<string, unknown> | null = null;
+      let shootDayLabel = typeof body.shootDayLabel === 'string' ? body.shootDayLabel : '';
+
+      if (requestedEntryId) {
+        const result = await pool.query<{ settings: unknown }>(
+          'SELECT settings FROM casting_projects WHERE id = $1',
+          [projectId]
+        );
+        if (result.rowCount > 0) {
+          const settingsValue = result.rows[0]?.settings;
+          const settings =
+            settingsValue && typeof settingsValue === 'object'
+              ? (settingsValue as Record<string, unknown>)
+              : {};
+          const state = sanitizeMemoryCardControlState(settings.memoryCardControl);
+          shootDayLabel = shootDayLabel || state.shootDayLabel;
+          selectedEntry =
+            state.entries.find(
+              (entry) =>
+                entry &&
+                typeof entry === 'object' &&
+                (entry as Record<string, unknown>).id === requestedEntryId
+            ) ?? null;
+        }
+      }
+
+      const cardLabel =
+        typeof body.cardLabel === 'string'
+          ? body.cardLabel.trim()
+          : typeof selectedEntry?.cardLabel === 'string'
+          ? selectedEntry.cardLabel.trim()
+          : '';
+      const cameraLabel =
+        typeof body.cameraLabel === 'string'
+          ? body.cameraLabel.trim()
+          : typeof selectedEntry?.cameraLabel === 'string'
+          ? selectedEntry.cameraLabel.trim()
+          : '';
+      const capacity =
+        typeof body.capacity === 'string'
+          ? body.capacity.trim()
+          : typeof selectedEntry?.capacity === 'string'
+          ? selectedEntry.capacity.trim()
+          : '';
+      const storageType =
+        typeof body.storageType === 'string'
+          ? body.storageType.trim()
+          : typeof selectedEntry?.cardTypeName === 'string'
+          ? selectedEntry.cardTypeName.trim()
+          : '';
+
+      if (!cardLabel) {
+        res.status(400).json({ error: 'cardLabel er påkrevd for QR-etikett' });
+        return;
+      }
+
+      const payload = {
+        schema: 'role-room.memory-card-control.label.v1',
+        projectId,
+        entryId: requestedEntryId || (typeof selectedEntry?.id === 'string' ? selectedEntry.id : null),
+        cardLabel,
+        cameraLabel: cameraLabel || null,
+        capacity: capacity || null,
+        storageType: storageType || null,
+        shootDayLabel: shootDayLabel || null,
+        generatedAt: nowISO(),
+      };
+      const payloadString = JSON.stringify(payload);
+      const qrDataUrl = await QRCode.toDataURL(payloadString, {
+        errorCorrectionLevel: 'M',
+        margin: 2,
+        width: 512,
+      });
+      const safeLabel = cardLabel.replace(/[^a-zA-Z0-9-_]/g, '-').slice(0, 48) || 'lagringsenhet';
+
+      res.json({
+        ok: true,
+        payload,
+        payloadString,
+        qrDataUrl,
+        suggestedFileName: `${safeLabel}-qr.png`,
+      });
+    } catch (err) {
+      console.error('POST memory-card-control qr-label error:', err);
+      res.status(500).json({ error: 'Kunne ikke generere QR-etikett' });
     }
   });
 

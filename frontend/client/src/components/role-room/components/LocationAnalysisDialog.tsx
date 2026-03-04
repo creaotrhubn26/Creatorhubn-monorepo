@@ -61,7 +61,7 @@ import {
   HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { Location } from '../models/casting';
+import type { Location } from '../models/casting';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisGuide } from './production/LocationAnalysisGuide';
 

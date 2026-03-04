@@ -1,6 +1,7 @@
 // Hook for managing templates and presets
 import { useState, useEffect, useCallback } from 'react';
-import { templateManager, Template, Preset } from '../utils/templateManager';
+import type { Template, Preset } from '../utils/templateManager';
+import { templateManager } from '../utils/templateManager';
 
 export interface UseTemplateManagerReturn {
   templates: Template[];

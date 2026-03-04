@@ -32,8 +32,9 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
 } from '@mui/icons-material';
-import { candidatePoolService, PoolCandidate } from '../services/candidatePoolService';
-import { CastingProject } from '../models/casting';
+import type { PoolCandidate } from '../services/candidatePoolService';
+import { candidatePoolService } from '../services/candidatePoolService';
+import type { CastingProject } from '../models/casting';
 import { getCandidatePhotoObjectPosition } from '../utils/candidatePhotoFocalPoint';
 
 interface CandidatePoolPanelProps {

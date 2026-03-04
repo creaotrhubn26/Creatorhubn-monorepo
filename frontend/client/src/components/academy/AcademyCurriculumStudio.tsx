@@ -28,6 +28,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Lesson } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -182,6 +183,7 @@ const buildModulesFromCourse = (course: Course | null | undefined): CurriculumMo
 function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurriculumStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -708,18 +710,29 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                           overflow: 'hidden',
                         }}
                       >
-                        <Button
-                          fullWidth
+                        <Box
+                          role="button"
+                          tabIndex={0}
                           onClick={() => {
                             setActiveModuleId(module.id);
                             toggleModule(module.id);
                           }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setActiveModuleId(module.id);
+                              toggleModule(module.id);
+                            }
+                          }}
                           sx={{
+                            display: 'flex',
+                            width: '100%',
                             justifyContent: 'space-between',
-                            textTransform: 'none',
+                            alignItems: 'center',
                             color: '#edf0f7',
                             px: 1,
                             py: 1,
+                            cursor: 'pointer',
                             borderRadius: 0,
                             bgcolor:
                               selectedModule?.id === module.id
@@ -764,7 +777,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                               <MoreHoriz fontSize="small" />
                             </IconButton>
                           </Stack>
-                        </Button>
+                        </Box>
 
                         {module.expanded && (
                           <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>

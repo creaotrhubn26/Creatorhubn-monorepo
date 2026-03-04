@@ -4,7 +4,8 @@
  * and reports them to Sentry for production error tracking
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
+import React, { Component } from 'react';
 import {
   Box,
   Typography,

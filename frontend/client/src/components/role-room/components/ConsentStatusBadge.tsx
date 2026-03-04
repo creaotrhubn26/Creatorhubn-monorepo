@@ -23,7 +23,7 @@ import {
   Block as DeclinedIcon,
 } from '@mui/icons-material';
 import { ConsentsIcon } from './icons/CastingIcons';
-import { Consent } from '../models/casting';
+import type { Consent } from '../models/casting';
 
 interface ConsentStatusBadgeProps {
   consents: Consent[];

@@ -47,9 +47,10 @@ import {
   LastPage,
   Settings,
 } from '@mui/icons-material';
+import type {
+  StoryboardFrame} from '../../state/storyboardStore';
 import {
   useCurrentStoryboard,
-  StoryboardFrame,
   formatDuration,
 } from '../../state/storyboardStore';
 

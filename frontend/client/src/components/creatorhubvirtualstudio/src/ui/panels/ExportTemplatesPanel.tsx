@@ -73,14 +73,15 @@ import {
   Groups,
   Settings,
 } from '@mui/icons-material';
-import {
-  exportTemplateService,
+import type {
   ExportTemplate,
   ExportTemplateCategory,
-  TEMPLATE_CATEGORIES,
   ScheduleConfig,
   TemplateIconName,
-  CategoryIconName,
+  CategoryIconName} from '../../core/animation/ExportTemplates';
+import {
+  exportTemplateService,
+  TEMPLATE_CATEGORIES
 } from '../../core/animation/ExportTemplates';
 
 // ============================================================================

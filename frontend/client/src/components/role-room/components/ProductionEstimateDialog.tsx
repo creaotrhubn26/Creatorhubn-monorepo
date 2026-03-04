@@ -28,7 +28,7 @@ import {
   Mic as MicIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon, TrendingIcon as TrendingUpIcon } from './icons/CastingIcons';
-import { SceneBreakdown, ShotList } from '../models/casting';
+import type { SceneBreakdown, ShotList } from '../models/casting';
 
 interface ProductionEstimateDialogProps {
   open: boolean;

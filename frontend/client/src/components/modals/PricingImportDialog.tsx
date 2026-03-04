@@ -29,7 +29,8 @@ import {
   Download,
   Info,
 } from '@mui/icons-material';
-import { PricingImportService, PricingRecommendation } from '@/services/PricingImportService';
+import type { PricingRecommendation } from '@/services/PricingImportService';
+import { PricingImportService } from '@/services/PricingImportService';
 
 interface PricingImportDialogProps {
   open: boolean;

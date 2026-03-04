@@ -55,7 +55,7 @@ import {
 import backgroundUploadService from '../../services/BackgroundUploadService';
 import { useUploadQueue } from '../../hooks/useUploadQueue';
 import { usePhotoEnhancementWebSocket } from '../../hooks/usePhotoEnhancementWebSocket';
-import { ProcessingOptions as BatchProcessingOptions } from '@shared/photo-enhancement-contracts';
+import type { ProcessingOptions as BatchProcessingOptions } from '@shared/photo-enhancement-contracts';
 import GoogleWorkspaceStorageInfo from './GoogleWorkspaceStorageInfo';
 
 interface UniversalFileUploadProps {

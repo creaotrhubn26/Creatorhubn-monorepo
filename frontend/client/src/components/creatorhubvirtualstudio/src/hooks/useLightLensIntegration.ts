@@ -13,16 +13,19 @@
 
 import { useMemo, useCallback, useEffect, useState } from 'react';
 import { useNodes, useActions } from '@/state/selectors';
+import type {
+  LightSource,
+  CameraSettings,
+  ExposureRecommendation} from '@/core/services/exposureCalculatorService';
 import { 
   exposureCalculator, 
   SceneExposureAnalysis,
-  LightSource,
-  CameraSettings,
-  ExposureRecommendation,
   MODIFIER_LIGHT_LOSS,
 } from '@/core/services/exposureCalculatorService';
-import { findLensSpec, findLensSpecByBrand, LensSpec, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
-import { lensSpecToEffects, LensEffectsParams } from '@/core/rendering/LensEffectsRenderer';
+import type { LensSpec} from '@/core/data/LensSpecifications';
+import { findLensSpec, findLensSpecByBrand, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
+import type { LensEffectsParams } from '@/core/rendering/LensEffectsRenderer';
+import { lensSpecToEffects } from '@/core/rendering/LensEffectsRenderer';
 
 // =============================================================================
 // TYPES

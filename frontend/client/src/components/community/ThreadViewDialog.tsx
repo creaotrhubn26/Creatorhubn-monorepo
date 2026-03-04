@@ -31,7 +31,8 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { apiRequest } from '@/lib/queryClient';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import type { VirtuosoHandle } from 'react-virtuoso';
+import { Virtuoso } from 'react-virtuoso';
 
 interface ThreadMessage {
   id: string;

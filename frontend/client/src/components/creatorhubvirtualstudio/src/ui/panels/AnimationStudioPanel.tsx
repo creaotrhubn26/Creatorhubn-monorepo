@@ -86,26 +86,30 @@ import { KeyframeEditor } from './KeyframeEditor';
 import { KeyframeTimeline } from './KeyframeTimeline';
 import { AnimationLayersPanel } from './AnimationLayersPanel';
 import { CurveEditorCanvas, BezierCurve, CURVE_PRESETS } from '../components/CurveEditorCanvas';
+import type {
+  RecordingConfig,
+  RecordingState} from '../../core/animation/AnimationRecorder';
 import {
   animationRecorder,
-  RecordingConfig,
-  RecordingState,
   DEFAULT_RECORDING_CONFIG,
 } from '../../core/animation/AnimationRecorder';
+import type {
+  AnimationTemplate,
+  TemplateCategory} from '../../core/animation/AnimationTemplates';
 import {
   animationTemplateService,
-  AnimationTemplate,
-  TemplateCategory,
   ANIMATION_TEMPLATES,
 } from '../../core/animation/AnimationTemplates';
-import {
-  sceneAnimationService,
+import type {
   AnimationTrack,
-  AnimationClip,
+  AnimationClip} from '../../core/animation/SceneGraphAnimationEngine';
+import {
+  sceneAnimationService
 } from '../../core/animation/SceneGraphAnimationEngine';
 import { VideoExportPanel } from './VideoExportPanel';
 import { ExportSchedulerPanel } from './ExportSchedulerPanel';
-import { videoExportService, ExportResult } from '../../core/animation/VideoExportService';
+import type { ExportResult } from '../../core/animation/VideoExportService';
+import { videoExportService } from '../../core/animation/VideoExportService';
 
 // ============================================================================
 // Types

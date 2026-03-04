@@ -16,8 +16,9 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { SceneNode } from '../../core/models/scene';
-import { hairRenderingService, HairColorOptions } from '../../core/services/hairRenderingService';
+import type { SceneNode } from '../../core/models/scene';
+import type { HairColorOptions } from '../../core/services/hairRenderingService';
+import { hairRenderingService } from '../../core/services/hairRenderingService';
 import { getHairStyleById } from '../../core/data/hairStyles';
 import { logger } from '../../core/services/logger';
 

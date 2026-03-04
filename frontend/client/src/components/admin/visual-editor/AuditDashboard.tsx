@@ -5,6 +5,8 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Card,
@@ -48,8 +50,7 @@ import {
   Badge,
   Avatar,
   ListItemAvatar,
-  ListItemSecondaryAction,
-  ChipProps,
+  ListItemSecondaryAction
 } from '@mui/material';
 import Grid from '@mui/material/Grid2';
 import {
@@ -80,7 +81,7 @@ import {
   Storage as StorageIcon,
 } from '@mui/icons-material';
 import { useAuditLogger } from '@/hooks/useAuditLogger';
-import { AuditEvent, AuditQuery, AuditStats } from '@/utils/auditLogger';
+import type { AuditEvent, AuditQuery, AuditStats } from '@/utils/auditLogger';
 
 interface AuditDashboardProps {
   showDetails?: boolean;

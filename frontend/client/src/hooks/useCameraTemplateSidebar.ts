@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { CameraTemplate } from'../data/camera-templates';
+import type { CameraTemplate } from'../data/camera-templates';
 
 export interface UseCameraTemplateSidebarReturn {
   isOpen: boolean;

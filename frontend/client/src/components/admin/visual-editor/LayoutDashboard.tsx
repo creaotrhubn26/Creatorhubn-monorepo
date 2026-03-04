@@ -172,8 +172,10 @@ import {
   ViewInAr as ViewInArIcon,
   ViewKanban as ViewKanbanIcon,
 } from '@mui/icons-material';
-import { useLayout, UseLayoutOptions } from '../../../hooks/useLayout';
-import { LayoutConfig, LayoutElement, LayoutRule } from '../../../utils/layoutManager';
+import type { UseLayoutOptions } from '../../../hooks/useLayout';
+import { useLayout } from '../../../hooks/useLayout';
+import type { LayoutElement, LayoutRule } from '../../../utils/layoutManager';
+import { LayoutConfig } from '../../../utils/layoutManager';
 
 interface LayoutDashboardProps {
   showDetails?: boolean;

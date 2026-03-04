@@ -30,7 +30,8 @@ import {
   Tune as TuneIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
-import { ImageCropEditor, CropSettings, FocalPoint } from './ImageCropEditor';
+import type { CropSettings, FocalPoint } from './ImageCropEditor';
+import { ImageCropEditor } from './ImageCropEditor';
 
 interface ContentItem {
   id: number;

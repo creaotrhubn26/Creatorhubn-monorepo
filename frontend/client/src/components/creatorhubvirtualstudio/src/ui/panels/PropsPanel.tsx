@@ -46,10 +46,11 @@ import {
   Park,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
+import type {
+  PropCategory} from '../../core/data/propDefinitions';
 import {
   ALL_PROPS,
-  PROPS_BY_CATEGORY,
-  PropCategory,
+  PROPS_BY_CATEGORY
 } from '../../core/data/propDefinitions';
 
 export const PropsPanel: React.FC = () => {

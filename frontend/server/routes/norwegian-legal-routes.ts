@@ -4,7 +4,8 @@
  * Endpoints for Norwegian legal data integration with split sheets
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';

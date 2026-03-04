@@ -46,15 +46,16 @@ import {
   Camera,
   HighlightAlt,
 } from '@mui/icons-material';
-import {
-  getLightSetupRecommendations,
+import type {
   LightSetupRecommendation,
   CharacterContext,
   HDRIContext,
-  LightConfig,
+  LightConfig} from '../../core/services/lightSetupRecommendationService';
+import {
+  getLightSetupRecommendations
 } from '../../core/services/lightSetupRecommendationService';
-import { CachedActor } from '../../core/services/actorModelCache';
-import { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
+import type { CachedActor } from '../../core/services/actorModelCache';
+import type { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
 
 interface LightSetupRecommendationDialogProps {
   open: boolean;

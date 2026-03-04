@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { auditLogger, AuditEvent, AuditQuery, AuditStats } from '../utils/auditLogger';
+import type { AuditEvent, AuditQuery, AuditStats } from '../utils/auditLogger';
+import { auditLogger } from '../utils/auditLogger';
 
 export interface UseAuditLoggerOptions {
   userId?: string;

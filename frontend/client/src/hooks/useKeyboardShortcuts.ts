@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  keyboardShortcutsManager, 
+import type { 
   KeyboardConfig, 
   KeyboardState, 
   KeyboardShortcut,
   KeyboardContext
+} from '../utils/keyboardShortcutsManager';
+import { 
+  keyboardShortcutsManager
 } from'../utils/keyboardShortcutsManager';
 
 export interface UseKeyboardShortcutsOptions {

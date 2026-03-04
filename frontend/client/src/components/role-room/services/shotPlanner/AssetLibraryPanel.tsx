@@ -43,7 +43,7 @@ import {
   ASSET_ICONS,
 } from './assetLibrary';
 import { generateThumbnail, getCachedThumbnail, preGenerateAllThumbnails } from './pixiThumbnailer';
-import { Asset2DDefinition, AssetType } from './types';
+import type { Asset2DDefinition, AssetType } from './types';
 import { useShotPlannerStore } from './store';
 
 // =============================================================================

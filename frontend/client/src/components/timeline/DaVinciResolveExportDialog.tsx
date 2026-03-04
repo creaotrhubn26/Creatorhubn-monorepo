@@ -43,7 +43,7 @@ import {
   PlayArrow,
   Info,
 } from '@mui/icons-material';
-import { BeatClip, Track } from '../../services/storyArcDataIntegration';
+import type { BeatClip, Track } from '../../services/storyArcDataIntegration';
 import { timelineEngine } from '../../services/timeline-engine';
 // @ts-ignore - DaVinci export service
 import { DaVinciResolveExportService } from '../../services/davinciResolveExport';

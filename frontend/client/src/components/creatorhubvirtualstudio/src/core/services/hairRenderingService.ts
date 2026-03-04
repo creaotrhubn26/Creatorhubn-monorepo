@@ -20,7 +20,7 @@ import { logger } from './logger';
 const log = logger.module('HairService');
 
 import * as THREE from 'three';
-import { HairStyleDefinition } from '../data/hairStyles';
+import type { HairStyleDefinition } from '../data/hairStyles';
 import { assetLoadingService } from'./assetLoadingService';
 
 export interface HairColorOptions {

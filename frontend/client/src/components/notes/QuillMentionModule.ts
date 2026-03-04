@@ -4,7 +4,8 @@
  * Integrates with CreatorHub's mention system
  */
 
-import MentionService, { MentionSuggestion, MentionableResource } from '@/services/MentionService';
+import type { MentionSuggestion, MentionableResource } from '@/services/MentionService';
+import type MentionService from '@/services/MentionService';
 
 export interface MentionModuleOptions {
   mentionService: MentionService;

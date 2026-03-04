@@ -13,7 +13,7 @@
  * - Navigation with state
  */
 
-import { MediaAsset, PhotoAsset, VideoAsset } from '../types/MediaAssetTypes';
+import type { MediaAsset, PhotoAsset, VideoAsset } from '../types/MediaAssetTypes';
 
 export enum WorkflowComponent {
   UNIVERSAL_SHOWCASE = 'universal_showcase',

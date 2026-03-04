@@ -50,10 +50,11 @@ import {
   FlashOn as FlashIcon,
 } from '@mui/icons-material';
 import { useNodes, useActions } from '@/state/selectors';
-import { 
-  exposureCalculator, 
+import type { 
   SceneExposureAnalysis, 
-  LightSource,
+  LightSource} from '@/core/services/exposureCalculatorService';
+import { 
+  exposureCalculator,
   MODIFIER_LIGHT_LOSS,
 } from '@/core/services/exposureCalculatorService';
 

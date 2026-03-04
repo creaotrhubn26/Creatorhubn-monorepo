@@ -38,7 +38,7 @@ import {
   ShotListIcon,
   AuditionsIcon,
 } from './icons/CastingIcons';
-import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
+import type { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 

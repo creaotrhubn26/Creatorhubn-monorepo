@@ -15,7 +15,8 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useState, useCallback, useRef, DragEvent } from 'react';
+import type { DragEvent } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Box,
   Typography,

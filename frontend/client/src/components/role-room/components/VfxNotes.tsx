@@ -45,7 +45,8 @@ import {
   AttachMoney as BudgetIcon,
   Person as ArtistIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown, CastingShot } from '../models/casting';
+import type { SceneBreakdown} from '../models/casting';
+import { CastingShot } from '../models/casting';
 
 type VfxCategory = 'greenscreen' | 'tracking' | 'composite' | 'cgi' | 'cleanup' | 'animation' | 'matte_painting' | 'particle' | 'other';
 type VfxComplexity = 'simple' | 'medium' | 'complex' | 'hero';

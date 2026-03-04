@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { googleSSOService, GoogleUser } from'../services/GoogleSSOService';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { GoogleUser } from '../services/GoogleSSOService';
+import { googleSSOService } from'../services/GoogleSSOService';
 
 interface AuthContextType {
   user: GoogleUser | null;

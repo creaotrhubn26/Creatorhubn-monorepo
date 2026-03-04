@@ -28,12 +28,14 @@ import {
   RotateLeft,
   RotateRight,
 } from '@mui/icons-material';
-import { 
-  FrameAnnotationOverlay, 
+import type { 
   AnnotationType,
-  FrameAnnotation,
+  FrameAnnotation} from './FrameAnnotationOverlay';
+import { 
+  FrameAnnotationOverlay
 } from './FrameAnnotationOverlay';
-import { useStoryboardStore, StoryboardFrame, FrameAnnotationData } from '../../state/storyboardStore';
+import type { StoryboardFrame, FrameAnnotationData } from '../../state/storyboardStore';
+import { useStoryboardStore } from '../../state/storyboardStore';
 
 // =============================================================================
 // Types

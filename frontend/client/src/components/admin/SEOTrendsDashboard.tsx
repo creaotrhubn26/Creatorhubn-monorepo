@@ -36,8 +36,10 @@ import {
   TrendingDown,
   TrendingFlat,
 } from '@mui/icons-material';
-import { creatorHubSEOFixService, CreatorHubSEOSuggestion } from '@/services/CreatorHubSEOFixService';
-import { googleTrendsService, TrendsInsight } from '@/services/GoogleTrendsService';
+import type { CreatorHubSEOSuggestion } from '@/services/CreatorHubSEOFixService';
+import { creatorHubSEOFixService } from '@/services/CreatorHubSEOFixService';
+import type { TrendsInsight } from '@/services/GoogleTrendsService';
+import { googleTrendsService } from '@/services/GoogleTrendsService';
 import { googleAnalyticsService } from '@/services/GoogleAnalyticsService';
 
 interface TabPanelProps {

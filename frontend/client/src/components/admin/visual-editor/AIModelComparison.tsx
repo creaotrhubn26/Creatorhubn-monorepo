@@ -33,7 +33,8 @@ import {
   Star,
   StarBorder,
 } from '@mui/icons-material';
-import { AICompletion, AIContext, AICodeCompletionEngine } from './AICodeCompletionSystem';
+import type { AICompletion, AIContext} from './AICodeCompletionSystem';
+import { AICodeCompletionEngine } from './AICodeCompletionSystem';
 
 interface ModelComparisonResult {
   model: string;

@@ -9,7 +9,8 @@
  * - POST   /api/virtual-studio/projects/:id/share - Share project
  */
 
-import { Router, Request, Response } from 'express';
+import type { Response } from 'express';
+import { Router, Request } from 'express';
 import { db } from '../db';
 import { virtualStudioProjects } from '../../shared/virtual-studio-schema';
 import { eq, and, desc } from 'drizzle-orm';

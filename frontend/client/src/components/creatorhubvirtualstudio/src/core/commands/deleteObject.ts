@@ -1,4 +1,4 @@
-import { Scene } from '@/core/models/scene';
+import type { Scene } from '@/core/models/scene';
 
 export function deleteObject(scene: Scene, id: string): Scene {
   const remain = scene.nodes.filter((n) => n.id !== id);

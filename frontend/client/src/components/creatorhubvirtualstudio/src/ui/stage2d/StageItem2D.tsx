@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Box } from '@mui/material';
-import { SceneNode } from '@/core/models/scene';
+import type { SceneNode } from '@/core/models/scene';
 import { useActions, useScene } from '@/state/selectors';
 
 const shapeFor: Record<string, React.CSSProperties> = {

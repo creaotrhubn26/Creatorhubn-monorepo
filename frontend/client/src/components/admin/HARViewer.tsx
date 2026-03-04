@@ -23,7 +23,8 @@ import {
   Visibility as ViewIcon,
   Timeline as TimelineIcon,
 } from '@mui/icons-material';
-import { harRecorder, HAREntry } from '../../utils/harRecorder';
+import type { HAREntry } from '../../utils/harRecorder';
+import { harRecorder } from '../../utils/harRecorder';
 
 interface HARViewerProps {
   autoRefresh?: boolean;

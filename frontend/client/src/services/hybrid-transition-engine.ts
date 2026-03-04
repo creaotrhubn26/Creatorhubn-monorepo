@@ -4,7 +4,8 @@
  * Best of both worlds!
  */
 
-import { transitionEngine as canvas2DEngine, TransitionType, Transition } from './transition-effects-engine';
+import type { TransitionType, Transition } from './transition-effects-engine';
+import { transitionEngine as canvas2DEngine } from './transition-effects-engine';
 import { webGLTransitionEngine } from './webgl-transition-engine';
 
 export type HybridTransitionType =

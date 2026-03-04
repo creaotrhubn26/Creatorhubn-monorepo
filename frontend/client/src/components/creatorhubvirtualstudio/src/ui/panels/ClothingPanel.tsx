@@ -47,11 +47,12 @@ import {
   Palette,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
+import type {
+  ClothingCategory} from '../../core/data/clothingStyles';
 import {
   ALL_CLOTHING_STYLES,
   CLOTHING_BY_CATEGORY,
-  ClothingStyleDefinition,
-  ClothingCategory,
+  ClothingStyleDefinition
 } from '../../core/data/clothingStyles';
 
 export const ClothingPanel: React.FC = () => {

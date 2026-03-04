@@ -7,12 +7,13 @@ import { useTheming } from '../../../utils/theming-helper';
 import * as React from 'react';
 import { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Paper,
   Typography,
   Chip,
-  ChipProps,
   LinearProgress,
   Tooltip,
   IconButton,
@@ -95,8 +96,10 @@ import {
   CloudDone,
   CloudSync,
 } from '@mui/icons-material';
-import { useAnalytics, UseAnalyticsOptions } from '../../../hooks/useAnalytics';
-import { AnalyticsConfig, AnalyticsEvent } from '../../../utils/analyticsManager';
+import type { UseAnalyticsOptions } from '../../../hooks/useAnalytics';
+import { useAnalytics } from '../../../hooks/useAnalytics';
+import type { AnalyticsEvent } from '../../../utils/analyticsManager';
+import { AnalyticsConfig } from '../../../utils/analyticsManager';
 
 interface AnalyticsDashboardProps {
   showDetails?: boolean;

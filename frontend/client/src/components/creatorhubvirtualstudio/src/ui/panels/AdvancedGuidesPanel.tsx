@@ -46,8 +46,8 @@ import {
   Visibility,
   VisibilityOff,
 } from '@mui/icons-material';
-import { CompositionGuideType } from '../components/CompositionOverlays';
-import { AspectRatioType } from '../components/VideoProductionGuides';
+import type { CompositionGuideType } from '../components/CompositionOverlays';
+import type { AspectRatioType } from '../components/VideoProductionGuides';
 import { useAppStore } from '../../state/store';
 
 export interface AdvancedGuideSettings {

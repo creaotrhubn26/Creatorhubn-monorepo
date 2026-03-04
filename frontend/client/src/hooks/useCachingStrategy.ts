@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { cachingStrategy, CacheEntry, CacheConfig, CacheQuery, CacheStats, CacheMetrics } from '../utils/cachingStrategy';
+import type { CacheEntry, CacheQuery, CacheStats, CacheMetrics } from '../utils/cachingStrategy';
+import { cachingStrategy, CacheConfig } from '../utils/cachingStrategy';
 
 export interface UseCachingStrategyOptions {
   maxSize?: number;

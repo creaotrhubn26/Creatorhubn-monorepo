@@ -47,7 +47,8 @@ import {
   FitScreen,
 } from '@mui/icons-material';
 import { styled, keyframes } from '@mui/material/styles';
-import { useTouchGestures, Point } from '../../hooks/useTouchGestures';
+import type { Point } from '../../hooks/useTouchGestures';
+import { useTouchGestures } from '../../hooks/useTouchGestures';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
 
 // =============================================================================

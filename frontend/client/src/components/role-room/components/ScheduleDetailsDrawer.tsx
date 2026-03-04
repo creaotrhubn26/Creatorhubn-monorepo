@@ -32,7 +32,7 @@ import {
   AssignmentTurnedIn as CallbackIcon,
   CheckCircle as CompleteIcon,
 } from '@mui/icons-material';
-import { Schedule } from '../models/casting';
+import type { Schedule } from '../models/casting';
 
 // ── Design tokens (matching Roll Room) ──
 

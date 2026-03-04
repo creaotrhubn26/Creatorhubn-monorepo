@@ -77,15 +77,16 @@ import {
   Visibility as ViewIcon,
   Download as DownloadIcon,
 } from '@mui/icons-material';
-import {
-  analyzeScriptExtended,
+import type {
   ExtendedScriptAnalysis,
   NumberedScene,
   ScenePurpose,
   CharacterArc,
   DialogueBalance,
   PacingAnalysis,
-  ScriptShareConfig,
+  ScriptShareConfig} from '../services/scriptAnalysisService';
+import {
+  analyzeScriptExtended,
   createShareConfig,
 } from '../services/scriptAnalysisService';
 

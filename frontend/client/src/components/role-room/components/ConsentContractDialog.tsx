@@ -112,7 +112,7 @@ import {
   Storage as StorageIcon,
 } from '@mui/icons-material';
 import { ConsentsIcon } from './icons/CastingIcons';
-import { Consent, ConsentType, Candidate, CastingProject, ConsentInvitationStatus } from '../models/casting';
+import type { Consent, ConsentType, Candidate, CastingProject, ConsentInvitationStatus } from '../models/casting';
 import { consentService } from '../services/consentService';
 import { Z_INDEX } from '../config/zIndex';
 

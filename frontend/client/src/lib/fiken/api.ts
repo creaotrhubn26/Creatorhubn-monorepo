@@ -3,7 +3,7 @@
  * Methods for interacting with Fiken API v2
  */
 
-import {
+import type {
   FikenCompany,
   FikenContact,
   FikenCreateContactRequest,

@@ -11,12 +11,13 @@
  * - GestureView: Container with common gesture support
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   useState,
   useCallback,
   useRef,
   useEffect,
-  ReactNode,
   forwardRef,
 } from 'react';
 import {
@@ -51,7 +52,8 @@ import {
 } from '@mui/icons-material';
 import { styled, keyframes } from '@mui/material/styles';
 import { useTabletSupport } from '../../providers/TabletSupportProvider';
-import { useTouchGestures, Point } from '../../hooks/useTouchGestures';
+import type { Point } from '../../hooks/useTouchGestures';
+import { useTouchGestures } from '../../hooks/useTouchGestures';
 
 // =============================================================================
 // Animations

@@ -25,7 +25,7 @@ import {
   Delete as DeleteIcon,
   FileDownload as ExportIcon,
 } from '@mui/icons-material';
-import { WireMockTestResult } from './WireMockResponseViewer';
+import type { WireMockTestResult } from './WireMockResponseViewer';
 
 interface WireMockTestHistoryTableProps {
   history: WireMockTestResult[];

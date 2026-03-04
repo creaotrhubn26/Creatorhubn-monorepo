@@ -32,7 +32,8 @@ import {
   Star as StarIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
-import { lightShaperService, LightShaper } from '@/core/services/lightShaperService';
+import type { LightShaper } from '@/core/services/lightShaperService';
+import { lightShaperService } from '@/core/services/lightShaperService';
 
 interface LightShaperAttachmentPanelProps {
   lightNode: any; // SceneNode with light

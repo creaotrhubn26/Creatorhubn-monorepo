@@ -74,13 +74,14 @@ import {
   Visibility,
   VisibilityOff,
 } from '@mui/icons-material';
-import {
-  sceneGraphAnimationEngine,
+import type {
   AnimationClip,
   AnimationTrack,
   Keyframe,
   SceneGraphNode,
-  EasingName,
+  EasingName} from '../../core/animation/SceneGraphAnimationEngine';
+import {
+  sceneGraphAnimationEngine,
   EASING_FUNCTIONS,
 } from '../../core/animation/SceneGraphAnimationEngine';
 

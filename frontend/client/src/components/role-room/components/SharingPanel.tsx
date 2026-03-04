@@ -31,7 +31,7 @@ import {
   Email as EmailIcon,
 } from '@mui/icons-material';
 import { ShareCustomIcon as ShareIcon } from './icons/CastingIcons';
-import { CastingProject, UserRole, UserRoleType } from '../models/casting';
+import type { CastingProject, UserRole, UserRoleType } from '../models/casting';
 
 // WCAG 2.2 - 2.5.5 Target Size: minimum 44x44px touch targets
 const TOUCH_TARGET_SIZE = 44;

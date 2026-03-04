@@ -11,25 +11,28 @@
  * 5. Warnings for missing/incompatible equipment
  */
 
-import { 
-  exposureCalculator, 
+import type { 
   LightSource,
-  ExposureRecommendation,
+  ExposureRecommendation} from './exposureCalculatorService';
+import { 
+  exposureCalculator,
   MODIFIER_LIGHT_LOSS,
 } from './exposureCalculatorService';
-import { 
+import type { 
   CinematographyPattern, 
-  LightSetup,
+  LightSetup} from './cinematographyPatternsService';
+import {
   cinematographyPatternsService,
 } from './cinematographyPatternsService';
+import type {
+  StudioLight} from '../data/LightSpecifications';
 import { 
   findLightSpec, 
   findLightSpecByBrand, 
   getDefaultLightSpec,
-  StudioLight,
   LightType,
 } from '../data/LightSpecifications';
-import { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
+import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
 
 // =============================================================================
 // TYPES

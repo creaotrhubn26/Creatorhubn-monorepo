@@ -41,20 +41,21 @@ import {
   LocationsIcon as LocationOnIcon 
 } from './icons/CastingIcons';
 import { useSnackbar } from 'notistack';
+import type {
+  CalendarEvent,
+  CrewConflict,
+  Equipment,
+  EquipmentConflict} from '../services/castingApiService';
 import {
   calendarEventsApi,
-  CalendarEvent,
   crewConflictsApi,
   crewNotificationsApi,
-  CrewConflict,
   candidatesApi,
   crewApi,
   locationsApi,
   equipmentApi,
   equipmentBookingsApi,
-  equipmentConflictsApi,
-  Equipment,
-  EquipmentConflict,
+  equipmentConflictsApi
 } from '../services/castingApiService';
 import WarningIcon from '@mui/icons-material/Warning';
 import NotificationsIcon from '@mui/icons-material/Notifications';

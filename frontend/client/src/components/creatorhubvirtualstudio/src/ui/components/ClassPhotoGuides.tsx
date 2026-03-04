@@ -15,9 +15,10 @@
 import React, { useMemo } from 'react';
 import { Line, Html, Text } from '@react-three/drei';
 import * as THREE from 'three';
-import {
+import type {
   ClassPhotoSession,
-  Student,
+  Student} from '../../core/services/classPhotoService';
+import {
   SPACING,
 } from '../../core/services/classPhotoService';
 

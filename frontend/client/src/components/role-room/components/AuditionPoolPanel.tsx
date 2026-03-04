@@ -27,8 +27,9 @@ import {
   AccessTime as TimeIcon,
 } from '@mui/icons-material';
 import { AuditionsIcon as AuditionIcon, LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { auditionPoolService, PoolAudition } from '../services/auditionPoolService';
-import { CastingProject } from '../models/casting';
+import type { PoolAudition } from '../services/auditionPoolService';
+import { auditionPoolService } from '../services/auditionPoolService';
+import type { CastingProject } from '../models/casting';
 
 interface AuditionPoolPanelProps {
   projects: CastingProject[];

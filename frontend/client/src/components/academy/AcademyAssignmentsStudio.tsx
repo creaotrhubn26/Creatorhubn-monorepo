@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -298,6 +299,7 @@ const toNok = (value: number): string =>
 function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignmentsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -521,7 +523,11 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
           });
         }
 
-        setSaveMessage(publish ? 'Assignments published.' : 'Assignments saved.');
+        setSaveMessage(
+          publish
+            ? tt('Oppgaver publisert.', 'Assignments published.')
+            : tt('Oppgaver lagret.', 'Assignments saved.'),
+        );
         onSave?.(payload);
 
         analytics.trackEvent(publish ? 'academy_assignments_publish' : 'academy_assignments_save', {
@@ -530,7 +536,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
           timestamp: Date.now(),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to save assignments.';
+        const message = error instanceof Error ? error.message : tt('Kunne ikke lagre oppgaver.', 'Failed to save assignments.');
         setSaveMessage(message);
         debugging.logIntegration('error', 'Academy assignments save failed', {
           courseId: activeCourse?.id || null,
@@ -548,6 +554,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
       rangeFilter,
       state.courses,
       statusFilter,
+      tt,
       updateCourse,
     ],
   );
@@ -612,7 +619,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -659,7 +666,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                 borderRadius: 1,
               }}
             >
-              New Module
+              {tt('Ny oppgave', 'New Assignment')}
             </Button>
           </Box>
         </Box>
@@ -851,14 +858,14 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                       fontWeight: 700,
                     }}
                   >
-                    Create Assignment
+                    {tt('Opprett oppgave', 'Create Assignment')}
                   </Button>
                 </Stack>
 
                 <TextField
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder="Search assignments..."
+                  placeholder={tt('Søk oppgaver...', 'Search assignments...')}
                   size="small"
                   InputProps={{
                     startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.6)' }} />,
@@ -886,7 +893,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                 >
                   <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
                     <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>{totals.totalAssignments}</Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>Total Assignments</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Totale oppgaver', 'Total Assignments')}</Typography>
                     <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: '#95d57e' }}>
                       <TrendingUp sx={{ fontSize: 15 }} />
                       <Typography sx={{ fontSize: 12 }}>+8.6% past 30 days</Typography>
@@ -894,8 +901,8 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                   </Box>
                   <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
                     <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>{totals.submissions}</Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>Submissions</Typography>
-                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.6)' }}>Across {rangeFilter}</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Innleveringer', 'Submissions')}</Typography>
+                    <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.6)' }}>{tt('For periode', 'Across')} {rangeFilter}</Typography>
                   </Box>
                   <Box sx={{ ...panelSx, p: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
                     <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>{totals.completed}</Typography>
@@ -1019,7 +1026,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                               />
                             </Stack>
                             <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)', mt: 0.35 }}>
-                              {assignment.submissions}/{assignment.targetSubmissions} submissions
+                              {assignment.submissions}/{assignment.targetSubmissions} {tt('innleveringer', 'submissions')}
                             </Typography>
                           </Box>
 
@@ -1047,7 +1054,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                   </Stack>
                 </Box>
 
-                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>Upcoming Assignments</Typography>
+                <Typography sx={{ mt: 1.3, fontSize: 32, fontWeight: 600 }}>{tt('Kommende oppgaver', 'Upcoming Assignments')}</Typography>
 
                 <Box
                   sx={{
@@ -1092,13 +1099,13 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                               size="small"
                               sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                             >
-                              Manage
+                              {tt('Administrer', 'Manage')}
                             </Button>
                             <Button
                               size="small"
                               sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                             >
-                              Track
+                              {tt('Følg opp', 'Track')}
                             </Button>
                           </Stack>
                         </Box>
@@ -1111,29 +1118,29 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
 
             <Box sx={{ ...panelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ p: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>Assignment Analytics</Typography>
+                <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{tt('Oppgaveanalyse', 'Assignment Analytics')}</Typography>
 
                 <Stack direction="row" spacing={0.8} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
                   <Chip
-                    label="Early Access"
+                    label={tt('Tidlig tilgang', 'Early Access')}
                     onClick={() => toggleAnalyticsFlag('earlyAccess')}
                     color={analyticsFlags.earlyAccess ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Invitation Only"
+                    label={tt('Kun invitasjon', 'Invitation Only')}
                     onClick={() => toggleAnalyticsFlag('invitationOnly')}
                     color={analyticsFlags.invitationOnly ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Closed"
+                    label={tt('Lukket', 'Closed')}
                     onClick={() => toggleAnalyticsFlag('closed')}
                     color={analyticsFlags.closed ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
                   />
                   <Chip
-                    label="Drip Release"
+                    label={tt('Dryppslipp', 'Drip Release')}
                     onClick={() => toggleAnalyticsFlag('dripRelease')}
                     color={analyticsFlags.dripRelease ? 'warning' : 'default'}
                     sx={{ color: '#edf0f7' }}
@@ -1143,7 +1150,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
 
               <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 28, fontWeight: 600, mb: 0.8 }}>Average Score Distribution</Typography>
+                  <Typography sx={{ fontSize: 28, fontWeight: 600, mb: 0.8 }}>{tt('Fordeling av gjennomsnittsscore', 'Average Score Distribution')}</Typography>
 
                   <Stack direction="row" spacing={1.2} alignItems="center">
                     <Box
@@ -1169,13 +1176,13 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                         }}
                       >
                         <Typography sx={{ fontSize: 24, fontWeight: 700 }}>{totals.submissions}</Typography>
-                        <Typography sx={{ fontSize: 11, color: 'rgba(237,240,247,0.62)' }}>Submissions</Typography>
+                        <Typography sx={{ fontSize: 11, color: 'rgba(237,240,247,0.62)' }}>{tt('Innleveringer', 'Submissions')}</Typography>
                       </Box>
                     </Box>
 
                     <Stack spacing={0.5} sx={{ flex: 1 }}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Submitted</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Innsendt', 'Submitted')}</Typography>
                         <Typography>{distribution.submittedPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1398,7 +1405,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
               </Stack>
 
@@ -1413,7 +1420,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Quiz Manager
+                  {tt('Quizadministrator', 'Quiz Manager')}
                 </Button>
                 <Button
                   startIcon={<MonetizationOn />}
@@ -1425,7 +1432,7 @@ function AcademyAssignmentsStudio({ courseId, onSave, onCancel }: AcademyAssignm
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Monetization
+                  {tt('Monetisering', 'Monetization')}
                 </Button>
               </Stack>
 

@@ -65,14 +65,15 @@ import {
 import { LocationsIcon as LocationOn } from './icons/CastingIcons';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import jsPDF from 'jspdf';
-import {
+import type {
   CastingShot,
   ShotList,
   ShotType,
   CameraAngle,
-  CameraMovement,
   ShotStatus,
-  Location,
+  Location} from '../models/casting';
+import {
+  CameraMovement
 } from '../models/casting';
 
 interface ShootModeViewProps {

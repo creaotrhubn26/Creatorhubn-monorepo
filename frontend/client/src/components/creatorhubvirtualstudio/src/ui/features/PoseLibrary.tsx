@@ -22,7 +22,8 @@ import {
   Business,
   Mood,
 } from '@mui/icons-material';
-import { POSE_PRESETS, PosePreset } from '../../core/animations/ActorAnimations';
+import type { PosePreset } from '../../core/animations/ActorAnimations';
+import { POSE_PRESETS } from '../../core/animations/ActorAnimations';
 
 const POSE_CATEGORIES = [
   { id: 'all', label: 'All', icon: <Person /> },

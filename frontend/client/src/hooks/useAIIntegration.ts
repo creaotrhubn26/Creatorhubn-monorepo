@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  aiIntegrationManager, 
+import type { 
   AIConfig, 
   AIState, 
   AIPrompt,
@@ -13,6 +12,9 @@ import {
   AIContext,
   AILearning,
   AIOptimization
+} from '../utils/aiIntegrationManager';
+import { 
+  aiIntegrationManager
 } from'../utils/aiIntegrationManager';
 
 export interface UseAIIntegrationOptions {

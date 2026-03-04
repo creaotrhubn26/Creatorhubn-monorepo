@@ -21,10 +21,11 @@ import {
   Alert,
   Skeleton,
 } from '@mui/material';
+import type {
+  DragEndEvent,
+  DragStartEvent} from '@dnd-kit/core';
 import {
   DndContext,
-  DragEndEvent,
-  DragStartEvent,
   DragOverlay,
   PointerSensor,
   KeyboardSensor,

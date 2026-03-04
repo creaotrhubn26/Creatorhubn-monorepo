@@ -1,4 +1,4 @@
-import { CastingProject, UserRole } from '../models/casting';
+import type { CastingProject, UserRole } from '../models/casting';
 import { castingService } from './castingService';
 
 /**

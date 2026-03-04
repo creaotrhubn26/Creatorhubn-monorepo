@@ -81,7 +81,8 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
 import { apiRequest } from '@/lib/queryClient';
-import { useSnackbar, SnackbarKey, SnackbarContent } from 'notistack';
+import type { SnackbarKey} from 'notistack';
+import { useSnackbar, SnackbarContent } from 'notistack';
 import { forwardRef } from 'react';
 
 // ============================================

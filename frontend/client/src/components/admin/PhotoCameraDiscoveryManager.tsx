@@ -27,8 +27,9 @@ import {
   Refresh,
   Update,
 } from '@mui/icons-material';
-import { PhotoCamera } from '../../data/photo-camera-database';
-import { CameraDiscoveryResult, photoCameraDiscovery } from '../../data/photo-camera-discovery';
+import type { PhotoCamera } from '../../data/photo-camera-database';
+import type { CameraDiscoveryResult} from '../../data/photo-camera-discovery';
+import { photoCameraDiscovery } from '../../data/photo-camera-discovery';
 
 interface PhotoCameraDiscoveryManagerProps {
   onCameraUpdate?: (cameras: PhotoCamera[]) => void;

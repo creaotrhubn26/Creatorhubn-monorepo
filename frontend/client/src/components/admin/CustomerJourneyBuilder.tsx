@@ -90,13 +90,15 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material';
 import { apiRequest } from '../../lib/queryClient';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import NotesSidebar from '../notes/NotesSidebar';
 import NoteEditor from '../notes/NoteEditor';
 import NotePreview from '../notes/NotePreview';
 import AIUtilitiesPanel from '../notes/AIUtilitiesPanel';
 import { useAutosave } from '../notes/hooks/useAutosave';
-import ReactFlow, { Node, Edge, Connection, Background, Controls, MiniMap, MarkerType } from 'reactflow';
+import type { Node, Edge} from 'reactflow';
+import ReactFlow, { Connection, Background, Controls, MiniMap, MarkerType } from 'reactflow';
 import 'reactflow/dist/style.css';
 import 'quill/dist/quill.snow.css';
 

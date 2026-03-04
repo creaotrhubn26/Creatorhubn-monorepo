@@ -1,4 +1,5 @@
-import React, { ReactNode, ReactElement } from 'react';
+import type { ReactNode, ReactElement } from 'react';
+import React from 'react';
 import {
   Box,
   Typography,

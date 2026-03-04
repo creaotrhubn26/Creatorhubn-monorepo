@@ -9,11 +9,12 @@ import { logger } from '../../core/services/logger';
 
 const log = logger.module('EnhancedStage3D, ');
 import { EnhancedRenderer } from '../../core/rendering/EnhancedRenderer';
-import { AreaLight } from '../../core/rendering/AreaLight';
+import type { AreaLight } from '../../core/rendering/AreaLight';
 import { equipmentIntegrationService } from '../../core/services/equipmentIntegrationService';
 import { StudioGuidesHelper, GuideConfig } from '../components/StudioGuidesHelper';
 import { useAppStore, StudioGuideSettings } from '../../state/store';
-import { monitorFeedService, MonitorLayout } from '../../core/services/monitorFeedService';
+import type { MonitorLayout } from '../../core/services/monitorFeedService';
+import { monitorFeedService } from '../../core/services/monitorFeedService';
 import { multiCameraRecordingService } from '../../core/services/multiCameraRecordingService';
 import { directorModeService } from '../../core/services/directorModeService';
 

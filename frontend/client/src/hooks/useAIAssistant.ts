@@ -3,14 +3,16 @@
 // allowing components to access AI suggestions, manage conversations, and generate code.
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  aiAssistant, 
+import type { 
   AISuggestion, 
   AIConversation, 
   AIMessage, 
   AIWorkflow, 
   AICodeGeneration, 
   AIDesignSuggestion 
+} from '../utils/aiAssistant';
+import { 
+  aiAssistant 
 } from '../utils/aiAssistant';
 
 export interface UseAIAssistantReturn {

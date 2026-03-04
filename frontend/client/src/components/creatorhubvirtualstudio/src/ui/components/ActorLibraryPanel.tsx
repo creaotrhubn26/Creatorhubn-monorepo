@@ -43,19 +43,20 @@ import {
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
 import { virtualActorService } from '../../core/services/virtualActorService';
-import {
-  actorModelCache,
+import type {
   CachedActor,
-  GenerationProgress,
+  GenerationProgress} from '../../core/services/actorModelCache';
+import {
+  actorModelCache
 } from '../../core/services/actorModelCache';
 import type { ActorPreset } from '../../core/services/virtualActorService';
 import { AnimatedActorCard } from './AnimatedActorCard';
 import { HDRIRecommendationDialog } from './HDRIRecommendationDialog';
 import { LightSetupRecommendationDialog } from './LightSetupRecommendationDialog';
 import { PBRRecommendationDialog } from './PBRRecommendationDialog';
-import { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
-import { LightSetupRecommendation } from '../../core/services/lightSetupRecommendationService';
-import { PBRItem } from '../../core/services/pbrRecommendationService';
+import type { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
+import type { LightSetupRecommendation } from '../../core/services/lightSetupRecommendationService';
+import type { PBRItem } from '../../core/services/pbrRecommendationService';
 import { getEntranceAnimation, playEntranceAnimation } from '../../core/animations/CharacterAnimations';
 import { SKIN_TONES } from '../../core/data/actorPresets';
 import { logger } from '../../core/services/logger';

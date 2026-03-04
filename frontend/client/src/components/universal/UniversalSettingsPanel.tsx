@@ -85,7 +85,8 @@ import EnterpriseTeamManagement from '../enterprise/EnterpriseTeamManagement';
 // Import dynamic profession system
 import { useDynamicProfessions } from './hooks/useDynamicProfessions';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
-import { useSettings, UserSettings } from '@/contexts/SettingsContext';
+import type { UserSettings } from '@/contexts/SettingsContext';
+import { useSettings } from '@/contexts/SettingsContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;

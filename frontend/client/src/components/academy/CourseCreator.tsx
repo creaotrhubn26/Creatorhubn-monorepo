@@ -39,7 +39,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
-import AcademyVideoPlayer from './AcademyVideoPlayer';
+import AcademyVideoPlayerStudio from './AcademyVideoPlayerStudio';
 
 interface CourseCreatorProps {
   courseId?: string;
@@ -339,7 +339,10 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             {tt('Tilbake til kursredigering', 'Back to Course Creator')}
           </Button>
         </Box>
-        <AcademyVideoPlayer course={previewCourse} lesson={previewLesson} />
+        <AcademyVideoPlayerStudio
+          courseId={previewCourse.id}
+          lessonId={previewLesson.id}
+        />
       </Box>
     );
   }
@@ -402,7 +405,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 ['cohorts', 'Cohort Settings'],
                 ['analytics', 'Analytics'],
                 ['monetization', 'Monetization'],
-                ['lowerthirds', 'Animated Lower Thirds'],
+                ['lower-thirds', 'Animated Lower Thirds'],
                 ['settings', 'Settings'],
               ].map(([key, label]) => {
                 const active = leftNav === key;
@@ -420,7 +423,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                         cohorts: '/academy/cohort-settings',
                         analytics: '/academy/analytics',
                         monetization: '/academy/monetization',
-                        lowerthirds: '/academy/lower-thirds',
+                        'lower-thirds': '/academy/lower-thirds',
                         settings: '/academy/course-creator',
                       };
                       if (key === 'settings') {

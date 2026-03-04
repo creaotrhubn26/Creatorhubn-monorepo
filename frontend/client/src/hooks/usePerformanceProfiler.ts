@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { performanceProfiler, PerformanceMetric, PerformanceProfile, ProfilerConfig } from '@/utils/performanceProfiler';
+import type { PerformanceMetric, PerformanceProfile} from '@/utils/performanceProfiler';
+import { performanceProfiler, ProfilerConfig } from '@/utils/performanceProfiler';
 
 export interface UsePerformanceProfilerOptions {
   enableProfiling?: boolean;

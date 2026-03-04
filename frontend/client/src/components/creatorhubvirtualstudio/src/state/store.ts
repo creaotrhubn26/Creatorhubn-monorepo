@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Scene } from '@/core/models/scene';
+import type { Scene } from '@/core/models/scene';
 import { addObject } from '@/core/commands/addObject';
 import { updateObject } from '@/core/commands/updateObject';
 import { deleteObject } from '@/core/commands/deleteObject';

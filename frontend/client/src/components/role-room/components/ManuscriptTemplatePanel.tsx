@@ -55,7 +55,7 @@ import {
   Architecture as ArchitectureIcon,
 } from '@mui/icons-material';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
-import { Template, TemplateLibrary, StructureTemplate } from '../data/manuscriptTemplates';
+import type { Template, TemplateLibrary, StructureTemplate } from '../data/manuscriptTemplates';
 import { TemplateIcon } from './TemplateIcon';
 
 interface ManuscriptTemplatePanelProps {

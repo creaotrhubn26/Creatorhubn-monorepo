@@ -10,7 +10,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // CreatorHub Bot Text Enhancement System
 export const textEnhancementHistory = pgTable('text_enhancement_history', {

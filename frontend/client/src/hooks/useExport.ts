@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  exportManager, 
+import type { 
   ExportConfig, 
   ExportState, 
   ExportFormat,
   ExportOptions,
   ExportResult
+} from '../utils/exportManager';
+import { 
+  exportManager
 } from'../utils/exportManager';
 
 export interface UseExportOptions {

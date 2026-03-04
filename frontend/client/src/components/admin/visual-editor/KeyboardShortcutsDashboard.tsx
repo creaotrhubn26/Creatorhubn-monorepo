@@ -140,8 +140,10 @@ import {
   KeyboardReturn,
   KeyboardTab,
 } from '@mui/icons-material';
-import { useKeyboardShortcuts, UseKeyboardShortcutsOptions } from '../../../hooks/useKeyboardShortcuts';
-import { KeyboardConfig, KeyboardShortcut } from '../../../utils/keyboardShortcutsManager';
+import type { UseKeyboardShortcutsOptions } from '../../../hooks/useKeyboardShortcuts';
+import { useKeyboardShortcuts } from '../../../hooks/useKeyboardShortcuts';
+import type { KeyboardShortcut } from '../../../utils/keyboardShortcutsManager';
+import { KeyboardConfig } from '../../../utils/keyboardShortcutsManager';
 
 interface KeyboardShortcutsDashboardProps {
   showDetails?: boolean;

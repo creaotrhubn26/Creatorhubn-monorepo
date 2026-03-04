@@ -61,8 +61,8 @@ import {
   School as LearnIcon,
   AutoAwesome as MagicIcon,
 } from '@mui/icons-material';
-import { TransitionProps } from '@mui/material/transitions';
-import { PhotographyTip, TipContext } from '../../shared/photography-tips-schema';
+import type { TransitionProps } from '@mui/material/transitions';
+import type { PhotographyTip, TipContext } from '../../shared/photography-tips-schema';
 
 const Transition = React.forwardRef(function Transition(
   props: TransitionProps & {

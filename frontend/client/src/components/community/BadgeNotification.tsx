@@ -13,7 +13,8 @@ import {
   Paper,
 } from '@mui/material';
 import { EmojiEvents, Close } from '@mui/icons-material';
-import { useSnackbar, SnackbarKey, SnackbarContent } from 'notistack';
+import type { SnackbarKey} from 'notistack';
+import { useSnackbar, SnackbarContent } from 'notistack';
 
 interface BadgeData {
   badgeName: string;

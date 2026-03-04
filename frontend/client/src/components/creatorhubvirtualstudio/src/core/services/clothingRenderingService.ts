@@ -20,7 +20,7 @@ import { logger } from './logger';
 const log = logger.module('ClothingService');
 
 import * as THREE from 'three';
-import { ClothingStyleDefinition } from '../data/clothingStyles';
+import type { ClothingStyleDefinition } from '../data/clothingStyles';
 import { assetLoadingService } from'./assetLoadingService';
 
 export interface ClothingColorOptions {

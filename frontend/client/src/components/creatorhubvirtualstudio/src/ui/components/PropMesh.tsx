@@ -16,8 +16,9 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { SceneNode } from '../../core/models/scene';
-import { propRenderingService, PropLoadOptions } from '../../core/services/propRenderingService';
+import type { SceneNode } from '../../core/models/scene';
+import type { PropLoadOptions } from '../../core/services/propRenderingService';
+import { propRenderingService } from '../../core/services/propRenderingService';
 import { getPropById } from '../../core/data/propDefinitions';
 import { logger } from '../../core/services/logger';
 

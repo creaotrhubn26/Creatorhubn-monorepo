@@ -33,7 +33,7 @@ import {
   Undo,
   Redo,
 } from '@mui/icons-material';
-import { BeatClip } from '../services/storyArcDataIntegration';
+import type { BeatClip } from '../services/storyArcDataIntegration';
 import { timelineEngine } from '../services/timeline-engine';
 
 interface TimelineEditingPanelProps {

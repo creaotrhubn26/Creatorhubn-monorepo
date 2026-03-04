@@ -4,7 +4,8 @@
  * Supports multiple color spaces, gamut mapping, and skin tone preservation
  */
 
-import { LUTEngine, LUT3D } from './lut-engine';
+import type { LUT3D } from './lut-engine';
+import { LUTEngine } from './lut-engine';
 import { ColorScience } from './color-science';
 import Color from 'colorjs.io';
 

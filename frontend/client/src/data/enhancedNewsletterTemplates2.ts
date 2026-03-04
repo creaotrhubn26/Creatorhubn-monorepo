@@ -3,7 +3,7 @@
  * Additional 4 templates: Seasonal, Re-engagement, Educational, Event
  */
 
-import { NewsletterTemplate } from './enhancedNewsletterTemplates';
+import type { NewsletterTemplate } from './enhancedNewsletterTemplates';
 
 export const ENHANCED_NEWSLETTER_TEMPLATES_PART2: NewsletterTemplate[] = [
   {

@@ -22,8 +22,7 @@ import { useNodes, useActions } from '@/state/selectors';
 const log = logger.module('MasterLightingIntegration');
 import { useUserEquipmentInventory } from './useUserEquipmentInventory';
 import { preferencesApi } from '../core/api/virtualStudioApi';
-import { 
-  masterLightingIntegration,
+import type {
   HDRIExposureData,
   TemplateExposureData,
   GearPresetState,
@@ -32,10 +31,13 @@ import {
   HistogramFeedback,
   CommunityShareData,
   VirtualActorMetering,
-  TimelineExposureKeyframe,
+  TimelineExposureKeyframe} from '@/core/services/masterLightingIntegration';
+import { 
+  masterLightingIntegration
 } from '@/core/services/masterLightingIntegration';
-import { cinematographyPatternsService, CinematographyPattern } from '@/core/services/cinematographyPatternsService';
-import { PatternExposureAnalysis } from '@/core/services/patternExposureIntegration';
+import type { CinematographyPattern } from '@/core/services/cinematographyPatternsService';
+import { cinematographyPatternsService } from '@/core/services/cinematographyPatternsService';
+import type { PatternExposureAnalysis } from '@/core/services/patternExposureIntegration';
 
 // =============================================================================
 // TYPES

@@ -42,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -195,8 +196,9 @@ const buildDefaultQuiz = (): PlayerQuiz => ({
 });
 
 function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: AcademyVideoPlayerStudioProps) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { state, updateProgress, updateSettings, addBookmark, addNote, getCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -373,8 +375,8 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
 
   const handleBookmark = useCallback(() => {
     void addBookmark(String(activeCourse?.id), String(activeLesson?.id), Math.floor(currentTime));
-    setSaveMessage(`Bookmark added at ${formatTime(currentTime)}.`);
-  }, [activeCourse?.id, activeLesson?.id, addBookmark, currentTime]);
+    setSaveMessage(tt(`Bokmerke lagt til ved ${formatTime(currentTime)}.`, `Bookmark added at ${formatTime(currentTime)}.`));
+  }, [activeCourse?.id, activeLesson?.id, addBookmark, currentTime, tt]);
 
   const handleAddNote = useCallback(() => {
     const note = noteDraft.trim();
@@ -385,15 +387,15 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
       ...prev,
       {
         id: `note-${Date.now()}`,
-        speaker: 'You',
+        speaker: tt('Deg', 'You'),
         timestamp: Math.floor(currentTime),
         text: note,
       },
     ]);
 
     setNoteDraft('');
-    setSaveMessage('Note added to transcript.');
-  }, [activeCourse?.id, activeLesson?.id, addNote, currentTime, noteDraft]);
+    setSaveMessage(tt('Notat lagt til i transkripsjonen.', 'Note added to transcript.'));
+  }, [activeCourse?.id, activeLesson?.id, addNote, currentTime, noteDraft, tt]);
 
   const handleQuizSubmit = useCallback(() => {
     if (!quizAnswer) return;
@@ -423,8 +425,11 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
     };
 
     onSave?.(payload);
-    setSaveMessage(publish ? 'Player setup published.' : 'Player setup saved.');
-  }, [activeCourse?.id, activeLesson?.id, chapters, onSave, speed, state.settings.subtitles, transcriptLines]);
+    setSaveMessage(tt(
+      publish ? 'Spilleroppsett publisert.' : 'Spilleroppsett lagret.',
+      publish ? 'Player setup published.' : 'Player setup saved.',
+    ));
+  }, [activeCourse?.id, activeLesson?.id, chapters, onSave, speed, state.settings.subtitles, transcriptLines, tt]);
 
   const leftNavItems = [
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
@@ -434,7 +439,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lowerthirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -489,13 +494,15 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
               }}
               onClick={() => setLocation('/academy/course-creator')}
             >
-              Create New Course
+              {navLabel('Create New Course')}
             </Button>
           </Stack>
 
           <Stack spacing={0.5} sx={{ px: 1.5 }}>
             {leftNavItems.map((item) => {
-              const active = item.id === 'media';
+              const active =
+                location === item.route ||
+                (item.id === 'media' && location === '/academy/video-player');
               return (
                 <Button
                   key={item.id}
@@ -533,7 +540,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                 borderRadius: 1,
               }}
             >
-              Add Bookmark
+              {tt('Legg til bokmerke', 'Add Bookmark')}
             </Button>
           </Box>
         </Box>
@@ -605,7 +612,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    Preview
+                    {tt('Forhåndsvis', 'Preview')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -618,7 +625,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    Save
+                    {tt('Lagre', 'Save')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -631,7 +638,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    Monetize
+                    {tt('Monetiser', 'Monetize')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -657,7 +664,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    LowerThirds
+                    {tt('LowerThirds', 'LowerThirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -671,7 +678,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                     }}
                   >
-                    Publish
+                    {tt('Publiser', 'Publish')}
                   </Button>
                 </Stack>
               </Stack>
@@ -780,7 +787,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                           },
                         }}
                       >
-                        {quizSubmitted ? 'Submitted' : 'Submit'}
+                        {quizSubmitted ? tt('Sendt inn', 'Submitted') : tt('Send inn', 'Submit')}
                       </Button>
                     </Stack>
                   </Box>
@@ -878,7 +885,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <Stack direction="row" spacing={0.8} alignItems="center">
                     <TextField
                       size="small"
-                      placeholder="Add note to transcript..."
+                      placeholder={tt('Legg til notat i transkripsjonen...', 'Add note to transcript...')}
                       value={noteDraft}
                       onChange={(event) => setNoteDraft(event.target.value)}
                       sx={{
@@ -898,7 +905,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                         border: '1px solid rgba(255,255,255,0.18)',
                       }}
                     >
-                      Add Note
+                      {tt('Legg til notat', 'Add Note')}
                     </Button>
                     <Button
                       onClick={() => setLocation('/academy/quiz-manager')}
@@ -934,17 +941,19 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   '& .Mui-selected': { color: '#f7f8fb' },
                 }}
               >
-                <Tab label="Chapters" value="chapters" />
-                <Tab label="Show Notes" value="shownotes" />
-                <Tab label="Transcript" value="transcript" />
+                <Tab label={tt('Kapitler', 'Chapters')} value="chapters" />
+                <Tab label={tt('Vis notater', 'Show Notes')} value="shownotes" />
+                <Tab label={tt('Transkripsjon', 'Transcript')} value="transcript" />
               </Tabs>
 
               {rightTab === 'chapters' && (
                 <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                    <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Chapters</Typography>
+                    <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                      {tt('Kapitler', 'Chapters')}
+                    </Typography>
                     <Typography sx={{ ml: 'auto', fontSize: 12 }}>
-                      {activeLesson?.title || 'Lesson'}
+                      {activeLesson?.title || tt('Leksjon', 'Lesson')}
                     </Typography>
                   </Stack>
 
@@ -988,7 +997,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>Subtitles</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>{tt('Undertekster', 'Subtitles')}</Typography>
                     <Button
                       onClick={toggleSubtitles}
                       size="small"
@@ -999,12 +1008,12 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                         border: '1px solid rgba(255,255,255,0.16)',
                       }}
                     >
-                      {state.settings.subtitles ? 'On' : 'Off'}
+                      {state.settings.subtitles ? tt('På', 'On') : tt('Av', 'Off')}
                     </Button>
                   </Stack>
 
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>Speed</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.68)' }}>{tt('Hastighet', 'Speed')}</Typography>
                     <Select
                       size="small"
                       value={speed}
@@ -1026,7 +1035,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
 
               {rightTab === 'shownotes' && (
                 <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Typography sx={{ fontWeight: 600 }}>Scene Notes</Typography>
+                  <Typography sx={{ fontWeight: 600 }}>{tt('Scenenotater', 'Scene Notes')}</Typography>
                   <Typography sx={{ color: 'rgba(237,240,247,0.75)', fontSize: 14 }}>
                     Focus on key-light direction and subject separation. Keep the subject well defined while preserving ambient highlights in the background.
                   </Typography>
@@ -1073,7 +1082,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   <TextField
                     value={transcriptSearch}
                     onChange={(event) => setTranscriptSearch(event.target.value)}
-                    placeholder="Search transcript..."
+                    placeholder={tt('Søk i transkripsjon...', 'Search transcript...')}
                     size="small"
                     InputProps={{
                       startAdornment: <Search fontSize="small" sx={{ mr: 0.7, color: 'rgba(237,240,247,0.58)' }} />,
@@ -1114,7 +1123,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
 
                       {filteredTranscript.length === 0 && (
                         <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 13, py: 2, textAlign: 'center' }}>
-                          No transcript lines found.
+                          {tt('Ingen transkripsjonslinjer funnet.', 'No transcript lines found.')}
                         </Typography>
                       )}
                     </Stack>
@@ -1135,7 +1144,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  Player
+                  {tt('Spiller', 'Player')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}

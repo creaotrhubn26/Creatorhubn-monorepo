@@ -24,7 +24,8 @@ import {
   CloudDone,
   History as HistoryIcon,
 } from '@mui/icons-material';
-import { useVisualEditor, HistoryEntry } from './VisualEditorContext';
+import type { HistoryEntry } from './VisualEditorContext';
+import { useVisualEditor } from './VisualEditorContext';
 import { getShortcutText, SHORTCUTS } from './useKeyboardShortcuts';
 import { useMotionPreference } from '../../../hooks/useMotionPreference';
 import { getVisualEditorTokens } from './visualEditorTokens';

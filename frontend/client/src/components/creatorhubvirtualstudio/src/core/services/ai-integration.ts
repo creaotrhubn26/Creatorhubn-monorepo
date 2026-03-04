@@ -5,8 +5,10 @@
  * to provide intelligent lighting setup recommendations based on reference photos.
  */
 
-import { AIVisionService, PhotoAnalysis } from '@/services/ai-vision-service';
-import { Scene, SceneNode, LightProps } from '../models/scene';
+import type { PhotoAnalysis } from '@/services/ai-vision-service';
+import { AIVisionService } from '@/services/ai-vision-service';
+import type { Scene, SceneNode} from '../models/scene';
+import { LightProps } from '../models/scene';
 import { logger } from './logger';
 
 const log = logger.module('AIIntegration, ');

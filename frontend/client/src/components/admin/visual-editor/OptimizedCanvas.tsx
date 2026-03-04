@@ -44,8 +44,9 @@ import {
   CheckCircle,
   Error,
 } from '@mui/icons-material';
-import { useCanvasOptimization, UseCanvasOptimizationOptions } from '../../../hooks/useCanvasOptimization';
-import { CanvasConfig, RenderObject, Viewport } from '../../../utils/canvasOptimizer';
+import type { UseCanvasOptimizationOptions } from '../../../hooks/useCanvasOptimization';
+import { useCanvasOptimization } from '../../../hooks/useCanvasOptimization';
+import type { CanvasConfig, RenderObject, Viewport } from '../../../utils/canvasOptimizer';
 
 interface OptimizedCanvasProps {
   width?: number;

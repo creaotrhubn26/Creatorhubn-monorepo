@@ -27,7 +27,8 @@ import {
   Loop,
   Pause,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig } from './BaseNode';
+import type { NodeConfig } from './BaseNode';
+import { BaseNode } from './BaseNode';
 
 const getNumericValue = (value: unknown, fallback: number): number => {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;

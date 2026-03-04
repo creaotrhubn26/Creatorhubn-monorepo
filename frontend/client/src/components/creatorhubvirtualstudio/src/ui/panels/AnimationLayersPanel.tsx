@@ -59,10 +59,11 @@ import {
   ExpandLess,
   Animation,
 } from '@mui/icons-material';
+import type {
+  AnimationLayer,
+  BlendMode} from '../../core/animation/AnimationBlendingService';
 import {
   animationBlendingService,
-  AnimationLayer,
-  BlendMode,
   CAMERA_ANIMATION_PRESETS,
   LIGHT_ANIMATION_PRESETS,
 } from '../../core/animation/AnimationBlendingService';

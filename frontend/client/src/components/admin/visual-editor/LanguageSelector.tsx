@@ -75,7 +75,8 @@ import {
   CloudDone,
   CloudSync,
 } from '@mui/icons-material';
-import { useI18n, UseI18nOptions } from '../../../hooks/useI18n';
+import type { UseI18nOptions } from '../../../hooks/useI18n';
+import { useI18n } from '../../../hooks/useI18n';
 import { I18nConfig, TranslationOptions } from '../../../utils/i18nManager';
 
 interface LanguageSelectorProps {

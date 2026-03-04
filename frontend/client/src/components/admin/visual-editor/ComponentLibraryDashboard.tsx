@@ -5,6 +5,8 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Paper,
@@ -28,7 +30,6 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  ChipProps,
   Card,
   CardContent,
   CardActions,
@@ -182,8 +183,10 @@ import {
   ViewInAr as ViewInArIcon,
   ViewKanban as ViewKanbanIcon,
 } from '@mui/icons-material';
-import { useComponentLibrary, UseComponentLibraryOptions } from '../../../hooks/useComponentLibrary';
-import { ComponentLibraryConfig, ComponentLibraryItem } from '../../../utils/componentLibraryManager';
+import type { UseComponentLibraryOptions } from '../../../hooks/useComponentLibrary';
+import { useComponentLibrary } from '../../../hooks/useComponentLibrary';
+import type { ComponentLibraryItem } from '../../../utils/componentLibraryManager';
+import { ComponentLibraryConfig } from '../../../utils/componentLibraryManager';
 
 interface ComponentLibraryDashboardProps {
   showDetails?: boolean;

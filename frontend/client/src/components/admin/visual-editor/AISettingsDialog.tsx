@@ -37,7 +37,7 @@ import {
   Security,
   Info,
 } from '@mui/icons-material';
-import { AICompletionConfig } from './AICodeCompletionSystem';
+import type { AICompletionConfig } from './AICodeCompletionSystem';
 
 interface AISettingsDialogProps {
   open: boolean;

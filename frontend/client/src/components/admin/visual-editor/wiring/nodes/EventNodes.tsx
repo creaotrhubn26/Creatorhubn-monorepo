@@ -24,7 +24,8 @@ import {
   Keyboard,
   Refresh,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig, NodePort } from './BaseNode';
+import type { NodeConfig} from './BaseNode';
+import { BaseNode, NodePort } from './BaseNode';
 
 const getStringArrayValue = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];

@@ -34,6 +34,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -219,6 +220,7 @@ const toNok = (value: number): string =>
 function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCohortSettingsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -260,6 +262,11 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     return fallbackCourses;
   }, [state.courses]);
 
+  const courseOptionIds = useMemo(
+    () => courseItems.map((course) => String(course.id)),
+    [courseItems],
+  );
+
   const activeCourse = useMemo(() => {
     const fromParam = courseId ? getCourse(courseId) : null;
     if (fromParam) return fromParam;
@@ -272,11 +279,25 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
     return state.currentCourse || courseItems[0] || fallbackCourses[0];
   }, [courseId, courseItems, getCourse, selectedCourseId, state.currentCourse]);
 
+  const selectedCourseValue = useMemo(() => {
+    const preferredId = String(selectedCourseId || activeCourse?.id || '');
+    if (preferredId && courseOptionIds.includes(preferredId)) {
+      return preferredId;
+    }
+    return courseOptionIds[0] || '';
+  }, [activeCourse?.id, courseOptionIds, selectedCourseId]);
+
   useEffect(() => {
     if (!selectedCourseId && activeCourse?.id) {
       setSelectedCourseId(String(activeCourse.id));
     }
   }, [activeCourse?.id, selectedCourseId]);
+
+  useEffect(() => {
+    if (selectedCourseValue && selectedCourseId !== selectedCourseValue) {
+      setSelectedCourseId(selectedCourseValue);
+    }
+  }, [selectedCourseId, selectedCourseValue]);
 
   useEffect(() => {
     if (!selectedCohortId && cohortItems.length > 0) {
@@ -722,7 +743,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                   <Stack direction="row" spacing={1}>
                     <Select
                       size="small"
-                      value={selectedCourseId || activeCourse?.id || ''}
+                      value={selectedCourseValue}
                       onChange={(event) => setSelectedCourseId(String(event.target.value))}
                       sx={{
                         minWidth: 210,
@@ -1215,7 +1236,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  CTA
+                  {tt('CTA', 'CTA')}
                 </Button>
                 <Button
                   startIcon={<Subtitles />}
@@ -1227,7 +1248,7 @@ function AcademyCohortSettingsStudio({ courseId, onSave, onCancel }: AcademyCoho
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
               </Stack>
 

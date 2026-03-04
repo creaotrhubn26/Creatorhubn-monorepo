@@ -22,13 +22,14 @@ import {
   Psychology as PsychologyIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import {
-  AIVisionService,
+import type {
   BlinkDetectionResult,
   CullingResult,
   PhotoAnalysis,
   PhotoQualityScore,
-  SharpnessAnalysis,
+  SharpnessAnalysis} from '@/services/ai-vision-service';
+import {
+  AIVisionService
 } from '@/services/ai-vision-service';
 
 interface PhotoFile {

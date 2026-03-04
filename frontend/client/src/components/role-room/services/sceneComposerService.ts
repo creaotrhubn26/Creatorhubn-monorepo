@@ -1,4 +1,4 @@
-import { SceneComposition, EnvironmentState, WallState, FloorState, AtmosphereSettings, GoboState } from '../models/sceneComposer';
+import type { SceneComposition, EnvironmentState, WallState, FloorState, AtmosphereSettings, GoboState } from '../models/sceneComposer';
 import { sceneApi } from './virtualStudioApiService';
 import settingsService, { getCurrentUserId } from './settingsService';
 

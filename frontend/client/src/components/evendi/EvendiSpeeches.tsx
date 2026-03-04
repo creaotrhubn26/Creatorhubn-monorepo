@@ -33,7 +33,8 @@ import {
   EmojiEvents,
   Campaign,
 } from '@mui/icons-material';
-import { isEventFeatureEnabled, EventType, getEventTypeLabel } from '@/lib/evendi-api';
+import type { EventType} from '@/lib/evendi-api';
+import { isEventFeatureEnabled, getEventTypeLabel } from '@/lib/evendi-api';
 
 interface Speech {
   id: string;

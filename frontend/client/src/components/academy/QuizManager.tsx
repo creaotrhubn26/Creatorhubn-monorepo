@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type CourseResource } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -101,6 +102,7 @@ const quizGoldBorder = alpha(quizGold, 0.5);
 function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
   const [, setLocation] = useLocation();
   const { getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -338,7 +340,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lowerthirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];

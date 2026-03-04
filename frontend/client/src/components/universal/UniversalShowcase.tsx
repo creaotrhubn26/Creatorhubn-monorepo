@@ -42,9 +42,11 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 // New context imports
 import { useProject } from '../../contexts/ProjectContext';
-import { useSettings, UserSettings } from '../../contexts/SettingsContext';
+import type { UserSettings } from '../../contexts/SettingsContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useTheme as useCustomTheme } from '../../contexts/ThemeContext';
-import { useRealTime, CollaborationParticipant } from '../../contexts/RealTimeContext';
+import type { CollaborationParticipant } from '../../contexts/RealTimeContext';
+import { useRealTime } from '../../contexts/RealTimeContext';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
 import {

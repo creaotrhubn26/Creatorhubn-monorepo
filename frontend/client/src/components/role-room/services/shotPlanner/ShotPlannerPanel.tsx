@@ -98,9 +98,9 @@ import { GuidesPanel } from './GuidesPanel';
 import { FramingGuideRenderer } from './FramingGuideRenderer';
 import { FloorPlanUpload } from './FloorPlanUpload';
 import { PencilCanvasPro } from '../../components/PencilCanvasPro';
-import { PencilStroke } from '../../hooks/useApplePencil';
+import type { PencilStroke } from '../../hooks/useApplePencil';
 import { SCENE_TEMPLATES } from './demoScenes';
-import { PlannerTool } from './types';
+import type { PlannerTool } from './types';
 
 // =============================================================================
 // Toolbar Tools Configuration

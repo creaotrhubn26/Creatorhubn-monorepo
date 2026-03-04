@@ -5,7 +5,8 @@
  */
 
 import { googleAnalyticsService } from './GoogleAnalyticsService';
-import { googleTrendsService, GoogleTrendsData } from './GoogleTrendsService';
+import type { GoogleTrendsData } from './GoogleTrendsService';
+import { googleTrendsService } from './GoogleTrendsService';
 
 export interface CreatorHubFix {
   id: string;

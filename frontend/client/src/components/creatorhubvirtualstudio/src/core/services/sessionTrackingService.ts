@@ -9,7 +9,7 @@
  */
 
 import { logger } from './logger';
-import { SessionSummary, SessionActivity } from '../../ui/components/ContinueSessionDialog';
+import type { SessionSummary, SessionActivity } from '../../ui/components/ContinueSessionDialog';
 
 const log = logger.module('SessionTracking');
 const STORAGE_KEY = 'virtualStudio_session';

@@ -47,15 +47,17 @@ import {
   FullscreenExit as FullscreenExitIcon,
 } from '@mui/icons-material';
 import { ScreenplayEditor } from './ScreenplayEditor';
-import { SceneNavigatorSidebar, ParsedScene } from './SceneNavigatorSidebar';
+import type { ParsedScene } from './SceneNavigatorSidebar';
+import { SceneNavigatorSidebar } from './SceneNavigatorSidebar';
 import { BeatBoard } from './BeatBoard';
 import { TableReadPanel } from './TableReadPanel';
 import { ScriptAnalysisPanel } from './ScriptAnalysisPanel';
 import { StoryStructurePanel } from './StoryStructurePanel';
 import { GrammarCheckPanel } from './screenplay/GrammarCheckPanel';
 import { StoryboardIntegrationView } from './StoryboardIntegrationView';
-import { SceneBreakdown, UserRoleType } from '../models/casting';
-import { analyzeScript, BeatCard } from '../services/scriptAnalysisService';
+import type { SceneBreakdown, UserRoleType } from '../models/casting';
+import type { BeatCard } from '../services/scriptAnalysisService';
+import { analyzeScript } from '../services/scriptAnalysisService';
 import { castingAuthService } from '../services/castingAuthService';
 import { ScreenplayGuide } from './ScreenplayGuide';
 

@@ -6,12 +6,13 @@
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Paper,
   Typography,
   Chip,
-  ChipProps,
   LinearProgress,
   Tooltip,
   IconButton,
@@ -240,8 +241,9 @@ import {
   Add as AddIcon,
   Description as DescriptionIcon,
 } from '@mui/icons-material';
-import { useTemplate, UseTemplateOptions } from '../../../hooks/useTemplate';
-import {
+import type { UseTemplateOptions } from '../../../hooks/useTemplate';
+import { useTemplate } from '../../../hooks/useTemplate';
+import type {
   Template as TemplateType,
   TemplateCategory as TemplateCategoryType,
   TemplateSearchQuery,

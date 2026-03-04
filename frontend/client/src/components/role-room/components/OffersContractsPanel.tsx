@@ -35,11 +35,12 @@ import DrawIcon from '@mui/icons-material/Draw';
 import AddIcon from '@mui/icons-material/Add';
 import { OffersIcon as LocalOfferIcon, ContractsIcon as DescriptionIcon } from './icons/CastingIcons';
 import { useSnackbar } from 'notistack';
+import type {
+  CastingOffer,
+  CastingContract} from '../services/castingApiService';
 import {
   offersApi,
-  contractsApi,
-  CastingOffer,
-  CastingContract,
+  contractsApi
 } from '../services/castingApiService';
 
 interface Candidate {

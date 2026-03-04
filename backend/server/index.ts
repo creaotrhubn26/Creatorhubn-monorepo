@@ -27,7 +27,9 @@ import { createWebSocketServer } from './websocket-chat.js';
 import { createReferenceProxyRouter } from './reference-proxy-routes.js';
 import { createServer } from 'http';
 import {
+  MEMORY_CARD_DATABASE as MEMORY_CARD_PRODUCTS_DB,
   MEMORY_CARD_TYPES as MEMORY_CARD_TYPES_DB,
+  getMemoryCardTypeById as getMemoryCardTypeByIdFromDatabase,
   getMemoryCardTypesByCamera as getMemoryCardTypesByCameraFromDatabase,
 } from '../../frontend/client/src/data/memory-card-database.ts';
 import { PHOTO_CAMERA_DATABASE } from '../../frontend/client/src/data/photo-camera-database.ts';
@@ -813,9 +815,8 @@ const COMPAT_VENDOR_LINKS = [
     subcategory: 'Speillost',
     vendor_name: 'Foto.no',
     product_name: 'Canon EOS R5 Mark II',
-    product_url: 'https://example.com/foto-no-r5ii',
+    product_url: 'https://www.foto.no/canon/163394/canon-eos-r5-mark-ii-45mp-sensor-30-bps-8k-video',
     affiliate_url: '',
-    price: 58990,
     image_url: 'https://placehold.co/800x500/1f2937/ffffff?text=Foto.no+Canon+R5+II',
     description: 'Kampanjepris hos norsk forhandler.',
     is_recommended: true,
@@ -825,11 +826,10 @@ const COMPAT_VENDOR_LINKS = [
     id: 'vendor-scphoto-audio',
     category: 'Lyd',
     subcategory: 'Tradlost',
-    vendor_name: 'Scandinavian Photo',
+    vendor_name: 'Foto.no',
     product_name: 'Rode Wireless PRO',
-    product_url: 'https://example.com/scphoto-wireless-pro',
+    product_url: 'https://www.foto.no/r%c3%b8de/157955/r%c3%b8de-wireless-pro-tr%c3%a5dl%c3%b8st-mikrofonsystem-2-x-tx-1-x-rx',
     affiliate_url: '',
-    price: 5890,
     image_url: 'https://placehold.co/800x500/082f49/e0f2fe?text=Wireless+PRO',
     description: 'God pakkepris inkludert ladekase.',
     is_recommended: true,
@@ -839,11 +839,10 @@ const COMPAT_VENDOR_LINKS = [
     id: 'vendor-japanphoto-light',
     category: 'Lys',
     subcategory: 'LED',
-    vendor_name: 'Japan Photo',
+    vendor_name: 'Foto.no',
     product_name: 'Aputure 600d Pro',
-    product_url: 'https://example.com/japanphoto-600d',
+    product_url: 'https://www.foto.no/aputure/134866/aputure-ls-600d-pro-dagslys-5600k-v-mount',
     affiliate_url: '',
-    price: 23990,
     image_url: 'https://placehold.co/800x500/3f1d5c/f3e8ff?text=Aputure+600d',
     description: 'Leveres med softbox-kit.',
     is_recommended: false,
@@ -3273,22 +3272,53 @@ app.get('/api/equipment/discovery/status', (req, res) => {
   });
 });
 
+app.get('/api/equipment/health', (_req, res) => {
+  const runtimeCameraCount = EQUIPMENT_CAMERA_STORE.photo.length + EQUIPMENT_CAMERA_STORE.video.length;
+  const catalogCameraCount = CATALOG_CAMERA_STORE.photo.length + CATALOG_CAMERA_STORE.video.length;
+  const worldCameraCount = WORLD_CAMERA_STORE.photo.length + WORLD_CAMERA_STORE.video.length;
+  const releaseRegistryCount = RELEASE_REGISTRY_STORE.photo.length + RELEASE_REGISTRY_STORE.video.length;
+  const memoryCardCount = MEMORY_CARD_TYPES_DB.length;
+  const audioStorageCount = AUDIO_STORAGE_DEVICE_DATABASE.length;
+
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    backendSourceOfTruth: true,
+    services: {
+      discovery: 'ready',
+      cameraCatalog: 'ready',
+      memoryCards: 'ready',
+      audioStorage: 'ready',
+      firmware: 'ready',
+    },
+    counters: {
+      runtimeCameras: runtimeCameraCount,
+      catalogCameras: catalogCameraCount,
+      worldCameras: worldCameraCount,
+      releaseRegistryCameras: releaseRegistryCount,
+      memoryCardTypes: memoryCardCount,
+      audioStorageDevices: audioStorageCount,
+    },
+  });
+});
+
 app.get('/api/equipment/cameras', async (req, res) => {
-  const type = resolveDiscoveryType(req.query.type);
-  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
-  const brand = typeof req.query.brand === 'string' ? req.query.brand.trim().toLowerCase() : '';
-  const category =
-    typeof req.query.category === 'string' ? normalizeCameraCategory(req.query.category) : '';
-  const yearFromRaw = Number(req.query.yearFrom);
-  const yearToRaw = Number(req.query.yearTo);
-  const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
-  const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
-  const minYear = Math.min(yearFrom, yearTo);
-  const maxYear = Math.max(yearFrom, yearTo);
-  const includeUndated =
-    req.query.includeUndated === 'true' || req.query.includeUndated === '1';
-  const netflixCertifiedOnly =
-    req.query.netflixCertified === 'true' || req.query.netflixCertified === '1';
+  try {
+    const type = resolveDiscoveryType(req.query.type);
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+    const brand = typeof req.query.brand === 'string' ? req.query.brand.trim().toLowerCase() : '';
+    const category =
+      typeof req.query.category === 'string' ? normalizeCameraCategory(req.query.category) : '';
+    const yearFromRaw = Number(req.query.yearFrom);
+    const yearToRaw = Number(req.query.yearTo);
+    const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
+    const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
+    const minYear = Math.min(yearFrom, yearTo);
+    const maxYear = Math.max(yearFrom, yearTo);
+    const includeUndated =
+      req.query.includeUndated === 'true' || req.query.includeUndated === '1';
+    const netflixCertifiedOnly =
+      req.query.netflixCertified === 'true' || req.query.netflixCertified === '1';
 
   const extractReleaseYear = (camera: CameraRecord): number | null => {
     if (typeof camera.releaseDate !== 'string') return null;
@@ -3368,40 +3398,57 @@ app.get('/api/equipment/cameras', async (req, res) => {
     return a.model.localeCompare(b.model, 'nb');
   });
 
-  res.json({
-    success: true,
-    type: type ?? 'all',
-    total: filtered.length,
-    sources: {
-      runtime: runtimeSource.length,
-      catalog: catalogSource.length,
-      releaseRegistry: releaseRegistrySource.length,
-      world: worldSource.length,
-      legacy: legacySource.length,
-      database: databaseSource.length,
-    },
-    filters: {
-      minYear,
-      maxYear,
-      includeUndated,
-      netflixCertifiedOnly,
-    },
-    quality: {
-      matchedBeforeDateFilter: baseFiltered.length,
-      excludedUndated: includeUndated ? 0 : undated.length,
-      excludedOutOfRange: outOfRange.length,
-      undatedCandidates: undated.slice(0, 25).map((entry) => ({
-        id: entry.camera.id,
-        brand: entry.camera.brand,
-        model: entry.camera.model,
-        category: entry.camera.category,
-        source: entry.camera.source,
-      })),
-    },
-    data: filtered,
-    results: filtered,
-    cameras: filtered,
-  });
+    res.json({
+      success: true,
+      type: type ?? 'all',
+      total: filtered.length,
+      sources: {
+        runtime: runtimeSource.length,
+        catalog: catalogSource.length,
+        releaseRegistry: releaseRegistrySource.length,
+        world: worldSource.length,
+        legacy: legacySource.length,
+        database: databaseSource.length,
+      },
+      filters: {
+        minYear,
+        maxYear,
+        includeUndated,
+        netflixCertifiedOnly,
+      },
+      quality: {
+        matchedBeforeDateFilter: baseFiltered.length,
+        excludedUndated: includeUndated ? 0 : undated.length,
+        excludedOutOfRange: outOfRange.length,
+        undatedCandidates: undated.slice(0, 25).map((entry) => ({
+          id: entry.camera.id,
+          brand: entry.camera.brand,
+          model: entry.camera.model,
+          category: entry.camera.category,
+          source: entry.camera.source,
+        })),
+      },
+      data: filtered,
+      results: filtered,
+      cameras: filtered,
+    });
+  } catch (error) {
+    console.error('Equipment cameras endpoint failed, returning runtime fallback:', error);
+    const type = resolveDiscoveryType(req.query.type);
+    const fallback = type
+      ? getCameraArrayByType(type)
+      : [...EQUIPMENT_CAMERA_STORE.photo, ...EQUIPMENT_CAMERA_STORE.video];
+    const trimmed = fallback.slice(0, 500);
+    res.json({
+      success: false,
+      fallback: true,
+      type: type ?? 'all',
+      total: trimmed.length,
+      data: trimmed,
+      results: trimmed,
+      cameras: trimmed,
+    });
+  }
 });
 
 app.get('/api/equipment/memory-cards', (req, res) => {
@@ -3567,58 +3614,88 @@ app.get('/api/equipment/memory-cards', (req, res) => {
 });
 
 app.get('/api/equipment/audio-storage-devices', (req, res) => {
-  const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  const brand = typeof req.query.brand === 'string' ? req.query.brand.trim() : '';
-  const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
-  const storageMedium =
-    typeof req.query.storageMedium === 'string'
-      ? req.query.storageMedium.trim()
-      : typeof req.query.medium === 'string'
-      ? req.query.medium.trim()
-      : '';
-  const yearFromRaw = Number(req.query.yearFrom);
-  const yearToRaw = Number(req.query.yearTo);
-  const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
-  const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
-  const limit = parseLimitParam(req.query.limit, 200);
+  try {
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const brand = typeof req.query.brand === 'string' ? req.query.brand.trim() : '';
+    const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+    const storageMedium =
+      typeof req.query.storageMedium === 'string'
+        ? req.query.storageMedium.trim()
+        : typeof req.query.medium === 'string'
+        ? req.query.medium.trim()
+        : '';
+    const yearFromRaw = Number(req.query.yearFrom);
+    const yearToRaw = Number(req.query.yearTo);
+    const yearFrom = Number.isFinite(yearFromRaw) ? yearFromRaw : 2020;
+    const yearTo = Number.isFinite(yearToRaw) ? yearToRaw : 2026;
+    const limit = parseLimitParam(req.query.limit, 200);
 
-  const filtered = searchAudioStorageDevices({
-    q,
-    brand,
-    category,
-    storageMedium,
-    yearFrom,
-    yearTo,
-  });
-
-  const results = filtered.slice(0, limit);
-  const availableCategories = Array.from(
-    new Set(AUDIO_STORAGE_DEVICE_DATABASE.map((device) => device.category))
-  ).sort((a, b) => a.localeCompare(b, 'nb'));
-  const availableStorageMedia = Array.from(
-    new Set(AUDIO_STORAGE_DEVICE_DATABASE.flatMap((device) => device.storageMedia))
-  ).sort((a, b) => a.localeCompare(b, 'nb'));
-
-  res.json({
-    success: true,
-    source: 'audio-storage-device-database.ts',
-    total: filtered.length,
-    count: results.length,
-    filters: {
+    const filtered = searchAudioStorageDevices({
       q,
-      brand: brand || null,
-      category: category || null,
-      storageMedium: storageMedium || null,
+      brand,
+      category,
+      storageMedium,
       yearFrom,
       yearTo,
-      limit,
-    },
-    availableCategories,
-    availableStorageMedia,
-    data: results,
-    results,
-    devices: results,
-  });
+    });
+
+    const results = filtered.slice(0, limit);
+    const availableCategories = Array.from(
+      new Set(AUDIO_STORAGE_DEVICE_DATABASE.map((device) => device.category))
+    ).sort((a, b) => a.localeCompare(b, 'nb'));
+    const availableStorageMedia = Array.from(
+      new Set(AUDIO_STORAGE_DEVICE_DATABASE.flatMap((device) => device.storageMedia))
+    ).sort((a, b) => a.localeCompare(b, 'nb'));
+
+    res.json({
+      success: true,
+      source: 'audio-storage-device-database.ts',
+      total: filtered.length,
+      count: results.length,
+      filters: {
+        q,
+        brand: brand || null,
+        category: category || null,
+        storageMedium: storageMedium || null,
+        yearFrom,
+        yearTo,
+        limit,
+      },
+      availableCategories,
+      availableStorageMedia,
+      data: results,
+      results,
+      devices: results,
+    });
+  } catch (error) {
+    console.error('Equipment audio-storage endpoint failed, returning fallback list:', error);
+    const fallback = AUDIO_STORAGE_DEVICE_DATABASE.slice(0, 400);
+    res.json({
+      success: false,
+      fallback: true,
+      source: 'audio-storage-device-database.ts',
+      total: fallback.length,
+      count: fallback.length,
+      filters: {
+        q: null,
+        brand: null,
+        category: null,
+        storageMedium: null,
+        yearFrom: 2020,
+        yearTo: 2026,
+        limit: 400,
+      },
+      availableCategories: Array.from(new Set(fallback.map((device) => device.category))).sort((a, b) =>
+        a.localeCompare(b, 'nb')
+      ),
+      availableStorageMedia: Array.from(new Set(fallback.flatMap((device) => device.storageMedia))).sort((a, b) =>
+        a.localeCompare(b, 'nb')
+      ),
+      data: fallback,
+      results: fallback,
+      devices: fallback,
+    });
+  }
 });
 
 app.get('/api/equipment/audio-interfaces', (req, res) => {
@@ -3648,7 +3725,151 @@ app.get('/api/equipment/audio-interfaces', (req, res) => {
   res.json(records);
 });
 
-app.get('/api/equipment/search', (req, res) => {
+const CATALOG_PRICE_BY_RANGE: Record<CameraRecord['priceRange'], number> = {
+  budget: 9990,
+  'mid-range': 21990,
+  professional: 44990,
+  cinema: 89990,
+};
+
+const CATALOG_AUDIO_CATEGORY_PRICE: Record<(typeof AUDIO_STORAGE_DEVICE_DATABASE)[number]['category'], number> = {
+  'field-recorder': 8990,
+  'mixer-recorder': 39990,
+  'pocket-recorder': 2990,
+  'wireless-recorder': 5990,
+  'on-camera-recorder': 4990,
+  'camera-attached-digital-mic': 3490,
+  'desktop-production-console': 29990,
+};
+
+const catalogSortByLatest = (a: CompatCatalogItem, b: CompatCatalogItem): number => {
+  if (b.releaseYear !== a.releaseYear) return b.releaseYear - a.releaseYear;
+  const brandCompare = a.brand.localeCompare(b.brand, 'nb');
+  if (brandCompare !== 0) return brandCompare;
+  return a.model.localeCompare(b.model, 'nb');
+};
+
+const categoryFromCameraRecord = (camera: CameraRecord): CompatCatalogItem['category'] => {
+  if (camera.type === 'video') return 'video';
+  const normalizedCategory = normalizeCameraCategory(camera.category || '');
+  if (normalizedCategory.includes('cinema') || normalizedCategory.includes('video')) return 'video';
+  return 'cameras';
+};
+
+const toCatalogItemFromCameraRecord = (camera: CameraRecord): CompatCatalogItem => {
+  const releaseYear = Number.parseInt(String(camera.releaseDate || '').slice(0, 4), 10);
+  const resolvedYear = Number.isInteger(releaseYear) ? releaseYear : 2026;
+  const category = categoryFromCameraRecord(camera);
+
+  return {
+    id: `camera-${camera.id}`,
+    brand: camera.brand,
+    model: camera.model,
+    category,
+    description: camera.description || `${camera.brand} ${camera.model}`,
+    priceNOK: CATALOG_PRICE_BY_RANGE[camera.priceRange] ?? 0,
+    releaseYear: resolvedYear,
+    mount: camera.mount,
+    type: camera.category,
+    norwegianSupplier: 'Foto.no',
+    availability: camera.isDeprecated ? 'limited' : 'available',
+    imageUrl: '',
+    specifications: {
+      sensorSize: camera.sensorSize || '',
+      megapixels: camera.megapixels ?? '',
+      mount: camera.mount || '',
+      logFormats: (camera.logFormats || []).join(', '),
+      videoResolution: (camera.videoResolution || camera.resolution || []).join(', '),
+      videoFrameRates: (camera.videoFrameRates || camera.frameRates || []).join(', '),
+      netflixCertified: Boolean(camera.isNetflixCertified),
+    },
+  };
+};
+
+const toCatalogItemFromAudioStorageDevice = (
+  device: (typeof AUDIO_STORAGE_DEVICE_DATABASE)[number]
+): CompatCatalogItem => ({
+  id: `audio-storage-${device.id}`,
+  brand: device.brand,
+  model: device.model,
+  category: 'audio',
+  description: device.description,
+  priceNOK: CATALOG_AUDIO_CATEGORY_PRICE[device.category] ?? 5990,
+  releaseYear: device.releaseYear,
+  type: device.category,
+  norwegianSupplier: 'Foto.no',
+  availability: device.isDeprecated ? 'limited' : 'available',
+  imageUrl: '',
+  specifications: {
+    storageMedia: device.storageMedia.join(', '),
+    maxStorage: device.maxStorage,
+    formats: device.recordingFormats.join(', '),
+    maxSampleRateHz: device.maxSampleRateHz,
+    bitDepth: device.bitDepthOptions.join(', '),
+    channels: device.channelCount,
+    timecode: device.supportsTimecode,
+  },
+});
+
+const toCatalogItemFromMemoryCard = (
+  card: (typeof MEMORY_CARD_PRODUCTS_DB)[number]
+): CompatCatalogItem => {
+  const cardType = getMemoryCardTypeByIdFromDatabase(card.cardTypeId);
+  return {
+    id: `memory-card-${card.id}`,
+    brand: card.brand,
+    model: `${card.model} ${card.capacity}GB`,
+    category: 'accessories',
+    description: cardType?.description || `${card.model} minnekort ${card.capacity}GB`,
+    priceNOK: card.priceNOK,
+    releaseYear: 2026,
+    type: cardType?.name || card.cardTypeId,
+    norwegianSupplier: 'Foto.no',
+    availability: 'available',
+    imageUrl: '',
+    specifications: {
+      cardTypeId: card.cardTypeId,
+      capacityGB: card.capacity,
+      readSpeedMBs: card.speedRead,
+      writeSpeedMBs: card.speedWrite,
+      fullName: cardType?.fullName || card.model,
+      videoClass: cardType?.videoClass || '',
+      maxCapacity: cardType?.maxCapacity || '',
+    },
+  };
+};
+
+const shouldKeepLegacyCatalogItem = (item: CompatCatalogItem): boolean => {
+  if (item.category === 'lenses' || item.category === 'flash' || item.category === 'accessories') return true;
+  if (item.category !== 'video') return false;
+  const type = String(item.specifications.type || item.type || '').toLowerCase();
+  return type.includes('gimbal') || type.includes('monitor') || type.includes('rig');
+};
+
+const makeCatalogMergeKey = (item: Pick<CompatCatalogItem, 'brand' | 'model' | 'category'>): string =>
+  `${item.category}::${item.brand}::${item.model}`.trim().toLowerCase();
+
+const loadUnifiedEquipmentCatalog = async (): Promise<CompatCatalogItem[]> => {
+  const cameraBundle = await loadCameraSourceBundle(null);
+  const cameraItems = cameraBundle.source
+    .filter((camera) => !isPlaceholderCameraValue(camera.brand) && !isPlaceholderCameraValue(camera.model))
+    .map((camera) => toCatalogItemFromCameraRecord(camera));
+  const audioItems = AUDIO_STORAGE_DEVICE_DATABASE.map((device) => toCatalogItemFromAudioStorageDevice(device));
+  const memoryCardItems = MEMORY_CARD_PRODUCTS_DB.map((card) => toCatalogItemFromMemoryCard(card));
+  const legacyItems = COMPAT_EQUIPMENT_CATALOG.filter(shouldKeepLegacyCatalogItem).map((item) => ({
+    ...item,
+    norwegianSupplier: 'Foto.no',
+  }));
+
+  const merged = new Map<string, CompatCatalogItem>();
+  for (const item of [...legacyItems, ...cameraItems, ...audioItems, ...memoryCardItems]) {
+    merged.set(makeCatalogMergeKey(item), item);
+  }
+
+  return Array.from(merged.values()).sort(catalogSortByLatest);
+};
+
+app.get('/api/equipment/search', async (req, res) => {
   const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
   const brand = typeof req.query.brand === 'string' ? req.query.brand.trim().toLowerCase() : '';
   const category = normalizeCatalogCategory(
@@ -3656,35 +3877,43 @@ app.get('/api/equipment/search', (req, res) => {
   );
   const year = typeof req.query.year === 'string' ? Number(req.query.year) : NaN;
   const limit = parseLimitParam(req.query.limit, 80);
+  try {
+    const catalog = await loadUnifiedEquipmentCatalog();
+    const filtered = catalog
+      .filter((item) => {
+        if (brand && brand !== 'alle' && item.brand.toLowerCase() !== brand) return false;
+        if (category && item.category !== category) return false;
+        if (Number.isFinite(year) && item.releaseYear !== year) return false;
+        if (!q) return true;
 
-  const filtered = COMPAT_EQUIPMENT_CATALOG.filter((item) => {
-    if (brand && brand !== 'alle' && item.brand.toLowerCase() !== brand) return false;
-    if (category && item.category !== category) return false;
-    if (Number.isFinite(year) && item.releaseYear !== year) return false;
-    if (!q) return true;
+        const searchable = [
+          item.brand,
+          item.model,
+          item.description,
+          item.category,
+          item.mount || '',
+          item.type || '',
+          item.norwegianSupplier || '',
+        ]
+          .join(' ')
+          .toLowerCase();
 
-    const searchable = [
-      item.brand,
-      item.model,
-      item.description,
-      item.category,
-      item.mount || '',
-      item.type || '',
-      item.norwegianSupplier || '',
-    ]
-      .join(' ')
-      .toLowerCase();
+        return searchable.includes(q);
+      })
+      .slice(0, limit);
 
-    return searchable.includes(q);
-  }).slice(0, limit);
-
-  res.json({
-    success: true,
-    source: 'compat-catalog',
-    total: filtered.length,
-    data: filtered,
-    results: filtered,
-  });
+    res.json({
+      success: true,
+      source: 'unified-catalog',
+      total: filtered.length,
+      totalAvailable: catalog.length,
+      data: filtered,
+      results: filtered,
+    });
+  } catch (error) {
+    console.error('Failed to load unified equipment catalog:', error);
+    res.status(500).json({ error: 'Failed to load equipment catalog' });
+  }
 });
 
 app.get('/api/gear-news', async (req, res) => {
@@ -3753,25 +3982,31 @@ app.get('/api/gear-news/:profession/firmware', (_req, res) => {
   });
 });
 
-app.get('/api/equipment/market-prices', (_req, res) => {
-  const data = COMPAT_EQUIPMENT_CATALOG.map((item, index) => {
-    const msrp = Math.round(item.priceNOK * 1.12);
-    const rating = (4.0 + (index % 7) * 0.1).toFixed(1);
-    return {
-      id: item.id,
-      brand: item.brand,
-      model: item.model,
-      category: item.category,
-      currentPrice: String(item.priceNOK),
-      msrp: String(msrp),
-      availability: item.availability,
-      photographerRating: rating,
-      videographerRating: rating,
-      sourceUrl: `https://example.com/prices/${item.id}`,
-    };
-  });
+app.get('/api/equipment/market-prices', async (_req, res) => {
+  try {
+    const catalog = await loadUnifiedEquipmentCatalog();
+    const data = catalog.slice(0, 400).map((item, index) => {
+      const msrp = Math.round(item.priceNOK * 1.12);
+      const rating = (4.0 + (index % 7) * 0.1).toFixed(1);
+      return {
+        id: item.id,
+        brand: item.brand,
+        model: item.model,
+        category: item.category,
+        currentPrice: String(item.priceNOK),
+        msrp: String(msrp),
+        availability: item.availability,
+        photographerRating: rating,
+        videographerRating: rating,
+        sourceUrl: `https://www.foto.no/search?q=${encodeURIComponent(`${item.brand} ${item.model}`)}`,
+      };
+    });
 
-  res.json(data);
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to load market prices from unified catalog:', error);
+    res.status(500).json({ error: 'Failed to load market prices' });
+  }
 });
 
 app.get('/api/equipment/lenses', (_req, res) => {

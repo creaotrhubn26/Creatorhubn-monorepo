@@ -29,12 +29,14 @@ import {
   Event as EventIcon,
 } from '@mui/icons-material';
 import { rolePoolService } from '../services/rolePoolService';
-import { CastingProject } from '../models/casting';
+import type { CastingProject } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { ROLE_WORKFLOW_ORDER, RoleWorkflowStatus, getRoleWorkflowMeta } from '../config/roleWorkflow';
+import type { RoleWorkflowStatus} from '../config/roleWorkflow';
+import { ROLE_WORKFLOW_ORDER, getRoleWorkflowMeta } from '../config/roleWorkflow';
 import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';
 import { roleQueryKeys } from '../services/roleQueryKeys';
-import { RoleTemplate, createTemplateImportAuditEntry } from '../config/roleDomain';
+import type { RoleTemplate} from '../config/roleDomain';
+import { createTemplateImportAuditEntry } from '../config/roleDomain';
 import { Z_INDEX } from '../config/zIndex';
 
 interface RolePoolPanelProps {

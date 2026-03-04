@@ -112,18 +112,23 @@ import {
   useVirtualStudioIntegration,
   exposeMasterIntegration,
 } from './src/hooks/useVirtualStudioIntegration';
-import { VirtualStudioOnboarding, OnboardingConfig } from './src/ui/onboarding/VirtualStudioOnboarding';
+import type { OnboardingConfig } from './src/ui/onboarding/VirtualStudioOnboarding';
+import { VirtualStudioOnboarding } from './src/ui/onboarding/VirtualStudioOnboarding';
 import { FaceAnalysisProvider } from './src/contexts/FaceAnalysisContext';
 import { VirtualStudioProvider, useVirtualStudio } from './VirtualStudioContext';
-import { SchoolPhotographySetupDialog, SchoolSetupConfig } from './src/ui/components/SchoolPhotographySetupDialog';
-import { ContinueSessionDialog, SessionSummary, SavedProject } from './src/ui/components/ContinueSessionDialog';
+import type { SchoolSetupConfig } from './src/ui/components/SchoolPhotographySetupDialog';
+import { SchoolPhotographySetupDialog } from './src/ui/components/SchoolPhotographySetupDialog';
+import type { SessionSummary, SavedProject } from './src/ui/components/ContinueSessionDialog';
+import { ContinueSessionDialog } from './src/ui/components/ContinueSessionDialog';
 import { sessionTrackingService } from './src/core/services/sessionTrackingService';
 import ToastDesigner from '../admin/visual-editor/ToastDesigner';
 import { LightLensIntegrationPanel } from './src/ui/panels/LightLensIntegrationPanel';
 import ViewfinderView, { ViewfinderPanel } from './src/ui/features/ViewfinderView';
 import FlashControllerPanel from './src/ui/panels/FlashControllerPanel';
-import { EquipmentCatalog, EquipmentItem } from './src/ui/panels/EquipmentCatalog';
-import { ScenePresets, ScenePreset } from './src/ui/panels/ScenePresets';
+import type { EquipmentItem } from './src/ui/panels/EquipmentCatalog';
+import { EquipmentCatalog } from './src/ui/panels/EquipmentCatalog';
+import type { ScenePreset } from './src/ui/panels/ScenePresets';
+import { ScenePresets } from './src/ui/panels/ScenePresets';
 import { equipmentIntegrationService } from './src/core/services/equipmentIntegrationService';
 import { useKeyboardShortcuts, KeyboardShortcutsFloatingButton } from './src/hooks/useKeyboardShortcuts';
 import { KeyboardShortcutsPanel } from './src/ui/components/KeyboardShortcutsPanel';
@@ -133,18 +138,22 @@ import HistoryPanel from './src/ui/panels/HistoryPanel';
 import EquipmentHierarchyPanel from './src/ui/panels/EquipmentHierarchyPanel';
 import { SceneComparisonPanel, snapshotManager } from './src/ui/components/SceneComparison';
 import { SceneAnimationPanel } from './src/ui/panels/SceneAnimationPanel';
-import { QuickAccessToolbar, TransformMode } from './src/ui/components/QuickAccessToolbar';
+import type { TransformMode } from './src/ui/components/QuickAccessToolbar';
+import { QuickAccessToolbar } from './src/ui/components/QuickAccessToolbar';
 import { selectionService } from './src/core/services/selectionService';
 import { AnimationStudioPanel } from './src/ui/panels/AnimationStudioPanel';
 import { animationRecorder } from './src/core/animation/AnimationRecorder';
 import { animationTemplateService } from './src/core/animation/AnimationTemplates';
-import { sceneAnimationService, AnimationTrack, AnimationClip } from './src/core/animation/SceneGraphAnimationEngine';
-import { videoExportService, ExportResult } from './src/core/animation/VideoExportService';
+import type { AnimationTrack, AnimationClip } from './src/core/animation/SceneGraphAnimationEngine';
+import { sceneAnimationService } from './src/core/animation/SceneGraphAnimationEngine';
+import type { ExportResult } from './src/core/animation/VideoExportService';
+import { videoExportService } from './src/core/animation/VideoExportService';
 import { animationStateManager } from './src/core/animation/AnimationStateManager';
+import type {
+  VirtualStudioProject} from './src/ui/panels/ProjectManagerPanel';
 import {
   ProjectManagerPanel,
-  AutoSaveIndicator,
-  VirtualStudioProject,
+  AutoSaveIndicator
 } from './src/ui/panels/ProjectManagerPanel';
 import { ShotListIntegrationPanel, Shot } from './src/ui/panels/ShotListIntegrationPanel';
 import { StoryboardPanel } from './src/ui/panels/StoryboardPanel';
@@ -188,11 +197,12 @@ import { AutoSceneOptimizer } from './src/ui/components/AutoSceneOptimizer';
 import { BackgroundAnalyzer } from './src/ui/components/BackgroundAnalyzer';
 import { AIShotSuggestions } from './src/ui/components/AIShotSuggestions';
 import { BodyAnimationPanel } from './src/ui/panels/BodyAnimationPanel';
-import { HandGesture, HEAD_PRESETS, HAND_PRESETS, FULL_BODY_POSES, BODY_ANIMATION_PRESETS } from './src/core/animations/BodyAnimations';
+import type { HandGesture, HEAD_PRESETS, HAND_PRESETS, FULL_BODY_POSES, BODY_ANIMATION_PRESETS } from './src/core/animations/BodyAnimations';
 import { ClassPhotoPanel } from './src/ui/panels/ClassPhotoPanel';
 import { ClassPhotoView } from './src/ui/components/ClassPhotoView';
-import { classPhotoService, ClassPhotoSession } from './src/core/services/classPhotoService';
-import { ClassPhotoGuideSettings } from './src/ui/panels/ClassPhotoPanel';
+import type { ClassPhotoSession } from './src/core/services/classPhotoService';
+import { classPhotoService } from './src/core/services/classPhotoService';
+import type { ClassPhotoGuideSettings } from './src/ui/panels/ClassPhotoPanel';
 import { FacialFeaturesPanel } from './src/ui/panels/FacialFeaturesPanel';
 import { 
   createFacialHairModel, 
@@ -203,8 +213,10 @@ import {
 import { MonitorFeedPanel } from './src/ui/panels/MonitorFeedPanel';
 import { DirectorMonitor3D } from './src/ui/components/DirectorMonitor3D';
 import { DirectorModeOverlay } from './src/ui/components/DirectorModeOverlay';
-import { monitorFeedService, MonitorLayout } from './src/core/services/monitorFeedService';
-import { directorModeService, DirectorModeState } from './src/core/services/directorModeService';
+import type { MonitorLayout } from './src/core/services/monitorFeedService';
+import { monitorFeedService } from './src/core/services/monitorFeedService';
+import type { DirectorModeState } from './src/core/services/directorModeService';
+import { directorModeService } from './src/core/services/directorModeService';
 
 // Environment Service
 import { environmentService, useEnvironment } from './src/core/services/environmentService';

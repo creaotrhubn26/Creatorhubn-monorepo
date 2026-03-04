@@ -45,7 +45,7 @@ import ContentCutIcon from '@mui/icons-material/ContentCut';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { BeatClip, Track } from '../services/storyArcDataIntegration';
+import type { BeatClip, Track } from '../services/storyArcDataIntegration';
 
 export interface TimelineMarker {
   id: string;

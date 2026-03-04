@@ -105,20 +105,25 @@ import { apiRequest } from '@/lib/queryClient';
 import { useSnackbar } from 'notistack';
 
 // Import services
+import type {
+  ScreenshotResult,
+  AudioRecordingResult,
+  VideoRecordingResult,
+  FeedbackContext} from './services/feedbackCaptureService';
 import {
   screenshotService,
   audioRecordingService,
   videoRecordingService,
-  contextDetectionService,
-  ScreenshotResult,
-  AudioRecordingResult,
-  VideoRecordingResult,
-  FeedbackContext,
+  contextDetectionService
 } from './services/feedbackCaptureService';
-import { feedbackAIService, TagSuggestion, TitleSuggestion, FeedbackTemplate } from './services/feedbackAIService';
-import { feedbackHistoryService, FeedbackItem } from './services/feedbackHistoryService';
-import { elementTargetingService, TargetedElement } from './services/elementTargetingService';
-import { feedbackAnalyticsService, TesterStats, LeaderboardEntry } from './services/feedbackAnalyticsService';
+import type { TagSuggestion, TitleSuggestion, FeedbackTemplate } from './services/feedbackAIService';
+import { feedbackAIService } from './services/feedbackAIService';
+import type { FeedbackItem } from './services/feedbackHistoryService';
+import { feedbackHistoryService } from './services/feedbackHistoryService';
+import type { TargetedElement } from './services/elementTargetingService';
+import { elementTargetingService } from './services/elementTargetingService';
+import type { TesterStats, LeaderboardEntry } from './services/feedbackAnalyticsService';
+import { feedbackAnalyticsService } from './services/feedbackAnalyticsService';
 
 // ============================================================================
 // Types

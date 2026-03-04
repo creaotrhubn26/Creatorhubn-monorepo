@@ -55,7 +55,7 @@ import {
   BarChart as StatsIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown } from '../models/casting';
+import type { SceneBreakdown } from '../models/casting';
 
 // Scene parsed from Fountain content
 export interface ParsedScene {

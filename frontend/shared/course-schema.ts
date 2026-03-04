@@ -9,7 +9,7 @@ import {
   integer,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Educational Courses Table
 export const educationalCourses = pgTable('educational_courses', {

@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  templateManager, 
+import type { 
   TemplateConfig, 
   TemplateManagerState, 
   Template,
   TemplateCategory,
   TemplateSearchQuery
+} from '../utils/templateManager';
+import { 
+  templateManager
 } from'../utils/templateManager';
 
 export interface UseTemplateOptions {

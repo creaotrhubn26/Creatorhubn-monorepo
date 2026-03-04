@@ -9,7 +9,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Onboarding Profiles - Main user onboarding data
 export const onboardingProfiles = pgTable('onboarding_profiles', {

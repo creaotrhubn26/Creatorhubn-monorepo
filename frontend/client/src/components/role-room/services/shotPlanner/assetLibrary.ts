@@ -9,7 +9,8 @@
  * - Architectural elements
  */
 
-import { Asset2DDefinition, AssetType, Point2D } from './types';
+import type { Asset2DDefinition, AssetType} from './types';
+import { Point2D } from './types';
 
 // =============================================================================
 // SVG Icon Paths for Assets

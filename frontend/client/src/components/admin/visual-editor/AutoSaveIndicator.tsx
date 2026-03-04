@@ -96,8 +96,10 @@ import {
   PublicOff,
   Public as PublicOn,
 } from '@mui/icons-material';
-import { useAutoSave, UseAutoSaveOptions } from '../../../hooks/useAutoSave';
-import { AutoSaveConfig, AutoSaveData } from '../../../utils/autoSaveManager';
+import type { UseAutoSaveOptions } from '../../../hooks/useAutoSave';
+import { useAutoSave } from '../../../hooks/useAutoSave';
+import type { AutoSaveData } from '../../../utils/autoSaveManager';
+import { AutoSaveConfig } from '../../../utils/autoSaveManager';
 
 interface AutoSaveIndicatorProps {
   showDetails?: boolean;

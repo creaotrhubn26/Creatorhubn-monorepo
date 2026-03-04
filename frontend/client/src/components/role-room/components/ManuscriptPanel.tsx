@@ -245,7 +245,7 @@ import {
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
 import { useToast } from './ToastStack';
-import { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location } from '../models/casting';
+import type { Manuscript, SceneBreakdown, DialogueLine, ScriptRevision, Act, ManuscriptExport, Role, Location } from '../models/casting';
 import type { StoryLogicState } from '../services/storyLogicService';
 import { manuscriptService } from '../services/manuscriptService';
 import { RichTextEditor } from './RichTextEditor';
@@ -260,8 +260,9 @@ import { ImportManuscriptDialog } from './ImportManuscriptDialog';
 import { ManuscriptTemplatePanel } from './ManuscriptTemplatePanel';
 import { manuscriptTemplateService } from '../services/manuscriptTemplateService';
 import { castingService } from '../services/castingService';
-import { characterProfileService, CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
-import { Template } from '../data/manuscriptTemplates';
+import type { CharacterProfile as StoredCharacterProfile } from '../services/characterProfileService';
+import { characterProfileService } from '../services/characterProfileService';
+import type { Template } from '../data/manuscriptTemplates';
 import { ProductionManuscriptView } from './ProductionManuscriptView';
 import { ScriptStoryboardProvider } from '../contexts/ScriptStoryboardContext';
 

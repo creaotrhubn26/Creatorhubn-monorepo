@@ -4,8 +4,7 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { 
-  backupRecoverySystem, 
+import type { 
   BackupData, 
   RecoveryPoint, 
   BackupAlert, 
@@ -13,6 +12,9 @@ import {
   RecoveryStats, 
   BackupConfig, 
   RecoveryConfig 
+} from '@/utils/backupRecovery';
+import { 
+  backupRecoverySystem 
 } from '@/utils/backupRecovery';
 
 export interface UseBackupRecoveryOptions {

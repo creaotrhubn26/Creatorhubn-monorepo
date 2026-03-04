@@ -35,7 +35,7 @@ import {
   TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 import { useTheming } from '@/utils/theming-helper';
-import { SWOTItem } from '@/services/BusinessIntelligenceService';
+import type { SWOTItem } from '@/services/BusinessIntelligenceService';
 
 interface SWOTKanbanBoardProps {
   userId: string;

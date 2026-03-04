@@ -14,7 +14,8 @@ import {
   Alert,
 } from '@mui/material';
 import { ExpandMore as ExpandIcon, PlayArrow as ExecuteIcon, Code as CodeIcon } from '@mui/icons-material';
-import { WireMockResponseViewer, WireMockTestResult } from './WireMockResponseViewer';
+import type { WireMockTestResult } from './WireMockResponseViewer';
+import { WireMockResponseViewer } from './WireMockResponseViewer';
 
 interface AdminAPIEndpoint {
   name: string;

@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { contractDriveSync, SyncJob } from '../../services/contract-drive-sync';
+import type { SyncJob } from '../../services/contract-drive-sync';
+import { contractDriveSync } from '../../services/contract-drive-sync';
 
 interface DriveFile {
   id: string;

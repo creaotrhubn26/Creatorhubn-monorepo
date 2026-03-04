@@ -62,11 +62,12 @@ import {
   Group,
   Layers,
 } from '@mui/icons-material';
-import {
-  equipmentGroupingService,
+import type {
   EquipmentNode,
   EquipmentGroup,
-  LinkSuggestion,
+  LinkSuggestion} from '../../core/services/equipmentGroupingService';
+import {
+  equipmentGroupingService
 } from '../../core/services/equipmentGroupingService';
 import { useSelection } from '../../core/services/selectionService';
 import { useTabletSupport } from '../../providers/TabletSupportProvider';

@@ -3,7 +3,8 @@
 // allowing components to access ML models, make predictions, and manage optimizations.
 
 import { useState, useEffect, useCallback } from 'react';
-import { mlOptimizer, MLModel, MLPrediction, MLOptimization, MLMetrics } from '../utils/mlOptimizer';
+import type { MLModel, MLPrediction, MLOptimization} from '../utils/mlOptimizer';
+import { mlOptimizer, MLMetrics } from '../utils/mlOptimizer';
 
 export interface UseMLOptimizerReturn {
   models: MLModel[];

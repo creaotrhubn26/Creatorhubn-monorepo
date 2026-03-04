@@ -4,14 +4,16 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { 
-  complianceManager, 
+import type { 
   ComplianceViolation, 
   ComplianceCheck, 
   ConsentRecord, 
   DataSubjectRequest, 
   ComplianceReport,
   ComplianceConfig 
+} from '@/utils/complianceManager';
+import { 
+  complianceManager 
 } from '@/utils/complianceManager';
 
 export interface UseComplianceManagerOptions {

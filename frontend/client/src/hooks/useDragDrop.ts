@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  dragDropManager, 
+import type { 
   DragDropConfig, 
   DragDropState, 
   DragItem,
   DropZone
+} from '../utils/dragDropManager';
+import { 
+  dragDropManager
 } from'../utils/dragDropManager';
 
 export interface UseDragDropOptions {

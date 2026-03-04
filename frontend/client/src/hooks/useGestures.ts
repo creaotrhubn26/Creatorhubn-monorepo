@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  gestureManager, 
+import type { 
   GestureConfig, 
   GestureState, 
   Gesture,
   GestureEvent
+} from '../utils/gestureManager';
+import { 
+  gestureManager
 } from'../utils/gestureManager';
 
 export interface UseGesturesOptions {

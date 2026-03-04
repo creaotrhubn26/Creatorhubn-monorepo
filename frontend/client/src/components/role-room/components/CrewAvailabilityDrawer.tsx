@@ -37,7 +37,8 @@ import {
   Schedule as TentativeIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import { crewAvailabilityApi, crewConflictsApi, CrewAvailability, CrewConflict } from '../services/castingApiService';
+import type { CrewAvailability, CrewConflict } from '../services/castingApiService';
+import { crewAvailabilityApi, crewConflictsApi } from '../services/castingApiService';
 
 interface CrewAvailabilityDrawerProps {
   open: boolean;

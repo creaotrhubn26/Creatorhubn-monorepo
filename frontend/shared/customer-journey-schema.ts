@@ -17,7 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // ✅ Customer Journey Templates
 export const customerJourneyTemplates = pgTable('customer_journey_templates', {

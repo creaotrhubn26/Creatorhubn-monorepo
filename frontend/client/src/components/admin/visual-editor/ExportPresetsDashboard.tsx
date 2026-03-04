@@ -151,8 +151,10 @@ import {
   CenterFocusStrong,
   CenterFocusWeak,
 } from '@mui/icons-material';
-import { useExportPresets, UseExportPresetsOptions } from '../../../hooks/useExportPresets';
-import { ExportPresetConfig, ExportPreset, ExportPlatform, ExportFormat } from '../../../utils/exportPresetsManager';
+import type { UseExportPresetsOptions } from '../../../hooks/useExportPresets';
+import { useExportPresets } from '../../../hooks/useExportPresets';
+import type { ExportPreset, ExportPlatform, ExportFormat } from '../../../utils/exportPresetsManager';
+import { ExportPresetConfig } from '../../../utils/exportPresetsManager';
 
 interface ExportPresetsDashboardProps {
   showDetails?: boolean;

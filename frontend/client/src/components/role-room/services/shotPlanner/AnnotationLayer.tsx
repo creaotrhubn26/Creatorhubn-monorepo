@@ -33,7 +33,8 @@ import {
   Palette as BrushIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
-import { useApplePencil, PencilPoint } from '../../hooks/useApplePencil';
+import type { PencilPoint } from '../../hooks/useApplePencil';
+import { useApplePencil } from '../../hooks/useApplePencil';
 
 // Brush configuration
 interface BrushConfig {

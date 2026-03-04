@@ -69,12 +69,13 @@ import {
   Water as RainIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import {
-  productionWorkflowService,
+import type {
   ShootingDay,
   CastMember,
   CrewMember,
-  StripboardStrip,
+  StripboardStrip} from '../../services/productionWorkflowService';
+import {
+  productionWorkflowService
 } from '../../services/productionWorkflowService';
 
 // ============================================

@@ -9,10 +9,11 @@ import { logger } from './logger';
 
 const log = logger.module('EnvironmentService');
 
-import { 
+import type { 
   ProfessionType, 
   Specialization,
-  EnvironmentConfig,
+  EnvironmentConfig} from '../data/professionTypes';
+import {
   PHOTOGRAPHER_SPECIALIZATIONS,
   VIDEOGRAPHER_SPECIALIZATIONS,
   ENVIRONMENTS,

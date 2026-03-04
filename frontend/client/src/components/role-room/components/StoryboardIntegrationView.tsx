@@ -37,10 +37,10 @@ import {
   Link as LinkIcon,
   Sync as SyncIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
+import type { SceneBreakdown, StoryboardFrame as StoryboardFrameModel } from '../models/casting';
 import { FrameDrawingEditor, QuickDrawButton } from './FrameDrawingEditor';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
-import { FrameDrawingData } from '../state/storyboardStore';
+import type { FrameDrawingData } from '../state/storyboardStore';
 import { useScriptStoryboardOptional, SceneContext } from '../contexts/ScriptStoryboardContext';
 
 interface StoryboardIntegrationViewProps {

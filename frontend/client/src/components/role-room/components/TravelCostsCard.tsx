@@ -17,7 +17,7 @@ import {
   Toll as TollIcon,
   AttachMoney as MoneyIcon,
 } from '@mui/icons-material';
-import { CrewMember, ProductionDay } from '../models/casting';
+import type { CrewMember, ProductionDay } from '../models/casting';
 import { castingService } from '../services/castingService';
 
 interface TravelCostsCardProps {

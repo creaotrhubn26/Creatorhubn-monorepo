@@ -62,7 +62,7 @@ import {
 import { LocationsIcon as LocationOn } from './icons/CastingIcons';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import jsPDF from 'jspdf';
-import {
+import type {
   CastingShot,
   ShotList,
   ShotStatus,
@@ -70,7 +70,8 @@ import {
   ShotPriority,
   MediaType,
   ProductionPhase,
-  ProductionContext,
+  ProductionContext} from '../models/casting';
+import {
   PRODUCTION_PRESETS,
 } from '../models/casting';
 import { InteractiveShotCard } from './InteractiveShotCard';

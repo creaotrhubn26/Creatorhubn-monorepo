@@ -29,7 +29,8 @@ import {
   Star,
   Info,
 } from '@mui/icons-material';
-import { useVirtualStudioRecommendations, VirtualStudioRecommendation } from '@/hooks/useVirtualStudioRecommendations';
+import type { VirtualStudioRecommendation } from '@/hooks/useVirtualStudioRecommendations';
+import { useVirtualStudioRecommendations } from '@/hooks/useVirtualStudioRecommendations';
 
 interface VirtualStudioRecommendationsProps {
   projectType: string;

@@ -11,7 +11,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import { AnimationTrack, Keyframe } from '../core/animation/SceneGraphAnimationEngine';
+import type { AnimationTrack, Keyframe } from '../core/animation/SceneGraphAnimationEngine';
 
 // ============================================================================
 // Types

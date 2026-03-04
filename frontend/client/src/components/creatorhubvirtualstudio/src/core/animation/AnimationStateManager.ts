@@ -10,11 +10,12 @@
  */
 
 import * as THREE from 'three';
-import {
+import type {
   AnimationTrack,
-  AnimationClip,
   Keyframe,
-  EasingName,
+  EasingName} from './SceneGraphAnimationEngine';
+import {
+  AnimationClip,
   EASING_FUNCTIONS,
 } from './SceneGraphAnimationEngine';
 

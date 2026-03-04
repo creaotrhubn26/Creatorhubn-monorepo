@@ -100,7 +100,7 @@ import {
   AddressIcon,
   CapacityIcon,
 } from './icons/CastingIcons';
-import { CastingProject, CastingShot, CrewMember, Location } from '../models/casting';
+import type { CastingProject, CastingShot, CrewMember, Location } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { externalDataService } from '@/services/ExternalDataService';
 import { LocationAnalysisDialog } from './LocationAnalysisDialog';

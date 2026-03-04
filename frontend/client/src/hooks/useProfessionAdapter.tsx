@@ -7,7 +7,8 @@
 
 import { useAuth } from './useAuth';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
-import { googleTrendsService, GoogleTrendsData } from '../services/GoogleTrendsService';
+import type { GoogleTrendsData } from '../services/GoogleTrendsService';
+import { googleTrendsService } from '../services/GoogleTrendsService';
 import { creatorHubSEOFixService } from '../services/CreatorHubSEOFixService';
 import { googleAnalyticsService } from '../services/GoogleAnalyticsService';
 import { useDemoMode } from '../contexts/DemoModeContext';

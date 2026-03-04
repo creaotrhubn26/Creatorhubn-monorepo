@@ -5,7 +5,7 @@
  * when characters are added to the scene.
  */
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 
 // ============================================================================
 // PREVIEW CARD ANIMATIONS (CSS-based for performance)

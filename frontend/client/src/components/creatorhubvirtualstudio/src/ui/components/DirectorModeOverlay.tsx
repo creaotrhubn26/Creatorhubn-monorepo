@@ -41,7 +41,8 @@ import {
   Keyboard,
   Info,
 } from '@mui/icons-material';
-import { MonitorLayout, monitorFeedService } from '../../core/services/monitorFeedService';
+import type { MonitorLayout} from '../../core/services/monitorFeedService';
+import { monitorFeedService } from '../../core/services/monitorFeedService';
 import { multiCameraRecordingService } from '../../core/services/multiCameraRecordingService';
 import { CameraControlPanel } from './CameraControlPanel';
 import { logger } from '../../core/services/logger';

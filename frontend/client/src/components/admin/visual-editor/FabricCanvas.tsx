@@ -6,7 +6,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as fabric from 'fabric';
 import { Box, Paper } from '@mui/material';
-import { useVisualEditor, EditorElement } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
+import { useVisualEditor } from './VisualEditorContext';
 
 // Extended types for canvas features
 interface CollaborativeCursor {

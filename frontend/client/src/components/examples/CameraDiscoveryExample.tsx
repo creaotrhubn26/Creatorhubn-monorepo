@@ -20,8 +20,8 @@ import {
 } from '@mui/icons-material';
 import { useCameraDiscovery } from '../../integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../utils/theming-helper';
-import { Camera } from '../../data/video-camera-database';
-import { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
+import type { Camera } from '../../data/video-camera-database';
+import type { PhotoCamera as PhotoCameraType } from '../../data/photo-camera-database';
 
 /**
  * Example component showing how to use the Camera Discovery System

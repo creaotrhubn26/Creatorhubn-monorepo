@@ -14,7 +14,8 @@
  * - POST   /api/protools/sessions/:sessionId/metadata - Update metadata
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import {
   proToolsSessions,

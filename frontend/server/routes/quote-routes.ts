@@ -3,7 +3,8 @@
  * Handles quote creation, management, and e-signature workflows
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../../../creatorhub-backend/server/db';
 import { sql } from 'drizzle-orm';
 import { isAuthenticated } from '../../../creatorhub-backend/server/simple-auth';

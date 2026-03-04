@@ -51,9 +51,10 @@ import {
   TableRow,
   Badge,
 } from '@mui/material';
+import type {
+  Campaign} from '@mui/icons-material';
 import {
   PersonAdd,
-  Campaign,
   Analytics,
   TrendingUp,
   Instagram,

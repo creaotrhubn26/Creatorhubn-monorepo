@@ -14,7 +14,8 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { EyeAnimationController, EYE_ANIMATION_PRESETS, EyeAnimationConfig } from '../../core/animations/EyeAnimations';
+import type { EyeAnimationConfig } from '../../core/animations/EyeAnimations';
+import { EyeAnimationController, EYE_ANIMATION_PRESETS } from '../../core/animations/EyeAnimations';
 
 // =============================================================================
 // Types

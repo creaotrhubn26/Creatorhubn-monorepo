@@ -40,11 +40,12 @@ import {
   RemoveRedEye,
   BlurOn,
 } from '@mui/icons-material';
-import {
+import type {
   GlassesOptions,
   GlassesFrameStyle,
   GlassesLensType,
-  GlassesFrameMaterial,
+  GlassesFrameMaterial} from '../../core/models/GlassesModel';
+import {
   GLASSES_PRESETS,
   getGlassesPresets,
 } from '../../core/models/GlassesModel';

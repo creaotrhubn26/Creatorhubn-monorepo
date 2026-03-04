@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Enrollment } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -232,6 +233,7 @@ const pathFromSeries = (values: number[], width: number, height: number, pad = 1
 function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse } = useAcademy();
+  const { analytics } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -511,7 +513,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -558,7 +560,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 borderRadius: 1,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Box>
         </Box>
@@ -594,7 +596,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
 
           <Box sx={{ flex: 1, minHeight: 0, p: 2, overflow: 'auto' }}>
             <Stack direction={{ xs: 'column', lg: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', lg: 'center' }} spacing={1.2}>
-              <Typography sx={{ fontSize: 36, fontWeight: 600, letterSpacing: '0.02em' }}>Analytics Dashboard</Typography>
+              <Typography sx={{ fontSize: 36, fontWeight: 600, letterSpacing: '0.02em' }}>{tt('Analysepanel', 'Analytics Dashboard')}</Typography>
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                 <Button
                   variant="outlined"
@@ -602,7 +604,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   onClick={handleExport}
                   sx={{ textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#edf0f7' }}
                 >
-                  Export
+                  {tt('Eksporter', 'Export')}
                 </Button>
                 <Button
                   variant="outlined"
@@ -610,7 +612,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   onClick={handleReports}
                   sx={{ textTransform: 'none', borderColor: 'rgba(255,255,255,0.2)', color: '#edf0f7' }}
                 >
-                  Reports
+                  {tt('Rapporter', 'Reports')}
                 </Button>
                 <Button
                   variant="contained"
@@ -624,7 +626,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                     fontWeight: 700,
                   }}
                 >
-                  Create Chart
+                  {tt('Opprett diagram', 'Create Chart')}
                 </Button>
               </Stack>
             </Stack>
@@ -679,44 +681,44 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
               <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <PeopleAlt sx={{ color: '#f8d56f' }} />
-                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>Student Enrollments</Typography>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Studentpåmeldinger', 'Student Enrollments')}</Typography>
                 </Stack>
                 <Typography sx={{ fontSize: 54, lineHeight: 1, fontWeight: 700, mt: 0.4 }}>{formatInteger(enrolledCount)}</Typography>
-                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>▲ 15.2% vs last 30 days</Typography>
+                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 15.2% mot siste 30 dager', '▲ 15.2% vs last 30 days')}</Typography>
               </Box>
 
               <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <PeopleAlt sx={{ color: '#f8d56f' }} />
-                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>Active Students</Typography>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Aktive studenter', 'Active Students')}</Typography>
                 </Stack>
                 <Typography sx={{ fontSize: 54, lineHeight: 1, fontWeight: 700, mt: 0.4 }}>{formatInteger(activeStudents)}</Typography>
-                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>▲ 17.9% vs last 30 days</Typography>
+                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 17.9% mot siste 30 dager', '▲ 17.9% vs last 30 days')}</Typography>
               </Box>
 
               <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <MonetizationOn sx={{ color: '#f8d56f' }} />
-                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>Total Revenue</Typography>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Total inntekt', 'Total Revenue')}</Typography>
                 </Stack>
                 <Typography sx={{ fontSize: 54, lineHeight: 1, fontWeight: 700, mt: 0.4 }}>{formatNok(revenueTotal)}</Typography>
-                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>▲ 21.6% vs last 30 days</Typography>
+                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 21.6% mot siste 30 dager', '▲ 21.6% vs last 30 days')}</Typography>
               </Box>
 
               <Box>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <TrendingUp sx={{ color: '#f8d56f' }} />
-                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>Engagement Rate</Typography>
+                  <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Engasjementsrate', 'Engagement Rate')}</Typography>
                 </Stack>
                 <Typography sx={{ fontSize: 54, lineHeight: 1, fontWeight: 700, mt: 0.4 }}>{engagementRate}%</Typography>
-                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>▲ 4.6% vs last 30 days</Typography>
+                <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 4.6% mot siste 30 dager', '▲ 4.6% vs last 30 days')}</Typography>
               </Box>
             </Box>
 
             <Box sx={{ mt: 1.1, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) 520px' }, gap: 1 }}>
               <Box sx={{ ...panelSx, p: 1 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>Student Growth</Typography>
+                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>{tt('Studentvekst', 'Student Growth')}</Typography>
                   <Stack direction="row" spacing={0.8}>
                     <Select
                       size="small"
@@ -728,8 +730,8 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="daily">Daily</MenuItem>
-                      <MenuItem value="weekly">Weekly</MenuItem>
+                      <MenuItem value="daily">{tt('Daglig', 'Daily')}</MenuItem>
+                      <MenuItem value="weekly">{tt('Ukentlig', 'Weekly')}</MenuItem>
                     </Select>
                     <Select
                       size="small"
@@ -741,7 +743,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">Enrollees</MenuItem>
+                      <MenuItem value="all">{tt('Påmeldte', 'Enrollees')}</MenuItem>
                       {courses.map((course) => (
                         <MenuItem key={`growth-${course.id}`} value={course.id}>
                           {course.title}
@@ -754,11 +756,11 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 <Stack direction="row" spacing={1.4} sx={{ mb: 0.6 }}>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f8b321' }} />
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>Enrollments</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>{tt('Påmeldinger', 'Enrollments')}</Typography>
                   </Stack>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#8ea6d6' }} />
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>Active Students</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>{tt('Aktive studenter', 'Active Students')}</Typography>
                   </Stack>
                 </Stack>
 
@@ -782,7 +784,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                   </Box>
                 </Box>
 
-                <Typography sx={{ mt: 0.8, mb: 0.4, color: 'rgba(237,240,247,0.72)' }}>Enrollment Source</Typography>
+                <Typography sx={{ mt: 0.8, mb: 0.4, color: 'rgba(237,240,247,0.72)' }}>{tt('Påmeldingskilder', 'Enrollment Source')}</Typography>
                 <Stack spacing={0.45}>
                   {sourceRows.map((source) => (
                     <Stack
@@ -813,7 +815,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
 
               <Box sx={{ ...panelSx, p: 1 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>Revenue Breakdown</Typography>
+                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>{tt('Inntektsfordeling', 'Revenue Breakdown')}</Typography>
                   <Stack direction="row" spacing={0.8}>
                     <Select
                       size="small"
@@ -872,7 +874,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                       }}
                     >
                       <Typography sx={{ fontSize: 32, fontWeight: 700, lineHeight: 1 }}>{formatNok(revenueTotal)}</Typography>
-                      <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>Total Revenue</Typography>
+                      <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.62)' }}>{tt('Total inntekt', 'Total Revenue')}</Typography>
                     </Box>
                   </Box>
 
@@ -911,7 +913,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1 }}>
                   <Box>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                      <Typography sx={{ fontSize: 28, lineHeight: 1, fontWeight: 600 }}>Top Courses</Typography>
+                      <Typography sx={{ fontSize: 28, lineHeight: 1, fontWeight: 600 }}>{tt('Toppkurs', 'Top Courses')}</Typography>
                       <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.62)' }}>
                         <MoreHoriz fontSize="small" />
                       </IconButton>
@@ -955,7 +957,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
 
                   <Box>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                      <Typography sx={{ fontSize: 28, lineHeight: 1, fontWeight: 600 }}>Top Profiles</Typography>
+                      <Typography sx={{ fontSize: 28, lineHeight: 1, fontWeight: 600 }}>{tt('Toppprofiler', 'Top Profiles')}</Typography>
                       <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.62)' }}>
                         <MoreHoriz fontSize="small" />
                       </IconButton>
@@ -1001,15 +1003,15 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
             <Box sx={{ mt: 1, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: 'minmax(0, 1fr) 520px' }, gap: 1 }}>
               <Box sx={{ ...panelSx, p: 1 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.8 }}>
-                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>Course Engagement</Typography>
+                  <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>{tt('Kursengasjement', 'Course Engagement')}</Typography>
                   <Stack direction="row" spacing={0.8}>
                     <Chip
-                      label="Overview"
+                      label={tt('Oversikt', 'Overview')}
                       size="small"
                       sx={{ color: '#edf0f7', bgcolor: 'rgba(255,255,255,0.08)' }}
                     />
                     <Chip
-                      label="Watch Time"
+                      label={tt('Seertid', 'Watch Time')}
                       size="small"
                       sx={{ color: '#edf0f7', bgcolor: 'rgba(248,179,33,0.12)', border: '1px solid rgba(248,179,33,0.34)' }}
                     />
@@ -1039,22 +1041,22 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 <Stack direction="row" spacing={2} sx={{ mt: 0.7 }}>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#f8b321' }} />
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>Avg Watch Time</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>{tt('Gj.sn. seertid', 'Avg Watch Time')}</Typography>
                   </Stack>
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: '#8ea6d6' }} />
-                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>Lesson Completion Rate</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.72)', fontSize: 13 }}>{tt('Fullføringsrate per leksjon', 'Lesson Completion Rate')}</Typography>
                   </Stack>
                 </Stack>
               </Box>
 
               <Box sx={{ ...panelSx, p: 1 }}>
-                <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>Insights & Tips</Typography>
+                <Typography sx={{ fontSize: 34, lineHeight: 1, fontWeight: 600 }}>{tt('Innsikt og tips', 'Insights & Tips')}</Typography>
 
                 <Stack spacing={0.8} sx={{ mt: 1 }}>
                   <Stack direction="row" spacing={0.7} alignItems="center">
                     <ShowChart sx={{ color: '#f8d56f' }} />
-                    <Typography>Course sales up 21.6% compared to last 30 days.</Typography>
+                    <Typography>{tt('Kursalget er opp 21.6% sammenlignet med de siste 30 dagene.', 'Course sales up 21.6% compared to last 30 days.')}</Typography>
                   </Stack>
                   <Stack direction="row" spacing={0.7} alignItems="center">
                     <TrendingUp sx={{ color: '#9acd6f' }} />

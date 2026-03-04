@@ -31,7 +31,8 @@ import {
   Assessment as AnalysisIcon,
   Download as DownloadIcon,
 } from '@mui/icons-material';
-import researchBasedOptimizer, { FeatureOptimization } from '../../services/ResearchBasedOptimizer';
+import type { FeatureOptimization } from '../../services/ResearchBasedOptimizer';
+import researchBasedOptimizer from '../../services/ResearchBasedOptimizer';
 
 interface ResearchOptimizationPanelProps {
   renderer?: any; // EnhancedRenderer instance

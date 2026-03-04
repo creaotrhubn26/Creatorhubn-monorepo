@@ -40,12 +40,14 @@ import {
   PushPin,
   Flag,
 } from '@mui/icons-material';
+import type {
+  Comment} from '../../core/storyboard/StoryboardCollaborationService';
 import {
   storyboardCollaborationService,
-  Comment,
   CommentStatus,
 } from '../../core/storyboard/StoryboardCollaborationService';
-import { useSelectedFrame, StoryboardFrame } from '../../state/storyboardStore';
+import type { StoryboardFrame } from '../../state/storyboardStore';
+import { useSelectedFrame } from '../../state/storyboardStore';
 
 // =============================================================================
 // Comment Thread Component

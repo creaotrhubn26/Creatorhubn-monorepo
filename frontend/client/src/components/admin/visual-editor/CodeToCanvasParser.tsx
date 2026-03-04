@@ -4,7 +4,7 @@
  * Enables bi-directional sync between code editor and canvas
  */
 
-import { EditorElement } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
 import * as parser from '@babel/parser';
 import traverse from '@babel/traverse';
 import * as t from '@babel/types';

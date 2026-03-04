@@ -45,7 +45,8 @@ import {
   Menu as MenuIcon,
   ArrowBack as BackIcon,
 } from '@mui/icons-material';
-import { tutorialService, Tutorial, TutorialStep } from '../services/tutorialService';
+import type { Tutorial, TutorialStep } from '../services/tutorialService';
+import { tutorialService } from '../services/tutorialService';
 
 interface TutorialEditorPanelProps {
   open: boolean;

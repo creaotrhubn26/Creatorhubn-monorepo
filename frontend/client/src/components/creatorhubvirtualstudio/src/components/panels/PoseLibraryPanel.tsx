@@ -35,13 +35,14 @@ import {
   TheaterComedy,
   Blender,
 } from '@mui/icons-material';
+import type {
+  PosePreset} from '../../core/animation/PoseLibrary';
 import {
   ALL_POSES,
   getPosesByCategory,
-  PosePreset,
   BONE_NAMES,
 } from '../../core/animation/PoseLibrary';
-import { IKSystem } from '../../core/animation/IKSystem';
+import type { IKSystem } from '../../core/animation/IKSystem';
 
 interface PoseLibraryPanelProps {
   ikSystem: IKSystem | null;

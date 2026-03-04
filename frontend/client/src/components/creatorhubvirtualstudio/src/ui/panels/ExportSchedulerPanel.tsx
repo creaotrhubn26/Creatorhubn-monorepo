@@ -72,15 +72,17 @@ import {
   ArrowUpward,
   ArrowDownward,
 } from '@mui/icons-material';
-import {
-  exportScheduler,
+import type {
   ExportJob,
   ExportJobPriority,
   ExportJobStatus,
   SchedulerState,
-  BatchExportConfig,
+  BatchExportConfig} from '../../core/animation/ExportScheduler';
+import {
+  exportScheduler
 } from '../../core/animation/ExportScheduler';
-import { EXPORT_PRESETS, ExportPreset } from '../../core/animation/GoogleDriveExportService';
+import type { ExportPreset } from '../../core/animation/GoogleDriveExportService';
+import { EXPORT_PRESETS } from '../../core/animation/GoogleDriveExportService';
 import { videoExportService } from '../../core/animation/VideoExportService';
 
 // ============================================================================

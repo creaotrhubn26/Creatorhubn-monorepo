@@ -47,7 +47,8 @@ import { CodeEditorPanel } from './CodeEditorPanel';
 import { LivePreviewPanel } from './LivePreviewPanel';
 import { useVisualEditor } from './VisualEditorContext';
 import type { EditorElement } from './VisualEditorContext';
-import { parseCode, ParseResult } from './CodeToCanvasParser';
+import type { ParseResult } from './CodeToCanvasParser';
+import { parseCode } from './CodeToCanvasParser';
 import { useHotReload, HotReloadIndicator } from './HotReloadSystem';
 
 // Code Generation Studio (existing)
@@ -55,17 +56,21 @@ import CodeGenerationStudio from '@/components/CodeGenerationStudio';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 
 // AI Code Completion
-import { useAICodeCompletion, AIContext, AICompletionConfig } from './AICodeCompletionSystem';
+import type { AIContext, AICompletionConfig } from './AICodeCompletionSystem';
+import { useAICodeCompletion } from './AICodeCompletionSystem';
 import AISettingsDialog from './AISettingsDialog';
 import AICompletionPanel from './AICompletionPanel';
 
 // ✨ NEW: AI Enhancement Components
 import AIModelComparison from './AIModelComparison';
-import AIPromptTemplates, { PromptTemplate } from './AIPromptTemplates';
+import type { PromptTemplate } from './AIPromptTemplates';
+import AIPromptTemplates from './AIPromptTemplates';
 import AIUsageAnalytics from './AIUsageAnalytics';
-import AILocalModelProvider, { LocalProviderConfig } from './AILocalModelProvider';
+import type { LocalProviderConfig } from './AILocalModelProvider';
+import AILocalModelProvider from './AILocalModelProvider';
 import AIDebugAssistant from './AIDebugAssistant';
-import AIMultiFileContext, { ProjectContext } from './AIMultiFileContext';
+import type { ProjectContext } from './AIMultiFileContext';
+import AIMultiFileContext from './AIMultiFileContext';
 import AIVisionCodeGenerator from './AIVisionCodeGenerator';
 
 interface TabPanelProps {

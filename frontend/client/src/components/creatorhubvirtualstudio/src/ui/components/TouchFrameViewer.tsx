@@ -50,9 +50,11 @@ import {
   CropFree,
 } from '@mui/icons-material';
 import { styled, keyframes } from '@mui/material/styles';
-import { useTouchGestures, Point } from '../../hooks/useTouchGestures';
+import type { Point } from '../../hooks/useTouchGestures';
+import { useTouchGestures } from '../../hooks/useTouchGestures';
 import { useDeviceDetection } from '../../hooks/useDeviceDetection';
-import { FrameAnnotationOverlay, FrameAnnotation, AnnotationType } from './FrameAnnotationOverlay';
+import type { FrameAnnotation, AnnotationType } from './FrameAnnotationOverlay';
+import { FrameAnnotationOverlay } from './FrameAnnotationOverlay';
 
 // =============================================================================
 // Types

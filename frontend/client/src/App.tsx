@@ -155,6 +155,7 @@ import AcademyCurriculumStudio from '@/components/academy/AcademyCurriculumStudi
 import AcademyStudentDashboardStudio from '@/components/academy/AcademyStudentDashboardStudio';
 import AcademyAnalyticsStudio from '@/components/academy/AcademyAnalyticsStudio';
 import AcademyMediaStudio from '@/components/academy/AcademyMediaStudio';
+import AcademyDesignProvider from '@/components/academy/AcademyDesignProvider';
 import CommunityLandingPage from '@/components/community/CommunityLandingPage';
 import ReceiptsManager from '@/components/accounting/ReceiptsManager';
 import ShowcaseAmazonDesign from '@/components/universal/misc/ShowcaseAmazonDesign';
@@ -171,16 +172,36 @@ const LandingMobileBackupSep19 = React.lazy(() => import('@/pages/landing-mobile
 // Wrapper components for route compatibility
 const AdminDashboardWrapper = (props: any) => <AdminDashboard {...props} />;
 const CompleteDeploymentManagerWrapper = (props: any) => <CompleteDeploymentManager {...props} />;
-const AcademyLandingRouteWrapper = (props: any) => (
-  <AcademyProvider>
-    <AcademyLandingPage {...props} />
-  </AcademyProvider>
-);
-const AcademyDashboardRouteWrapper = (props: any) => (
-  <AcademyProvider>
-    <AcademyDashboardCinematic {...props} />
-  </AcademyProvider>
-);
+const createAcademyRouteWrapper = (Component: React.ComponentType<any>) => {
+  const AcademyRouteWrapper = (props: any) => (
+    <AcademyDesignProvider>
+      <AcademyProvider>
+        <Component {...props} />
+      </AcademyProvider>
+    </AcademyDesignProvider>
+  );
+
+  return AcademyRouteWrapper;
+};
+
+const AcademyLandingRouteWrapper = createAcademyRouteWrapper(AcademyLandingPage);
+const AcademyDashboardRouteWrapper = createAcademyRouteWrapper(AcademyDashboardCinematic);
+const AcademyCourseCreatorRouteWrapper = createAcademyRouteWrapper(CourseCreator);
+const AcademyModuleManagerRouteWrapper = createAcademyRouteWrapper(ModuleManager);
+const AcademyAnnotationEditorRouteWrapper = createAcademyRouteWrapper(VideoAnnotationEditor);
+const AcademyQuizManagerRouteWrapper = createAcademyRouteWrapper(QuizManager);
+const AcademyAssignmentsRouteWrapper = createAcademyRouteWrapper(AcademyAssignmentsStudio);
+const AcademyEnrollmentRouteWrapper = createAcademyRouteWrapper(AcademyEnrollmentStudio);
+const AcademyStudentDashboardRouteWrapper = createAcademyRouteWrapper(AcademyStudentDashboardStudio);
+const AcademyAnalyticsRouteWrapper = createAcademyRouteWrapper(AcademyAnalyticsStudio);
+const AcademyCurriculumRouteWrapper = createAcademyRouteWrapper(AcademyCurriculumStudio);
+const AcademyLessonRouteWrapper = createAcademyRouteWrapper(AcademyLessonStudio);
+const AcademyCohortSettingsRouteWrapper = createAcademyRouteWrapper(AcademyCohortSettingsStudio);
+const AcademyMediaRouteWrapper = createAcademyRouteWrapper(AcademyMediaStudio);
+const AcademyVideoPlayerRouteWrapper = createAcademyRouteWrapper(AcademyVideoPlayerStudio);
+const AcademyMonetizationRouteWrapper = createAcademyRouteWrapper(AcademyMonetizationStudio);
+const AcademyCTAOverlayRouteWrapper = createAcademyRouteWrapper(AcademyCTAOverlayStudio);
+const AcademyLowerThirdsRouteWrapper = createAcademyRouteWrapper(AcademyLowerThirdsStudio);
 const StoryArcStudioRouteWrapper = () => (
   <SettingsProvider>
     <AppThemeProvider>
@@ -311,7 +332,7 @@ function App() {
                 <CssBaseline />
                 <AuthProvider>
                   <EnhancedMasterIntegrationProvider
-                    enableDebugMode={import.meta.env.MODE ==='development'}
+                    enableDebugMode={import.meta.env.VITE_ENABLE_INTEGRATION_DEBUG === 'true'}
                     enablePerformanceMonitoring={true}
                     enableAnalytics={true}
                   >
@@ -389,36 +410,36 @@ function App() {
                   />
                   <Route path="/academy" component={AcademyLandingRouteWrapper as React.ComponentType<any>} />
                   <Route path="/academy-dashboard" component={AcademyDashboardRouteWrapper as React.ComponentType<any>} />
-                  <Route path="/academy/course-creator" component={CourseCreator as React.ComponentType<any>} />
-                  <Route path="/academy/module-manager" component={ModuleManager as React.ComponentType<any>} />
-                  <Route path="/academy/annotation-editor" component={VideoAnnotationEditor as React.ComponentType<any>} />
-                  <Route path="/academy/quiz-manager" component={QuizManager as React.ComponentType<any>} />
-                  <Route path="/academy/assignments" component={AcademyAssignmentsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/assignment-manager" component={AcademyAssignmentsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/enrollment" component={AcademyEnrollmentStudio as React.ComponentType<any>} />
-                  <Route path="/academy/student-enrollment" component={AcademyEnrollmentStudio as React.ComponentType<any>} />
-                  <Route path="/academy/student-dashboard" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
-                  <Route path="/academy/dashboard/student" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
-                  <Route path="/academy/analytics" component={AcademyAnalyticsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/canalytics" component={AcademyAnalyticsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/curriculum" component={AcademyCurriculumStudio as React.ComponentType<any>} />
-                  <Route path="/academy/curriculum-manager" component={AcademyCurriculumStudio as React.ComponentType<any>} />
-                  <Route path="/academy/lesson-editor" component={AcademyLessonStudio as React.ComponentType<any>} />
-                  <Route path="/academy/lessons" component={AcademyLessonStudio as React.ComponentType<any>} />
-                  <Route path="/academy/courses" component={CourseCreator as React.ComponentType<any>} />
-                  <Route path="/academy/modules" component={ModuleManager as React.ComponentType<any>} />
-                  <Route path="/academy/cohort-settings" component={AcademyCohortSettingsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/cohorts" component={AcademyCohortSettingsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/media" component={AcademyMediaStudio} />
-                  <Route path="/academy/library" component={AcademyMediaStudio} />
-                  <Route path="/academy/asset-browser" component={AcademyMediaStudio} />
-                  <Route path="/academy/video-player" component={AcademyVideoPlayerStudio as React.ComponentType<any>} />
-                  <Route path="/academy/assessments" component={QuizManager as React.ComponentType<any>} />
-                  <Route path="/academy/monetization" component={AcademyMonetizationStudio as React.ComponentType<any>} />
-                  <Route path="/academy/cta-overlay" component={AcademyCTAOverlayStudio as React.ComponentType<any>} />
-                  <Route path="/academy/lower-thirds" component={AcademyLowerThirdsStudio as React.ComponentType<any>} />
-                  <Route path="/academy/messages" component={AcademyStudentDashboardStudio as React.ComponentType<any>} />
-                  <Route path="/academy/settings" component={CourseCreator as React.ComponentType<any>} />
+                  <Route path="/academy/course-creator" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/module-manager" component={AcademyModuleManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/annotation-editor" component={AcademyAnnotationEditorRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/quiz-manager" component={AcademyQuizManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/assignments" component={AcademyAssignmentsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/assignment-manager" component={AcademyAssignmentsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/enrollment" component={AcademyEnrollmentRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/student-enrollment" component={AcademyEnrollmentRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/student-dashboard" component={AcademyStudentDashboardRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/dashboard/student" component={AcademyStudentDashboardRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/analytics" component={AcademyAnalyticsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/canalytics" component={AcademyAnalyticsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/curriculum" component={AcademyCurriculumRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/curriculum-manager" component={AcademyCurriculumRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/lesson-editor" component={AcademyLessonRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/lessons" component={AcademyLessonRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/courses" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/modules" component={AcademyModuleManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/cohort-settings" component={AcademyCohortSettingsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/cohorts" component={AcademyCohortSettingsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/media" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/library" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/asset-browser" component={AcademyMediaRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/video-player" component={AcademyVideoPlayerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/assessments" component={AcademyQuizManagerRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/monetization" component={AcademyMonetizationRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/cta-overlay" component={AcademyCTAOverlayRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/lower-thirds" component={AcademyLowerThirdsRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/messages" component={AcademyStudentDashboardRouteWrapper as React.ComponentType<any>} />
+                  <Route path="/academy/settings" component={AcademyCourseCreatorRouteWrapper as React.ComponentType<any>} />
                   <Route path="/community" component={CommunityLandingPageWrapper} />
                   <Route path="/help" component={() => <SmartDashboardRoute />} />
                   <Route

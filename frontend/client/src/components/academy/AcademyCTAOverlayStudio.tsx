@@ -38,6 +38,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -211,10 +212,11 @@ const defaultOverlays = (): CTAOverlayItem[] => [
 function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverlayStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
-  const [leftNav, setLeftNav] = useState('monetization');
+  const [leftNav, setLeftNav] = useState('cta');
   const [rightTab, setRightTab] = useState<RightTab>('performance');
   const [editorTab, setEditorTab] = useState<EditorTab>('content');
   const [search, setSearch] = useState('');
@@ -394,8 +396,8 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
     };
     setOverlayItems((prev) => [next, ...prev]);
     setSelectedOverlayId(next.id);
-    setSaveMessage(`Overlay ${next.name} added.`);
-  }, [currentTime, duration, overlayItems.length]);
+    setSaveMessage(tt(`Overlay ${next.name} lagt til.`, `Overlay ${next.name} added.`));
+  }, [currentTime, duration, overlayItems.length, tt]);
 
   const duplicateOverlay = useCallback(() => {
     if (!selectedOverlay) return;
@@ -408,15 +410,15 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
     };
     setOverlayItems((prev) => [clone, ...prev]);
     setSelectedOverlayId(clone.id);
-    setSaveMessage(`Duplicated ${selectedOverlay.name}.`);
-  }, [duration, selectedOverlay]);
+    setSaveMessage(tt(`Dupliserte ${selectedOverlay.name}.`, `Duplicated ${selectedOverlay.name}.`));
+  }, [duration, selectedOverlay, tt]);
 
   const removeOverlay = useCallback(() => {
     if (!selectedOverlay) return;
     setOverlayItems((prev) => prev.filter((item) => item.id !== selectedOverlay.id));
     setSelectedOverlayId('');
-    setSaveMessage(`Removed ${selectedOverlay.name}.`);
-  }, [selectedOverlay]);
+    setSaveMessage(tt(`Fjernet ${selectedOverlay.name}.`, `Removed ${selectedOverlay.name}.`));
+  }, [selectedOverlay, tt]);
 
   const saveOverlaySetup = useCallback(
     async (publish: boolean) => {
@@ -453,7 +455,11 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
         }
 
         onSave?.(payload);
-        setSaveMessage(publish ? 'CTA overlay published.' : 'CTA overlay saved.');
+        setSaveMessage(
+          publish
+            ? tt('CTA-overlay publisert.', 'CTA overlay published.')
+            : tt('CTA-overlay lagret.', 'CTA overlay saved.'),
+        );
 
         analytics.trackEvent('academy_cta_overlay_saved', {
           courseId: course?.id || null,
@@ -462,7 +468,11 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
           timestamp: Date.now(),
         });
       } catch (error) {
-        setSaveMessage(error instanceof Error ? error.message : 'Could not save CTA overlay setup.');
+        setSaveMessage(
+          error instanceof Error
+            ? error.message
+            : tt('Kunne ikke lagre CTA-overlayoppsett.', 'Could not save CTA overlay setup.'),
+        );
       }
     },
     [
@@ -472,6 +482,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
       overlayItems,
       resetToKeyframe,
       state.courses,
+      tt,
       triggerEnabled,
       updateCourse,
     ],
@@ -537,7 +548,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {navLabel('Create New Course')}
             </Button>
           </Stack>
 
@@ -584,7 +595,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 borderRadius: 1,
               }}
             >
-              New Module
+              {tt('Ny CTA', 'New CTA')}
             </Button>
           </Box>
         </Box>
@@ -637,7 +648,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 alignItems={{ xs: 'stretch', md: 'center' }}
               >
                 <Typography sx={{ fontSize: 40, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  CTA Overlay Editor
+                  {tt('CTA-overlayredigering', 'CTA Overlay Editor')}
                 </Typography>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -652,7 +663,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                       borderRadius: 1,
                     }}
                   >
-                    Preview
+                    {tt('Forhåndsvis', 'Preview')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -665,7 +676,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                       borderRadius: 1,
                     }}
                   >
-                    Save
+                    {tt('Lagre', 'Save')}
                   </Button>
                   <Button
                     variant="contained"
@@ -679,7 +690,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                       boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                     }}
                   >
-                    Publish
+                    {tt('Publiser', 'Publish')}
                   </Button>
                 </Stack>
               </Stack>
@@ -889,7 +900,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
               <Box sx={{ ...panelSx, p: 1.1, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '310px minmax(0, 1fr)' }, gap: 1.1 }}>
                 <Box sx={{ ...panelSx, p: 1 }}>
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.8 }}>
-                    <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 28 }}>CTA Overlay Editor</Typography>
+                    <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 28 }}>{tt('CTA-overlayredigering', 'CTA Overlay Editor')}</Typography>
                     <Switch
                       size="small"
                       checked={selectedOverlay?.enabled || false}
@@ -1161,7 +1172,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         border: '1px solid rgba(255,255,255,0.17)',
                       }}
                     >
-                      Monetization
+                      {tt('Monetisering', 'Monetization')}
                     </Button>
                     <Button
                       startIcon={<Subtitles />}
@@ -1173,7 +1184,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         border: '1px solid rgba(255,255,255,0.17)',
                       }}
                     >
-                      LowerThirds
+                      {tt('LowerThirds', 'LowerThirds')}
                     </Button>
                     <Button
                       startIcon={<Save />}
@@ -1185,7 +1196,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         border: '1px solid rgba(255,255,255,0.17)',
                       }}
                     >
-                      Save
+                      {tt('Lagre', 'Save')}
                     </Button>
                   </Stack>
                 </Box>
@@ -1217,10 +1228,10 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                       checked={selectedOverlay?.enabled || false}
                       onChange={(event) => setSelectedOverlayField('enabled', event.target.checked)}
                     />
-                    <Typography sx={{ fontWeight: 600 }}>{selectedOverlay?.name || 'Overlay'}</Typography>
+                    <Typography sx={{ fontWeight: 600 }}>{selectedOverlay?.name || tt('Overlay', 'Overlay')}</Typography>
                     <Chip
                       size="small"
-                      label={selectedOverlay?.abTestEnabled ? 'A/B Test' : 'Single Variant'}
+                      label={selectedOverlay?.abTestEnabled ? tt('A/B-test', 'A/B Test') : tt('Enkeltvariant', 'Single Variant')}
                       sx={{ bgcolor: 'rgba(255,255,255,0.08)', color: '#edf0f7' }}
                     />
                     <IconButton size="small" sx={{ ml: 'auto', color: 'rgba(237,240,247,0.68)' }}>
@@ -1233,7 +1244,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                   <Stack direction="row" spacing={0.8} sx={{ mb: 0.9 }}>
                     <TextField
                       size="small"
-                      placeholder="Search overlays..."
+                      placeholder={tt('Søk overlegg...', 'Search overlays...')}
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       InputProps={{
@@ -1295,22 +1306,22 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 {selectedOverlay && (
                   <>
                     <Box sx={{ ...panelSx, p: 1 }}>
-                      <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 26 }}>CTA Insights</Typography>
+                      <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 26 }}>{tt('CTA-innsikt', 'CTA Insights')}</Typography>
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.8 }}>
                         <Stack>
-                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>Avg Watch</Typography>
+                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>{tt('Gj.sn. visning', 'Avg Watch')}</Typography>
                           <Typography sx={{ fontSize: 34, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                             {selectedOverlay.analytics.avgWatchBeforeTrigger}s
                           </Typography>
                         </Stack>
                         <Stack>
-                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>Click Through</Typography>
+                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>{tt('Klikkrate', 'Click Through')}</Typography>
                           <Typography sx={{ fontSize: 34, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                             {ctr}%
                           </Typography>
                         </Stack>
                         <Stack>
-                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>Conversions</Typography>
+                          <Typography sx={{ color: 'rgba(237,240,247,0.65)', fontSize: 12 }}>{tt('Konverteringer', 'Conversions')}</Typography>
                           <Typography sx={{ fontSize: 34, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
                             {selectedOverlay.analytics.conversions}
                           </Typography>
@@ -1342,23 +1353,23 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
 
                     <Box sx={{ ...panelSx, p: 1 }}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 26 }}>Conversion Goals</Typography>
+                        <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 26 }}>{tt('Konverteringsmål', 'Conversion Goals')}</Typography>
                         <Typography sx={{ color: '#f8d56f' }}>{selectedOverlay.analytics.views.toLocaleString()}</Typography>
                       </Stack>
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.8 }}>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>Conversion Rate</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>{tt('Konverteringsrate', 'Conversion Rate')}</Typography>
                         <Typography sx={{ fontSize: 34, fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
                           {conversionRate}%
                         </Typography>
                       </Stack>
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.35 }}>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>Revenue</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>{tt('Inntekt', 'Revenue')}</Typography>
                         <Typography sx={{ fontSize: 34, fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
                           {toNok(selectedOverlay.analytics.revenue)}
                         </Typography>
                       </Stack>
                       <Stack direction="row" justifyContent="space-between" sx={{ mt: 0.35 }}>
-                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>Current Uplift (A vs B)</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.75)' }}>{tt('Nåværende løft (A vs B)', 'Current Uplift (A vs B)')}</Typography>
                         <Typography sx={{ color: '#7eea8e', fontSize: 28, fontFamily: 'Barlow Condensed, sans-serif', lineHeight: 1 }}>
                           +{uplift}%
                         </Typography>
@@ -1390,7 +1401,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           border: '1px solid rgba(255,255,255,0.18)',
                         }}
                       >
-                        Preview
+                        {tt('Forhåndsvis', 'Preview')}
                       </Button>
                       <Button
                         startIcon={<MonetizationOn />}
@@ -1402,7 +1413,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           border: '1px solid rgba(255,255,255,0.18)',
                         }}
                       >
-                        Revenue
+                        {tt('Inntekt', 'Revenue')}
                       </Button>
                       <Button
                         onClick={() => void saveOverlaySetup(false)}
@@ -1413,7 +1424,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           fontWeight: 700,
                         }}
                       >
-                        Save
+                        {tt('Lagre', 'Save')}
                       </Button>
                     </Stack>
                   </>
@@ -1433,7 +1444,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     fontWeight: 700,
                   }}
                 >
-                  Add
+                  {tt('Legg til', 'Add')}
                 </Button>
                 <Button
                   startIcon={<Save />}
@@ -1445,7 +1456,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1461,7 +1472,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Close
+                  {tt('Lukk', 'Close')}
                 </Button>
               </Stack>
             </Box>

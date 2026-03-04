@@ -3,7 +3,8 @@
  * Manages and broadcasts real-time file management system status across components
  */
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
 interface FileManagementStatus {
   // System Status

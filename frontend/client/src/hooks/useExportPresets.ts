@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  exportPresetsManager, 
+import type { 
   ExportPresetConfig, 
   ExportPresetManagerState, 
   ExportPreset,
   ExportPlatform,
   ExportFormat
+} from '../utils/exportPresetsManager';
+import { 
+  exportPresetsManager
 } from'../utils/exportPresetsManager';
 
 export interface UseExportPresetsOptions {

@@ -31,7 +31,8 @@ import {
   BorderAll,
   Opacity,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig } from './BaseNode';
+import type { NodeConfig } from './BaseNode';
+import { BaseNode } from './BaseNode';
 
 const toStringValue = (value: unknown, fallback = ''): string => {
   if (typeof value === 'string') {

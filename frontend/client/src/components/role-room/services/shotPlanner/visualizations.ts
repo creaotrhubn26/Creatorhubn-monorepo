@@ -11,7 +11,8 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { Point2D, Camera2D, Actor2D, Shot2D } from './types';
+import type { Point2D, Camera2D, Actor2D} from './types';
+import { Shot2D } from './types';
 
 // =============================================================================
 // Colors & Styles

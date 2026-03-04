@@ -10,17 +10,20 @@
  * - Tablet-optimized navigation
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useCallback,
   useEffect,
-  useRef,
-  ReactNode,
+  useRef
 } from 'react';
-import { useDeviceDetection, DeviceInfo, DeviceType } from '../hooks/useDeviceDetection';
-import { useApplePencil, PencilState, InputType } from '../hooks/useApplePencil';
+import type { DeviceInfo} from '../hooks/useDeviceDetection';
+import { useDeviceDetection, DeviceType } from '../hooks/useDeviceDetection';
+import type { PencilState} from '../hooks/useApplePencil';
+import { useApplePencil, InputType } from '../hooks/useApplePencil';
 
 // =============================================================================
 // Types

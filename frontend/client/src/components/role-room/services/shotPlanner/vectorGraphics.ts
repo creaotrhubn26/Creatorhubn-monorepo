@@ -6,7 +6,8 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { Actor2D, Camera2D, Prop2D, Point2D, Size2D } from './types';
+import type { Point2D, Size2D } from './types';
+import { Actor2D, Camera2D, Prop2D } from './types';
 
 // =============================================================================
 // Constants

@@ -16,7 +16,8 @@ import {
   Paper,
 } from '@mui/material';
 import { Download, Visibility } from '@mui/icons-material';
-import { lightDiagramGenerator, LightInfo } from '../../core/services/lightDiagramGenerator';
+import type { LightInfo } from '../../core/services/lightDiagramGenerator';
+import { lightDiagramGenerator } from '../../core/services/lightDiagramGenerator';
 
 interface LightDiagramPanelProps {
   lights: LightInfo[];

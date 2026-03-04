@@ -11,15 +11,16 @@
  * - AccessibleTooltip: Tooltip accessible to keyboard/screen readers
  */
 
+import type {
+  ReactNode,
+  KeyboardEvent,
+  MouseEvent} from 'react';
 import React, {
   useCallback,
   useRef,
   useState,
   useEffect,
-  forwardRef,
-  ReactNode,
-  KeyboardEvent,
-  MouseEvent,
+  forwardRef
 } from 'react';
 import {
   Box,

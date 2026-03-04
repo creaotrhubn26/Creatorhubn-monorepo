@@ -21,7 +21,7 @@ import {
   ViewDay as ViewDayIcon,
   GetApp as GetAppIcon,
 } from '@mui/icons-material';
-import { ScriptRevision } from '../models/casting';
+import type { ScriptRevision } from '../models/casting';
 
 interface ScriptDiffViewerProps {
   revisions: ScriptRevision[];

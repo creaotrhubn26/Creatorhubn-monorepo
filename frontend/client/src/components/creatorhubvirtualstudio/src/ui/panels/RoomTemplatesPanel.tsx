@@ -21,7 +21,8 @@ import {
   Chip,
 } from '@mui/material';
 import { Home, Info } from '@mui/icons-material';
-import { roomLoader, RoomTemplate } from '../../core/services/roomLoader';
+import type { RoomTemplate } from '../../core/services/roomLoader';
+import { roomLoader } from '../../core/services/roomLoader';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('RoomTemplatesPanel');

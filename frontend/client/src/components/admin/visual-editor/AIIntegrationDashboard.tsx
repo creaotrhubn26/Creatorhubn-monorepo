@@ -159,8 +159,10 @@ import {
   ExtensionTwoTone,
 } from '@mui/icons-material';
 import Grid from '@mui/material/Grid2';
-import { useAIIntegration, UseAIIntegrationOptions } from '../../../hooks/useAIIntegration';
-import { AIConfig, AIPrompt, AIResponse, AIContext, AILearning, AIOptimization } from '../../../utils/aiIntegrationManager';
+import type { UseAIIntegrationOptions } from '../../../hooks/useAIIntegration';
+import { useAIIntegration } from '../../../hooks/useAIIntegration';
+import type { AIPrompt, AIResponse, AIContext, AILearning, AIOptimization } from '../../../utils/aiIntegrationManager';
+import { AIConfig } from '../../../utils/aiIntegrationManager';
 
 interface AIIntegrationDashboardProps {
   showDetails?: boolean;

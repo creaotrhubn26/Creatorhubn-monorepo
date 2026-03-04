@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { WireMockTestResult } from '../components/admin/WireMockResponseViewer';
+import type { WireMockTestResult } from '../components/admin/WireMockResponseViewer';
 
 const MAX_HISTORY_SIZE = 100;
 

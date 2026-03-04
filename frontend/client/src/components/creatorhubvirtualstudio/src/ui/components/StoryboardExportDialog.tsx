@@ -36,12 +36,13 @@ import {
   CheckCircle,
   Error as ErrorIcon,
 } from '@mui/icons-material';
-import {
-  storyboardExportService,
+import type {
   ExportFormat,
   ExportOptions,
   ExportProgress,
-  ExportResult,
+  ExportResult} from '../../core/storyboard/StoryboardExportService';
+import {
+  storyboardExportService
 } from '../../core/storyboard/StoryboardExportService';
 import { useCurrentStoryboard, Storyboard } from '../../state/storyboardStore';
 import { useAnnounce } from '../../providers/AccessibilityProvider';

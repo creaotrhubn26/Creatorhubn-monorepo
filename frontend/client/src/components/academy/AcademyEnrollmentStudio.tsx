@@ -33,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course, type Enrollment } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -392,6 +393,7 @@ const buildStudentsFromEnrollments = (enrollments: Enrollment[], courses: Course
 function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollmentStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -988,7 +990,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.16)' },
                       }}
                     >
-                      <MenuItem value="all">{tt('All fullføring', 'All Completion')}</MenuItem>
+                      <MenuItem value="all">{tt('Alle fullføringsnivåer', 'All Completion')}</MenuItem>
                       <MenuItem value="high">{tt('Høy (85%+)', 'High (85%+)')}</MenuItem>
                       <MenuItem value="mid">{tt('Middels (65-84%)', 'Mid (65-84%)')}</MenuItem>
                       <MenuItem value="low">{tt('Lav (<65%)', 'Low (<65%)')}</MenuItem>
@@ -1068,8 +1070,8 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     <Typography sx={{ fontSize: 42, fontWeight: 700, lineHeight: 1 }}>
                       {totals.avgEnrollScore}
                     </Typography>
-                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>Enrolled Index</Typography>
-                    <Typography sx={{ fontSize: 12, color: '#95d57e' }}>Operational health</Typography>
+                    <Typography sx={{ color: 'rgba(237,240,247,0.8)' }}>{tt('Påmeldingsindeks', 'Enrolled Index')}</Typography>
+                    <Typography sx={{ fontSize: 12, color: '#95d57e' }}>{tt('Operativ helse', 'Operational health')}</Typography>
                   </Box>
                 </Box>
 
@@ -1206,7 +1208,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     {visibleStudents.length === 0 && (
                       <Box sx={{ px: 1.2, py: 2.5, bgcolor: 'rgba(8,11,18,0.6)' }}>
                         <Typography sx={{ color: 'rgba(237,240,247,0.66)' }}>
-                          No students match current filters.
+                          {tt('Ingen studenter samsvarer med gjeldende filter.', 'No students match current filters.')}
                         </Typography>
                       </Box>
                     )}
@@ -1248,7 +1250,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             {card.title}
                           </Typography>
                           <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }} noWrap>
-                            {card.cohortCount} students · {card.sources} sources
+                            {card.cohortCount} {tt('studenter', 'students')} · {card.sources} {tt('kilder', 'sources')}
                           </Typography>
                           <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)', mt: 0.4 }}>
                             {tt('Gj.sn. fullføring', 'Avg completion')} {card.avgCompletion}%
@@ -1264,7 +1266,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                               size="small"
                               sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
                             >
-                              Masterclass
+                              {tt('Mesterklasse', 'Masterclass')}
                             </Button>
                           </Stack>
                         </Box>
@@ -1313,7 +1315,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
 
               <Box sx={{ p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Box sx={{ ...panelSx, p: 1 }}>
-                  <Typography sx={{ fontSize: 28, fontWeight: 600, mb: 0.8 }}>Submissions Overview</Typography>
+                  <Typography sx={{ fontSize: 28, fontWeight: 600, mb: 0.8 }}>{tt('Oversikt over innsendinger', 'Submissions Overview')}</Typography>
 
                   <Stack direction="row" spacing={1.2} alignItems="center">
                     <Box
@@ -1345,7 +1347,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
 
                     <Stack spacing={0.5} sx={{ flex: 1 }}>
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Excellent</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Fremragende', 'Excellent')}</Typography>
                         <Typography>{distribution.excellentPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1360,7 +1362,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Healthy</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('God utvikling', 'Healthy')}</Typography>
                         <Typography>{distribution.healthyPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1375,7 +1377,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>Improving</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('Forbedres', 'Improving')}</Typography>
                         <Typography>{distribution.improvingPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1390,7 +1392,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       />
 
                       <Stack direction="row" justifyContent="space-between">
-                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>At Risk</Typography>
+                        <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>{tt('I risikosonen', 'At Risk')}</Typography>
                         <Typography>{distribution.atRiskPct}%</Typography>
                       </Stack>
                       <LinearProgress
@@ -1439,7 +1441,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             {cohort.name}
                           </Typography>
                           <Typography sx={{ fontSize: 12, color: 'rgba(237,240,247,0.64)' }} noWrap>
-                            {cohort.students} students
+                            {cohort.students} {tt('studenter', 'students')}
                           </Typography>
                         </Box>
                         <Typography sx={{ color: '#f8d56f', fontWeight: 700 }}>
@@ -1510,7 +1512,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  LowerThirds
+                  {tt('LowerThirds', 'LowerThirds')}
                 </Button>
               </Stack>
 
@@ -1596,7 +1598,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     border: '1px solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  Analytics
+                  {tt('Analyser', 'Analytics')}
                 </Button>
                 <Button
                   onClick={() => setLocation('/academy/cohort-settings')}

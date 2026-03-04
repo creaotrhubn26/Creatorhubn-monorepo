@@ -35,7 +35,8 @@ import {
   Favorite,
   Star,
 } from '@mui/icons-material';
-import { isEventFeatureEnabled, getEventCategory, EventType } from '@/lib/evendi-api';
+import type { EventType } from '@/lib/evendi-api';
+import { isEventFeatureEnabled, getEventCategory } from '@/lib/evendi-api';
 
 interface Performance {
   id: string;

@@ -4,11 +4,13 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  analyticsManager, 
+import type { 
   AnalyticsConfig, 
   AnalyticsState, 
   AnalyticsEvent 
+} from '../utils/analyticsManager';
+import { 
+  analyticsManager 
 } from'../utils/analyticsManager';
 
 export interface UseAnalyticsOptions {

@@ -43,7 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '@/utils/theming-helper';
-import { EditorElement, Project } from './VisualEditorContext';
+import type { EditorElement, Project } from './VisualEditorContext';
 
 interface CodeSyncState {
   lastSync: Date | null;

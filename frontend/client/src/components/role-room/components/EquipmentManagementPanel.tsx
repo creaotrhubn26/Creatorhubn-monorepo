@@ -106,26 +106,27 @@ import EquipmentCatalogBrowser, { type CatalogEquipment } from '../../equipment/
 import FirmwareManagementInterface from '../../equipment/FirmwareManagementInterface';
 import { useAuth } from '../../../hooks/useAuth';
 import { apiRequest } from '../../../lib/queryClient';
+import type { 
+  Equipment,
+  EquipmentBooking,
+  EquipmentAvailability,
+  EquipmentConflict,
+  EquipmentCheckout,
+  CastingCrew,
+  CastingLocation,
+  EquipmentTemplate,
+  EquipmentTemplateItem,
+  VendorLink} from '../services/castingApiService';
 import { 
-  Equipment, 
   equipmentApi, 
   equipmentBookingsApi, 
   equipmentAvailabilityApi,
   equipmentConflictsApi,
   equipmentCheckoutApi,
-  EquipmentBooking,
-  EquipmentAvailability,
-  EquipmentConflict,
-  EquipmentCheckout,
   crewApi,
   locationsApi,
-  CastingCrew,
-  CastingLocation,
   equipmentTemplatesApi,
-  vendorLinksApi,
-  EquipmentTemplate,
-  EquipmentTemplateItem,
-  VendorLink,
+  vendorLinksApi
 } from '../services/castingApiService';
 import { useToast } from './ToastStack';
 import { equipmentCategoriesService } from '../services/equipmentCategoriesService';
@@ -364,6 +365,20 @@ interface AudioStorageDevicesResponse {
   devices?: AudioStorageDeviceRecord[];
 }
 
+const DEFAULT_CATEGORY_OPTIONS = [
+  'Kamera',
+  'Linse',
+  'Rig',
+  'Stativ',
+  'Lys',
+  'Lyd',
+  'Optikk',
+  'Strøm',
+  'Transport',
+  'Sikkerhet',
+  'Annet',
+] as const;
+
 const getErrorStatusCode = (error: unknown): number | null => {
   if (error && typeof error === 'object') {
     const maybeStatus = (error as { status?: unknown }).status;
@@ -389,6 +404,13 @@ const getErrorStatusCode = (error: unknown): number | null => {
 const isRecoverableEndpointError = (error: unknown): boolean => {
   const status = getErrorStatusCode(error);
   return status === 401 || status === 403 || status === 404;
+};
+
+const isNetworkTransportError = (error: unknown): boolean => {
+  const status = getErrorStatusCode(error);
+  if (typeof status === 'number') return false;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /(failed to fetch|networkerror|err_connection_refused|fetch failed|load failed)/i.test(message);
 };
 
 const blurFocusedElement = () => {
@@ -471,7 +493,179 @@ const CATALOG_BRIDGE_TAB_PANEL_SX = {
   boxShadow: '0 12px 28px rgba(2,6,23,0.26)',
 };
 
+const TRUSTED_VENDOR_PRICE_MAX_AGE_DAYS = 14;
 
+const isVendorPriceFresh = (link: VendorLink): boolean => {
+  if (typeof link.price !== 'number' || !Number.isFinite(link.price) || link.price <= 0) return false;
+  if (!link.updated_at) return false;
+  const updatedAt = new Date(link.updated_at).getTime();
+  if (!Number.isFinite(updatedAt)) return false;
+  const ageMs = Date.now() - updatedAt;
+  return ageMs >= 0 && ageMs <= TRUSTED_VENDOR_PRICE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+};
+
+
+
+const SHOP_VENDOR_FALLBACK_LINKS: VendorLink[] = [
+  {
+    id: 'fallback-foto-sony-fx6',
+    category: 'Kamera',
+    subcategory: 'Cinema',
+    vendor_name: 'Foto.no',
+    product_name: 'Sony FX6',
+    product_url: 'https://www.foto.no/sony/134753/sony-fx6-full-frame-cinema-camera-4k-35mm-cinema-kamera',
+    description: 'Fullformat cine-kamera for dokumentar og kommersiell produksjon.',
+    is_recommended: true,
+    sort_order: 1,
+  },
+  {
+    id: 'fallback-foto-bmpcc-6k-pro',
+    category: 'Kamera',
+    subcategory: 'Cinema',
+    vendor_name: 'Foto.no',
+    product_name: 'Blackmagic Pocket Cinema Camera 6K Pro',
+    product_url: 'https://www.foto.no/blackmagic-design/137181/blackmagic-pocket-cinema-camera-6k-pro-ef-6k-inkludert-davinci-resolve-program',
+    description: 'Super 35 cine-kamera med innebygde ND-filtre.',
+    is_recommended: true,
+    sort_order: 2,
+  },
+  {
+    id: 'fallback-foto-canon-c80',
+    category: 'Kamera',
+    subcategory: 'Cinema',
+    vendor_name: 'Foto.no',
+    product_name: 'Canon EOS C80',
+    product_url: 'https://www.foto.no/canon/164510/canon-eos-c80-kamerahus-6k-bsi-fullformat-cine-kamera',
+    description: 'Kompakt RF cinema-kamera for profesjonelle produksjoner.',
+    is_recommended: true,
+    sort_order: 3,
+  },
+  {
+    id: 'fallback-foto-dji-rs4-pro',
+    category: 'Video',
+    subcategory: 'Stabilisering',
+    vendor_name: 'Foto.no',
+    product_name: 'DJI RS 4 Pro',
+    product_url: 'https://www.foto.no/dji/161503/dji-rs-4-pro-combo',
+    description: 'Gimbal for større kameraoppsett og cinelook.',
+    is_recommended: true,
+    sort_order: 4,
+  },
+  {
+    id: 'fallback-foto-amaran-300c',
+    category: 'Lys',
+    subcategory: 'LED',
+    vendor_name: 'Foto.no',
+    product_name: 'amaran 300c RGBWW',
+    product_url: 'https://www.foto.no/amaran/155253/amaran-300c-led-lampe-300w-2500-7500k-fullfarge-rgb-led',
+    description: 'Fleksibelt RGB-lys for intervju og content-produksjon.',
+    is_recommended: true,
+    sort_order: 5,
+  },
+  {
+    id: 'fallback-foto-aputure-600d-pro',
+    category: 'Lys',
+    subcategory: 'LED',
+    vendor_name: 'Foto.no',
+    product_name: 'Aputure LS 600d Pro',
+    product_url: 'https://www.foto.no/aputure/134866/aputure-ls-600d-pro-dagslys-5600k-v-mount',
+    description: 'Kraftig daylight-armatur til kommersiell produksjon.',
+    is_recommended: true,
+    sort_order: 6,
+  },
+  {
+    id: 'fallback-foto-rode-wireless-pro',
+    category: 'Lyd',
+    subcategory: 'Trådløs',
+    vendor_name: 'Foto.no',
+    product_name: 'Rode Wireless PRO',
+    product_url: 'https://www.foto.no/r%c3%b8de/157955/r%c3%b8de-wireless-pro-tr%c3%a5dl%c3%b8st-mikrofonsystem-2-x-tx-1-x-rx',
+    description: 'Trådløst lydsystem med intern opptakssikring.',
+    is_recommended: true,
+    sort_order: 7,
+  },
+  {
+    id: 'fallback-foto-zoom-f3',
+    category: 'Lyd',
+    subcategory: 'Opptaker',
+    vendor_name: 'Foto.no',
+    product_name: 'Zoom F3',
+    product_url: 'https://www.foto.no/zoom/143196/zoom-f3-multispor-feltopptager-2-kanals-opptager',
+    description: 'Kompakt 32-bit float-opptaker for location-lyd.',
+    is_recommended: true,
+    sort_order: 8,
+  },
+];
+
+const getVendorHomepage = (_vendorName: string): string => {
+  return 'https://www.foto.no/';
+};
+
+const getVendorSearchUrl = (_vendorName: string, productName: string): string => {
+  const query = encodeURIComponent(productName.trim());
+  return `https://www.foto.no/search?q=${query}`;
+};
+
+const sanitizeVendorLinks = (links: VendorLink[]): VendorLink[] =>
+  links
+    .map((link, index) => {
+      const productUrl = String(link.product_url ?? '').trim();
+      const affiliateUrl = String(link.affiliate_url ?? '').trim();
+      const imageUrl = String(link.image_url ?? '').trim();
+      const vendorName = 'Foto.no';
+      const productName = String(link.product_name ?? '').trim();
+      const category = String(link.category ?? '').trim() || 'Diverse';
+      const hasPlaceholderProductUrl = productUrl.length === 0 || /example\.com/i.test(productUrl);
+      const hasPlaceholderAffiliateUrl = affiliateUrl.length === 0 || /example\.com/i.test(affiliateUrl);
+      const hasFotoProductUrl = /(^https?:\/\/)?([^\/]+\.)?foto\.no(\/|$)/i.test(productUrl);
+      const hasFotoAffiliateUrl = /(^https?:\/\/)?([^\/]+\.)?foto\.no(\/|$)/i.test(affiliateUrl);
+      const sanitizedProductUrl = hasPlaceholderProductUrl
+        ? (productName.length > 0 ? getVendorSearchUrl(vendorName, productName) : getVendorHomepage(vendorName))
+        : (hasFotoProductUrl
+          ? productUrl
+          : (productName.length > 0 ? getVendorSearchUrl(vendorName, productName) : getVendorHomepage(vendorName)));
+      const sanitizedAffiliateUrl =
+        hasPlaceholderAffiliateUrl || !hasFotoAffiliateUrl ? undefined : affiliateUrl;
+      const sanitizedImageUrl =
+        imageUrl.length > 0 && !/placehold\.co|example\.com/i.test(imageUrl) ? imageUrl : undefined;
+
+      return {
+        ...link,
+        id: String(link.id ?? '').trim() || `vendor-link-${index}`,
+        vendor_name: vendorName,
+        product_name: productName,
+        category,
+        product_url: sanitizedProductUrl,
+        affiliate_url: sanitizedAffiliateUrl,
+        image_url: sanitizedImageUrl,
+      };
+    })
+    .filter((link) => link.product_name.length > 0);
+
+const isProfessionalShopLink = (link: VendorLink): boolean => {
+  const category = String(link.category ?? '').trim().toLowerCase();
+  const subcategory = String(link.subcategory ?? '').trim().toLowerCase();
+  const name = String(link.product_name ?? '').trim().toLowerCase();
+  const cineSignals = /(cine|cinema|fx3|fx6|fx9|c70|c80|komodo|ursa|venice|varicam|pocket cinema|bmpcc)/;
+
+  if (category === 'lyd' || category === 'lys') return true;
+  if (category === 'video') return true;
+  if (category === 'kamera') return cineSignals.test(`${subcategory} ${name}`);
+  return false;
+};
+
+const buildVendorCategoryCounts = (links: VendorLink[]): { category: string; count: number }[] => {
+  const counts = new Map<string, number>();
+  links.forEach((link) => {
+    const key = String(link.category ?? '').trim();
+    if (!key) return;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => a.category.localeCompare(b.category, 'nb'));
+};
 
 interface EquipmentManagementPanelProps {
   projectId: string;
@@ -569,6 +763,41 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [vendorLinks, setVendorLinks] = useState<VendorLink[]>([]);
   const [vendorCategories, setVendorCategories] = useState<{ category: string; count: number }[]>([]);
   const [selectedVendorCategory, setSelectedVendorCategory] = useState<string>('all');
+  const fallbackVendorLinks = useMemo(() => {
+    if (selectedVendorCategory === 'all') return SHOP_VENDOR_FALLBACK_LINKS;
+    const normalizedCategory = selectedVendorCategory.trim().toLowerCase();
+    return SHOP_VENDOR_FALLBACK_LINKS.filter(
+      (link) => String(link.category ?? '').trim().toLowerCase() === normalizedCategory
+    );
+  }, [selectedVendorCategory]);
+  const effectiveVendorLinks = useMemo(() => {
+    const apiVendorLinks = sanitizeVendorLinks(vendorLinks).filter(isProfessionalShopLink);
+    const professionalFallbackLinks = fallbackVendorLinks.filter(isProfessionalShopLink);
+    const baseLinks = apiVendorLinks.length > 0 ? apiVendorLinks : professionalFallbackLinks;
+    const withRecommendations = baseLinks.some((link) => link.is_recommended)
+      ? baseLinks
+      : baseLinks.map((link, index) => ({ ...link, is_recommended: index < 6 }));
+
+    if (withRecommendations.length >= 6) return withRecommendations.slice(0, 12);
+
+    const seen = new Set(
+      withRecommendations.map((link) => `${link.vendor_name.toLowerCase()}::${link.product_name.toLowerCase()}`)
+    );
+    const extras = professionalFallbackLinks.filter(
+      (link) => !seen.has(`${link.vendor_name.toLowerCase()}::${link.product_name.toLowerCase()}`)
+    );
+    return [...withRecommendations, ...extras].slice(0, 12);
+  }, [vendorLinks, fallbackVendorLinks]);
+  const effectiveVendorCategories = useMemo(() => {
+    const allowedCategories = buildVendorCategoryCounts(effectiveVendorLinks);
+    const allowedSet = new Set(allowedCategories.map((entry) => entry.category.toLowerCase()));
+    const sourceCategories = vendorCategories.length > 0 ? vendorCategories : allowedCategories;
+    return sourceCategories.filter((entry) => allowedSet.has(entry.category.toLowerCase()));
+  }, [vendorCategories, effectiveVendorLinks]);
+  const recommendedVendorLinks = useMemo(() => {
+    const recommended = effectiveVendorLinks.filter((link) => link.is_recommended);
+    return (recommended.length > 0 ? recommended : effectiveVendorLinks).slice(0, 12);
+  }, [effectiveVendorLinks]);
 
   // Custom categories state
   const [customCategories, setCustomCategories] = useState<string[]>([]);
@@ -580,30 +809,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     equipmentCategoriesService.getCustomCategories(projectId).then(setCustomCategories);
   }, [projectId]);
 
-  const defaultCategoryOptions = useMemo(
-    () => [
-      'Kamera',
-      'Linse',
-      'Rig',
-      'Stativ',
-      'Lys',
-      'Lyd',
-      'Optikk',
-      'Strøm',
-      'Transport',
-      'Sikkerhet',
-      'Annet',
-    ],
-    []
-  );
-
   const serialNumberScanFormats = useMemo(
     () => ['code_128', 'code_39', 'code_93', 'codabar', 'ean_13', 'ean_8', 'itf', 'upc_a', 'upc_e', 'qr_code'],
     []
   );
 
   // Combined categories (default + custom)
-  const allCategories = [...defaultCategoryOptions, ...customCategories];
+  const allCategories = [...DEFAULT_CATEGORY_OPTIONS, ...customCategories];
 
   useEffect(() => {
     if (dialogOpen) {
@@ -644,6 +856,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [lensDbUnavailable, setLensDbUnavailable] = useState(false);
   const [cameraCatalogUnavailable, setCameraCatalogUnavailable] = useState(false);
   const [memoryCardsUnavailable, setMemoryCardsUnavailable] = useState(false);
+  const [equipmentPollPauseUntil, setEquipmentPollPauseUntil] = useState(0);
+  const lastTransportErrorToastAtRef = useRef(0);
   const [cameraSyncing, setCameraSyncing] = useState(false);
   const [catalogBridgeOpen, setCatalogBridgeOpen] = useState(false);
   // Active sub-tab inside the catalog bridge dialog (0=catalog, 1=news, 2=market, 3=lenses, 4=cameras/cards)
@@ -989,10 +1203,15 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
     const selectedBrand = formData.brand.trim().toLowerCase();
     const modelEntries = new Map<string, string>();
+    const sanitizeModelLabel = (value: string): string =>
+      value
+        .replace(/\u00a0/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 
     const addModel = (brand?: string | null, model?: string | null, category?: string | null) => {
       const normalizedBrand = String(brand ?? '').trim().toLowerCase();
-      const normalizedModel = String(model ?? '').trim();
+      const normalizedModel = sanitizeModelLabel(String(model ?? ''));
       const normalizedCategory = String(category ?? '').trim().toLowerCase();
       if (!normalizedModel) return;
       if (selectedBrand && normalizedBrand && !normalizedBrand.includes(selectedBrand)) return;
@@ -1012,14 +1231,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       audioStorageItems.forEach((device) => addModel(device.brand, device.model, device.category));
     }
 
-    const sortedModels = Array.from(modelEntries.values()).sort((a, b) => a.localeCompare(b, 'nb'));
+    const sortedModels = Array.from(modelEntries.values())
+      .map((model) => sanitizeModelLabel(model))
+      .sort((a, b) => a.localeCompare(b, 'nb'));
     const uniqueModels = new Map<string, string>();
 
     sortedModels.forEach((model) => {
-      const normalized = model.trim().toLowerCase();
+      const normalized = sanitizeModelLabel(model).toLowerCase();
       if (!normalized) return;
       if (!uniqueModels.has(normalized)) {
-        uniqueModels.set(normalized, model);
+        uniqueModels.set(normalized, sanitizeModelLabel(model));
       }
     });
 
@@ -1442,7 +1663,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       setActiveCheckouts(Array.isArray(data) ? data : []);
     } catch (error) {
       // Non-fatal: active checkout tracking is best-effort
-      if (!isRecoverableEndpointError(error)) {
+      if (!isRecoverableEndpointError(error) && !isNetworkTransportError(error)) {
         console.error('Error loading active checkouts:', error);
       }
       setActiveCheckouts([]);
@@ -1480,6 +1701,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   useEffect(() => {
     const onOnline  = () => {
       setIsOnline(true);
+      setEquipmentPollPauseUntil(0);
       if (isAuthenticated && !authLoading && !roleRoomApiUnavailable) {
         loadEquipment();
       }
@@ -1488,7 +1710,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     window.addEventListener('online',  onOnline);
     window.addEventListener('offline', onOffline);
     const timer = setInterval(() => {
-      if (navigator.onLine && isAuthenticated && !authLoading && !roleRoomApiUnavailable) {
+      if (
+        navigator.onLine &&
+        isAuthenticated &&
+        !authLoading &&
+        !roleRoomApiUnavailable &&
+        Date.now() >= equipmentPollPauseUntil
+      ) {
         loadEquipment();
       }
     }, 30_000);
@@ -1497,7 +1725,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       window.removeEventListener('offline', onOffline);
       clearInterval(timer);
     };
-  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable]);
+  }, [projectId, isAuthenticated, authLoading, roleRoomApiUnavailable, equipmentPollPauseUntil]);
 
   // Offline outbox: restore queue from localStorage on mount / project change
   useEffect(() => {
@@ -1529,6 +1757,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           setRoleRoomApiUnavailable(true);
         }
         setEquipment([]);
+      } else if (isNetworkTransportError(error)) {
+        setEquipment([]);
+        setEquipmentPollPauseUntil(Date.now() + 60_000);
+        const now = Date.now();
+        if (now - lastTransportErrorToastAtRef.current > 45_000) {
+          lastTransportErrorToastAtRef.current = now;
+          showError('Server utilgjengelig. Prøver igjen automatisk.');
+        }
       } else {
         console.error('Error loading equipment:', error);
         showError('Kunne ikke laste utstyr');
@@ -1557,7 +1793,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
     if (crewResult.status === 'fulfilled') {
       setCrewMembers(Array.isArray(crewResult.value) ? crewResult.value : []);
-    } else if (!isRecoverableEndpointError(crewResult.reason)) {
+    } else if (!isRecoverableEndpointError(crewResult.reason) && !isNetworkTransportError(crewResult.reason)) {
       console.error('Error loading crew:', crewResult.reason);
     } else {
       setCrewMembers([]);
@@ -1565,7 +1801,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
     if (locationResult.status === 'fulfilled') {
       setLocations(Array.isArray(locationResult.value) ? locationResult.value : []);
-    } else if (!isRecoverableEndpointError(locationResult.reason)) {
+    } else if (!isRecoverableEndpointError(locationResult.reason) && !isNetworkTransportError(locationResult.reason)) {
       console.error('Error loading locations:', locationResult.reason);
     } else {
       setLocations([]);
@@ -1581,7 +1817,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
       const data = await equipmentTemplatesApi.getAll(projectId);
       setTemplates(Array.isArray(data) ? data : []);
     } catch (error) {
-      if (isRecoverableEndpointError(error)) {
+      if (isRecoverableEndpointError(error) || isNetworkTransportError(error)) {
         setTemplates([]);
       } else {
         console.error('Error loading templates:', error);
@@ -1596,8 +1832,13 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         vendorLinksApi.getAll(selectedVendorCategory === 'all' ? undefined : selectedVendorCategory),
         vendorLinksApi.getCategories(),
       ]);
-      setVendorLinks(Array.isArray(links) ? links : []);
-      setVendorCategories(Array.isArray(categories) ? categories : []);
+      const normalizedLinks = sanitizeVendorLinks(Array.isArray(links) ? links : []);
+      setVendorLinks(normalizedLinks);
+      if (Array.isArray(categories) && categories.length > 0) {
+        setVendorCategories(categories);
+      } else {
+        setVendorCategories(buildVendorCategoryCounts(normalizedLinks));
+      }
     } catch (error) {
       if (isRecoverableEndpointError(error)) {
         setVendorLinksUnavailable(true);
@@ -1919,6 +2160,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     blurFocusedElement();
     setVendorLinksUnavailable(false);
     setShopDialogOpen(true);
+  };
+
+  const handleOpenShopCategory = (category: string, url: string) => {
+    setSelectedVendorCategory(category);
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleOpenDialog = (eq?: Equipment) => {
@@ -3415,10 +3661,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               startIcon={<ShoppingCartIcon />}
               onClick={handleOpenShopDialog}
               sx={{
-                borderColor: '#2196f3',
-                color: '#2196f3',
+                borderColor: '#9333ea',
+                color: '#c084fc',
                 minHeight: TOUCH_TARGET_SIZE,
-                '&:hover': { borderColor: '#42a5f5', bgcolor: 'rgba(33,150,243,0.1)' },
+                '&:hover': { borderColor: '#c084fc', bgcolor: 'rgba(147,51,234,0.14)' },
                 ...focusVisibleStyles,
               }}
             >
@@ -3950,7 +4196,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   width: '100%',
                 }}
               >
-                <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+                <Box sx={{ width: '100%', maxWidth: 760, mx: 'auto', display: 'flex', justifyContent: 'center' }}>
                   <RoleRoomEmptyState
                     iconSrc={equipPng}
                     title="Ingen utstyr funnet"
@@ -5105,12 +5351,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 renderOption={(props, option, state) => {
                   const camera = modelOptionCameraLookup.get(option.trim().toLowerCase());
                   const specPreview = camera ? getCameraSpecChips(camera).slice(0, 2) : [];
-                  const { key: _muiOptionKey, ...optionProps } =
-                    props as unknown as HTMLAttributes<HTMLLIElement> & { key?: string | number };
+                  const optionProps = {
+                    ...(props as unknown as HTMLAttributes<HTMLLIElement> & { key?: string | number }),
+                  };
+                  delete optionProps.key;
                   const resolvedOptionKey = `${option.trim().toLowerCase()}-${camera?.id ?? 'option'}-${state.index}`;
 
                   return (
-                    <Box key={resolvedOptionKey} component="li" {...optionProps} sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}>
+                    <Box
+                      key={resolvedOptionKey}
+                      component="li"
+                      {...optionProps}
+                      sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 0.5 }}
+                    >
                       <Stack direction="row" spacing={0.75} alignItems="center" sx={{ width: '100%', justifyContent: 'space-between' }}>
                         <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
                           {option}
@@ -6647,10 +6900,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.28)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
@@ -6660,8 +6913,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
+          background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(56,189,248,0.1) 100%)',
+          borderBottom: '1px solid rgba(148,163,184,0.2)',
           py: 2,
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -6669,11 +6922,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               width: 44,
               height: 44,
               borderRadius: 2,
-              background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(33,150,243,0.3)',
+              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
             }}>
               <ShoppingCartIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
@@ -6699,22 +6952,22 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           <Box sx={{ 
             textAlign: 'center', 
             py: 5,
-            background: 'linear-gradient(135deg, rgba(33,150,243,0.08) 0%, rgba(33,150,243,0.03) 100%)',
+            background: 'linear-gradient(135deg, rgba(147,51,234,0.08) 0%, rgba(147,51,234,0.03) 100%)',
             borderRadius: 2,
-            border: '1px solid rgba(33,150,243,0.15)',
+            border: '1px solid rgba(147,51,234,0.15)',
           }}>
             <Box sx={{
               width: 80,
               height: 80,
               borderRadius: '50%',
-              bgcolor: 'rgba(33,150,243,0.1)',
+              bgcolor: 'rgba(147,51,234,0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               mx: 'auto',
               mb: 2,
             }}>
-              <ShoppingCartIcon sx={{ fontSize: 40, color: '#2196f3' }} />
+              <ShoppingCartIcon sx={{ fontSize: 40, color: '#9333ea' }} />
             </Box>
             <Typography variant="h5" sx={{ color: '#fff', fontWeight: 700, mb: 1 }}>
               Bygg nytt lager via foto.no
@@ -6728,14 +6981,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 variant="contained"
                 size="large"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/foto/kamera', '_blank')}
+                onClick={() => handleOpenShopCategory('Kamera', 'https://www.foto.no/foto/kamera')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+                  background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
                   color: '#fff', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
                 Kameraer
@@ -6744,14 +6997,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 variant="contained"
                 size="large"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/foto/foto-tilbehor/belysning', '_blank')}
+                onClick={() => handleOpenShopCategory('Lys', 'https://www.foto.no/foto/foto-tilbehor/belysning')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+                  background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
                   color: '#fff', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
                 Lys og belysning
@@ -6760,14 +7013,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 variant="contained"
                 size="large"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/video', '_blank')}
+                onClick={() => handleOpenShopCategory('Video', 'https://www.foto.no/video')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+                  background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
                   color: '#fff', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
                 Videoutstyr
@@ -6776,14 +7029,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 variant="contained"
                 size="large"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no/lyd', '_blank')}
+                onClick={() => handleOpenShopCategory('Lyd', 'https://www.foto.no/lyd')}
                 sx={{ 
-                  background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+                  background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
                   color: '#fff', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { background: 'linear-gradient(135deg, #42a5f5 0%, #2196f3 100%)' } 
+                  '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' } 
                 }}
               >
                 Lydopptak
@@ -6792,14 +7045,17 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 variant="outlined"
                 size="large"
                 startIcon={<OpenInNewIcon />}
-                onClick={() => window.open('https://www.foto.no', '_blank')}
+                onClick={() => {
+                  setSelectedVendorCategory('all');
+                  window.open('https://www.foto.no', '_blank', 'noopener,noreferrer');
+                }}
                 sx={{ 
-                  borderColor: 'rgba(33,150,243,0.5)', 
-                  color: '#2196f3', 
+                  borderColor: 'rgba(147,51,234,0.5)', 
+                  color: '#9333ea', 
                   py: 1.5,
                   borderRadius: 2,
                   fontWeight: 600,
-                  '&:hover': { borderColor: '#2196f3', bgcolor: 'rgba(33,150,243,0.1)' } 
+                  '&:hover': { borderColor: '#9333ea', bgcolor: 'rgba(147,51,234,0.1)' } 
                 }}
               >
                 Alle kategorier
@@ -6808,78 +7064,119 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
 
           {/* Category filter chips */}
-          {vendorCategories.length > 0 && (
+          {effectiveVendorCategories.length > 0 && (
             <Box sx={{ mt: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               <Chip
                 label="Alle"
                 size="small"
                 onClick={() => setSelectedVendorCategory('all')}
                 sx={{
-                  bgcolor: selectedVendorCategory === 'all' ? '#2196f3' : 'rgba(33,150,243,0.12)',
-                  color: selectedVendorCategory === 'all' ? '#fff' : '#2196f3',
+                  bgcolor: selectedVendorCategory === 'all' ? '#9333ea' : 'rgba(147,51,234,0.12)',
+                  color: selectedVendorCategory === 'all' ? '#fff' : '#9333ea',
                   fontWeight: selectedVendorCategory === 'all' ? 700 : 400,
                   cursor: 'pointer',
-                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#1976d2' : 'rgba(33,150,243,0.25)' },
+                  '&:hover': { bgcolor: selectedVendorCategory === 'all' ? '#7e22ce' : 'rgba(147,51,234,0.25)' },
                 }}
               />
-              {vendorCategories.map(vc => (
+              {effectiveVendorCategories.map(vc => (
                 <Chip
                   key={vc.category}
                   label={`${vc.category} (${vc.count})`}
                   size="small"
                   onClick={() => setSelectedVendorCategory(vc.category)}
                   sx={{
-                    bgcolor: selectedVendorCategory === vc.category ? '#2196f3' : 'rgba(33,150,243,0.12)',
-                    color: selectedVendorCategory === vc.category ? '#fff' : '#2196f3',
+                    bgcolor: selectedVendorCategory === vc.category ? '#9333ea' : 'rgba(147,51,234,0.12)',
+                    color: selectedVendorCategory === vc.category ? '#fff' : '#9333ea',
                     fontWeight: selectedVendorCategory === vc.category ? 700 : 400,
                     cursor: 'pointer',
-                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#1976d2' : 'rgba(33,150,243,0.25)' },
+                    '&:hover': { bgcolor: selectedVendorCategory === vc.category ? '#7e22ce' : 'rgba(147,51,234,0.25)' },
                   }}
                 />
               ))}
             </Box>
           )}
 
-          {vendorLinks.length > 0 && (
+          {(vendorLinksUnavailable || vendorLinks.length === 0) && (
+            <Alert
+              severity="info"
+              sx={{
+                mt: 3,
+                bgcolor: 'rgba(147,51,234,0.12)',
+                border: '1px solid rgba(147,51,234,0.35)',
+                color: '#e9d5ff',
+                '& .MuiAlert-icon': { color: '#c084fc' },
+              }}
+            >
+              Viser kvalitetssikrede produktforslag mens leverandørfeed synkroniseres.
+            </Alert>
+          )}
+
+          {recommendedVendorLinks.length > 0 && (
             <Box sx={{ mt: 4 }}>
               <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, mb: 2 }}>
                 Anbefalte produkter
               </Typography>
-              <Grid container spacing={2}>
-                {vendorLinks.filter(l => l.is_recommended).map(link => (
-                  <Grid size={{ xs: 12, sm: 6, md: 4 }} key={link.id}>
-                    <Card 
-                      sx={{ 
-                        bgcolor: 'rgba(255,255,255,0.05)', 
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        cursor: 'pointer',
-                        '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' }
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, md: 2 } }}>
+                {recommendedVendorLinks.map((link, index) => {
+                  const showVerifiedPrice = isVendorPriceFresh(link);
+                  const verifiedPrice = showVerifiedPrice ? Number(link.price) : null;
+                  return (
+                    <Box
+                      key={`${link.id}-${index}`}
+                      sx={{
+                        width: {
+                          xs: '100%',
+                          sm: 'calc(50% - 8px)',
+                          md: 'calc(33.333% - 11px)',
+                        },
+                        minWidth: 0,
                       }}
-                      onClick={() => window.open(link.affiliate_url || link.product_url, '_blank')}
                     >
-                      <CardContent>
-                        <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
-                          {link.product_name}
-                        </Typography>
-                        {link.description && (
-                          <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
-                            {link.description}
+                      <Card 
+                        sx={{ 
+                          bgcolor: 'rgba(255,255,255,0.05)', 
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          cursor: 'pointer',
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' }
+                        }}
+                        onClick={() => window.open(link.affiliate_url || link.product_url, '_blank', 'noopener,noreferrer')}
+                      >
+                        <CardContent>
+                          <Typography variant="subtitle2" sx={{ color: '#fff', fontWeight: 600 }}>
+                            {link.product_name}
                           </Typography>
-                        )}
-                        {link.price && (
-                          <Typography variant="h6" sx={{ color: '#4caf50', mt: 1, fontWeight: 700 }}>
-                            kr {link.price.toLocaleString('nb-NO')},-
-                          </Typography>
-                        )}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
-                          <Chip label={link.category} size="small" sx={{ bgcolor: 'rgba(33,150,243,0.2)', color: '#2196f3' }} />
-                          <OpenInNewIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.87)' }} />
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
+                          {link.description && (
+                            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)', mt: 1 }}>
+                              {link.description}
+                            </Typography>
+                          )}
+                          {showVerifiedPrice && verifiedPrice !== null ? (
+                            <Typography variant="h6" sx={{ color: '#4caf50', mt: 1, fontWeight: 700 }}>
+                              kr {verifiedPrice.toLocaleString('nb-NO')},-
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: '#fbbf24', mt: 1, display: 'block' }}>
+                              Sjekk dagspris hos forhandler
+                            </Typography>
+                          )}
+                          {showVerifiedPrice && link.updated_at && (
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', mt: 0.25, display: 'block' }}>
+                              Oppdatert {new Date(link.updated_at).toLocaleDateString('nb-NO')}
+                            </Typography>
+                          )}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                            <Chip label={link.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#9333ea' }} />
+                            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                              {link.vendor_name}
+                            </Typography>
+                            <OpenInNewIcon sx={{ fontSize: 16, color: 'rgba(255,255,255,0.87)' }} />
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Box>
+                  );
+                })}
+              </Box>
             </Box>
           )}
         </DialogContent>
@@ -8349,15 +8646,25 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen nyheter tilgjengelig akkurat nå.</Typography>
                 </Box>
               ) : (
-                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
                   {gearNewsArticles.map((article, idx) => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={`${article.id || article.url || article.title || 'gear-news'}-${idx}`}>
+                    <Box
+                      key={`${article.id || article.url || article.title || 'gear-news'}-${idx}`}
+                      sx={{
+                        width: {
+                          xs: '100%',
+                          sm: 'calc(50% - 8px)',
+                          md: 'calc(33.333% - 11px)',
+                        },
+                        minWidth: 0,
+                      }}
+                    >
                       <Card sx={CATALOG_BRIDGE_CARD_SX}>
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Box sx={{ display: 'flex', gap: 0.5, mb: 1.5, flexWrap: 'wrap' }}>
                             {article.category && <Chip label={article.category} size="small" sx={{ bgcolor: 'rgba(147,51,234,0.2)', color: '#c084fc', fontSize: '0.7rem' }} />}
                             {article.isNew && <Chip label="NY" size="small" color="error" sx={{ fontSize: '0.7rem' }} />}
-                            {article.isTrending && <Chip label="Trending" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
+                            {article.isTrending && <Chip label="Trend" size="small" color="warning" sx={{ fontSize: '0.7rem' }} />}
                           </Box>
                           <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 1, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
                             {article.title}
@@ -8395,9 +8702,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           )}
                         </Box>
                       </Card>
-                    </Grid>
+                    </Box>
                   ))}
-                </Grid>
+                </Box>
               )}
             </Box>
           )}
@@ -8422,8 +8729,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               ) : (
                 <>
                   {/* Summary row */}
-                  <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP, mb: 3 }}>
-                    <Grid size={{ xs: 12, sm: 4 }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP, mb: 3 }}>
+                    <Box sx={{ width: { xs: '100%', sm: 'calc(33.333% - 11px)' }, minWidth: 0 }}>
                       <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(76,175,80,0.35)' }}>
                         <TrendingUpIcon sx={{ color: '#4caf50', mb: 1 }} />
                         <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700 }}>
@@ -8431,8 +8738,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Tilgjengelige produkter</Typography>
                       </Paper>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
+                    </Box>
+                    <Box sx={{ width: { xs: '100%', sm: 'calc(33.333% - 11px)' }, minWidth: 0 }}>
                       <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(147,51,234,0.35)' }}>
                         <AttachMoneyIcon sx={{ color: '#9333ea', mb: 1 }} />
                         <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)', display: 'block' }}>
@@ -8442,22 +8749,32 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           Til: {marketItems.length > 0 ? Math.max(...marketItems.map(i => parseFloat(i.currentPrice || '0'))).toLocaleString('nb-NO') : '—'} kr
                         </Typography>
                       </Paper>
-                    </Grid>
-                    <Grid size={{ xs: 12, sm: 4 }}>
+                    </Box>
+                    <Box sx={{ width: { xs: '100%', sm: 'calc(33.333% - 11px)' }, minWidth: 0 }}>
                       <Paper sx={{ ...CATALOG_BRIDGE_SURFACE_SX, borderColor: 'rgba(33,150,243,0.35)' }}>
                         <StarIcon sx={{ color: '#2196f3', mb: 1 }} />
                         <Typography variant="h4" sx={{ color: '#2196f3', fontWeight: 700 }}>
                           {(marketItems.reduce((acc, item) => acc + parseFloat(item.videographerRating || '0'), 0) / (marketItems.length || 1)).toFixed(1)}
                         </Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Gj.snitt videographer-rating</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>Gj.snitt videograf-rating</Typography>
                       </Paper>
-                    </Grid>
-                  </Grid>
+                    </Box>
+                  </Box>
 
                   {/* Items grid */}
-                  <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
                     {marketItems.map(item => (
-                      <Grid size={{ xs: 12, sm: 6, md: 4 }} key={item.id}>
+                      <Box
+                        key={item.id}
+                        sx={{
+                          width: {
+                            xs: '100%',
+                            sm: 'calc(50% - 8px)',
+                            md: 'calc(33.333% - 11px)',
+                          },
+                          minWidth: 0,
+                        }}
+                      >
                         <Card sx={CATALOG_BRIDGE_CARD_SX}>
                           <CardContent sx={{ flexGrow: 1 }}>
                             <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
@@ -8507,9 +8824,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                             </Button>
                           </Box>
                         </Card>
-                      </Grid>
+                      </Box>
                     ))}
-                  </Grid>
+                  </Box>
                 </>
               )}
             </Box>
@@ -8533,9 +8850,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   <Typography sx={{ color: 'rgba(255,255,255,0.5)' }}>Ingen objektiver i databasen ennå.</Typography>
                 </Box>
               ) : (
-                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
                   {lensItems.map(lens => (
-                    <Grid size={{ xs: 12, sm: 6, md: 4 }} key={lens.id}>
+                    <Box
+                      key={lens.id}
+                      sx={{
+                        width: {
+                          xs: '100%',
+                          sm: 'calc(50% - 8px)',
+                          md: 'calc(33.333% - 11px)',
+                        },
+                        minWidth: 0,
+                      }}
+                    >
                       <Card sx={CATALOG_BRIDGE_CARD_SX}>
                         <CardContent sx={{ flexGrow: 1 }}>
                           <Typography variant="subtitle1" sx={{ color: '#fff', fontWeight: 600, mb: 0.5 }}>
@@ -8581,9 +8908,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                           </Button>
                         </Box>
                       </Card>
-                    </Grid>
+                    </Box>
                   ))}
-                </Grid>
+                </Box>
               )}
             </Box>
           )}
@@ -8594,7 +8921,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <Box sx={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 1.5, mb: 2.5 }}>
                 <Typography variant="h5" sx={{ fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Inventory2Icon sx={{ color: '#c084fc' }} />
-                  Kamera + Minnekort (backend)
+                  Kamera + Minnekort
                 </Typography>
                 <Button
                   variant="outlined"
@@ -8659,10 +8986,10 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                   <FormControl fullWidth size="small">
-                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Brand</InputLabel>
+                    <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Merke</InputLabel>
                     <Select
                       value={cameraBrandFilter}
-                      label="Brand"
+                      label="Merke"
                       onChange={(event) => setCameraBrandFilter(String(event.target.value))}
                       sx={{
                         bgcolor: 'rgba(255,255,255,0.04)',
@@ -8670,7 +8997,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' },
                       }}
                     >
-                      <MenuItem value="all">Alle brands</MenuItem>
+                      <MenuItem value="all">Alle merker</MenuItem>
                       {cameraBrandOptions.map((brand) => (
                         <MenuItem key={brand} value={brand}>
                           {brand}
@@ -8728,11 +9055,14 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   </Typography>
                 </Box>
               ) : (
-                <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
-                  <Grid size={{ xs: 12, lg: 7 }}>
-                    <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
+                  <Box sx={{ width: { xs: '100%', lg: 'calc(58.333% - 8px)' }, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: CATALOG_BRIDGE_CARD_GAP }}>
                       {cameraCatalogItems.map((camera) => (
-                        <Grid key={camera.id} size={{ xs: 12, sm: 6 }}>
+                        <Box
+                          key={camera.id}
+                          sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' }, minWidth: 0 }}
+                        >
                           <Card
                             onClick={() => setSelectedCameraId(camera.id)}
                             sx={{
@@ -8810,12 +9140,12 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                               </Button>
                             </CardContent>
                           </Card>
-                        </Grid>
+                        </Box>
                       ))}
-                    </Grid>
-                  </Grid>
+                    </Box>
+                  </Box>
 
-                  <Grid size={{ xs: 12, lg: 5 }}>
+                  <Box sx={{ width: { xs: '100%', lg: 'calc(41.667% - 8px)' }, minWidth: 0 }}>
                     <Paper
                       sx={{
                         p: 2,
@@ -8915,8 +9245,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         Oppdaterer katalogdata...
                       </Typography>
                     )}
-                  </Grid>
-                </Grid>
+                  </Box>
+                </Box>
               )}
             </Box>
           )}

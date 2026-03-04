@@ -5,8 +5,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { 
+  ProfessionConfig} from '../types/ProfessionConfig';
 import { 
-  ProfessionConfig, 
   ProfessionConfigManager, 
   DEFAULT_PROFESSION_CONFIGS 
 } from '../types/ProfessionConfig';

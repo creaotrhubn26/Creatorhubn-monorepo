@@ -4,11 +4,13 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  i18nManager, 
+import type { 
   I18nConfig, 
   I18nState, 
   TranslationOptions 
+} from '../utils/i18nManager';
+import { 
+  i18nManager 
 } from '../utils/i18nManager';
 
 export interface UseI18nOptions {

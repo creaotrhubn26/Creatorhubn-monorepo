@@ -56,11 +56,13 @@ import {
   School as LearnIcon,
 } from '@mui/icons-material';
 import { useUserEquipmentInventory } from '@/hooks/useUserEquipmentInventory';
-import { cinematographyPatternsService, CinematographyPattern } from '@/core/services/cinematographyPatternsService';
-import { 
-  patternExposureIntegration, 
+import type { CinematographyPattern } from '@/core/services/cinematographyPatternsService';
+import { cinematographyPatternsService } from '@/core/services/cinematographyPatternsService';
+import type { 
   PatternExposureAnalysis, 
-  EquipmentMatch,
+  EquipmentMatch} from '@/core/services/patternExposureIntegration';
+import { 
+  patternExposureIntegration
 } from '@/core/services/patternExposureIntegration';
 import { useNodes, useActions } from '@/state/selectors';
 

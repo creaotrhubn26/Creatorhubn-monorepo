@@ -28,7 +28,7 @@ import {
   Error as ErrorIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
-import { ManuscriptExport } from '../models/casting';
+import type { ManuscriptExport } from '../models/casting';
 import { manuscriptService } from '../services/manuscriptService';
 import { useToast } from './ToastStack';
 

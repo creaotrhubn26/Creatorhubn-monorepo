@@ -4,11 +4,13 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  autoSaveManager, 
+import type { 
   AutoSaveConfig, 
   AutoSaveState, 
   AutoSaveData 
+} from '../utils/autoSaveManager';
+import { 
+  autoSaveManager 
 } from'../utils/autoSaveManager';
 
 export interface UseAutoSaveOptions {

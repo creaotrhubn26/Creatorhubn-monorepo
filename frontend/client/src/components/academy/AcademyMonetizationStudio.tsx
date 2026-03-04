@@ -36,6 +36,7 @@ import {
 } from '@mui/icons-material';
 import { useLocation } from 'wouter';
 import { useAcademy, type Course } from '@/contexts/AcademyContext';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
@@ -179,6 +180,7 @@ const panelSx = {
 function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMonetizationStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse, updateCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -330,7 +332,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
 
     setCouponItems((prev) => [next, ...prev]);
     setCouponQuery('');
-    setSaveMessage(`Coupon ${code} created.`);
+    setSaveMessage(tt(`Kupong ${code} opprettet.`, `Coupon ${code} created.`));
 
     analytics.trackEvent('academy_coupon_created', {
       courseId: activeCourse?.id || null,
@@ -338,7 +340,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
       percent: next.percent,
       timestamp: Date.now(),
     });
-  }, [activeCourse?.id, analytics, couponPercent, couponQuery]);
+  }, [activeCourse?.id, analytics, couponPercent, couponQuery, tt]);
 
   const addBundle = useCallback(() => {
     const next: BundleItem = {
@@ -350,8 +352,8 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
       tier: 'pro',
     };
     setBundleItems((prev) => [...prev, next]);
-    setSaveMessage(`Bundle ${next.title} added.`);
-  }, [bundleItems.length, monthlyPrice]);
+    setSaveMessage(tt(`Pakke ${next.title} lagt til.`, `Bundle ${next.title} added.`));
+  }, [bundleItems.length, monthlyPrice, tt]);
 
   const removeCoupon = useCallback((couponId: string) => {
     setCouponItems((prev) => prev.filter((coupon) => coupon.id !== couponId));
@@ -393,7 +395,11 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
         }
 
         onSave?.(payload);
-        setSaveMessage(publish ? 'Monetization published.' : 'Monetization saved.');
+        setSaveMessage(
+          publish
+            ? tt('Monetisering publisert.', 'Monetization published.')
+            : tt('Monetisering lagret.', 'Monetization saved.'),
+        );
 
         analytics.trackEvent('academy_monetization_saved', {
           courseId: course?.id || null,
@@ -403,7 +409,11 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
           timestamp: Date.now(),
         });
       } catch (error) {
-        setSaveMessage(error instanceof Error ? error.message : 'Could not save monetization settings.');
+        setSaveMessage(
+          error instanceof Error
+            ? error.message
+            : tt('Kunne ikke lagre monetiseringsinnstillinger.', 'Could not save monetization settings.'),
+        );
       }
     },
     [
@@ -418,6 +428,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
       platformShare,
       pricingModel,
       state.courses,
+      tt,
       updateCourse,
       analytics,
     ],
@@ -431,7 +442,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lowerthirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -489,7 +500,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 fontWeight: 600,
               }}
             >
-              Create New Course
+              {tt('Opprett nytt kurs', 'Create New Course')}
             </Button>
           </Stack>
 
@@ -535,7 +546,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 borderRadius: 1,
               }}
             >
-              New Bundle
+              {tt('Ny pakke', 'New Bundle')}
             </Button>
           </Box>
         </Box>
@@ -595,7 +606,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                 alignItems={{ xs: 'stretch', lg: 'center' }}
               >
                 <Typography sx={{ fontSize: 38, fontWeight: 600, letterSpacing: '0.02em' }}>
-                  Monetization
+                  {tt('Monetisering', 'Monetization')}
                 </Typography>
 
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -610,7 +621,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       borderRadius: 1,
                     }}
                   >
-                    Preview
+                    {tt('Forhåndsvis', 'Preview')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -623,7 +634,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       borderRadius: 1,
                     }}
                   >
-                    Save
+                    {tt('Lagre', 'Save')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -649,7 +660,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       borderRadius: 1,
                     }}
                   >
-                    LowerThirds
+                    {tt('LowerThirds', 'LowerThirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -663,7 +674,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                       boxShadow: '0 10px 24px rgba(248,179,33,0.28)',
                     }}
                   >
-                    Publish
+                    {tt('Publiser', 'Publish')}
                   </Button>
                 </Stack>
               </Stack>
@@ -686,7 +697,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
               <Box sx={{ ...panelSx, p: 1.2 }}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
                   <Typography sx={{ fontSize: 28, fontFamily: 'Barlow Condensed, sans-serif' }}>
-                    Earnings Overview
+                    {tt('Inntektsoversikt', 'Earnings Overview')}
                   </Typography>
                   <Stack direction="row" spacing={0.6}>
                     {(['7d', '30d', '90d'] as const).map((option) => (
@@ -723,7 +734,7 @@ function AcademyMonetizationStudio({ courseId, onSave, onCancel }: AcademyMoneti
                     {toNok(totalEarnings)}
                   </Typography>
                   <Typography sx={{ color: '#7eea8e', letterSpacing: '0.08em', fontSize: 14 }}>
-                    PROJECTED EARNINGS
+                    {tt('PROGNOSTISERT INNTEKT', 'PROJECTED EARNINGS')}
                   </Typography>
 
                   <Box

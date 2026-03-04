@@ -42,9 +42,10 @@ import {
   Build as FixIcon,
   NavigateBefore as GotoIcon,
 } from '@mui/icons-material';
+import type {
+  ScriptAnalysisResult} from '../services/scriptAnalysisService';
 import {
   analyzeScript,
-  ScriptAnalysisResult,
   CharacterConflict,
   ConsistencyIssue,
 } from '../services/scriptAnalysisService';

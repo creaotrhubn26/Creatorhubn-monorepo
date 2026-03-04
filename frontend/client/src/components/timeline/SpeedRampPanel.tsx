@@ -36,7 +36,8 @@ import {
   FastForward,
   Pause,
 } from '@mui/icons-material';
-import { SpeedRampEngine, SpeedPreset, SpeedKeyframe } from '../../services/speed-ramp-engine';
+import type { SpeedPreset, SpeedKeyframe } from '../../services/speed-ramp-engine';
+import { SpeedRampEngine } from '../../services/speed-ramp-engine';
 
 interface SpeedRampPanelProps {
   clipId: string;

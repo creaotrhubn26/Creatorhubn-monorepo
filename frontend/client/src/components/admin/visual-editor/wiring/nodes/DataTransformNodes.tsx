@@ -25,7 +25,8 @@ import {
   Numbers,
   CalendarToday,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig } from './BaseNode';
+import type { NodeConfig } from './BaseNode';
+import { BaseNode } from './BaseNode';
 
 // Map Node
 export const MapNode = memo(function MapNode({

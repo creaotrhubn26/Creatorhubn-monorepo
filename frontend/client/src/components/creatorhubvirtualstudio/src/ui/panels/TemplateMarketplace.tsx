@@ -19,7 +19,8 @@ import {
   Button,
 } from '@mui/material';
 import { Download, Share, Star } from '@mui/icons-material';
-import { projectSharingService, SharedProject } from '../../core/services/projectSharing';
+import type { SharedProject } from '../../core/services/projectSharing';
+import { projectSharingService } from '../../core/services/projectSharing';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('TemplateMarketplace');

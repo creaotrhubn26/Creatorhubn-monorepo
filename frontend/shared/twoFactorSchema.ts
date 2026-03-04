@@ -1,7 +1,7 @@
 import { pgTable, varchar, boolean, timestamp, text } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { users } from './database-persistence-schema';
 
 // Two-factor authentication table

@@ -347,8 +347,9 @@ const buildAssetsFromCourse = (course: Course): MediaAsset[] => {
 function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioProps) {
   const [, setLocation] = useLocation();
   const { state, getCourse } = useAcademy();
+  const { analytics, debugging } = useEnhancedMasterIntegration();
   
-  const { navLabel } = useAcademyLocale();
+  const { navLabel, tt } = useAcademyLocale();
 
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const objectUrlStoreRef = useRef<string[]>([]);
@@ -558,7 +559,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
 
   const downloadSelected = useCallback(() => {
     if (!selectedAsset?.url) {
-      setStatusMessage('No downloadable asset selected.');
+      setStatusMessage(tt('Ingen nedlastbar ressurs er valgt.', 'No downloadable asset selected.'));
       return;
     }
     const anchor = document.createElement('a');
@@ -567,15 +568,15 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     anchor.target = '_blank';
     anchor.rel = 'noreferrer';
     anchor.click();
-    setStatusMessage(`Downloading ${selectedAsset.name}.`);
-  }, [selectedAsset]);
+    setStatusMessage(tt(`Laster ned ${selectedAsset.name}.`, `Downloading ${selectedAsset.name}.`));
+  }, [selectedAsset, tt]);
 
   const deleteSelected = useCallback(() => {
     if (!selectedAsset) return;
     setAssets((current) => current.filter((asset) => asset.id !== selectedAsset.id));
-    setStatusMessage(`${selectedAsset.name} deleted from library.`);
+    setStatusMessage(tt(`${selectedAsset.name} slettet fra biblioteket.`, `${selectedAsset.name} deleted from library.`));
     setSelectedAssetId('');
-  }, [selectedAsset]);
+  }, [selectedAsset, tt]);
 
   const playSelected = useCallback(() => {
     if (!selectedAsset) return;
@@ -584,13 +585,13 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
 
   const syncNow = useCallback(() => {
     setSyncing(true);
-    setStatusMessage('Syncing with cloud storage...');
+    setStatusMessage(tt('Synkroniserer med skylagring...', 'Syncing with cloud storage...'));
 
     setTimeout(() => {
       setSyncing(false);
-      setStatusMessage('Sync complete.');
+      setStatusMessage(tt('Synkronisering fullført.', 'Sync complete.'));
     }, 900);
-  }, []);
+  }, [tt]);
 
   const handleSave = useCallback(
     (publish: boolean) => {
@@ -606,9 +607,13 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
       };
 
       onSave?.(payload);
-      setStatusMessage(publish ? 'Media library saved and published.' : 'Media library saved.');
+      setStatusMessage(
+        publish
+          ? tt('Mediebibliotek lagret og publisert.', 'Media library saved and published.')
+          : tt('Mediebibliotek lagret.', 'Media library saved.'),
+      );
     },
-    [activeCourse?.id, assets, folderId, onSave, scopeTab, selectedAssetId, typeTab],
+    [activeCourse?.id, assets, folderId, onSave, scopeTab, selectedAssetId, tt, typeTab],
   );
 
   const openNavRoute = useCallback(
@@ -626,7 +631,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
     };
   }, []);
 
-  const topContextLabel = activeCourse?.title || 'Academy Asset Browser';
+  const topContextLabel = activeCourse?.title || tt('Academy ressursbibliotek', 'Academy Asset Browser');
 
   return (
     <Box
@@ -688,7 +693,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
             </Box>
             <Stack spacing={0.2}>
               <Typography sx={{ fontSize: { xs: 24, md: 31 }, lineHeight: 1.04, fontWeight: 600 }}>
-                Academy Asset Browser
+                {tt('Academy ressursbibliotek', 'Academy Asset Browser')}
               </Typography>
               <Typography sx={{ color: 'rgba(237,240,247,0.62)', fontSize: 13 }}>{topContextLabel}</Typography>
             </Stack>
@@ -719,7 +724,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           }}
         >
           <Typography sx={{ fontSize: 19, color: '#f4d78e', letterSpacing: '0.01em' }}>
-            Fotograf · Min Innholdsbank
+            {tt('Fotograf · Min innholdsbank', 'Photographer · My content library')}
           </Typography>
 
           <Stack direction="row" spacing={1}>
@@ -733,7 +738,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 borderColor: 'rgba(255,255,255,0.2)',
               }}
             >
-              Upload
+              {tt('Last opp', 'Upload')}
             </Button>
             <Button
               variant="outlined"
@@ -745,7 +750,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 borderColor: 'rgba(255,255,255,0.2)',
               }}
             >
-              Save
+              {tt('Lagre', 'Save')}
             </Button>
             <Button
               variant="contained"
@@ -758,7 +763,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
               }}
             >
-              Upload
+              {tt('Last opp', 'Upload')}
             </Button>
           </Stack>
         </Box>
@@ -775,7 +780,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           }}
         >
           <Box sx={{ ...panelSx, p: 1.2, display: 'flex', flexDirection: 'column', gap: 1.2 }}>
-            <Typography sx={{ fontSize: 34, lineHeight: 1.04, fontWeight: 600 }}>Upload New Assets</Typography>
+            <Typography sx={{ fontSize: 34, lineHeight: 1.04, fontWeight: 600 }}>{tt('Last opp nye ressurser', 'Upload New Assets')}</Typography>
             <Box
               onClick={triggerUpload}
               sx={{
@@ -900,9 +905,9 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
             >
               <Stack direction="row" spacing={0.8}>
                 {[
-                  { id: 'all', label: 'All Assets', count: assets.length },
-                  { id: 'favorites', label: 'Favorites', count: favoritesCount },
-                  { id: 'upload', label: 'Upload', count: uploadsCount },
+                  { id: 'all', label: tt('Alle ressurser', 'All Assets'), count: assets.length },
+                  { id: 'favorites', label: tt('Favoritter', 'Favorites'), count: favoritesCount },
+                  { id: 'upload', label: tt('Opplastinger', 'Uploads'), count: uploadsCount },
                 ].map((scope) => {
                   const active = scopeTab === scope.id;
                   return (
@@ -935,7 +940,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   size="small"
                   value={searchValue}
                   onChange={(event) => setSearchValue(event.target.value)}
-                  placeholder="Search assets..."
+                  placeholder={tt('Søk ressurser...', 'Search assets...')}
                   sx={{
                     minWidth: { xs: '100%', md: 280 },
                     '& .MuiOutlinedInput-root': {
@@ -1184,11 +1189,11 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
             <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1 }} />
             <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
               {[
-                { label: 'Quick Links', route: '/academy/course-creator' },
-                { label: 'Instructor Panel', route: '/academy-dashboard' },
-                { label: 'Student View', route: '/academy/student-dashboard' },
-                { label: 'Learning Paths', route: '/academy/curriculum' },
-                { label: 'Bookmarks', route: '/academy/video-player' },
+                { label: tt('Hurtiglenker', 'Quick Links'), route: '/academy/course-creator' },
+                { label: tt('Instruktørpanel', 'Instructor Panel'), route: '/academy-dashboard' },
+                { label: tt('Studentvisning', 'Student View'), route: '/academy/student-dashboard' },
+                { label: tt('Læringsløp', 'Learning Paths'), route: '/academy/curriculum' },
+                { label: tt('Bokmerker', 'Bookmarks'), route: '/academy/video-player' },
               ].map((quick) => (
                 <Button
                   key={quick.label}
@@ -1208,7 +1213,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           </Box>
 
           <Box sx={{ ...panelSx, p: 1.2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <Typography sx={{ fontSize: 33, lineHeight: 1.08, fontWeight: 600 }}>Asset Actions</Typography>
+            <Typography sx={{ fontSize: 33, lineHeight: 1.08, fontWeight: 600 }}>{tt('Ressurshandlinger', 'Asset Actions')}</Typography>
 
             {selectedAsset ? (
               <Box sx={{ ...panelSx, p: 1 }}>
@@ -1240,29 +1245,51 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   {selectedAsset.name}
                 </Typography>
                 <Typography sx={{ color: 'rgba(237,240,247,0.64)', fontSize: 13, mt: 0.4 }}>
-                  {formatBytes(selectedAsset.size)} · {selectedAsset.duration ? formatDuration(selectedAsset.duration) : 'No duration'} ·{' '}
+                  {formatBytes(selectedAsset.size)} · {selectedAsset.duration ? formatDuration(selectedAsset.duration) : tt('Ingen varighet', 'No duration')} ·{' '}
                   {new Date(selectedAsset.updatedAt).toLocaleDateString()}
                 </Typography>
               </Box>
             ) : (
               <Box sx={{ ...panelSx, p: 2.4, textAlign: 'center' }}>
-                <Typography sx={{ color: 'rgba(237,240,247,0.64)' }}>Select an asset to view actions.</Typography>
+                <Typography sx={{ color: 'rgba(237,240,247,0.64)' }}>
+                  {tt('Velg en ressurs for å se handlinger.', 'Select an asset to view actions.')}
+                </Typography>
               </Box>
             )}
 
             <Stack spacing={0.55} sx={{ mt: 0.3 }}>
               {[
-                { label: 'Select Asset', icon: <CheckCircle />, onClick: () => setStatusMessage('Asset selected for insertion.') },
-                { label: 'Remove from Favorites', icon: <FavoriteBorder />, onClick: removeFavorite },
-                { label: 'Download', icon: <Download />, onClick: downloadSelected },
-                { label: 'Copy Link', icon: <LinkIcon />, onClick: copySelectedLink },
-                { label: 'View Details', icon: <InfoOutlined />, onClick: () => setStatusMessage('Details panel refreshed.') },
-                { label: 'Move to Folder', icon: <DriveFileMove />, onClick: () => setStatusMessage('Move action opened.') },
-                { label: 'Save to Cloud', icon: <CloudUpload />, onClick: () => setStatusMessage('Saved to cloud queue.') },
-                { label: 'Download from Cloud', icon: <CloudDownload />, onClick: () => setStatusMessage('Cloud download started.') },
-                { label: 'Sync Now', icon: <Sync />, onClick: syncNow },
-                { label: 'Play Video', icon: <PlayArrow />, onClick: playSelected },
-                { label: 'Delete Asset', icon: <DeleteOutline />, onClick: deleteSelected, danger: true },
+                {
+                  label: tt('Velg ressurs', 'Select Asset'),
+                  icon: <CheckCircle />,
+                  onClick: () => setStatusMessage(tt('Ressurs valgt for innsetting.', 'Asset selected for insertion.')),
+                },
+                { label: tt('Fjern fra favoritter', 'Remove from Favorites'), icon: <FavoriteBorder />, onClick: removeFavorite },
+                { label: tt('Last ned', 'Download'), icon: <Download />, onClick: downloadSelected },
+                { label: tt('Kopier lenke', 'Copy Link'), icon: <LinkIcon />, onClick: copySelectedLink },
+                {
+                  label: tt('Vis detaljer', 'View Details'),
+                  icon: <InfoOutlined />,
+                  onClick: () => setStatusMessage(tt('Detaljpanelet er oppdatert.', 'Details panel refreshed.')),
+                },
+                {
+                  label: tt('Flytt til mappe', 'Move to Folder'),
+                  icon: <DriveFileMove />,
+                  onClick: () => setStatusMessage(tt('Flyttehandling åpnet.', 'Move action opened.')),
+                },
+                {
+                  label: tt('Lagre til sky', 'Save to Cloud'),
+                  icon: <CloudUpload />,
+                  onClick: () => setStatusMessage(tt('Lagt til i skykø.', 'Saved to cloud queue.')),
+                },
+                {
+                  label: tt('Last ned fra sky', 'Download from Cloud'),
+                  icon: <CloudDownload />,
+                  onClick: () => setStatusMessage(tt('Nedlasting fra sky startet.', 'Cloud download started.')),
+                },
+                { label: tt('Synkroniser nå', 'Sync Now'), icon: <Sync />, onClick: syncNow },
+                { label: tt('Spill av video', 'Play Video'), icon: <PlayArrow />, onClick: playSelected },
+                { label: tt('Slett ressurs', 'Delete Asset'), icon: <DeleteOutline />, onClick: deleteSelected, danger: true },
               ].map((action) => (
                 <Button
                   key={action.label}
@@ -1278,7 +1305,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                       : 'transparent',
                     borderRadius: 1,
                   }}
-                  disabled={!selectedAsset && action.label !== 'Sync Now'}
+                  disabled={!selectedAsset && action.label !== tt('Synkroniser nå', 'Sync Now')}
                 >
                   {action.label}
                 </Button>
@@ -1300,7 +1327,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   borderColor: 'rgba(255,255,255,0.2)',
                 }}
               >
-                Cancel
+                {tt('Avbryt', 'Cancel')}
               </Button>
               <Button
                 fullWidth
@@ -1315,7 +1342,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                 }}
               >
-                Save
+                {tt('Lagre', 'Save')}
               </Button>
             </Stack>
           </Box>
@@ -1341,6 +1368,11 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
               { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
               { id: 'media', label: navLabel('Media'), route: '/academy/media' },
               { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+              { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+              { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
+              { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+              { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+              { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
             ].map((item) => (
               <Button
                 key={item.id}
@@ -1360,7 +1392,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           </Stack>
 
           <Typography sx={{ color: 'rgba(237,240,247,0.66)', fontSize: 13 }}>
-            {statusMessage || `${visibleAssets.length} assets visible`}
+            {statusMessage || tt(`${visibleAssets.length} ressurser synlige`, `${visibleAssets.length} assets visible`)}
           </Typography>
         </Box>
 

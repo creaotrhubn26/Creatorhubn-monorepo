@@ -3,7 +3,7 @@
  * Final template: Event Invitation
  */
 
-import { NewsletterTemplate } from './enhancedNewsletterTemplates';
+import type { NewsletterTemplate } from './enhancedNewsletterTemplates';
 
 export const ENHANCED_NEWSLETTER_TEMPLATES_PART3: NewsletterTemplate[] = [
   {

@@ -76,9 +76,11 @@ import {
 import { useFlashController } from '../../hooks/useFlashController';
 import { useAnnounce } from '../../providers/AccessibilityProvider';
 import { useVirtualStudio } from '../../../VirtualStudioContext';
-import {
+import type {
   FlashController,
   FlashGroup,
+  LightInScene} from '../../core/data/FlashControllerData';
+import {
   formatPowerFraction,
   formatPowerStops,
   powerToStops,
@@ -86,8 +88,7 @@ import {
   CONTROLLER_THUMBNAILS,
   getControllerRecommendations,
   getBestControllerForLights,
-  ControllerRecommendation,
-  LightInScene,
+  ControllerRecommendation
 } from '../../core/data/FlashControllerData';
 import { useTabletSupport } from '../../providers/TabletSupportProvider';
 import { TouchSlider, TouchIconButton } from '../components/TabletAwarePanels';

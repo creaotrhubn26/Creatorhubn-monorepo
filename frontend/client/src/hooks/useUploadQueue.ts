@@ -1,6 +1,6 @@
 // Advanced upload queue with rate limiting and batch processing
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { ProcessingOptions } from '@shared/photo-enhancement-contracts';
+import type { ProcessingOptions } from '@shared/photo-enhancement-contracts';
 
 type BatchProcessingOptions = ProcessingOptions;
 

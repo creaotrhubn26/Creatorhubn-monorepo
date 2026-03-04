@@ -41,8 +41,10 @@ import {
   Warning,
   KeyboardArrowDown,
 } from '@mui/icons-material';
-import { usePlugins, UsePluginsOptions } from '../../../hooks/usePlugins';
-import { PluginConfig, Plugin, PluginHook, PluginComponent, PluginUtility, PluginTheme, PluginIntegration } from '../../../utils/pluginManager';
+import type { UsePluginsOptions } from '../../../hooks/usePlugins';
+import { usePlugins } from '../../../hooks/usePlugins';
+import type { Plugin} from '../../../utils/pluginManager';
+import { PluginConfig, PluginHook, PluginComponent, PluginUtility, PluginTheme, PluginIntegration } from '../../../utils/pluginManager';
 
 interface PluginDashboardProps {
   showDetails?: boolean;

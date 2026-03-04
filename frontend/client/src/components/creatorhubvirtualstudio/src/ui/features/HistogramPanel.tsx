@@ -8,7 +8,8 @@ import {
   Typography,
 } from '@mui/material';
 import { getHistogramCanvas, getActiveCameraId, setOverlayMode } from '@/core/services/viewports';
-import { computeHistogramFromCanvas, Histogram } from '@/core/services/image';
+import type { Histogram } from '@/core/services/image';
+import { computeHistogramFromCanvas } from '@/core/services/image';
 import { useScene } from '@/state/selectors';
 import { exposureValue } from '@/core/services/photometrics';
 

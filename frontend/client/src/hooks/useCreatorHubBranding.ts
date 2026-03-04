@@ -14,10 +14,11 @@
  */
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
-import { 
-  CREATOR_HUB_BRANDING, 
+import type { 
   ProfessionType, 
-  ProjectCategoryType,
+  ProjectCategoryType} from '../constants/CreatorHubBranding';
+import { 
+  CREATOR_HUB_BRANDING,
   BrandColorType 
 } from '../constants/CreatorHubBranding';
 

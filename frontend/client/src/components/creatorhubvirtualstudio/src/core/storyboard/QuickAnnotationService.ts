@@ -9,8 +9,8 @@
  * - Focus area rectangles
  */
 
-import { StoryboardFrame } from '../../state/storyboardStore';
-import { QuickAnnotationType } from '../../ui/components/FrameContextMenu';
+import type { StoryboardFrame } from '../../state/storyboardStore';
+import type { QuickAnnotationType } from '../../ui/components/FrameContextMenu';
 
 // =============================================================================
 // Types

@@ -4,7 +4,7 @@
  * Integrerer med existing professional-tools export system
  */
 
-import { BeatClip, Track, StoryArc } from './storyArcDataIntegration';
+import type { BeatClip, Track, StoryArc } from './storyArcDataIntegration';
 
 export interface ResolveExportOptions {
   projectName: string;

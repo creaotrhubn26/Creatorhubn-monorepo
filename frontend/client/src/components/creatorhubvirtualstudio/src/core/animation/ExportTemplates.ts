@@ -9,8 +9,9 @@
  * - Client delivery workflows
  */
 
-import { ExportJobPriority, BatchExportConfig } from './ExportScheduler';
-import { ExportPreset, EXPORT_PRESETS } from './GoogleDriveExportService';
+import type { ExportJobPriority, BatchExportConfig } from './ExportScheduler';
+import type { ExportPreset} from './GoogleDriveExportService';
+import { EXPORT_PRESETS } from './GoogleDriveExportService';
 import { logger } from '../services/logger';
 
 const log = logger.module('ExportTemplates');
@@ -501,7 +502,8 @@ export const EXPORT_TEMPLATES: ExportTemplate[] = [
 // Template Service - Database Persistent
 // ============================================================================
 
-import { exportTemplatesApi, ExportTemplateDB } from '../api/virtualStudioApi';
+import type { ExportTemplateDB } from '../api/virtualStudioApi';
+import { exportTemplatesApi } from '../api/virtualStudioApi';
 
 class ExportTemplateService {
   private customTemplates: ExportTemplate[] = [];

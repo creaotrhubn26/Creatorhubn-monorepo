@@ -4,7 +4,8 @@
  * Automatically applies: custom logo, brand colors, business name, custom domain
  */
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 

@@ -48,17 +48,19 @@ import {
   Brush,
   AutoFixHigh,
 } from '@mui/icons-material';
+import type {
+  ToolType,
+  DrawingStyle} from '../../core/storyboard/FrameCanvasEngine';
 import {
   FrameCanvasEngine,
-  ToolType,
-  DrawingStyle,
   DEFAULT_STYLE,
   MARKER_COLORS,
 } from '../../core/storyboard/FrameCanvasEngine';
+import type {
+  StoryboardFrame} from '../../state/storyboardStore';
 import {
   useStoryboardStore,
-  useSelectedFrame,
-  StoryboardFrame,
+  useSelectedFrame
 } from '../../state/storyboardStore';
 
 // =============================================================================

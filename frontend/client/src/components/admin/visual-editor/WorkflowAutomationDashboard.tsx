@@ -142,8 +142,10 @@ import {
   CloudDone as CloudDoneIcon2,
   CloudOff as CloudOffIcon2,
 } from '@mui/icons-material';
-import { useWorkflowAutomation, UseWorkflowAutomationOptions } from '../../../hooks/useWorkflowAutomation';
-import { WorkflowConfig, Workflow, WorkflowTemplate } from '../../../utils/workflowAutomationManager';
+import type { UseWorkflowAutomationOptions } from '../../../hooks/useWorkflowAutomation';
+import { useWorkflowAutomation } from '../../../hooks/useWorkflowAutomation';
+import type { Workflow, WorkflowTemplate } from '../../../utils/workflowAutomationManager';
+import { WorkflowConfig } from '../../../utils/workflowAutomationManager';
 
 interface WorkflowAutomationDashboardProps {
   showDetails?: boolean;

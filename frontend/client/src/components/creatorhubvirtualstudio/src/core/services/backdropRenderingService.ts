@@ -19,7 +19,7 @@
  */
 
 import * as THREE from 'three';
-import { BackdropDefinition } from '../data/backdropDefinitions';
+import type { BackdropDefinition } from '../data/backdropDefinitions';
 import { assetLoadingService } from './assetLoadingService';
 import { logger } from './logger';
 

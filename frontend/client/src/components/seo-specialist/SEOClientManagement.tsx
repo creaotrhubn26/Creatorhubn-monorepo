@@ -48,7 +48,8 @@ import {
   Remove,
   MoreVert,
 } from '@mui/icons-material';
-import { seoSpecialistService, SEOClient } from '../../services/SEOSpecialistService';
+import type { SEOClient } from '../../services/SEOSpecialistService';
+import { seoSpecialistService } from '../../services/SEOSpecialistService';
 import { useProfessionAdapter } from '../../hooks/useProfessionAdapter';
 
 interface SEOClientManagementProps {

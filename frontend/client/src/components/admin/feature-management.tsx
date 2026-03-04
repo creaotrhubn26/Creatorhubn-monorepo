@@ -71,6 +71,9 @@ import {
   getProfessionFeatureStats
 } from '@shared/profession-feature-matrix';
 import { getAllProfessionTypes as _getAllProfessionTypes } from '@shared/profession-type-registry';
+import type {
+  DashboardTabConfig
+} from '@shared/profession-dashboard-config';
 import {
   PROFESSION_DASHBOARD_CONFIG,
   getProfessionTabs,
@@ -79,8 +82,7 @@ import {
   isTabFeatureEnabled as _isTabFeatureEnabled,
   toggleProfessionTab,
   toggleTabFeature,
-  getProfessionDashboardStats,
-  DashboardTabConfig
+  getProfessionDashboardStats
 } from '@shared/profession-dashboard-config';
 import {
   UserFeatureOverride as _UserFeatureOverride,

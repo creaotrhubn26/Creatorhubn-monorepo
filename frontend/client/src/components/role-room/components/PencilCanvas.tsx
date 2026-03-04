@@ -40,13 +40,14 @@ import {
   TouchApp,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import {
-  useApplePencil,
+import type {
   PencilPoint,
   PencilStroke,
+  InputType} from '../hooks/useApplePencil';
+import {
+  useApplePencil,
   drawPressureStroke,
-  drawTiltStroke,
-  InputType,
+  drawTiltStroke
 } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
 

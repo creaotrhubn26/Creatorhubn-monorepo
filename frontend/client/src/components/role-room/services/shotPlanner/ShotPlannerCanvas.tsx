@@ -14,11 +14,12 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import * as PIXI from 'pixi.js';
 import { Box } from '@mui/material';
-import {
+import type {
   Camera2D,
   Actor2D,
   Prop2D,
-  Point2D,
+  Point2D} from './types';
+import {
   Scene2D,
   PlannerTool,
   LENS_FOV_MAP,

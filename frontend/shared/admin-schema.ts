@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
 import { sql } from 'drizzle-orm';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Utvidet produktschema basert på spesifikasjonen
 export const products = pgTable('products', {

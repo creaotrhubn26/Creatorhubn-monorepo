@@ -5,6 +5,8 @@
 
 import { useTheming } from '../../../utils/theming-helper';
 import React, { memo, useCallback, useState, useEffect, useMemo } from 'react';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Paper,
@@ -28,7 +30,6 @@ import {
   Divider,
   Alert,
   AlertTitle,
-  ChipProps,
   Card,
   CardContent,
   CardActions,
@@ -203,8 +204,10 @@ import {
   FormatColorFill as FormatColorFillIcon,
   ColorLens as ColorLensIcon,
 } from '@mui/icons-material';
-import { useDesignSystem, UseDesignSystemOptions } from '../../../hooks/useDesignSystem';
-import { DesignSystemConfig, DesignToken, DesignGuideline, DesignTheme } from '../../../utils/designSystemManager';
+import type { UseDesignSystemOptions } from '../../../hooks/useDesignSystem';
+import { useDesignSystem } from '../../../hooks/useDesignSystem';
+import type { DesignToken, DesignGuideline, DesignTheme } from '../../../utils/designSystemManager';
+import { DesignSystemConfig } from '../../../utils/designSystemManager';
 
 interface DesignSystemDashboardProps {
   showDetails?: boolean;

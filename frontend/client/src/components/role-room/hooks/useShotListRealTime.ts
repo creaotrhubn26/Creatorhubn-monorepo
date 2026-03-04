@@ -41,8 +41,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  SHOT_LIST_EVENT,
+import type {
   ShotListEvent,
   ShotListEventType,
   ShotAssignedPayload,
@@ -51,7 +50,9 @@ import {
   ShotReorderedPayload,
   EditLockAcquiredPayload,
   AuditLogEntry,
-  EventMeta,
+  EventMeta} from '../services/shotListEvents';
+import {
+  SHOT_LIST_EVENT,
   buildAuditEntry,
   makeEvent,
 } from '../services/shotListEvents';

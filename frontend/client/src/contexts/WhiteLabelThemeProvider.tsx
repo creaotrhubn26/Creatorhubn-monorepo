@@ -6,8 +6,10 @@
  * Supports light/dark mode with brand color variants
  */
 
-import React, { useMemo, ReactNode } from 'react';
-import { ThemeProvider, createTheme, Theme, alpha, darken, lighten } from '@mui/material/styles';
+import type { ReactNode } from 'react';
+import React, { useMemo } from 'react';
+import type { Theme} from '@mui/material/styles';
+import { ThemeProvider, createTheme, alpha, darken, lighten } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { useWhiteLabelBranding } from './WhiteLabelBrandingContext';
 

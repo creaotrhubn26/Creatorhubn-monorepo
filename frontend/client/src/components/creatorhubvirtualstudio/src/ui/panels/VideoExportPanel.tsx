@@ -74,20 +74,22 @@ import {
   Tune,
   AutoAwesome,
 } from '@mui/icons-material';
-import {
-  videoExportService,
+import type {
   VideoExportConfig,
   ExportProgress,
-  ExportResult,
+  ExportResult} from '../../core/animation/VideoExportService';
+import {
+  videoExportService,
   RESOLUTION_PRESETS,
   QUALITY_PRESETS,
   FPS_PRESETS,
 } from '../../core/animation/VideoExportService';
+import type {
+  ExportPreset,
+  GoogleDriveUploadProgress} from '../../core/animation/GoogleDriveExportService';
 import {
   googleDriveExportService,
-  EXPORT_PRESETS,
-  ExportPreset,
-  GoogleDriveUploadProgress,
+  EXPORT_PRESETS
 } from '../../core/animation/GoogleDriveExportService';
 
 // ============================================================================

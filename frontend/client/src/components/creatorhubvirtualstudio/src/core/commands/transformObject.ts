@@ -1,4 +1,4 @@
-import { Scene } from '@/core/models/scene';
+import type { Scene } from '@/core/models/scene';
 
 export function transformObject(
   scene: Scene,

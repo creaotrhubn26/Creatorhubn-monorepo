@@ -39,7 +39,8 @@ import {
   Edit,
   Delete,
 } from '@mui/icons-material';
-import { useVisualEditor, EditorElement } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
+import { useVisualEditor } from './VisualEditorContext';
 
 export const ZIndexManager: React.FC = () => {
   const {

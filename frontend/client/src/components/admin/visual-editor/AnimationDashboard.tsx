@@ -65,8 +65,9 @@ import {
   FlipToFront,
   AutoAwesome,
 } from '@mui/icons-material';
-import { useAnimation, UseAnimationOptions } from '../../../hooks/useAnimation';
-import { Animation as AnimationType } from '../../../utils/animationManager';
+import type { UseAnimationOptions } from '../../../hooks/useAnimation';
+import { useAnimation } from '../../../hooks/useAnimation';
+import type { Animation as AnimationType } from '../../../utils/animationManager';
 
 // Animation preset templates
 interface AnimationPreset {

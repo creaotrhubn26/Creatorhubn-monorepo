@@ -106,8 +106,10 @@ import {
   Info,
   Warning,
 } from '@mui/icons-material';
-import { useCollaboration, UseCollaborationOptions } from '../../../hooks/useCollaboration';
-import { CollaborationConfig, CollaborationEvent, Collaborator, ConflictResolution } from '../../../utils/collaborationManager';
+import type { UseCollaborationOptions } from '../../../hooks/useCollaboration';
+import { useCollaboration } from '../../../hooks/useCollaboration';
+import type { CollaborationEvent, Collaborator, ConflictResolution } from '../../../utils/collaborationManager';
+import { CollaborationConfig } from '../../../utils/collaborationManager';
 
 interface CollaborationDashboardProps {
   showDetails?: boolean;

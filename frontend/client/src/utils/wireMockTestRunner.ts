@@ -1,4 +1,4 @@
-import { WireMockTestResult } from '../components/admin/WireMockResponseViewer';
+import type { WireMockTestResult } from '../components/admin/WireMockResponseViewer';
 import { harRecorder } from './harRecorder';
 import { selfHealingSandbox } from './selfHealingSandbox';
 import { emitWireMockEvent } from './wireMockEventEmitter';

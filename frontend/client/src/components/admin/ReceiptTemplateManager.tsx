@@ -45,7 +45,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useEnhancedMasterIntegration } from '../../integration/EnhancedMasterIntegrationProvider';
-import { PROFESSION_FEATURE_MATRIX, ProfessionFeatureConfig } from '../../../../shared/profession-feature-matrix';
+import type { ProfessionFeatureConfig } from '../../../../shared/profession-feature-matrix';
+import { PROFESSION_FEATURE_MATRIX } from '../../../../shared/profession-feature-matrix';
 
 type ReceiptTemplateType = 'subscription' | 'marketplace-addon' | 'invoice' | 'refund';
 

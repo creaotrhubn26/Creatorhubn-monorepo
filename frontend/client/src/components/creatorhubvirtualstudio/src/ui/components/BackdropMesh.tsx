@@ -17,8 +17,9 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { SceneNode } from '../../core/models/scene';
-import { backdropRenderingService, BackdropLoadOptions } from '../../core/services/backdropRenderingService';
+import type { SceneNode } from '../../core/models/scene';
+import type { BackdropLoadOptions } from '../../core/services/backdropRenderingService';
+import { backdropRenderingService } from '../../core/services/backdropRenderingService';
 import { getBackdropById } from '../../core/data/backdropDefinitions';
 import { logger } from '../../core/services/logger';
 

@@ -40,11 +40,12 @@ import {
   StarBorder,
   Info,
 } from '@mui/icons-material';
+import type {
+  HDRIRecommendation} from '../../core/services/hdriRecommendationService';
 import {
-  getHDRIRecommendations,
-  HDRIRecommendation,
+  getHDRIRecommendations
 } from '../../core/services/hdriRecommendationService';
-import { CachedActor } from '../../core/services/actorModelCache';
+import type { CachedActor } from '../../core/services/actorModelCache';
 
 interface HDRIRecommendationDialogProps {
   open: boolean;

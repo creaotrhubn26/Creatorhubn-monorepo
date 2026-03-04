@@ -1,4 +1,4 @@
-import { BeatClip, Track } from './storyArcDataIntegration';
+import type { BeatClip, Track } from './storyArcDataIntegration';
 
 export type AutoEditPreset = 'reel-30' | 'story-60' | 'interview';
 export type AutoEditVariant = 'safe' | 'balanced' | 'bold';

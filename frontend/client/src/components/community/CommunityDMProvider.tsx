@@ -5,7 +5,8 @@
  * Provides context for DM conversations throughout the community
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { apiRequest } from '@/lib/queryClient';
 import UniversalChatWidget from '../chat/UniversalChatWidget';

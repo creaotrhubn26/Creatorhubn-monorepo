@@ -92,18 +92,22 @@ import {
   ThumbUp as ThumbUpIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import {
-  productionWorkflowService,
+import type {
   Take,
   LiveSetStatus,
   ShootingDay,
   CameraId,
-  CameraMetadata,
+  CameraMetadata} from '../../services/productionWorkflowService';
+import {
+  productionWorkflowService
 } from '../../services/productionWorkflowService';
-import { buildCan, LiveSetCan, LiveSetRole, ROLE_LABELS } from '../../services/liveSetPermissionsService';
+import type { LiveSetCan, LiveSetRole} from '../../services/liveSetPermissionsService';
+import { buildCan, ROLE_LABELS } from '../../services/liveSetPermissionsService';
 import * as Outbox from '../../services/liveSetOutboxService';
-import { useLiveSetRealtime, PresenceEntry, LiveSetWsMessage, LiveSetMsgType } from '../../services/liveSetRealtimeService';
-import { exportDailyReportPdf, exportCirclePrintPdf, exportTakesCsv, exportNotesCsv, ExportContext } from '../../services/liveSetExportService';
+import type { PresenceEntry, LiveSetWsMessage, LiveSetMsgType } from '../../services/liveSetRealtimeService';
+import { useLiveSetRealtime } from '../../services/liveSetRealtimeService';
+import type { ExportContext } from '../../services/liveSetExportService';
+import { exportDailyReportPdf, exportCirclePrintPdf, exportTakesCsv, exportNotesCsv } from '../../services/liveSetExportService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -31,7 +31,7 @@ import {
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { SceneBreakdown } from '../models/casting';
+import type { SceneBreakdown } from '../models/casting';
 
 interface ProductionControlPanelProps {
   selectedScene?: SceneBreakdown;

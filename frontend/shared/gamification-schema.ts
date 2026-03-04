@@ -1,6 +1,6 @@
 import { pgTable, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // User Progress Table
 export const userProgress = pgTable('user_progress', {

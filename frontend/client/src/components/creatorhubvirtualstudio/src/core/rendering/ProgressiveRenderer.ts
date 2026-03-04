@@ -6,7 +6,8 @@
  */
 
 import * as THREE from 'three';
-import { Denoiser, DenoiseInput } from './Denoiser';
+import type { DenoiseInput } from './Denoiser';
+import { Denoiser } from './Denoiser';
 import { logger } from '../services/logger';
 
 const log = logger.module('ProgressiveRenderer');

@@ -18,7 +18,8 @@ import {
   Chip,
 } from '@mui/material';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
-import { keyboardShortcutsService, Shortcut } from '../../core/services/keyboardShortcuts';
+import type { Shortcut } from '../../core/services/keyboardShortcuts';
+import { keyboardShortcutsService } from '../../core/services/keyboardShortcuts';
 import { colors, spacing } from '../../styles/designTokens';
 
 export interface ShortcutHelpProps {

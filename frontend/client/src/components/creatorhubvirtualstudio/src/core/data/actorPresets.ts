@@ -10,7 +10,7 @@
  * - Film industry: typical actor demographics
  */
 
-import { ActorPreset } from '../services/virtualActorService';
+import type { ActorPreset } from '../services/virtualActorService';
 
 /**
  * Skin tone presets based on Fitzpatrick scale

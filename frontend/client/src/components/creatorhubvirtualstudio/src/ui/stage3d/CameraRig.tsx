@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useAppStore } from '../../state/store';
-import { SceneNode } from '../../core/models/scene';
+import type { SceneNode } from '../../core/models/scene';
 
 /**
  * CameraRig Component - Renders camera nodes from the scene store

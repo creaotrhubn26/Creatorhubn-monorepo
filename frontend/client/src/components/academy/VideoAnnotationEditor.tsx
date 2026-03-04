@@ -41,6 +41,7 @@ import {
 import { useLocation } from 'wouter';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
+import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import AcademyBrandMark from './AcademyBrandMark';
 
 export interface VideoAnnotation {
@@ -168,7 +169,8 @@ function VideoAnnotationEditor({
   onSave,
   onCancel,
 }: VideoAnnotationEditorProps) {
-  const [, setLocation] = useLocation();
+  const { analytics, debugging, performance: integrationPerformance } = useEnhancedMasterIntegration();
+  const [location, setLocation] = useLocation();
   
   const { navLabel, tt } = useAcademyLocale();
 
@@ -243,7 +245,10 @@ function VideoAnnotationEditor({
   );
 
   useEffect(() => {
-    const endTiming = performance.startTiming('video_annotation_editor_render');
+    const endTiming =
+      typeof integrationPerformance?.startTiming === 'function'
+        ? integrationPerformance.startTiming('video_annotation_editor_render')
+        : () => {};
 
     analytics.trackEvent('video_annotation_editor_mounted', {
       videoUrl,
@@ -267,7 +272,7 @@ function VideoAnnotationEditor({
         timestamp: Date.now(),
       });
     };
-  }, [analytics, annotationItems.length, debugging, performance, videoDuration, videoUrl]);
+  }, [analytics, annotationItems.length, debugging, integrationPerformance, videoDuration, videoUrl]);
 
   const syncCanvasSize = useCallback(() => {
     const video = videoRef.current;
@@ -526,7 +531,7 @@ function VideoAnnotationEditor({
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
-    { id: 'lowerthirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -579,13 +584,15 @@ function VideoAnnotationEditor({
               }}
               onClick={() => setLocation('/academy/course-creator')}
             >
-              Create New Course
+              {navLabel('Create New Course')}
             </Button>
           </Stack>
 
           <Stack spacing={0.5} sx={{ px: 1.5 }}>
             {leftNavItems.map((item) => {
-              const active = item.id === 'media';
+              const active =
+                location === item.route ||
+                (item.id === 'media' && location === '/academy/annotation-editor');
               return (
                 <Button
                   key={item.id}
@@ -623,7 +630,7 @@ function VideoAnnotationEditor({
                 borderRadius: 1,
               }}
             >
-              New Annotation
+              {tt('Ny annotering', 'New Annotation')}
             </Button>
           </Box>
         </Box>
@@ -696,7 +703,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    Preview
+                    {tt('Forhåndsvis', 'Preview')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -709,7 +716,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    Save
+                    {tt('Lagre', 'Save')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -722,7 +729,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    Player
+                    {tt('Spiller', 'Player')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -735,7 +742,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    Quiz
+                    {tt('Quiz', 'Quiz')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -748,7 +755,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    Monetize
+                    {tt('Monetiser', 'Monetize')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -774,7 +781,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    LowerThirds
+                    {tt('LowerThirds', 'LowerThirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -788,18 +795,18 @@ function VideoAnnotationEditor({
                       boxShadow: '0 10px 24px rgba(248,179,33,0.25)',
                     }}
                   >
-                    Publish
+                    {tt('Publiser', 'Publish')}
                   </Button>
                 </Stack>
               </Stack>
 
               <Stack direction="row" spacing={1.2} alignItems="center" sx={{ ...panelSectionSx, px: 1.2, py: 1.1 }}>
-                <Tooltip title="Drag">
+                <Tooltip title={tt('Dra', 'Drag')}>
                   <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.74)' }}>
                     <DragIndicator fontSize="small" />
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Edit">
+                <Tooltip title={tt('Rediger', 'Edit')}>
                   <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.74)' }}>
                     <Edit fontSize="small" />
                   </IconButton>
@@ -832,7 +839,7 @@ function VideoAnnotationEditor({
                   startIcon={previewMode ? <Visibility /> : <VisibilityOff />}
                   sx={{ ml: 'auto', color: '#edf0f7', textTransform: 'none' }}
                 >
-                  {previewMode ? 'Preview On' : 'Preview Off'}
+                  {previewMode ? tt('Forhåndsvisning på', 'Preview On') : tt('Forhåndsvisning av', 'Preview Off')}
                 </Button>
               </Stack>
 
@@ -1050,9 +1057,9 @@ function VideoAnnotationEditor({
                   '& .Mui-selected': { color: '#f7f8fb' },
                 }}
               >
-                <Tab label="Annotation Editor" value="editor" />
-                <Tab label="Markers" value="markers" />
-                <Tab label="Attachments" value="attachments" />
+                <Tab label={tt('Annoteringseditor', 'Annotation Editor')} value="editor" />
+                <Tab label={tt('Markører', 'Markers')} value="markers" />
+                <Tab label={tt('Vedlegg', 'Attachments')} value="attachments" />
               </Tabs>
 
               {rightTab === 'editor' && (
@@ -1187,7 +1194,7 @@ function VideoAnnotationEditor({
                   {draftAnnotation && (
                     <Box sx={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1, p: 1.1, bgcolor: 'rgba(7,10,16,0.85)' }}>
                       <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(237,240,247,0.62)', mb: 0.8 }}>
-                        Edit Annotation
+                        {tt('Rediger annotering', 'Edit Annotation')}
                       </Typography>
 
                       <Stack spacing={0.9}>
@@ -1311,7 +1318,7 @@ function VideoAnnotationEditor({
                               fontWeight: 700,
                             }}
                           >
-                            Save Annotation
+                            {tt('Lagre annotering', 'Save Annotation')}
                           </Button>
                           <Button
                             size="small"
@@ -1444,7 +1451,7 @@ function VideoAnnotationEditor({
                     border: '1px solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  Save
+                  {tt('Lagre', 'Save')}
                 </Button>
                 <Button
                   onClick={() => {

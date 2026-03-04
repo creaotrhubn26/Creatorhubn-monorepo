@@ -10,7 +10,7 @@ import {
   decimal,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Production Projects
 export const productionProjects = pgTable('production_projects', {

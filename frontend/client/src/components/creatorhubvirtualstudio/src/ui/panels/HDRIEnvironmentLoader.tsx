@@ -51,7 +51,8 @@ import LinearProgress from '@mui/material/LinearProgress';
 import * as THREE from 'three';
 import { useVirtualStudio } from '../../../VirtualStudioContext';
 import { getThreeScene } from '../../core/services/viewports';
-import { hdriCacheService, preCacheManager, PRE_CACHE_HDRIS, PreCacheProgress } from '../../core/services/hdriCacheService';
+import type { PreCacheProgress } from '../../core/services/hdriCacheService';
+import { hdriCacheService, preCacheManager, PRE_CACHE_HDRIS } from '../../core/services/hdriCacheService';
 
 // Dynamic import for RGBELoader
 let RGBELoader: unknown = null;

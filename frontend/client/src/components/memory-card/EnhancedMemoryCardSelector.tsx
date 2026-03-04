@@ -43,14 +43,15 @@ import {
   CameraSetupIcon,
   CameraSettingsIcon,
 } from '../shared/CreatorHubIcons';
+import type {
+  MemoryCardType,
+  MemoryCardRecommendation} from '../../data/memory-card-database';
 import {
   MemoryCardRecommendationEngine,
   getMemoryCardTypesByProfession,
   getMemoryCardTypesByCamera,
   getMemoryCardTypeById,
   getCameraCompatibility,
-  MemoryCardType,
-  MemoryCardRecommendation,
   formatCurrency,
   getScandinavianReferences,
 } from '../../data/memory-card-database';

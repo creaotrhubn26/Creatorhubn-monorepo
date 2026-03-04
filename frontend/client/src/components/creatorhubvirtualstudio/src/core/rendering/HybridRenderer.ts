@@ -5,7 +5,7 @@
  * Similar to professional rendering software
  */
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import { PathTracer } from './PathTracer';
 import { logger } from '../services/logger';
 

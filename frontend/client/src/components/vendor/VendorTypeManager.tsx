@@ -41,7 +41,8 @@ import {
   ColorLens,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { getAllVendorTypes, enableVendorType, VendorTypeConfig } from '@shared/vendor-type-registry';
+import type { VendorTypeConfig } from '@shared/vendor-type-registry';
+import { getAllVendorTypes, enableVendorType } from '@shared/vendor-type-registry';
 
 interface VendorTypeManagerProps {
   onTypeEnabled?: (typeId: string) => void;

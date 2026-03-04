@@ -52,11 +52,12 @@ import {
   Schedule,
   GroupAdd,
 } from '@mui/icons-material';
-import {
-  storyboardCollaborationService,
+import type {
   TeamMember,
   ShareLink,
-  PermissionLevel,
+  PermissionLevel} from '../../core/storyboard/StoryboardCollaborationService';
+import {
+  storyboardCollaborationService
 } from '../../core/storyboard/StoryboardCollaborationService';
 import { useVirtualStudio } from '../../../VirtualStudioContext';
 

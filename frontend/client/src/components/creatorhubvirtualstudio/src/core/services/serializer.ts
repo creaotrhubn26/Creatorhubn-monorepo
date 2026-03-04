@@ -4,7 +4,7 @@
  * Handles scene persistence with DB-first storage and localStorage fallback.
  */
 
-import { Scene } from '@/core/models/scene';
+import type { Scene } from '@/core/models/scene';
 import { logger } from './logger';
 
 const log = logger.module('Serializer');

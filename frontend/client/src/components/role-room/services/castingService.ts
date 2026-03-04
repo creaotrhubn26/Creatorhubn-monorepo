@@ -1,4 +1,4 @@
-import { 
+import type { 
   CastingProject, 
   Role, 
   Candidate, 

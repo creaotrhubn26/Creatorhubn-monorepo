@@ -17,11 +17,15 @@
  * 12. Virtual Actors - Skin tone metering
  */
 
-import { exposureCalculator, ExposureRecommendation, MODIFIER_LIGHT_LOSS } from './exposureCalculatorService';
-import { patternExposureIntegration, PatternExposureAnalysis } from './patternExposureIntegration';
-import { cinematographyPatternsService, CinematographyPattern, LightSetup } from './cinematographyPatternsService';
-import { findLightSpec, findLensSpec, StudioLight } from '../data/LightSpecifications';
-import { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
+import type { ExposureRecommendation} from './exposureCalculatorService';
+import { exposureCalculator, MODIFIER_LIGHT_LOSS } from './exposureCalculatorService';
+import type { PatternExposureAnalysis } from './patternExposureIntegration';
+import { patternExposureIntegration } from './patternExposureIntegration';
+import type { CinematographyPattern, LightSetup } from './cinematographyPatternsService';
+import { cinematographyPatternsService } from './cinematographyPatternsService';
+import type { StudioLight } from '../data/LightSpecifications';
+import { findLightSpec, findLensSpec } from '../data/LightSpecifications';
+import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
 
 // =============================================================================
 // TYPES

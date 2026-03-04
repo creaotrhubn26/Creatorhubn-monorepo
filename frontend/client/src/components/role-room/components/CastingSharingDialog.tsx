@@ -41,7 +41,7 @@ import {
   Cancel as CancelIcon,
   FileDownload as FileDownloadIcon,
 } from '@mui/icons-material';
-import { UserRole, UserRoleType, CastingProject } from '../models/casting';
+import type { UserRole, UserRoleType, CastingProject } from '../models/casting';
 import { sharingService } from '../services/sharingService';
 import { castingAuthService } from '../services/castingAuthService';
 import { castingService } from '../services/castingService';

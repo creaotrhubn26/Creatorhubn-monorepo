@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import type {
+  BrandingSettings} from '../config/branding';
 import {
-  BrandingSettings,
   fetchBrandingSettings,
   getBrandingSettings,
   subscribeBrandingSettings,

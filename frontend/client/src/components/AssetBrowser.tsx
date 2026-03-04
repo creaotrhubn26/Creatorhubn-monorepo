@@ -75,7 +75,8 @@ import {
 } from '@mui/icons-material';
 import { UniversalFileUpload } from './universal/UniversalFileUpload';
 import { FileManagementStatusProvider } from '../contexts/FileManagementStatusContext';
-import StoryArcDataIntegration, { StoryArc, BeatClip, Track } from '../services/storyArcDataIntegration';
+import type { StoryArc, BeatClip, Track } from '../services/storyArcDataIntegration';
+import StoryArcDataIntegration from '../services/storyArcDataIntegration';
 import { apiRequest } from '@/lib/queryClient';
 
 interface AssetBrowserProps {

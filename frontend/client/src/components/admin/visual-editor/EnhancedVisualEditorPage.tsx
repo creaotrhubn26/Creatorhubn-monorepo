@@ -31,7 +31,8 @@ import {
 } from '@mui/icons-material';
 
 // Existing components
-import { VisualEditorProvider, useVisualEditor, EditorElement, Project } from './VisualEditorContext';
+import type { EditorElement, Project } from './VisualEditorContext';
+import { VisualEditorProvider, useVisualEditor } from './VisualEditorContext';
 import { EnhancedTopToolbar } from './EnhancedTopToolbar';
 import { FabricCanvas } from './FabricCanvas';
 import VisualEditorSidebar from './VisualEditorSidebar';
@@ -51,7 +52,8 @@ import { useDatabase } from '@/hooks/useDatabase';
 import ModalCreator from './ModalCreator';
 import DashboardComponentManager from './DashboardComponentManager';
 import LibrarySuggestionDialog from './LibrarySuggestionDialog';
-import ProfessionConfigWizard, { ProfessionConfiguration } from './ProfessionConfigWizard';
+import type { ProfessionConfiguration } from './ProfessionConfigWizard';
+import ProfessionConfigWizard from './ProfessionConfigWizard';
 import ToastDesigner from './ToastDesigner';
 import TemplateDashboard from './TemplateDashboard';
 import ExportPresetsDashboard from './ExportPresetsDashboard';

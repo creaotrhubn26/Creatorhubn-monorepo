@@ -27,7 +27,8 @@ import {
   Visibility as ViewIcon,
   CheckCircle as SuccessIcon,
 } from '@mui/icons-material';
-import { selfHealingSandbox, RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
+import type { RecordedCall, WireMockMapping } from '../../utils/selfHealingSandbox';
+import { selfHealingSandbox } from '../../utils/selfHealingSandbox';
 import { toast } from '../../hooks/use-toast';
 
 export const SelfHealingSandboxPanel: React.FC = () => {

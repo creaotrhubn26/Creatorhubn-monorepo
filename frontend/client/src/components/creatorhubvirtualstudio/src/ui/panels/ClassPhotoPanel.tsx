@@ -70,18 +70,19 @@ import {
   ArrowDownward,
   Lightbulb,
 } from '@mui/icons-material';
-import {
-  classPhotoService,
+import type {
   ClassPhotoSession,
   ClassPhotoSetup,
   Student,
   AgeGroup,
   HeightDistribution,
   VisibilityIssue,
-  PropType,
   TeacherPosition,
   TeacherRole,
-  TeacherConfig,
+  TeacherConfig} from '../../core/services/classPhotoService';
+import {
+  classPhotoService,
+  PropType,
   PROP_DEFINITIONS,
   HEIGHT_RANGES,
   TEACHER_HEIGHT,

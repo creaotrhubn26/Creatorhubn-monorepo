@@ -31,7 +31,8 @@ import {
   Remove,
   ExpandMore,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig } from './BaseNode';
+import type { NodeConfig } from './BaseNode';
+import { BaseNode } from './BaseNode';
 
 interface HeaderEntry {
   key: string;

@@ -17,10 +17,11 @@ import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CompareIcon from '@mui/icons-material/Compare';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import { useScene, useActions } from '@/state/selectors';
+import type {
+  SceneAnalysisResult} from '@/core/services/ai-integration';
 import {
   analyzeReferencePhoto,
-  applyLightingRecommendation,
-  SceneAnalysisResult,
+  applyLightingRecommendation
 } from '@/core/services/ai-integration';
 
 export default function AILightingAssistant() {

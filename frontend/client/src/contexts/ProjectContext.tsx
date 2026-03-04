@@ -3,7 +3,8 @@
  * Provides project-specific settings, data, and operations
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '../hooks/useProfessionConfigs';

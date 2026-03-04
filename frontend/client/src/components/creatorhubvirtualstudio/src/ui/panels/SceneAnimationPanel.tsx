@@ -70,7 +70,8 @@ import {
   AllInclusive,
 } from '@mui/icons-material';
 import { useSceneAnimation } from '../../hooks/useSceneAnimation';
-import { ANIMATION_PRESETS, AnimationClipConfig, AnimationState, EasingType } from '../../core/services/sceneAnimationService';
+import type { ANIMATION_PRESETS, AnimationState} from '../../core/services/sceneAnimationService';
+import { AnimationClipConfig, EasingType } from '../../core/services/sceneAnimationService';
 import { useSelection } from '../../core/services/selectionService';
 
 // ============================================================================

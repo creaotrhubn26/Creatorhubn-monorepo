@@ -19,7 +19,7 @@ import {
   Navigation,
   Psychology,
 } from '@mui/icons-material';
-import { BeatClip } from '../services/storyArcDataIntegration';
+import type { BeatClip } from '../services/storyArcDataIntegration';
 
 interface ClipMeta { 
   camera?: string; 

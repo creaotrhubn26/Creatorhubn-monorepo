@@ -1,6 +1,6 @@
 import { pgTable, varchar, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Photography tips overlay table
 export const photographyTips = pgTable('photography_tips', {

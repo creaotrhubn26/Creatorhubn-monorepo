@@ -3,7 +3,8 @@
  * WebSocket-based multi-user editing with live cursors and presence
  */
 
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 
 export interface User {
   id: string;

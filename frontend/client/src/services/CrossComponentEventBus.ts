@@ -14,8 +14,9 @@
  * - Event history for debugging
  */
 
-import { MediaAsset } from '../types/MediaAssetTypes';
-import { WorkflowComponent, WorkflowTransition } from './WorkflowOrchestrator';
+import type { MediaAsset } from '../types/MediaAssetTypes';
+import type { WorkflowTransition } from './WorkflowOrchestrator';
+import { WorkflowComponent } from './WorkflowOrchestrator';
 
 export enum CrossComponentEventType {
   // Asset events

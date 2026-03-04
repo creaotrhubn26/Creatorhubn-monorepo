@@ -7,7 +7,8 @@
  * - Bidirectional navigation (script → storyboard, storyboard → script)
  */
 
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 // =============================================================================
 // Types

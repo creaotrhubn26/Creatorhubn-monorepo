@@ -6,7 +6,7 @@
 import { pgTable, text, varchar, timestamp, jsonb, integer, boolean } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // CMS Version History Table
 export const cmsVersionHistory = pgTable('cms_version_history', {

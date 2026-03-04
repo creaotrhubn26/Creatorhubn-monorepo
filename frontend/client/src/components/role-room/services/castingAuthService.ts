@@ -1,4 +1,4 @@
-import { UserRole, UserRoleType } from '../models/casting';
+import type { UserRole, UserRoleType } from '../models/casting';
 import { castingService } from './castingService';
 import { getCurrentUserId } from './settingsService';
 

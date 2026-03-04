@@ -30,7 +30,8 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import { AreaLight, AreaLightType } from '../../core/rendering/AreaLight';
+import type { AreaLightType } from '../../core/rendering/AreaLight';
+import { AreaLight } from '../../core/rendering/AreaLight';
 import { ALL_LIGHTS, ALL_MODIFIERS } from '../../core/data/EquipmentDatabase';
 import * as THREE from 'three';
 

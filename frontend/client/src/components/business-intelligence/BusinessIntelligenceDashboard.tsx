@@ -83,14 +83,17 @@ import getProfessionIcon from '@/utils/profession-icons';
 // Import Business Intelligence components
 import SWOTKanbanBoard from './SWOTKanbanBoard';
 import SWOTVisualizations from './SWOTVisualizations';
-import PersonaBuilder, { PersonaData } from './PersonaBuilder';
-import SurveyBuilder, { SurveyData } from './SurveyBuilder';
+import type { PersonaData } from './PersonaBuilder';
+import PersonaBuilder from './PersonaBuilder';
+import type { SurveyData } from './SurveyBuilder';
+import SurveyBuilder from './SurveyBuilder';
 import EmailDesignerComplete from '../EmailDesigner/EmailDesignerComplete';
 import CommunicationHubV2 from './CommunicationHubV2';
-import businessIntelligenceService, {
+import type {
   SWOTItem,
   SWOTTrend
 } from '../../services/BusinessIntelligenceService';
+import businessIntelligenceService from '../../services/BusinessIntelligenceService';
 import pdfExportService from '../../services/PDFExportService';
 import { ALL_ENHANCED_NEWSLETTER_TEMPLATES } from '../../data/enhancedNewsletterTemplates';
 

@@ -27,7 +27,8 @@ import {
   Info,
   Code,
 } from '@mui/icons-material';
-import { BaseNode, NodeConfig } from './BaseNode';
+import type { NodeConfig } from './BaseNode';
+import { BaseNode } from './BaseNode';
 
 const getBooleanValue = (value: unknown, fallback = false): boolean =>
   typeof value === 'boolean' ? value : fallback;

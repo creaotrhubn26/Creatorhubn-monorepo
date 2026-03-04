@@ -4,14 +4,16 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  assetManager, 
+import type { 
   AssetManagerConfig, 
   AssetManagerState, 
   Asset,
   AssetCategory,
   AssetTag,
   AssetSearchQuery
+} from '../utils/assetManager';
+import { 
+  assetManager
 } from'../utils/assetManager';
 
 export interface UseAssetManagementOptions {

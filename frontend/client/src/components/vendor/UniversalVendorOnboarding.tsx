@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useProfessionConfigs } from '@/hooks/useProfessionConfigs';
 import { useProfessionAdapter } from '@/hooks/useProfessionAdapter';
 import { getProfessionIcon } from '@/utils/profession-icons';
-import { useEnhancedPersonas, VendorPersonaProfile } from '../universal/hooks/useEnhancedPersonas';
+import type { VendorPersonaProfile } from '../universal/hooks/useEnhancedPersonas';
+import { useEnhancedPersonas } from '../universal/hooks/useEnhancedPersonas';
 import {
   Box,
   Typography,

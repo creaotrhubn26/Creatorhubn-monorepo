@@ -15,8 +15,10 @@ import {
   Tabs,
   Tab,
 } from '@mui/material';
-import { CameraControls, CameraSettings } from '../controls/CameraControls';
-import { LensSelector, LensSettings } from '../controls/LensSelector';
+import type { CameraSettings } from '../controls/CameraControls';
+import { CameraControls } from '../controls/CameraControls';
+import type { LensSettings } from '../controls/LensSelector';
+import { LensSelector } from '../controls/LensSelector';
 import { useAppStore } from '@/state/store';
 import { getActiveCameraId } from '@/core/services/viewports';
 

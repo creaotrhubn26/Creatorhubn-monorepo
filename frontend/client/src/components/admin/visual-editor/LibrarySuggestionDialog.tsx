@@ -42,10 +42,12 @@ import {
   Category,
   Lightbulb,
 } from '@mui/icons-material';
+import type {
+  LibrarySuggestion
+} from '@shared/library-suggestion-engine';
 import {
   getSuggestionsForComponent,
-  ComponentSuggestions,
-  LibrarySuggestion
+  ComponentSuggestions
 } from '@shared/library-suggestion-engine';
 import { PROFESSION_FEATURE_MATRIX } from '@shared/profession-feature-matrix';
 

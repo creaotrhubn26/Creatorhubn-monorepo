@@ -53,7 +53,8 @@ import {
   Replay as RetakeIcon,
   Star as StarIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown, CastingShot } from '../models/casting';
+import type { SceneBreakdown} from '../models/casting';
+import { CastingShot } from '../models/casting';
 
 interface TakeLog {
   id: string;

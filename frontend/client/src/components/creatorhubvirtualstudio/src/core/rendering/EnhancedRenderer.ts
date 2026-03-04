@@ -13,12 +13,14 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass';
-import { integrationService, LUTIntegrationOptions } from '../../services/integrations';
+import type { LUTIntegrationOptions } from '../../services/integrations';
+import { integrationService } from '../../services/integrations';
 import { logger } from '../services/logger';
 
 const log = logger.module('Renderer');
-import { AreaLight } from './AreaLight';
-import { GlobalIlluminationSystem, BounceSource } from './GlobalIllumination';
+import type { AreaLight } from './AreaLight';
+import type { BounceSource } from './GlobalIllumination';
+import { GlobalIlluminationSystem } from './GlobalIllumination';
 import { PBRVertexShader, PBRFragmentShader } from './shaders/PBRShaders';
 import { SkinVertexShader, SkinFragmentShader, DEFAULT_SKIN_PARAMS } from './shaders/SkinShader';
 import { VSMShadowMapGenerator, VSMShadowConfig } from './VSMShadowSystem';

@@ -50,14 +50,15 @@ import {
   ShoppingCart,
   AutoAwesome,
 } from '@mui/icons-material';
-import {
-  getPBRRecommendations,
+import type {
   PBRRecommendation,
   PBRItem,
-  CharacterContext,
+  CharacterContext} from '../../core/services/pbrRecommendationService';
+import {
+  getPBRRecommendations
 } from '../../core/services/pbrRecommendationService';
-import { CachedActor } from '../../core/services/actorModelCache';
-import { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
+import type { CachedActor } from '../../core/services/actorModelCache';
+import type { HDRIRecommendation } from '../../core/services/hdriRecommendationService';
 
 interface PBRRecommendationDialogProps {
   open: boolean;

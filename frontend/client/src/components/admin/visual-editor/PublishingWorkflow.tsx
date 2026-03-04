@@ -56,7 +56,7 @@ import {
 } from '@mui/icons-material';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';
-import { Project } from './VisualEditorContext';
+import type { Project } from './VisualEditorContext';
 
 // Types for publishing workflow
 interface PublishingEnvironment {

@@ -4,7 +4,7 @@
  * Uses native <video> element + WebAudio for now (WebCodecs upgrade later)
  */
 
-import { BeatClip, Track } from './storyArcDataIntegration';
+import type { BeatClip, Track } from './storyArcDataIntegration';
 
 export interface PlaybackState {
   isPlaying: boolean;

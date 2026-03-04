@@ -3,7 +3,7 @@
  * Handles persistence of casting data to PostgreSQL database
  */
 
-import { CastingProject } from '../models/casting';
+import type { CastingProject } from '../models/casting';
 
 /**
  * Save casting project to database

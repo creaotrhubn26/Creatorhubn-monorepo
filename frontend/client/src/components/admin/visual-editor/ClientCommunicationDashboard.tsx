@@ -1,6 +1,8 @@
 // Client Communication Dashboard
 import { useTheming } from '../../../utils/theming-helper';
 import React, { useState } from 'react';
+import type {
+  ChipProps} from '@mui/material';
 import {
   Box,
   Card,
@@ -12,7 +14,6 @@ import {
   ListItem,
   ListItemText,
   Chip,
-  ChipProps,
   IconButton,
   Dialog,
   DialogTitle,

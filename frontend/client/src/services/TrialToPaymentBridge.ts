@@ -3,7 +3,8 @@
  * Connects trial expiration to payment/subscription flow
  */
 
-import { TrialFeatureManager, TrialStatus } from './TrialFeatureManager';
+import type { TrialStatus } from './TrialFeatureManager';
+import { TrialFeatureManager } from './TrialFeatureManager';
 import { GooglePayService } from './GooglePayService';
 import { apiRequest } from '../lib/queryClient';
 import { trialToAdminPanelsBridge } from './TrialToAdminPanelsBridge';

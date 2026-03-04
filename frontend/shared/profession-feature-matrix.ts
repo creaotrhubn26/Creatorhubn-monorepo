@@ -4,7 +4,8 @@
  * Auto-generated from creatorhub-features.ts
  */
 
-import { CREATORHUB_FEATURES, CreatorHubFeature } from './creatorhub-features';
+import type { CreatorHubFeature } from './creatorhub-features';
+import { CREATORHUB_FEATURES } from './creatorhub-features';
 
 export interface ProfessionFeatureConfig {
   professionId: string;

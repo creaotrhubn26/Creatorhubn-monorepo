@@ -1,10 +1,11 @@
-import {
+import type {
   Manuscript,
   SceneBreakdown,
   DialogueLine,
   ScriptRevision,
   Act,
-  ManuscriptExport,
+  ManuscriptExport} from '../models/casting';
+import {
   ShotCamera,
   ShotLighting,
   ShotAudio,

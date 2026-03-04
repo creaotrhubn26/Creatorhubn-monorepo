@@ -89,14 +89,15 @@ import {
   Chat as ChatIcon,
   CameraRoll as CameraRollIcon,
 } from '@mui/icons-material';
+import type {
+  DragEndEvent} from '@dnd-kit/core';
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
-  useSensors,
-  DragEndEvent,
+  useSensors
 } from '@dnd-kit/core';
 import {
   arrayMove,

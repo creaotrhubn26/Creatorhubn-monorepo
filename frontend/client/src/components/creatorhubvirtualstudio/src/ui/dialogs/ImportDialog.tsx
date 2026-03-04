@@ -36,7 +36,7 @@ import {
   Person,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
-import { Scene, SceneNode } from '../../core/models/scene';
+import type { Scene, SceneNode } from '../../core/models/scene';
 
 interface ImportDialogProps {
   open: boolean;

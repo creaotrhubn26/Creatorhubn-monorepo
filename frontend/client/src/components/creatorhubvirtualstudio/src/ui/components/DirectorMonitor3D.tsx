@@ -10,7 +10,8 @@ import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { useNodes } from '../../state/store';
-import { monitorFeedService, MonitorRenderer, MonitorLayout } from '../../core/services/monitorFeedService';
+import type { MonitorRenderer, MonitorLayout } from '../../core/services/monitorFeedService';
+import { monitorFeedService } from '../../core/services/monitorFeedService';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('DirectorMonitor3D, ');

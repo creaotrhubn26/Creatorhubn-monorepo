@@ -11,7 +11,7 @@
  */
 
 import * as THREE from 'three';
-import { AreaLight } from './AreaLight';
+import type { AreaLight } from './AreaLight';
 import { LightProbeSystem } from './LightProbeSystem';
 
 export interface BounceSource {

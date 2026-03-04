@@ -27,8 +27,9 @@ import {
   Cancel as CancelIcon,
   Info as InfoIcon,
 } from '@mui/icons-material';
+import type { 
+  DependencyCheckResult} from '@shared/feature-dependency-checker';
 import { 
-  DependencyCheckResult, 
   SuggestedAction,
   generateDependencyErrorMessage 
 } from '@shared/feature-dependency-checker';

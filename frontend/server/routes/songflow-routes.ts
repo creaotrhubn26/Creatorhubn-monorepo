@@ -4,7 +4,8 @@
  * Endpoints for SongFlow platform integration with split sheets
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 

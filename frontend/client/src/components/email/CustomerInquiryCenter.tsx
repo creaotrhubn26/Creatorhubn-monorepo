@@ -567,6 +567,7 @@ Svar med profesjonell og vennlig tone.
                     </Avatar>
                   </ListItemIcon>
                   <ListItemText
+                    secondaryTypographyProps={{ component: 'div' }}
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Typography variant="body2" sx={{ fontWeight: email.isRead ? 400 : 600, flex: 1 }}>

@@ -3,7 +3,8 @@
  * Recommends libraries based on component type being created
  */
 
-import { LIBRARY_MAPPINGS, LibraryMapping } from './library-feature-mapping';
+import type { LibraryMapping } from './library-feature-mapping';
+import { LIBRARY_MAPPINGS } from './library-feature-mapping';
 import { PROFESSION_FEATURE_MATRIX } from './profession-feature-matrix';
 
 export interface LibrarySuggestion {

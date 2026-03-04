@@ -40,7 +40,7 @@ import {
   LockOpen,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
+import type { PencilPoint, PencilStroke } from '../../hooks/useApplePencil';
 
 // =============================================================================
 // Types

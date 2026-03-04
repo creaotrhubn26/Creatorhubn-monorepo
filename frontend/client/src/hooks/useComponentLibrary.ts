@@ -4,11 +4,13 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  componentLibraryManager, 
+import type { 
   ComponentLibraryConfig, 
   ComponentLibraryState, 
   ComponentLibraryItem
+} from '../utils/componentLibraryManager';
+import { 
+  componentLibraryManager
 } from'../utils/componentLibraryManager';
 
 export interface UseComponentLibraryOptions {

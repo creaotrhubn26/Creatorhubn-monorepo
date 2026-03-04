@@ -31,7 +31,7 @@ import {
   Refresh,
   Star,
 } from '@mui/icons-material';
-import { ScriptParameter, ScriptPreset } from './scriptData';
+import type { ScriptParameter, ScriptPreset } from './scriptData';
 
 interface ScriptParameterFormProps {
   parameters: ScriptParameter[];

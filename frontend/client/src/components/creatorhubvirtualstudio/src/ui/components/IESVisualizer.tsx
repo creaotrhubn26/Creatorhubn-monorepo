@@ -7,7 +7,8 @@
 import React, { useMemo } from 'react';
 import { Box, Typography, Paper } from '@mui/material';
 import * as THREE from 'three';
-import { IESProfile, renderIESToCanvas } from '../../core/services/ies';
+import type { IESProfile} from '../../core/services/ies';
+import { renderIESToCanvas } from '../../core/services/ies';
 
 interface IESVisualizerProps {
   profile: IESProfile;

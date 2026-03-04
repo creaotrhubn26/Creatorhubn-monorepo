@@ -44,7 +44,8 @@ import {
   Save,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { BrushConfig, DEFAULT_BRUSH_CONFIG, AdvancedBrushType } from './AdvancedBrushEngine';
+import type { BrushConfig} from './AdvancedBrushEngine';
+import { DEFAULT_BRUSH_CONFIG, AdvancedBrushType } from './AdvancedBrushEngine';
 import settingsService from '../../services/settingsService';
 
 // =============================================================================

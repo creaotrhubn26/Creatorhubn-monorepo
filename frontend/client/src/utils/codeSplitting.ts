@@ -3,7 +3,8 @@
  * Implements dynamic imports and code splitting for better bundle management
  */
 
-import React, { ComponentType, LazyExoticComponent } from 'react';
+import type { ComponentType, LazyExoticComponent } from 'react';
+import React from 'react';
 
 // Code splitting configuration
 export interface CodeSplittingConfig {

@@ -3,14 +3,16 @@
 // allowing components to track user behavior, manage A/B tests, and access analytics insights.
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  advancedAnalytics, 
+import type { 
   HeatmapData, 
   UserBehaviorEvent, 
   ConversionFunnel, 
   ABTest, 
   AnalyticsInsight, 
   RealTimeMetrics 
+} from '../utils/advancedAnalytics';
+import { 
+  advancedAnalytics 
 } from '../utils/advancedAnalytics';
 
 export interface UseAdvancedAnalyticsReturn {

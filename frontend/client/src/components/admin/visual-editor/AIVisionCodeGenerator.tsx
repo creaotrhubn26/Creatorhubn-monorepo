@@ -39,7 +39,8 @@ import {
   Warning,
   Info,
 } from '@mui/icons-material';
-import { AIVisionService, PhotoAnalysis } from '@/services/ai-vision-service';
+import type { PhotoAnalysis } from '@/services/ai-vision-service';
+import { AIVisionService } from '@/services/ai-vision-service';
 
 interface AIVisionCodeGeneratorProps {
   open: boolean;

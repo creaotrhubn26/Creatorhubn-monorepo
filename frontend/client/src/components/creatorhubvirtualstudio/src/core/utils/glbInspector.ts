@@ -14,7 +14,7 @@
  */
 
 import { logger } from '../services/logger';
-import * as THREE from 'three';
+import type * as THREE from 'three';
 
 const log = logger.module('GLBInspector');
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';

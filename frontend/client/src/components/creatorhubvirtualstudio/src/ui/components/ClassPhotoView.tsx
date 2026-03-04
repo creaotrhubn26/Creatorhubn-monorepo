@@ -9,7 +9,7 @@ import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html, Line, PerspectiveCamera } from '@react-three/drei';
 import * as THREE from 'three';
-import {
+import type {
   ClassPhotoSession,
   Student,
   ClassPhotoRow,
@@ -24,7 +24,7 @@ import {
   createFoldingChair,
 } from '../../core/models/ClassPhotoModels';
 import { ClassPhotoGuides } from './ClassPhotoGuides';
-import { ClassPhotoGuideSettings } from '../panels/ClassPhotoPanel';
+import type { ClassPhotoGuideSettings } from '../panels/ClassPhotoPanel';
 
 // =============================================================================
 // Types

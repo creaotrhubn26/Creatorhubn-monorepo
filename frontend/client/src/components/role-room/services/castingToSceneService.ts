@@ -1,4 +1,4 @@
-import { Candidate, Role, ShotList, Prop, Location, CastingProject, CastingShot } from '../models/casting';
+import type { Candidate, Role, ShotList, Prop, Location, CastingProject, CastingShot } from '../models/casting';
 import { castingService } from './castingService';
 import settingsService, { getCurrentUserId } from './settingsService';
 

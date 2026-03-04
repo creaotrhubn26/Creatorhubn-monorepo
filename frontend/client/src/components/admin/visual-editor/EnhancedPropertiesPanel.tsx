@@ -26,7 +26,8 @@ import {
   Visibility,
   TouchApp,
 } from '@mui/icons-material';
-import { useVisualEditor, EditorElement } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
+import { useVisualEditor } from './VisualEditorContext';
 import { getVisualEditorTokens } from './visualEditorTokens';
 
 export const EnhancedPropertiesPanel: React.FC = () => {

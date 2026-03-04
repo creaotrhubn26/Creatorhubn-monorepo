@@ -20,7 +20,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import {
+import type {
   CrewMember,
   CrewRole,
   CrewDepartment,

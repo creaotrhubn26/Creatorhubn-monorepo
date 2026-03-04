@@ -16,19 +16,22 @@ import { logger } from '../services/logger';
 
 const log = logger.module('ExportScheduler, ');
 
-import {
-  videoExportService,
+import type {
   VideoExportConfig,
   ExportProgress,
-  ExportResult,
+  ExportResult} from './VideoExportService';
+import {
+  videoExportService
 } from './VideoExportService';
+import type {
+  ExportPreset,
+  GoogleDriveUploadProgress} from './GoogleDriveExportService';
 import {
   googleDriveExportService,
-  ExportPreset,
-  EXPORT_PRESETS,
-  GoogleDriveUploadProgress,
+  EXPORT_PRESETS
 } from './GoogleDriveExportService';
-import { exportJobsApi, ExportJobDB } from '../api/virtualStudioApi';
+import type { ExportJobDB } from '../api/virtualStudioApi';
+import { exportJobsApi } from '../api/virtualStudioApi';
 
 // ============================================================================
 // Types

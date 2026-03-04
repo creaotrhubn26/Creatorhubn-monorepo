@@ -63,7 +63,7 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
+import type { ProductionDay, CrewMember, Location, SceneBreakdown, Candidate, Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 
 // ============================================

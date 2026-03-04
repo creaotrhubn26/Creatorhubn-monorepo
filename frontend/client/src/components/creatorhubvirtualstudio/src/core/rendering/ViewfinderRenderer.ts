@@ -10,7 +10,7 @@
  * - Frame guides rendering
  */
 
-import { LensSpec } from '../data/LensSpecifications';
+import type { LensSpec } from '../data/LensSpecifications';
 
 // ============================================================================
 // Types

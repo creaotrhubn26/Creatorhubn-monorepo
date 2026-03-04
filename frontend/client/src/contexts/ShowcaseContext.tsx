@@ -3,13 +3,14 @@
  * Bridges UniversalDashboard and UniversalShowcase with shared state
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useCallback,
-  useEffect,
-  ReactNode,
+  useEffect
 } from 'react';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 

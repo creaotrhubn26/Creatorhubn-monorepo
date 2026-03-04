@@ -4,7 +4,7 @@
  * Handles trimming, ripple edits, transitions, and effect stacking
  */
 
-import { BeatClip, Track } from './storyArcDataIntegration';
+import type { BeatClip, Track } from './storyArcDataIntegration';
 
 export interface TimelineConfig {
   frameRate: number;

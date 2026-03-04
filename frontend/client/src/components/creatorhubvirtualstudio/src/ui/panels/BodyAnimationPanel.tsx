@@ -40,13 +40,14 @@ import {
   Pause,
   Speed as Speed,
 } from '@mui/icons-material';
+import type {
+  HandGesture} from '../../core/animations/BodyAnimations';
 import {
   HEAD_PRESETS,
   HAND_PRESETS,
   FULL_BODY_POSES,
   GESTURE_DEFINITIONS,
-  BODY_ANIMATION_PRESETS,
-  HandGesture,
+  BODY_ANIMATION_PRESETS
 } from '../../core/animations/BodyAnimations';
 
 interface BodyAnimationPanelProps {

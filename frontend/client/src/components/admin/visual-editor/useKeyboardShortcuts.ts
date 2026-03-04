@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useVisualEditor } from './VisualEditorContext';
-import { EditorElement } from './VisualEditorContext';
+import type { EditorElement } from './VisualEditorContext';
 
 export const useKeyboardShortcuts = () => {
   const {

@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { AreaLight } from './AreaLight';
+import type { AreaLight } from './AreaLight';
 import { logger } from '../services/logger';
 
 const log = logger.module('LightProbeSystem');

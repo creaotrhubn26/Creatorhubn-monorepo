@@ -43,7 +43,7 @@ import {
   Speed as Speed,
   Loop,
 } from '@mui/icons-material';
-import { BeatClip, Track } from '../services/storyArcDataIntegration';
+import type { BeatClip, Track } from '../services/storyArcDataIntegration';
 
 interface EnhancedTimelineProps {
   clips: BeatClip[];

@@ -72,12 +72,14 @@ import {
   PlayArrow,
   Pause,
 } from '@mui/icons-material';
-import { CurveEditorCanvas, BezierCurve, CURVE_PRESETS } from '../components/CurveEditorCanvas';
-import {
+import type { BezierCurve} from '../components/CurveEditorCanvas';
+import { CurveEditorCanvas, CURVE_PRESETS } from '../components/CurveEditorCanvas';
+import type {
   Keyframe,
   EasingName,
-  EASING_FUNCTIONS,
-  AnimationTrack,
+  AnimationTrack} from '../../core/animation/SceneGraphAnimationEngine';
+import {
+  EASING_FUNCTIONS
 } from '../../core/animation/SceneGraphAnimationEngine';
 
 // ============================================================================

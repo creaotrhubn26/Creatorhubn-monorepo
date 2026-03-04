@@ -67,12 +67,13 @@ import {
   Rule as RuleIcon,
 } from '@mui/icons-material';
 import { StatsIcon } from '../icons/CastingIcons';
-import {
-  grammarMLService,
+import type {
   GrammarError,
   GrammarSuggestion,
   GrammarCheckResult,
-  UserPreferences,
+  UserPreferences} from '../../services/grammarMLService';
+import {
+  grammarMLService
 } from '../../services/grammarMLService';
 import { AggressivenessSlider, GrammarStatsWidget } from './GrammarSuggestionsOverlay';
 

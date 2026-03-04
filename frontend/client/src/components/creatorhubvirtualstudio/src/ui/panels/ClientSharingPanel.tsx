@@ -56,12 +56,13 @@ import {
   Refresh,
   QrCode2,
 } from '@mui/icons-material';
-import {
-  clientSharingService,
+import type {
   ShareLink,
   SharePermissions,
   ClientComment,
-  ApprovalStatus,
+  ApprovalStatus} from '../../core/services/clientSharingService';
+import {
+  clientSharingService
 } from '../../core/services/clientSharingService';
 import { useVirtualStudio } from '../../../VirtualStudioContext';
 

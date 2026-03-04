@@ -54,7 +54,7 @@ import {
   Info as InfoIcon,
 } from '@mui/icons-material';
 import { useBrandingWorkflow, useCreatorHubBranding } from '../../../hooks/useCreatorHubBranding';
-import { ProjectCategoryType } from '../../../constants/CreatorHubBranding';
+import type { ProjectCategoryType } from '../../../constants/CreatorHubBranding';
 
 interface BrandingWorkflowPanelProps {
   onBrandingApplied?: (branding: Record<string, unknown>) => void;

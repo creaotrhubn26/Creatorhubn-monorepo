@@ -33,14 +33,15 @@ import {
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
+import type {
+  InstructorPlan} from '@shared/revenue-calculator';
 import {
   calculateRevenueSplit,
   calculateEarningsProjection,
   formatNOK,
   nokToOre,
   oreToNok,
-  suggestCoursePrice,
-  InstructorPlan,
+  suggestCoursePrice
 } from '@shared/revenue-calculator';
 
 interface CoursePricingPanelProps {

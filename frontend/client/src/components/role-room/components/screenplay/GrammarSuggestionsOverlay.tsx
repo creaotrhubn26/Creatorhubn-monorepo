@@ -37,10 +37,11 @@ import {
   KeyboardArrowDown as ArrowDownIcon,
   Settings as SettingsIcon,
 } from '@mui/icons-material';
+import type {
+  GrammarError,
+  GrammarSuggestion} from '../../services/grammarMLService';
 import {
   grammarMLService,
-  GrammarError,
-  GrammarSuggestion,
   useGrammarCheck,
 } from '../../services/grammarMLService';
 

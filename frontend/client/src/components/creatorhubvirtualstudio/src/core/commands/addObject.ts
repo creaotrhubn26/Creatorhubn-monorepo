@@ -1,4 +1,4 @@
-import { Scene, SceneNode } from '@/core/models/scene';
+import type { Scene, SceneNode } from '@/core/models/scene';
 import { uid } from '@/core/utils/ids';
 
 export function addObject(scene: Scene, partial: Partial<SceneNode>): Scene {

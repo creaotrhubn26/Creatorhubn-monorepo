@@ -42,7 +42,8 @@ import {
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
 import type { EditorElement } from './VisualEditorContext';
-import Editor, { OnMount } from '@monaco-editor/react';
+import type { OnMount } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
 import type * as MonacoEditor from 'monaco-editor';
 import prettier from 'prettier/standalone';
 import prettierBabel from 'prettier/parser-babel';

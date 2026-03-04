@@ -1,5 +1,7 @@
 import * as React from 'react';
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import type {
+  SelectChangeEvent} from '@mui/material';
 import {
   Box,
   Card,
@@ -43,8 +45,7 @@ import {
   Tabs,
   useTheme,
   alpha,
-  Snackbar,
-  SelectChangeEvent,
+  Snackbar
 } from '@mui/material';
 import { TabContext, TabList, TabPanel } from '@mui/lab';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -121,11 +122,12 @@ import {
 } from '@mui/icons-material';
 import { useVisualEditor } from './VisualEditorContext';
 import { useEnhancedMasterIntegration } from "@/integration/EnhancedMasterIntegrationProvider";
-import {
-  academyToastTemplates,
+import type {
   AcademyToastTemplate,
   AcademyToastConfig,
-  AcademyToastType,
+  AcademyToastType} from './AcademyToastTemplates';
+import {
+  academyToastTemplates
 } from './AcademyToastTemplates';
 
 interface TemplateHistoryEntry {

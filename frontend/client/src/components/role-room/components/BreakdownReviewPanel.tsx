@@ -48,7 +48,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationOnIcon } from './icons/CastingIcons';
-import { SceneBreakdown, DialogueLine } from '../models/casting';
+import type { SceneBreakdown, DialogueLine } from '../models/casting';
 import { useToast } from './ToastStack';
 import { manuscriptService } from '../services/manuscriptService';
 

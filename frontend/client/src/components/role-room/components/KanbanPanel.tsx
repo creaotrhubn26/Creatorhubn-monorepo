@@ -43,7 +43,7 @@ import {
   HelpOutline as HelpIcon,
 } from '@mui/icons-material';
 import KanbanGuide from './KanbanGuide';
-import { Candidate, Role, CastingProject, Schedule } from '../models/casting';
+import type { Candidate, Role, CastingProject, Schedule } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { useKanbanRealtime } from './useKanbanRealtime';

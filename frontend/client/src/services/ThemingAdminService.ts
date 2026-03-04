@@ -4,7 +4,8 @@
  * Connects Visual Editor UI to the theming helper system
  */
 
-import { PROFESSION_BRANDING as DEFAULT_BRANDING, ProfessionBranding } from '../utils/theming-helper';
+import type { ProfessionBranding } from '../utils/theming-helper';
+import { PROFESSION_BRANDING as DEFAULT_BRANDING } from '../utils/theming-helper';
 
 export class ThemingAdminService {
   private customBranding: Record<string, Partial<ProfessionBranding>> = {};

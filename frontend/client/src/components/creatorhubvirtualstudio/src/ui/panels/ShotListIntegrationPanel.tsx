@@ -76,7 +76,8 @@ import {
   Compare,
 } from '@mui/icons-material';
 import { useAppStore, SceneNode } from '../../state/store';
-import { SCENE_PRESETS, ScenePreset } from './ScenePresets';
+import type { ScenePreset } from './ScenePresets';
+import { SCENE_PRESETS } from './ScenePresets';
 import { equipmentIntegrationService } from '../../core/services/equipmentIntegrationService';
 
 // ============================================================================

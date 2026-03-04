@@ -4,7 +4,8 @@
  * Provides Apple Pencil integration with pressure, tilt, and gesture support
  */
 
-import { useRef, useEffect, RefObject } from 'react';
+import type { RefObject } from 'react';
+import { useRef, useEffect } from 'react';
 
 // =============================================================================
 // Types

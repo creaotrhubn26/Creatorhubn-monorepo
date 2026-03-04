@@ -5,12 +5,13 @@
  */
 
 import { apiRequest } from '@/lib/queryClient';
+import type {
+  PermissionLevel} from '../storyboard/StoryboardCollaborationService';
 import {
   Comment,
   VersionSnapshot,
   TeamMember,
-  ShareLink,
-  PermissionLevel,
+  ShareLink
 } from '../storyboard/StoryboardCollaborationService';
 import { Storyboard, StoryboardFrame } from '../../state/storyboardStore';
 

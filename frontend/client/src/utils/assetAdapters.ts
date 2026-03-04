@@ -8,15 +8,16 @@
  * - Showcase items
  */
 
-import {
+import type {
   MediaAsset,
   PhotoAsset,
   VideoAsset,
+  VideoMetadata} from '../types/MediaAssetTypes';
+import {
   MediaAssetType,
   AssetSource,
   AssetProcessingStatus,
-  PhotoMetadata,
-  VideoMetadata,
+  PhotoMetadata
 } from '../types/MediaAssetTypes';
 
 /**

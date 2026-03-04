@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  versionControlManager, 
+import type { 
   VersionControlConfig, 
   VersionControlState, 
   Version,
@@ -14,6 +13,9 @@ import {
   Commit,
   Tag,
   Diff
+} from '../utils/versionControlManager';
+import { 
+  versionControlManager
 } from '../utils/versionControlManager';
 
 export interface UseVersionControlOptions {

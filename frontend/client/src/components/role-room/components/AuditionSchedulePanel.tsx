@@ -82,9 +82,10 @@ import {
   ContentPaste as PasteIcon,
 } from '@mui/icons-material';
 import { RolesIcon as TheaterComedyIcon, AuditionsIcon, CandidatesIcon, CalendarCustomIcon as CalendarIcon, LocationsIcon as LocationIcon, StatsIcon } from './icons/CastingIcons';
-import { Schedule, Role, Candidate } from '../models/casting';
+import type { Schedule, Role, Candidate } from '../models/casting';
 import { castingService } from '../services/castingService';
-import { auditionPoolService, PoolAudition } from '../services/auditionPoolService';
+import type { PoolAudition } from '../services/auditionPoolService';
+import { auditionPoolService } from '../services/auditionPoolService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import cameraPng from './icons/Keep/roleroom_camera.png';

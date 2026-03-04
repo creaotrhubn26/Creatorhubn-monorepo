@@ -10,7 +10,8 @@
  * - Orientation change handling
  */
 
-import React, { useState, useCallback, useEffect, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('VirtualStudioLayout');

@@ -32,7 +32,7 @@ import {
   CenterFocusStrong,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { PencilPoint } from '../../hooks/useApplePencil';
+import type { PencilPoint } from '../../hooks/useApplePencil';
 
 // =============================================================================
 // Types

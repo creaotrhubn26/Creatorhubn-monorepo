@@ -120,8 +120,10 @@ import {
   PieChart,
   ShowChart,
 } from '@mui/icons-material';
-import { useExport, UseExportOptions } from '../../../hooks/useExport';
-import { ExportConfig, ExportFormat, ExportOptions, ExportResult } from '../../../utils/exportManager';
+import type { UseExportOptions } from '../../../hooks/useExport';
+import { useExport } from '../../../hooks/useExport';
+import type { ExportOptions, ExportResult } from '../../../utils/exportManager';
+import { ExportConfig, ExportFormat } from '../../../utils/exportManager';
 
 interface ExportDashboardProps {
   showDetails?: boolean;

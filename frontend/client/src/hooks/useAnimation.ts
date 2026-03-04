@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  animationManager, 
+import type { 
   AnimationConfig, 
   AnimationState, 
   Animation,
   AnimationTimeline
+} from '../utils/animationManager';
+import { 
+  animationManager
 } from'../utils/animationManager';
 
 export interface UseAnimationOptions {

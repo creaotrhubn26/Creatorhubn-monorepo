@@ -20,7 +20,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Export onboarding schema (temporarily disabled due to conflicts)
 // export * from './onboarding-schema';

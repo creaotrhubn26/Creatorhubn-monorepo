@@ -14,7 +14,8 @@
  * - POST   /api/split-sheets/:id/duplicate      - Duplicate split sheet
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';

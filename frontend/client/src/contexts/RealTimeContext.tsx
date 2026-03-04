@@ -3,7 +3,8 @@
  * Provides real-time features for collaboration and live updates
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
+import type { ReactNode} from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useDynamicProfessions } from '../components/universal/hooks/useDynamicProfessions';
 import { useProfessionConfigs } from '../hooks/useProfessionConfigs';

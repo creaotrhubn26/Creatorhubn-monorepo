@@ -50,7 +50,7 @@ import {
   Security,
   Speed as Speed,
 } from '@mui/icons-material';
-import { AIContext } from './AICodeCompletionSystem';
+import type { AIContext } from './AICodeCompletionSystem';
 
 export interface DebugIssue {
   id: string;

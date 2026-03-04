@@ -8,7 +8,7 @@
  * - Automatic organization
  */
 
-import { ExportResult } from './VideoExportService';
+import type { ExportResult } from './VideoExportService';
 
 // ============================================================================
 // Types

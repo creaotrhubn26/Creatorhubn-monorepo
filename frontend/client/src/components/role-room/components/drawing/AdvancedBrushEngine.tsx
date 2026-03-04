@@ -9,7 +9,7 @@
  * - Ink feathering
  */
 
-import { PencilPoint } from '../../hooks/useApplePencil';
+import type { PencilPoint } from '../../hooks/useApplePencil';
 
 // =============================================================================
 // Types

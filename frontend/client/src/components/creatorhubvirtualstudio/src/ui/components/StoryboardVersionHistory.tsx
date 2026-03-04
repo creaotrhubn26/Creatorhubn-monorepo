@@ -42,9 +42,10 @@ import {
   Check,
   Warning,
 } from '@mui/icons-material';
+import type {
+  VersionSnapshot} from '../../core/storyboard/StoryboardCollaborationService';
 import {
-  storyboardCollaborationService,
-  VersionSnapshot,
+  storyboardCollaborationService
 } from '../../core/storyboard/StoryboardCollaborationService';
 import { Storyboard, useCurrentStoryboard, useStoryboardStore } from '../../state/storyboardStore';
 import { useVirtualStudio } from '../../../VirtualStudioContext';

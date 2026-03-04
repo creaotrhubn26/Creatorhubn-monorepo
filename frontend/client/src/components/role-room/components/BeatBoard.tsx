@@ -79,7 +79,7 @@ import {
   CheckBoxOutlineBlank as UncheckedIcon,
   CheckBox as CheckedIcon,
 } from '@mui/icons-material';
-import { BeatCard } from '../services/scriptAnalysisService';
+import type { BeatCard } from '../services/scriptAnalysisService';
 
 // ─── Extended types ─────────────────────────────────────────────────────────
 

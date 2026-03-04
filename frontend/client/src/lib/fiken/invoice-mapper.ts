@@ -3,7 +3,7 @@
  * Maps CreatorHub quotes and contracts to Fiken invoice format
  */
 
-import { FikenCreateInvoiceRequest } from '@/../../shared/types/fiken';
+import type { FikenCreateInvoiceRequest } from '@/../../shared/types/fiken';
 
 /**
  * Map Quote data to Fiken invoice request

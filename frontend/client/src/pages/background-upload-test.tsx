@@ -36,10 +36,11 @@ import {
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { UniversalFileUpload } from '../components/universal/UniversalFileUpload';
-import backgroundUploadService, {
+import type {
   UploadStats,
   UploadTask,
 } from '../services/BackgroundUploadService';
+import backgroundUploadService from '../services/BackgroundUploadService';
 
 export default function BackgroundUploadTest() {
   // Theming system

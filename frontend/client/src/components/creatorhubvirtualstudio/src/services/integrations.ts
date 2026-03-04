@@ -6,15 +6,17 @@
  * - AI Vision Service (ONNX Runtime, scene analysis)
  */
 
-import { LUTEngine, LUT3D } from '../../../../../services/lut-engine';
+import type { LUT3D } from '../../../../../services/lut-engine';
+import { LUTEngine } from '../../../../../services/lut-engine';
 import { EnhancedLUTEngine } from '../../../../../services/lut-engine-enhanced';
 import { lutLoader } from '../../../../../services/lut-loader';
 import { gpuLUTApplier } from '../../../../../services/gpu-lut-applier';
 import { SVGRendererService } from '../../../../../services/svg-renderer';
-import {
-  AIVisionService,
+import type {
   PhotoAnalysis,
-  SceneClassification,
+  SceneClassification} from '../../../../../services/ai-vision-service';
+import {
+  AIVisionService
 } from '../../../../../services/ai-vision-service';
 import * as THREE from 'three';
 import { logger } from '../core/services/logger';

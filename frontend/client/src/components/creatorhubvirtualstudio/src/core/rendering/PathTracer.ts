@@ -8,7 +8,7 @@
  * requires WebGPU API support and compute shaders.
  */
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import { logger } from '../services/logger';
 
 const log = logger.module('PathTracer');

@@ -16,8 +16,9 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { SceneNode } from '../../core/models/scene';
-import { clothingRenderingService, ClothingLoadOptions } from '../../core/services/clothingRenderingService';
+import type { SceneNode } from '../../core/models/scene';
+import type { ClothingLoadOptions } from '../../core/services/clothingRenderingService';
+import { clothingRenderingService } from '../../core/services/clothingRenderingService';
 import { getClothingStyleById } from '../../core/data/clothingStyles';
 import { logger } from '../../core/services/logger';
 

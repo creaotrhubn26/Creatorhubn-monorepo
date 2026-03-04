@@ -37,7 +37,7 @@ import {
   Refresh,
   Add,
 } from '@mui/icons-material';
-import { AICompletion, AIContext } from './AICodeCompletionSystem';
+import type { AICompletion, AIContext } from './AICodeCompletionSystem';
 
 interface AICompletionPanelProps {
   open: boolean;

@@ -28,9 +28,10 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import type {
+  Modifier} from '@/core/data/ModifierLibrary';
 import {
   modifierLibrary,
-  Modifier,
   getAllModifiers,
   getModifiersByType,
   getModifiersByBrand,

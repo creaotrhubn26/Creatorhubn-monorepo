@@ -72,6 +72,12 @@ import {
   History,
 } from '@mui/icons-material';
 
+import type {
+  StoryboardFrame,
+  Storyboard,
+  ShotType,
+  CameraAngle,
+  CameraMovement} from '../../state/storyboardStore';
 import {
   useStoryboardStore,
   useCurrentStoryboard,
@@ -79,17 +85,13 @@ import {
   useSelectedFrame,
   useIsCapturing,
   useViewMode,
-  StoryboardFrame,
-  Storyboard,
-  ShotType,
-  CameraAngle,
-  CameraMovement,
   getShotTypeLabel,
   getShotTypeColor,
   calculateTotalDuration,
   formatDuration,
 } from '../../state/storyboardStore';
-import { storyboardSyncService, SyncStatus } from '../../core/services/storyboardSyncService';
+import type { SyncStatus } from '../../core/services/storyboardSyncService';
+import { storyboardSyncService } from '../../core/services/storyboardSyncService';
 import { storyboardCaptureService } from '../../core/storyboard/StoryboardCaptureService';
 import { FrameEditorPanel } from './FrameEditorPanel';
 import { StoryboardTimeline } from '../components/StoryboardTimeline';
@@ -98,7 +100,8 @@ import { StoryboardExportDialog } from '../components/StoryboardExportDialog';
 import { StoryboardSharingDialog } from '../components/StoryboardSharingDialog';
 import { StoryboardCommentsPanel } from '../components/StoryboardCommentsPanel';
 import { StoryboardVersionHistory } from '../components/StoryboardVersionHistory';
-import { FrameContextMenu, QuickAnnotationType } from '../components/FrameContextMenu';
+import type { QuickAnnotationType } from '../components/FrameContextMenu';
+import { FrameContextMenu } from '../components/FrameContextMenu';
 import { quickAnnotationService } from '../../core/storyboard/QuickAnnotationService';
 import { useAccessibility, VisuallyHidden } from '../../providers/AccessibilityProvider';
 import { useVirtualStudio } from '../../../VirtualStudioContext';

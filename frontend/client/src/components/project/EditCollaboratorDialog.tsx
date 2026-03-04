@@ -38,7 +38,7 @@ import {
   CloudSync,
 } from '@mui/icons-material';
 import { apiRequest } from '@/lib/queryClient';
-import { ProjectCollaborator } from '@/types/project-collaborator';
+import type { ProjectCollaborator } from '@/types/project-collaborator';
 
 interface EditCollaboratorDialogProps {
   open: boolean;

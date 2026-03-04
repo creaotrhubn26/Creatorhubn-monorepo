@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  pluginManager, 
+import type { 
   PluginConfig, 
   PluginState, 
   Plugin,
@@ -14,6 +13,9 @@ import {
   PluginUtility,
   PluginTheme,
   PluginIntegration
+} from '../utils/pluginManager';
+import { 
+  pluginManager
 } from'../utils/pluginManager';
 
 export interface UsePluginsOptions {

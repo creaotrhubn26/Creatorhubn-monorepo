@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import { useAppStore } from '../../state/store';
-import { SceneNode } from '../../core/models/scene';
+import type { SceneNode } from '../../core/models/scene';
 
 /**
  * Lights Component - Renders all light nodes from the scene store

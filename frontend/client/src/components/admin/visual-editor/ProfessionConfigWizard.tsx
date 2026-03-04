@@ -52,7 +52,8 @@ import {
   LinearProgress,
   Skeleton,
 } from '@mui/material';
-import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
+import type { DropResult } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import {
   ExpandMore,

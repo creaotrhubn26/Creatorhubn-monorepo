@@ -34,7 +34,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   CameraAlt as CameraAltIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown } from '../models/casting';
+import type { SceneBreakdown } from '../models/casting';
 import { useToast } from './ToastStack';
 
 interface ShotDetailPanelProps {

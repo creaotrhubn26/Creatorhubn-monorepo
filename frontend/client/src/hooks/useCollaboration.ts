@@ -4,13 +4,15 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  collaborationManager, 
+import type { 
   CollaborationConfig, 
   CollaborationState, 
   Collaborator,
   CollaborationEvent,
   ConflictResolution
+} from '../utils/collaborationManager';
+import { 
+  collaborationManager
 } from '../utils/collaborationManager';
 
 export interface UseCollaborationOptions {

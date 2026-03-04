@@ -4,7 +4,8 @@
  * Endpoints for SWOT analysis, customer personas, surveys, and market data
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import {
   swotItems,

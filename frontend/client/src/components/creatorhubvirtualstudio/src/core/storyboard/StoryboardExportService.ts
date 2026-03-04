@@ -7,7 +7,8 @@
  * - Video export (animatic with transitions)
  */
 
-import { Storyboard, StoryboardFrame, getShotTypeLabel } from '../../state/storyboardStore';
+import type { Storyboard} from '../../state/storyboardStore';
+import { StoryboardFrame, getShotTypeLabel } from '../../state/storyboardStore';
 import { logger } from '../services/logger';
 
 const log = logger.module('StoryboardExport, ');

@@ -61,7 +61,7 @@ import {
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { useScriptStoryboard, SceneContext, type FountainElement } from '../contexts/ScriptStoryboardContext';
-import { SceneBreakdown } from '../models/casting';
+import type { SceneBreakdown } from '../models/casting';
 
 // =============================================================================
 // Types

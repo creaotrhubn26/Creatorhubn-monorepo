@@ -4,7 +4,7 @@
  */
 
 import * as monaco from 'monaco-editor';
-import { AICodeCompletionEngine, AIContext } from './AICodeCompletionSystem';
+import type { AICodeCompletionEngine, AIContext } from './AICodeCompletionSystem';
 
 export class MonacoAICompletionProvider implements monaco.languages.InlineCompletionsProvider {
   private aiEngine: AICodeCompletionEngine;

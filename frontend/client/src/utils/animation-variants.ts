@@ -3,7 +3,8 @@
  * Provides reusable animation configurations for consistent UX
  */
 
-import { Variants, Transition } from 'framer-motion';
+import type { Variants} from 'framer-motion';
+import { Transition } from 'framer-motion';
 
 // Spring animations - Natural, bouncy feel
 export const springVariants: Variants = {

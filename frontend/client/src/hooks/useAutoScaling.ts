@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { autoScalingSystem, ScalingMetrics, ScalingDecision, ResourceProfile, ScalingPolicy, FileScalingProfile, OperationScalingProfile } from'@/utils/autoScaling';
+import type { ScalingMetrics, ScalingDecision, ResourceProfile, ScalingPolicy, FileScalingProfile, OperationScalingProfile } from '@/utils/autoScaling';
+import { autoScalingSystem } from'@/utils/autoScaling';
 
 export interface UseAutoScalingOptions {
   enableAutoScaling?: boolean;

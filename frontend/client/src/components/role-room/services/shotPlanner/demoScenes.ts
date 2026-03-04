@@ -12,7 +12,7 @@
  * - Luxury Penthouse (modern)
  */
 
-import { Scene2D } from './types';
+import type { Scene2D } from './types';
 
 // =============================================================================
 // SCENE 1: The Safehouse (Living Room - INT. SAFEHOUSE - NIGHT)

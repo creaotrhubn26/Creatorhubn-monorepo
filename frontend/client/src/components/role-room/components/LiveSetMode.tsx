@@ -65,7 +65,7 @@ import {
   KeyboardReturn as EnterIcon,
 } from '@mui/icons-material';
 import { useLiveSet } from '../hooks/useLiveSet';
-import {
+import type {
   LiveSetScene,
   LiveSetTake,
   TakeStatus,

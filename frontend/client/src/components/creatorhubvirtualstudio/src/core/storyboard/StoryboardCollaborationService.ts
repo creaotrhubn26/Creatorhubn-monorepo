@@ -10,7 +10,8 @@
  * Uses database persistence via API with localStorage fallback
  */
 
-import { Storyboard, StoryboardFrame } from '../../state/storyboardStore';
+import type { Storyboard} from '../../state/storyboardStore';
+import { StoryboardFrame } from '../../state/storyboardStore';
 import { logger } from '../services/logger';
 
 const log = logger.module('Storyboard, ');

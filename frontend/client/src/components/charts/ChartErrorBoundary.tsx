@@ -3,7 +3,8 @@
  * Catches errors in chart rendering and displays fallback UI
  */
 
-import React, { Component, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { Component } from 'react';
 import {
   Alert,
   Box,

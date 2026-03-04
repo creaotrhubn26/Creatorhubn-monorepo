@@ -3,7 +3,8 @@
  * Automatically discovers and adds new cameras to the database
  */
 
-import { VIDEO_CAMERA_DATABASE, VideoCamera } from './video-camera-database';
+import type { VideoCamera } from './video-camera-database';
+import { VIDEO_CAMERA_DATABASE } from './video-camera-database';
 
 interface CameraDiscoverySource {
   name: string;

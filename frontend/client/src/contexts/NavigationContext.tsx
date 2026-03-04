@@ -3,13 +3,14 @@
  * Manages navigation state, history, and transitions between major components
  */
 
+import type {
+  ReactNode} from 'react';
 import React, {
   createContext,
   useContext,
   useState,
   useCallback,
-  useEffect,
-  ReactNode,
+  useEffect
 } from 'react';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 

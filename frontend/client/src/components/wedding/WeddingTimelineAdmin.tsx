@@ -63,7 +63,8 @@ import EvendiCoordinators from '../evendi/EvendiCoordinators';
 import EvendiReviews from '../evendi/EvendiReviews';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { PushNotificationSettings } from '../shared/PushNotificationSettings';
-import { EventType, getEventTypeLabel, getEventCategory } from '@/lib/evendi-api';
+import type { EventType} from '@/lib/evendi-api';
+import { getEventTypeLabel, getEventCategory } from '@/lib/evendi-api';
 
 interface EvendiTimelineAdminProps {
   projectId?: string; // Optional - hvis null/undefined = generell tidslinje-administrasjon

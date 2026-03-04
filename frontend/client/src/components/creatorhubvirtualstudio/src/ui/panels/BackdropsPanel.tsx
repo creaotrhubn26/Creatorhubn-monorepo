@@ -46,10 +46,11 @@ import {
   WbSunny,
 } from '@mui/icons-material';
 import { useAppStore } from '../../state/store';
+import type {
+  BackdropCategory} from '../../core/data/backdropDefinitions';
 import {
   ALL_BACKDROPS,
-  BACKDROPS_BY_CATEGORY,
-  BackdropCategory,
+  BACKDROPS_BY_CATEGORY
 } from '../../core/data/backdropDefinitions';
 
 export const BackdropsPanel: React.FC = () => {

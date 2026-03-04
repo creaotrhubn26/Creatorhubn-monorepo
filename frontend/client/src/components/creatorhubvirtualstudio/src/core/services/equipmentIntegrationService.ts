@@ -8,7 +8,7 @@
  * - Equipment positioning
  */
 
-import * as THREE from 'three';
+import type * as THREE from 'three';
 import { logger } from './logger';
 
 const log = logger.module('EquipmentIntegration');

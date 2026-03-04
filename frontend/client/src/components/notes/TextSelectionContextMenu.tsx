@@ -93,7 +93,8 @@ import {
 } from '@mui/icons-material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
-import ExternalDataService, { KartverketPlaceName } from '@/services/ExternalDataService';
+import type { KartverketPlaceName } from '@/services/ExternalDataService';
+import ExternalDataService from '@/services/ExternalDataService';
 
 interface TextSelectionContextMenuProps {
   containerRef: React.RefObject<HTMLElement>;

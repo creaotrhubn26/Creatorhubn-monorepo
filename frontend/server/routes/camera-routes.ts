@@ -10,7 +10,8 @@
  * - DELETE /api/cameras/user/:id           - Remove user camera
  */
 
-import { Router, Response } from 'express';
+import type { Response } from 'express';
+import { Router } from 'express';
 import { db } from '../db';
 import { cameras, userCameras } from '../../shared/camera-database-schema';
 import { eq, and, like, or, desc } from 'drizzle-orm';

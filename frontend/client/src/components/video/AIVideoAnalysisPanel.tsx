@@ -44,7 +44,8 @@ import {
   Warning,
   Info,
 } from '@mui/icons-material';
-import { AIVisionService, VideoSceneAnalysis } from '@/services/ai-vision-service';
+import type { VideoSceneAnalysis } from '@/services/ai-vision-service';
+import { AIVisionService } from '@/services/ai-vision-service';
 
 interface VideoFile {
   id: string;

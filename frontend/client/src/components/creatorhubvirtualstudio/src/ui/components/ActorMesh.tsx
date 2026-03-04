@@ -16,7 +16,7 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { logger } from '../../core/services/logger';
 
 const log = logger.module('ActorMesh');
-import { SceneNode } from '../../core/models/scene';
+import type { SceneNode } from '../../core/models/scene';
 
 // Dynamic THREE import (same pattern as Stage3D)
 let THREE: any = null;

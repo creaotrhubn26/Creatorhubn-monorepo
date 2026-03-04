@@ -29,7 +29,8 @@ import {
   GridOn,
   GridOff,
 } from '@mui/icons-material';
-import { ToneCurveEngine, CurvePoint, ToneCurve } from '@/services/tone-curve-engine';
+import type { CurvePoint, ToneCurve } from '@/services/tone-curve-engine';
+import { ToneCurveEngine } from '@/services/tone-curve-engine';
 import { useTheming } from '../../utils/theming-helper';
 
 interface ToneCurveEditorProps {

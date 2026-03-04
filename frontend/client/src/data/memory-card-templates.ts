@@ -3,7 +3,8 @@
  * Template-based memory card recommendations with contextual benefits
  */
 
-import { MemoryCardType, MemoryCardRecommendation } from './memory-card-database';
+import type { MemoryCardRecommendation } from './memory-card-database';
+import { MemoryCardType } from './memory-card-database';
 
 export interface MemoryCardTemplate {
   id: string;

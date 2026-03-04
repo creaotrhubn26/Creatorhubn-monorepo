@@ -4,7 +4,8 @@
  * Provides shared state for face analysis results across components
  */
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import type { FaceAnalysisResults } from'../services/FaceAnalysisEnhancements';
 
 interface FaceAnalysisContextValue {

@@ -4,7 +4,8 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-import { linkedInService, LinkedInProfile, LinkedInExperience, LinkedInEducation, LinkedInSkill } from '@/services/LinkedInService';
+import type { LinkedInProfile, LinkedInExperience, LinkedInEducation, LinkedInSkill } from '@/services/LinkedInService';
+import { linkedInService } from '@/services/LinkedInService';
 
 export interface LinkedInState {
   isAuthenticated: boolean;

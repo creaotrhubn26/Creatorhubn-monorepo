@@ -13,10 +13,11 @@ import * as THREE from 'three';
 import { logger } from '../services/logger';
 
 const log = logger.module('AnimationTemplates, ');
-import {
+import type {
   AnimationClip,
   AnimationTrack,
-  Keyframe,
+  Keyframe} from './SceneGraphAnimationEngine';
+import {
   EasingName,
 } from './SceneGraphAnimationEngine';
 import {

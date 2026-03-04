@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  offlineManager, 
+import type { 
   OfflineConfig, 
   OfflineData, 
   OfflineState, 
   SyncResult 
+} from '../utils/offlineManager';
+import { 
+  offlineManager 
 } from'../utils/offlineManager';
 
 export interface UseOfflineOptions {

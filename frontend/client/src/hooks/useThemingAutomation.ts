@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { ProfessionBranding } from '@/utils/theming-helper';
+import type { ProfessionBranding } from '@/utils/theming-helper';
 
 interface ProfessionThemeGeneration {
   color: string;

@@ -40,8 +40,10 @@ import {
   SwapHoriz as SwapIcon,
 } from '@mui/icons-material';
 import { useNodes, useActions } from '@/state/selectors';
-import { useUserEquipmentInventory, getEquipmentImageUrl, UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
-import { findLensSpec, findLensSpecByBrand, getDefaultLensSpec, LensSpec, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
+import type { UserEquipmentItem } from '@/hooks/useUserEquipmentInventory';
+import { useUserEquipmentInventory, getEquipmentImageUrl } from '@/hooks/useUserEquipmentInventory';
+import type { LensSpec} from '@/core/data/LensSpecifications';
+import { findLensSpec, findLensSpecByBrand, getDefaultLensSpec, getFocalLengthFromLensSpec, getMaxApertureFromLensSpec } from '@/core/data/LensSpecifications';
 import { exposureCalculator } from '@/core/services/exposureCalculatorService';
 
 // =============================================================================

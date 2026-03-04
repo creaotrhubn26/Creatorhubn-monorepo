@@ -4,10 +4,12 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  responsiveDesignManager, 
+import type { 
   ResponsiveConfig, 
   ResponsiveState 
+} from '../utils/responsiveDesignManager';
+import { 
+  responsiveDesignManager 
 } from '../utils/responsiveDesignManager';
 
 export interface UseResponsiveDesignOptions {

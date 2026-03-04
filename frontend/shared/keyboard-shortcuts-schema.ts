@@ -1,6 +1,6 @@
 import { pgTable, varchar, text, jsonb, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Software and their keyboard shortcuts
 export const editingSoftware = pgTable('editing_software', {

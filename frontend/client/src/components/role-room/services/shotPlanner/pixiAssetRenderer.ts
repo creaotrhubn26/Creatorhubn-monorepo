@@ -6,7 +6,7 @@
  */
 
 import * as PIXI from 'pixi.js';
-import { Asset2DDefinition } from './types';
+import type { Asset2DDefinition } from './types';
 
 /**
  * Create a Pixi graphic for a furniture asset

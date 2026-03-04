@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { googleSSOService, GoogleUser } from '../services/GoogleSSOService';
+import type { GoogleUser } from '../services/GoogleSSOService';
+import { googleSSOService } from '../services/GoogleSSOService';
 import { useEnhancedMasterIntegration } from '../integration/EnhancedMasterIntegrationProvider';
 
 /**

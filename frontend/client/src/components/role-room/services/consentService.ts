@@ -1,4 +1,4 @@
-import { Consent, ConsentType, ConsentSignatureData } from '../models/casting';
+import type { Consent, ConsentType, ConsentSignatureData } from '../models/casting';
 import { castingService } from './castingService';
 
 function randomSegment(length = 4): string {

@@ -4,12 +4,14 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  workflowAutomationManager, 
+import type { 
   WorkflowConfig, 
   WorkflowState, 
   Workflow,
   WorkflowTemplate
+} from '../utils/workflowAutomationManager';
+import { 
+  workflowAutomationManager
 } from'../utils/workflowAutomationManager';
 
 export interface UseWorkflowAutomationOptions {

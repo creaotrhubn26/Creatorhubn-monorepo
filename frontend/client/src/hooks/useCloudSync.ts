@@ -4,8 +4,7 @@
  */
 
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
-import { 
-  cloudSyncManager, 
+import type { 
   CloudSyncConfig, 
   CloudSyncManagerState, 
   CloudProvider,
@@ -13,6 +12,9 @@ import {
   SyncItem,
   SyncConflict,
   SyncSession
+} from '../utils/cloudSyncManager';
+import { 
+  cloudSyncManager
 } from'../utils/cloudSyncManager';
 
 export interface UseCloudSyncOptions {

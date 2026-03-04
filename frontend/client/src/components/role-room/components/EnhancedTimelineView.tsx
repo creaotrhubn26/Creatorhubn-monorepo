@@ -16,7 +16,7 @@ import {
   Mic as MicIcon,
   Videocam as VideocamIcon,
 } from '@mui/icons-material';
-import { SceneBreakdown, CastingShot, ShotList } from '../models/casting';
+import type { SceneBreakdown, CastingShot, ShotList } from '../models/casting';
 
 interface EnhancedTimelineViewProps {
   scenes: SceneBreakdown[];

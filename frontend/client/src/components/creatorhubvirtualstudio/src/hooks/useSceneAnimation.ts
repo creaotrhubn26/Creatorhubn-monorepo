@@ -3,15 +3,16 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import * as THREE from 'three';
-import {
-  sceneAnimationService,
+import type * as THREE from 'three';
+import type {
   AnimationState,
   AnimationClipConfig,
   AnimationTrackConfig,
   Keyframe,
   ANIMATION_PRESETS,
-  EasingType,
+  EasingType} from '../core/services/sceneAnimationService';
+import {
+  sceneAnimationService
 } from'../core/services/sceneAnimationService';
 
 // ============================================================================

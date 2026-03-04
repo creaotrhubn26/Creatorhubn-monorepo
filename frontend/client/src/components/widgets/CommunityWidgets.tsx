@@ -45,12 +45,13 @@ import {
 } from '@mui/icons-material';
 import { formatDistanceToNow } from 'date-fns';
 import { nb } from 'date-fns/locale';
-import { 
-  useVotingBoardIntegration, 
-  useMentorIntegration,
+import type {
   VotingItem,
   MentorInfo,
-  PendingQuestion,
+  PendingQuestion} from '@/hooks/useCommunityIntegration';
+import { 
+  useVotingBoardIntegration, 
+  useMentorIntegration
 } from '@/hooks/useCommunityIntegration';
 
 // ============================================

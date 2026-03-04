@@ -70,8 +70,9 @@ import {
   Star,
 } from '@mui/icons-material';
 import { brandColors } from '../../assets/brandkit';
+import type {
+  ProfessionType} from '../../core/data/professionTypes';
 import {
-  ProfessionType,
   Specialization,
   PHOTOGRAPHER_SPECIALIZATIONS,
   VIDEOGRAPHER_SPECIALIZATIONS,

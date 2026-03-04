@@ -3,7 +3,7 @@
  * Professional photography poses for portrait, fashion, and commercial work
  */
 
-import { PoseData } from './IKSystem';
+import type { PoseData } from './IKSystem';
 
 export interface PosePreset {
   id: string;

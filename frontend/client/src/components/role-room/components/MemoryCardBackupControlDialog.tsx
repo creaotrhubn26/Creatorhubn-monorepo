@@ -52,6 +52,7 @@ import {
   Inventory2 as Inventory2Icon,
   Memory as MemoryIcon,
   PhotoCamera as PhotoCameraIcon,
+  QrCode as QrCodeIcon,
   Save as SaveIcon,
   SdCard as SdCardIcon,
   Smartphone as SmartphoneIcon,
@@ -67,6 +68,7 @@ import netflixWordmark from '../../../assets/brands/netflix-wordmark.svg';
 import {
   memoryCardControlApi,
   type MemoryCardControlEntry,
+  type MemoryCardControlReport,
   type MemoryCardControlState,
   type MemoryCardBackupTargets,
   type MemoryCardLifecycleStage,
@@ -451,6 +453,13 @@ export function MemoryCardBackupControlDialog({
   const [cardTypes, setCardTypes] = useState<MemoryCardTypeRecord[]>([]);
   const [selectedEntryId, setSelectedEntryId] = useState('');
   const [netflixOnly, setNetflixOnly] = useState(false);
+  const [remoteReport, setRemoteReport] = useState<MemoryCardControlReport | null>(null);
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [qrLabelPreview, setQrLabelPreview] = useState<{
+    entryId: string;
+    dataUrl: string;
+    fileName: string;
+  } | null>(null);
   const [cameraGroupExpanded, setCameraGroupExpanded] =
     useState<Record<CameraGroupKey, boolean>>(collapsedCameraGroups);
   const didBootstrapRef = useRef(false);
@@ -823,6 +832,8 @@ export function MemoryCardBackupControlDialog({
       try {
         if (forceApi || !fallbackMode) {
           await memoryCardControlApi.save(projectId, nextState);
+          const report = await memoryCardControlApi.getReport(projectId);
+          setRemoteReport(report);
           setFallbackMode(false);
           setPersistError(null);
           return;
@@ -920,6 +931,8 @@ export function MemoryCardBackupControlDialog({
     if (!open) {
       didBootstrapRef.current = false;
       setDirty(false);
+      setQrGenerating(false);
+      setQrLabelPreview(null);
       return;
     }
     setCameraGroupExpanded(collapsedCameraGroups);
@@ -928,9 +941,13 @@ export function MemoryCardBackupControlDialog({
     const bootstrap = async () => {
       setLoading(true);
       try {
-        const remoteState = await memoryCardControlApi.get(projectId);
+        const [remoteState, report] = await Promise.all([
+          memoryCardControlApi.get(projectId),
+          memoryCardControlApi.getReport(projectId),
+        ]);
         if (cancelled) return;
         setControlState(normalizeControlState(remoteState));
+        setRemoteReport(report);
         setFallbackMode(false);
         setPersistError(null);
       } catch (error) {
@@ -938,6 +955,7 @@ export function MemoryCardBackupControlDialog({
         console.warn('memory-card-control API unavailable, using local fallback', error);
         const localState = readLocalState(projectId);
         setControlState(localState);
+        setRemoteReport(null);
         setFallbackMode(true);
         setPersistError('API utilgjengelig. Logg lagres lokalt i nettleseren.');
       } finally {
@@ -1099,6 +1117,34 @@ export function MemoryCardBackupControlDialog({
       setSaving(false);
     }
   };
+
+  const handleGenerateQrLabel = useCallback(
+    async (entry: MemoryCardControlEntry) => {
+      setQrGenerating(true);
+      try {
+        const response = await memoryCardControlApi.generateQrLabel(projectId, {
+          entryId: entry.id,
+          cardLabel: entry.cardLabel,
+          cameraLabel: entry.cameraLabel,
+          capacity: entry.capacity,
+          storageType: entry.cardTypeName,
+          shootDayLabel: controlState.shootDayLabel,
+        });
+        setQrLabelPreview({
+          entryId: entry.id,
+          dataUrl: response.qrDataUrl,
+          fileName: response.suggestedFileName,
+        });
+        setPersistError(null);
+      } catch (error) {
+        console.error('Kunne ikke generere QR-etikett:', error);
+        setPersistError('Kunne ikke generere QR-etikett akkurat nå.');
+      } finally {
+        setQrGenerating(false);
+      }
+    },
+    [controlState.shootDayLabel, projectId]
+  );
 
   const backupProgress = selectedEntry
     ? Math.round(
@@ -1285,6 +1331,16 @@ export function MemoryCardBackupControlDialog({
                   label={`Crew i oversikt: ${Math.max(operationalByCrew.length, crewOptions.length)}`}
                   sx={{ bgcolor: alpha(primary, 0.2), color: alpha(textPrimary, 0.95) }}
                 />
+                {remoteReport && (
+                  <Chip
+                    icon={<DataArrayIcon />}
+                    label={`Backend compliance: ${remoteReport.summary.compliancePercent}%`}
+                    sx={{
+                      bgcolor: alpha(remoteReport.summary.compliancePercent >= 90 ? success : warning, 0.2),
+                      color: remoteReport.summary.compliancePercent >= 90 ? '#81c784' : '#ffd54f',
+                    }}
+                  />
+                )}
                 <Chip
                   icon={summary.all321Compliant ? <CheckCircleIcon /> : <WarningAmberIcon />}
                   label={summary.all321Compliant ? '3-2-1 oppfylt' : '3-2-1 mangler'}
@@ -2031,6 +2087,18 @@ export function MemoryCardBackupControlDialog({
                           Markér verifisert
                         </Button>
                         <Button
+                          startIcon={<QrCodeIcon />}
+                          variant="outlined"
+                          size="small"
+                          onClick={() => {
+                            void handleGenerateQrLabel(selectedEntry);
+                          }}
+                          disabled={qrGenerating}
+                          sx={{ borderColor: alpha(borderColor, 0.85), color: textPrimary }}
+                        >
+                          {qrGenerating ? 'Lager etikett…' : 'QR-etikett'}
+                        </Button>
+                        <Button
                           startIcon={<DeleteIcon />}
                           variant="outlined"
                           size="small"
@@ -2045,6 +2113,54 @@ export function MemoryCardBackupControlDialog({
                           Fjern lagringsenhet
                         </Button>
                       </Stack>
+                      {qrLabelPreview && qrLabelPreview.entryId === selectedEntry.id && (
+                        <Box
+                          sx={{
+                            mt: 1.25,
+                            p: 1,
+                            border: `1px solid ${alpha(borderColor, 0.72)}`,
+                            borderRadius: 1.25,
+                            bgcolor: alpha(textPrimary, 0.03),
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1.25,
+                          }}
+                        >
+                          <Box
+                            component="img"
+                            src={qrLabelPreview.dataUrl}
+                            alt={`QR-etikett ${selectedEntry.cardLabel}`}
+                            sx={{
+                              width: 72,
+                              height: 72,
+                              borderRadius: 1,
+                              bgcolor: '#fff',
+                              p: 0.5,
+                              border: `1px solid ${alpha(borderColor, 0.45)}`,
+                            }}
+                          />
+                          <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                            <Typography sx={{ fontSize: '0.8rem', color: alpha(textSecondary, 0.88) }}>
+                              QR-etikett klar for {selectedEntry.cardLabel}
+                            </Typography>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => {
+                                const anchor = document.createElement('a');
+                                anchor.href = qrLabelPreview.dataUrl;
+                                anchor.download = qrLabelPreview.fileName;
+                                document.body.appendChild(anchor);
+                                anchor.click();
+                                document.body.removeChild(anchor);
+                              }}
+                              sx={{ alignSelf: 'flex-start', borderColor: alpha(borderColor, 0.78), color: textPrimary }}
+                            >
+                              Last ned etikett
+                            </Button>
+                          </Stack>
+                        </Box>
+                      )}
                     </>
                   )}
                 </Paper>

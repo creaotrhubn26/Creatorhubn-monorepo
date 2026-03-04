@@ -41,7 +41,8 @@ import {
 } from './icons/CastingIcons';
 // Compatible icon type for both MUI SvgIcon and custom FC<IconProps> components
 type IconComponentType = ComponentType<{ sx?: Record<string, unknown> }>;
-import { tutorialService, Tutorial, TutorialStep } from '../services/tutorialService';
+import type { Tutorial, TutorialStep } from '../services/tutorialService';
+import { tutorialService } from '../services/tutorialService';
 
 const defaultTutorialSteps: TutorialStep[] = [
   {

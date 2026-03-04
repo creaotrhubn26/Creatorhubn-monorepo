@@ -11,9 +11,10 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNodes, useActions } from '../state/selectors';
-import {
+import type {
   FlashController,
-  FlashGroup,
+  FlashGroup} from '../core/data/FlashControllerData';
+import {
   ALL_FLASH_CONTROLLERS,
   getControllerById,
   findControllersForLight,

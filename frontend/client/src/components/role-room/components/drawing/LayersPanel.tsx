@@ -48,7 +48,7 @@ import {
   ExpandLess,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { PencilStroke } from '../../hooks/useApplePencil';
+import type { PencilStroke } from '../../hooks/useApplePencil';
 
 // =============================================================================
 // Types

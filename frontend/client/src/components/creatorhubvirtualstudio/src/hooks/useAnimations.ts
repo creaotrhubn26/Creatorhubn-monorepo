@@ -6,40 +6,45 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
+import type * as THREE from 'three';
+import type {
+  EyeAnimationConfig,
+  EyeAnimationState} from '../core/animations/EyeAnimations';
 import {
   EyeAnimationController,
-  EyeAnimationConfig,
-  EyeAnimationState,
   EYE_ANIMATION_PRESETS,
 } from '../core/animations/EyeAnimations';
+import type {
+  ActorAnimationConfig,
+  ActorAnimationState} from '../core/animations/ActorAnimations';
 import {
   ActorAnimationController,
-  ActorAnimationConfig,
-  ActorAnimationState,
   ACTOR_ANIMATION_PRESETS,
 } from '../core/animations/ActorAnimations';
+import type {
+  CatchlightAnimationConfig,
+  CatchlightAnimationState} from '../core/animations/CatchlightAnimations';
 import {
   CatchlightAnimationController,
-  CatchlightAnimationConfig,
-  CatchlightAnimationState,
   CATCHLIGHT_ANIMATION_PRESETS,
 } from '../core/animations/CatchlightAnimations';
+import type {
+  GuideAnimationConfig,
+  GuideAnimationState} from '../core/animations/GuideAnimations';
 import {
   GuideAnimationController,
-  GuideAnimationConfig,
-  GuideAnimationState,
   GUIDE_ANIMATION_PRESETS,
 } from '../core/animations/GuideAnimations';
-import {
-  BodyAnimationController,
+import type {
   BodyAnimationConfig,
   BodyAnimationState,
-  BODY_ANIMATION_PRESETS,
   HEAD_PRESETS,
   HAND_PRESETS,
-  FULL_BODY_POSES,
-  HandGesture,
+  HandGesture} from '../core/animations/BodyAnimations';
+import {
+  BodyAnimationController,
+  BODY_ANIMATION_PRESETS,
+  FULL_BODY_POSES
 } from '../core/animations/BodyAnimations';
 
 // =============================================================================

@@ -3,7 +3,8 @@
  * Provides consistent settings management across the application
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 const SETTINGS_NAMESPACE = 'creatorhub_user_settings';

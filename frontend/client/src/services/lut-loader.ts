@@ -4,7 +4,8 @@
  * Integrated with wasm-vips for fast preview generation
  */
 
-import { LUTEngine, LUT3D } from './lut-engine';
+import type { LUT3D } from './lut-engine';
+import { LUTEngine } from './lut-engine';
 
 interface LUTCacheEntry {
   lut: LUT3D;

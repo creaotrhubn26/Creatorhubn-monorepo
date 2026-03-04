@@ -10,7 +10,7 @@ import {
   decimal,
 } from 'drizzle-orm/pg-core';
 import { createInsertSchema } from 'drizzle-zod';
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Photographer Client Galleries
 export const photographerClientGalleries = pgTable('photographer_client_galleries', {

@@ -34,12 +34,13 @@ import {
   Person as PersonIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
+import type {
+  DragEndEvent,
+  DragStartEvent} from '@dnd-kit/core';
 import {
   closestCorners,
   DndContext,
-  DragEndEvent,
   DragOverlay,
-  DragStartEvent,
   PointerSensor,
   useDroppable,
   useSensor,

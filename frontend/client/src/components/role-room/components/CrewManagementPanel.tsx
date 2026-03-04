@@ -120,7 +120,7 @@ import {
   RateIcon,
   SplitSheetIcon,
 } from './icons/CastingIcons';
-import { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
+import type { CrewMember, CrewRole, CrewStatus, ProductionDay, SceneBreakdown, CrewAssignment } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';

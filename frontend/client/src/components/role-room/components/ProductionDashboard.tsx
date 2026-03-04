@@ -23,7 +23,7 @@ import {
   Lightbulb as LightIcon,
 } from '@mui/icons-material';
 import { LocationsIcon as LocationIcon } from './icons/CastingIcons';
-import { CastingProject } from '../models/casting';
+import type { CastingProject } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { castingToSceneService } from '../services/castingToSceneService';
 import { useToast } from './ToastStack';

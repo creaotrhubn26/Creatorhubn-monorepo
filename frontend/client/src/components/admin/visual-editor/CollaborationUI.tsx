@@ -26,11 +26,12 @@ import {
   MoreVert,
   Comment as CommentIcon,
 } from '@mui/icons-material';
-import {
+import type {
   User,
   Cursor,
+  Comment} from '@/services/RealtimeCollaborationService';
+import {
   Selection,
-  Comment,
   realtimeCollaboration,
 } from '@/services/RealtimeCollaborationService';
 

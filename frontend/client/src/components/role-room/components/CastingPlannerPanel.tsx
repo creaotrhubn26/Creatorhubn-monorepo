@@ -128,7 +128,7 @@ import {
   LiveSetTabIcon,
 } from './icons';
 
-import { CastingProject, Role, Candidate, Schedule } from '../models/casting';
+import type { CastingProject, Role, Candidate, Schedule } from '../models/casting';
 import { RichTextEditor } from './RichTextEditor';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
 import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
@@ -141,7 +141,7 @@ import { resetMockCastingData } from '../data/mockCastingData';
 import { sceneComposerService } from '../services/sceneComposerService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
-import { Tutorial } from '../services/tutorialService';
+import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
 const CrewManagementPanel = lazy(() => import('./CrewManagementPanel').then(m => ({ default: m.CrewManagementPanel })));
@@ -176,7 +176,8 @@ const CastingSharingDialog = lazy(() => import('./CastingSharingDialog').then(m 
 const CastingProfessionDialog = lazy(() => import('./CastingProfessionDialog').then(m => ({ default: m.CastingProfessionDialog })));
 const ProfessionOnboardingDialog = lazy(() => import('./ProfessionOnboardingDialog').then(m => ({ default: m.ProfessionOnboardingDialog })));
 
-import { useProfessionOnboarding, ProfessionType } from './ProfessionOnboardingDialog';
+import type { ProfessionType } from './ProfessionOnboardingDialog';
+import { useProfessionOnboarding } from './ProfessionOnboardingDialog';
 import { useAuth } from '@/hooks/useAuth';
 import authSessionService from '../services/authSessionService';
 import settingsService from '../services/settingsService';

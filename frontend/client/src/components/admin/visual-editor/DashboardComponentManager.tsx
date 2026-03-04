@@ -80,13 +80,15 @@ import {
   Chat,
 } from '@mui/icons-material';
 
+import type {
+  ComponentMetadata
+} from './componentRegistry';
 import { 
   UNIVERSAL_DASHBOARD_COMPONENTS,
   getComponentsByCategory,
   getComponentsByProfession,
   getEditableComponents,
-  getComponentById,
-  ComponentMetadata
+  getComponentById
 } from './componentRegistry';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { useTheming } from '../../../utils/theming-helper';

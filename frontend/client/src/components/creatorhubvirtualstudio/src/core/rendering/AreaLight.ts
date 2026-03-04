@@ -15,7 +15,7 @@
  */
 
 import * as THREE from 'three';
-import { IESProfile } from '../services/ies';
+import type { IESProfile } from '../services/ies';
 import { photometricCalculator } from '../services/photometric';
 
 export type AreaLightType = 'softbox' | 'umbrella' | 'strip' | 'ring' | 'panel';

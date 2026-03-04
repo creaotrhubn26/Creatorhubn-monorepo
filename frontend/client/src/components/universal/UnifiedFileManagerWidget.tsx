@@ -32,7 +32,8 @@ import {
   SwapVert,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import backgroundUploadService, { UploadTask } from '@/services/BackgroundUploadService';
+import type { UploadTask } from '@/services/BackgroundUploadService';
+import backgroundUploadService from '@/services/BackgroundUploadService';
 import { backgroundDownloadService, type DownloadTask } from '@/services/BackgroundDownloadService';
 
 // Import profession system hooks and utilities

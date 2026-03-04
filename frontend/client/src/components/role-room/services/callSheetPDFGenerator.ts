@@ -3,7 +3,7 @@
  * Generates professional call sheets with Norwegian localization
  */
 
-import { CallSheet, CallSheetScene, CastCallItem, CrewCallItem, MealBreak } from './productionWorkflowService';
+import type { CallSheet, CallSheetScene, CastCallItem, CrewCallItem, MealBreak } from './productionWorkflowService';
 
 // ============================================
 // PDF TEMPLATE TYPES

@@ -69,7 +69,7 @@ import {
   QuantityIcon,
   StorageIcon,
 } from './icons/CastingIcons';
-import { Prop } from '../models/casting';
+import type { Prop } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';

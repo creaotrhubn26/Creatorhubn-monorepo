@@ -43,16 +43,20 @@ import {
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
-import { PencilCanvas, BrushType, BrushSettings } from './PencilCanvas';
-import { PencilCanvasPro, ReferenceImage } from './PencilCanvasPro';
+import type { BrushSettings } from './PencilCanvas';
+import { PencilCanvas, BrushType } from './PencilCanvas';
+import type { ReferenceImage } from './PencilCanvasPro';
+import { PencilCanvasPro } from './PencilCanvasPro';
 import { ProBrushType, ProBrushSettings } from './drawing/AdvancedBrushEngine';
-import { PencilStroke } from '../hooks/useApplePencil';
+import type { PencilStroke } from '../hooks/useApplePencil';
 import { useDeviceDetection } from '../hooks/useDeviceDetection';
-import { 
-  useStoryboardStore, 
-  StoryboardFrame, 
+import type { 
   FrameDrawingData,
   FrameImageSource 
+} from '../state/storyboardStore';
+import { 
+  useStoryboardStore, 
+  StoryboardFrame 
 } from '../state/storyboardStore';
 
 // =============================================================================

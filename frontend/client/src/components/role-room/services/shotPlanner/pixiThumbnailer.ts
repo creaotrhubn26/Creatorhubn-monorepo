@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { Asset2DDefinition } from './types';
+import type { Asset2DDefinition } from './types';
 
 const THUMB_CACHE = new Map<string, string>();
 let pixiInitialized = false;

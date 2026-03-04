@@ -68,16 +68,18 @@ import {
 } from '@mui/icons-material';
 import settingsService from '../services/settingsService';
 import { RolesIcon as TheaterComedyIcon, StatsIcon } from './icons/CastingIcons';
-import { Role } from '../models/casting';
+import type { Role } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { useToast } from './ToastStack';
 import { useBrandingSettings } from '../hooks/useBrandingSettings';
-import { rolePoolService, PoolRole } from '../services/rolePoolService';
+import type { PoolRole } from '../services/rolePoolService';
+import { rolePoolService } from '../services/rolePoolService';
 import { RoleRoomEmptyState } from './icons/RoleRoomEmptyState';
 import castingDirectorPng from './icons/Keep/roleroom_casting_director.png';
+import type {
+  RoleWorkflowStatus} from '../config/roleWorkflow';
 import {
   ROLE_WORKFLOW_ORDER,
-  RoleWorkflowStatus,
   getRoleWorkflowMeta,
 } from '../config/roleWorkflow';
 import { emitRoleSyncEvent, onRoleSyncEvent } from '../services/roleSyncEvents';

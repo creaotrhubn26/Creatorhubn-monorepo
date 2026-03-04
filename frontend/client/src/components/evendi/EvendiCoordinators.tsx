@@ -30,7 +30,7 @@ import {
   CheckCircle,
   Schedule,
 } from '@mui/icons-material';
-import { EventType } from '@/lib/evendi-api';
+import type { EventType } from '@/lib/evendi-api';
 
 interface Coordinator {
   id: string;

@@ -59,8 +59,9 @@ import {
   ViewModule,
   ViewComfy,
 } from '@mui/icons-material';
-import { useVirtualization, UseVirtualizationOptions } from '../../../hooks/useVirtualization';
-import { VirtualItem, VirtualizationConfig } from '../../../utils/virtualizationUtils';
+import type { UseVirtualizationOptions } from '../../../hooks/useVirtualization';
+import { useVirtualization } from '../../../hooks/useVirtualization';
+import type { VirtualItem, VirtualizationConfig } from '../../../utils/virtualizationUtils';
 
 interface VirtualizedListProps {
   items: unknown[];

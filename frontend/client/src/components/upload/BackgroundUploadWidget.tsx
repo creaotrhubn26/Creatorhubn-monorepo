@@ -36,7 +36,8 @@ import {
   CloudSync as SyncIcon,
 } from '@mui/icons-material';
 import { motion, AnimatePresence } from 'framer-motion';
-import backgroundUploadService, { UploadTask, UploadStats } from '../../services/BackgroundUploadService';
+import type { UploadTask, UploadStats } from '../../services/BackgroundUploadService';
+import backgroundUploadService from '../../services/BackgroundUploadService';
 import { useUploadQueue } from '../../hooks/useUploadQueue';
 import { usePhotoEnhancementWebSocket } from '../../hooks/usePhotoEnhancementWebSocket';
 

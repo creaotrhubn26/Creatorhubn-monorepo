@@ -4,7 +4,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { securityScanner, SecurityScanResult, SecurityConfig, ScanOptions } from '@/utils/securityScanner';
+import type { SecurityScanResult, SecurityConfig, ScanOptions } from '@/utils/securityScanner';
+import { securityScanner } from '@/utils/securityScanner';
 
 export interface UseSecurityScannerOptions {
   enableAutoScanning?: boolean;

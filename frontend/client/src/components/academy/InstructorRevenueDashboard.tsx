@@ -56,11 +56,12 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import type {
+  InstructorPlan} from '@shared/revenue-calculator';
 import {
   formatNOK,
   validatePayoutRequest,
   getMinimumPayoutThreshold,
-  InstructorPlan,
   oreToNok,
   nokToOre,
 } from '@shared/revenue-calculator';
