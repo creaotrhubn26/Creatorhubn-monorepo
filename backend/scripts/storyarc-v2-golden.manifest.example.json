@@ -1,0 +1,13 @@
+{
+  "datasetName": "storyarc-v2-golden-example",
+  "cases": [
+    {
+      "caseId": "wedding-case-1",
+      "analysisId": "analysis-replace-me",
+      "targetDuration": 90,
+      "variant": "balanced",
+      "minOverallScore": 0.65,
+      "minBeatCoverage": 0.95
+    }
+  ]
+}

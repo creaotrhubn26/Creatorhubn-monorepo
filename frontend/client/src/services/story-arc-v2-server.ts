@@ -55,6 +55,7 @@ export interface StoryArcV2AnalysisResult {
   summary: StoryArcV2AnalysisSummary;
   scenes: Array<Record<string, unknown>>;
   semanticProfiles: StoryArcV2SemanticProfile[];
+  personIdentities?: Array<Record<string, unknown>>;
   warnings: string[];
   createdAt: string;
 }
@@ -117,7 +118,7 @@ export interface StoryArcV2StoryArcCompat {
 }
 
 export interface StoryArcV2ScriptEditOperation {
-  op: 'reorder' | 'lockNode' | 'replaceCandidate' | 'banClip' | 'regenerateNode';
+  op: 'reorder' | 'lockNode' | 'replaceCandidate' | 'banClip' | 'regenerateNode' | 'approveNode';
   nodeId?: string;
   fromIndex?: number;
   toIndex?: number;
@@ -182,6 +183,49 @@ export interface StoryArcV2PlanTimelineInput {
 export interface StoryArcV2ApplyTimelineInput {
   proposalId: string;
   revision: number;
+}
+
+export interface StoryArcV2RevertTimelineInput {
+  proposalId: string;
+  revision: number;
+  reason?: string;
+}
+
+export interface StoryArcV2TimelineApplyState {
+  success: boolean;
+  idempotent: boolean;
+  proposalId: string;
+  revision: number;
+  appliedAt: string;
+  applyCount: number;
+  revertedAt: string | null;
+  revertCount: number;
+  timeline?: Record<string, unknown> | null;
+}
+
+export interface StoryArcV2QualityScorecard {
+  scorecardId: string;
+  proposalId: string;
+  scriptId: string;
+  analysisId: string;
+  projectId: string | null;
+  variant: StoryArcV2Variant;
+  metrics: {
+    beatCoverage: number;
+    narrativeCoherence: number;
+    technicalCompliance: number;
+    repetitionBalance: number;
+    explainabilityCoverage: number;
+    durationFit: number;
+    feedbackAlignment: number;
+  };
+  overallScore: number;
+  warnings: string[];
+  generatedAt: string;
+}
+
+export interface StoryArcV2EvaluateQualityInput {
+  proposalId: string;
 }
 
 export interface StoryArcV2ExportInput {
@@ -343,7 +387,7 @@ export async function planStoryArcV2Timeline(
 
 export async function applyStoryArcV2Timeline(
   input: StoryArcV2ApplyTimelineInput
-): Promise<Record<string, unknown>> {
+): Promise<StoryArcV2TimelineApplyState> {
   const payload = await apiRequest('/api/story-arc/v2/timeline/apply', {
     method: 'POST',
     body: input,
@@ -351,7 +395,33 @@ export async function applyStoryArcV2Timeline(
   if (!isRecord(payload)) {
     throw new Error('Invalid Story Arc V2 timeline apply response');
   }
-  return payload;
+  return payload as unknown as StoryArcV2TimelineApplyState;
+}
+
+export async function revertStoryArcV2Timeline(
+  input: StoryArcV2RevertTimelineInput
+): Promise<StoryArcV2TimelineApplyState> {
+  const payload = await apiRequest('/api/story-arc/v2/timeline/revert', {
+    method: 'POST',
+    body: input,
+  });
+  if (!isRecord(payload)) {
+    throw new Error('Invalid Story Arc V2 timeline revert response');
+  }
+  return payload as unknown as StoryArcV2TimelineApplyState;
+}
+
+export async function evaluateStoryArcV2Quality(
+  input: StoryArcV2EvaluateQualityInput
+): Promise<StoryArcV2QualityScorecard> {
+  const payload = await apiRequest('/api/story-arc/v2/quality/evaluate', {
+    method: 'POST',
+    body: input,
+  });
+  if (!isRecord(payload) || !isRecord(payload.scorecard)) {
+    throw new Error('Invalid Story Arc V2 quality evaluate response');
+  }
+  return payload.scorecard as unknown as StoryArcV2QualityScorecard;
 }
 
 export async function exportStoryArcV2(

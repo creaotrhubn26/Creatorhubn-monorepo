@@ -24191,6 +24191,85 @@ interface StoryArcV2TimelineProposal {
   warnings: string[];
 }
 
+interface StoryArcV2PersonIdentity {
+  identityId: string;
+  analysisId: string;
+  personLabel: string;
+  segmentCount: number;
+  totalDuration: number;
+  mediaIds: string[];
+  confidence: number;
+}
+
+interface StoryArcV2ApplyLedgerEntry {
+  appliedAt: string;
+  applyCount: number;
+  revertedAt: string | null;
+  revertCount: number;
+}
+
+interface StoryArcV2FeedbackProfile {
+  projectKey: string;
+  clipPenalty: Record<string, number>;
+  clipBoost: Record<string, number>;
+  speakerPenalty: Record<string, number>;
+  speakerBoost: Record<string, number>;
+  reasonPenaltyTokens: Record<string, number>;
+  updatedAt: string;
+}
+
+interface StoryArcV2QualityScorecard {
+  scorecardId: string;
+  proposalId: string;
+  scriptId: string;
+  analysisId: string;
+  projectId: string | null;
+  variant: StoryArcV2Variant;
+  metrics: {
+    beatCoverage: number;
+    narrativeCoherence: number;
+    technicalCompliance: number;
+    repetitionBalance: number;
+    explainabilityCoverage: number;
+    durationFit: number;
+    feedbackAlignment: number;
+  };
+  overallScore: number;
+  warnings: string[];
+  generatedAt: string;
+}
+
+interface StoryArcV2GoldenBenchmarkCase {
+  caseId: string;
+  analysisId: string;
+  targetDuration: number;
+  variant: StoryArcV2Variant;
+  minOverallScore: number;
+  minBeatCoverage: number;
+}
+
+interface StoryArcV2GoldenBenchmarkRun {
+  runId: string;
+  datasetName: string;
+  startedAt: string;
+  finishedAt: string;
+  totalCases: number;
+  passedCases: number;
+  failedCases: number;
+  averageOverallScore: number;
+  results: Array<{
+    caseId: string;
+    analysisId: string;
+    scriptId: string;
+    proposalId: string;
+    scorecardId: string;
+    overallScore: number;
+    beatCoverage: number;
+    passed: boolean;
+    failures: string[];
+  }>;
+}
+
 interface StoryArcV2Job {
   jobId: string;
   phase: StoryArcV2JobPhase;
@@ -24220,7 +24299,10 @@ const storyArcV2JobControllers = new Map<string, AbortController>();
 const storyArcV2AnalysisRuns = new Map<string, StoryArcV2AnalysisRun>();
 const storyArcV2Scripts = new Map<string, StoryArcV2StoryScript>();
 const storyArcV2TimelineProposals = new Map<string, StoryArcV2TimelineProposal>();
-const storyArcV2ApplyLedger = new Map<string, { appliedAt: string; applyCount: number }>();
+const storyArcV2ApplyLedger = new Map<string, StoryArcV2ApplyLedgerEntry>();
+const storyArcV2FeedbackProfiles = new Map<string, StoryArcV2FeedbackProfile>();
+const storyArcV2QualityScorecards = new Map<string, StoryArcV2QualityScorecard>();
+const storyArcV2GoldenBenchmarkRuns = new Map<string, StoryArcV2GoldenBenchmarkRun>();
 
 const isStoryArcV2Enabled = (): boolean => {
   const raw = normalizeModelLookupValue(readString(process.env.STORY_ARC_V2_ENABLED) || 'true');
@@ -24274,6 +24356,126 @@ const normalizeStoryArcV2Language = (policy: string): string => {
   }
   return 'no';
 };
+
+const resolveStoryArcV2ProjectKey = (projectId: string | null): string => {
+  const key = normalizeModelLookupValue(projectId || 'global');
+  return key || 'global';
+};
+
+const normalizeStoryArcV2FeedbackKey = (value: string): string => {
+  return normalizeModelLookupValue(value);
+};
+
+const tokenizeStoryArcV2FeedbackReason = (reason: string): string[] => {
+  const normalized = normalizeModelLookupValue(reason);
+  if (!normalized) return [];
+  return Array.from(new Set(normalized.split(/[^a-z0-9æøå]+/u).filter((token) => token.length >= 4))).slice(0, 12);
+};
+
+const createStoryArcV2EmptyFeedbackProfile = (projectKey: string): StoryArcV2FeedbackProfile => ({
+  projectKey,
+  clipPenalty: {},
+  clipBoost: {},
+  speakerPenalty: {},
+  speakerBoost: {},
+  reasonPenaltyTokens: {},
+  updatedAt: new Date().toISOString(),
+});
+
+const applyStoryArcV2FeedbackToProfile = (
+  profile: StoryArcV2FeedbackProfile,
+  event: {
+    type: 'ban' | 'approve';
+    clipId?: string | null;
+    speaker?: string | null;
+    reason?: string | null;
+  }
+): StoryArcV2FeedbackProfile => {
+  const clipKey = event.clipId ? normalizeStoryArcV2FeedbackKey(event.clipId) : '';
+  const speakerKey = event.speaker ? normalizeStoryArcV2FeedbackKey(event.speaker) : '';
+
+  if (event.type === 'ban') {
+    if (clipKey) {
+      profile.clipPenalty[clipKey] = (profile.clipPenalty[clipKey] || 0) + 1;
+    }
+    if (speakerKey) {
+      profile.speakerPenalty[speakerKey] = (profile.speakerPenalty[speakerKey] || 0) + 1;
+    }
+    tokenizeStoryArcV2FeedbackReason(event.reason || '').forEach((token) => {
+      profile.reasonPenaltyTokens[token] = (profile.reasonPenaltyTokens[token] || 0) + 1;
+    });
+  } else {
+    if (clipKey) {
+      profile.clipBoost[clipKey] = (profile.clipBoost[clipKey] || 0) + 1;
+    }
+    if (speakerKey) {
+      profile.speakerBoost[speakerKey] = (profile.speakerBoost[speakerKey] || 0) + 1;
+    }
+  }
+
+  profile.updatedAt = new Date().toISOString();
+  return profile;
+};
+
+const ensureStoryArcV2FeedbackProfile = async (projectKey: string): Promise<StoryArcV2FeedbackProfile> => {
+  const cached = storyArcV2FeedbackProfiles.get(projectKey);
+  if (cached) return cached;
+
+  const profile = createStoryArcV2EmptyFeedbackProfile(projectKey);
+  try {
+    if (await hasTable('storyarc_feedback_events')) {
+      const result = await pool.query(
+        'select event_payload from storyarc_feedback_events where coalesce(event_payload->>\'projectKey\', \'global\') = $1 order by created_at desc limit 500',
+        [projectKey]
+      );
+      result.rows.forEach((row) => {
+        const payload = isUnknownRecord(row.event_payload)
+          ? (row.event_payload as Record<string, unknown>)
+          : {};
+        const type = normalizeModelLookupValue(readString(payload.type) || '');
+        const clipId = readString(payload.clipId);
+        const speaker = readString(payload.speaker);
+        const reason = readString(payload.reason);
+        if (type === 'ban_clip') {
+          applyStoryArcV2FeedbackToProfile(profile, {
+            type: 'ban',
+            clipId,
+            speaker,
+            reason,
+          });
+        }
+        if (type === 'approve_node') {
+          applyStoryArcV2FeedbackToProfile(profile, {
+            type: 'approve',
+            clipId,
+            speaker,
+            reason,
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.warn('story-arc-v2 feedback profile load warning:', error);
+  }
+
+  storyArcV2FeedbackProfiles.set(projectKey, profile);
+  return profile;
+};
+
+const scoreStoryArcV2FeedbackAlignment = (
+  profile: StoryArcV2FeedbackProfile,
+  clipId: string | null,
+  speaker: string | null
+): number => {
+  const clipKey = clipId ? normalizeStoryArcV2FeedbackKey(clipId) : '';
+  const speakerKey = speaker ? normalizeStoryArcV2FeedbackKey(speaker) : '';
+  const clipPenalty = clipKey ? profile.clipPenalty[clipKey] || 0 : 0;
+  const clipBoost = clipKey ? profile.clipBoost[clipKey] || 0 : 0;
+  const speakerPenalty = speakerKey ? profile.speakerPenalty[speakerKey] || 0 : 0;
+  const speakerBoost = speakerKey ? profile.speakerBoost[speakerKey] || 0 : 0;
+  return clipBoost * 1.2 + speakerBoost * 0.8 - clipPenalty * 1.4 - speakerPenalty * 1.0;
+};
+
 
 const inferStoryArcV2Emotion = (
   text: string
@@ -24365,6 +24567,66 @@ const buildStoryArcV2SemanticProfiles = (
   });
 };
 
+const buildStoryArcV2PersonIdentities = (
+  analysisId: string,
+  media: StoryArcV2AnalyzedMedia[]
+): StoryArcV2PersonIdentity[] => {
+  const aggregate = new Map<
+    string,
+    {
+      segmentCount: number;
+      totalDuration: number;
+      mediaIds: Set<string>;
+      confidenceSum: number;
+      confidenceCount: number;
+    }
+  >();
+
+  media.forEach((mediaItem) => {
+    mediaItem.transcription.segments.forEach((segment) => {
+      const label = readString(segment.speaker)?.trim();
+      if (!label) return;
+      const duration = Math.max(0, (readNumber(segment.end) ?? 0) - (readNumber(segment.start) ?? 0));
+      const speakerConfidence =
+        readNumber(segment.speaker_confidence) ??
+        readNumber(segment.confidence) ??
+        0.6;
+      const current = aggregate.get(label) || {
+        segmentCount: 0,
+        totalDuration: 0,
+        mediaIds: new Set<string>(),
+        confidenceSum: 0,
+        confidenceCount: 0,
+      };
+      current.segmentCount += 1;
+      current.totalDuration += duration;
+      current.mediaIds.add(mediaItem.mediaId);
+      current.confidenceSum += speakerConfidence;
+      current.confidenceCount += 1;
+      aggregate.set(label, current);
+    });
+  });
+
+  return Array.from(aggregate.entries())
+    .sort((left, right) => right[1].segmentCount - left[1].segmentCount)
+    .map(([personLabel, value], index) => {
+      const personKey = normalizeModelLookupValue(personLabel) || `person-${index + 1}`;
+      const confidence =
+        value.confidenceCount > 0
+          ? value.confidenceSum / value.confidenceCount
+          : 0.55;
+      return {
+        identityId: `${analysisId}:person:${personKey}`,
+        analysisId,
+        personLabel,
+        segmentCount: value.segmentCount,
+        totalDuration: Number(value.totalDuration.toFixed(3)),
+        mediaIds: Array.from(value.mediaIds),
+        confidence: Number(clampStoryArcV2Number(confidence, 0.2, 0.99).toFixed(3)),
+      };
+    });
+};
+
 const classifyStoryArcV2Beat = (
   text: string,
   index: number,
@@ -24435,8 +24697,13 @@ const ensureStoryArcV2BeatCoverage = (
 
 const buildStoryArcV2Script = (
   analysis: StoryArcV2AnalysisRun,
-  targetDurationSeconds: number
+  targetDurationSeconds: number,
+  feedbackProfile?: StoryArcV2FeedbackProfile | null
 ): StoryArcV2StoryScript => {
+  const feedback =
+    feedbackProfile ||
+    createStoryArcV2EmptyFeedbackProfile(resolveStoryArcV2ProjectKey(analysis.projectId));
+
   const segmentRows = analysis.media.flatMap((media) =>
     media.transcription.segments.map((segment, index) => ({
       mediaId: media.mediaId,
@@ -24454,11 +24721,22 @@ const buildStoryArcV2Script = (
     const text = row.segment.text || '';
     const words = text.trim().split(/\s+/).filter(Boolean);
     const emphasis = (text.includes('!') ? 0.12 : 0) + (text.includes('?') ? 0.06 : 0);
-    const score = clampStoryArcV2Number(words.length / 18 + emphasis, 0.1, 1);
+    const speaker = readString(row.segment.speaker) || null;
+    const speakerFeedbackScore = scoreStoryArcV2FeedbackAlignment(feedback, null, speaker);
+    const reasonTokenPenalty = tokenizeStoryArcV2FeedbackReason(text).reduce(
+      (sum, token) => sum + (feedback.reasonPenaltyTokens[token] || 0),
+      0
+    );
+    const score = clampStoryArcV2Number(
+      words.length / 18 + emphasis + speakerFeedbackScore * 0.04 - reasonTokenPenalty * 0.015,
+      0.08,
+      1
+    );
     return {
       ...row,
       beat: classifyStoryArcV2Beat(text, index, totalRows),
       score,
+      speaker,
     };
   });
 
@@ -24472,6 +24750,15 @@ const buildStoryArcV2Script = (
     .sort((left, right) => left.segment.start - right.segment.start)
     .map((row, index) => {
       const safeDuration = clampStoryArcV2Number(row.segment.end - row.segment.start, 1.2, 12);
+      const rankedCandidates = [...row.candidateClipIds].sort((leftClipId, rightClipId) => {
+        const leftScore = scoreStoryArcV2FeedbackAlignment(feedback, leftClipId, row.speaker);
+        const rightScore = scoreStoryArcV2FeedbackAlignment(feedback, rightClipId, row.speaker);
+        return rightScore - leftScore;
+      });
+      const feedbackSignal =
+        rankedCandidates.length > 0
+          ? scoreStoryArcV2FeedbackAlignment(feedback, rankedCandidates[0], row.speaker)
+          : 0;
       return {
         id: toStoryArcV2Id(`node-${index + 1}`),
         beat: row.beat,
@@ -24479,18 +24766,36 @@ const buildStoryArcV2Script = (
         end: Number(row.segment.end.toFixed(3)),
         duration: Number(safeDuration.toFixed(3)),
         text: row.segment.text || `Story moment ${index + 1}`,
-        speaker: readString(row.segment.speaker) || null,
+        speaker: row.speaker,
         utteranceRefs: [row.segmentId],
         candidateClipIds:
-          row.candidateClipIds.length > 0 ? row.candidateClipIds.slice(0, 6) : [`${row.mediaId}:fallback`],
+          rankedCandidates.length > 0 ? rankedCandidates.slice(0, 6) : [`${row.mediaId}:fallback`],
         locked: false,
         pinned: false,
-        rationale: `Selected for ${row.beat} beat with impact score ${(row.score * 100).toFixed(0)}%.`,
+        rationale:
+          `Selected for ${row.beat} beat with impact score ${(row.score * 100).toFixed(0)}%` +
+          (feedbackSignal !== 0
+            ? ` (feedback signal ${feedbackSignal.toFixed(2)})`
+            : '') +
+          '.',
         confidence: Number(clampStoryArcV2Number(0.5 + row.score * 0.45, 0.4, 0.98).toFixed(3)),
       } satisfies StoryArcV2StoryScriptNode;
     });
 
   const normalizedNodes = ensureStoryArcV2BeatCoverage(selectedNodes);
+  const seededBannedClipIds = Array.from(
+    new Set(
+      normalizedNodes.flatMap((node) =>
+        node.candidateClipIds.filter((clipId) => {
+          const clipKey = normalizeStoryArcV2FeedbackKey(clipId);
+          const penalty = feedback.clipPenalty[clipKey] || 0;
+          const boost = feedback.clipBoost[clipKey] || 0;
+          return penalty >= 3 && boost === 0;
+        })
+      )
+    )
+  ).slice(0, 120);
+
   const now = new Date().toISOString();
   return {
     scriptId: toStoryArcV2Id('script'),
@@ -24499,7 +24804,7 @@ const buildStoryArcV2Script = (
     title: `Story Script • ${analysis.projectId || 'Wedding Day'}`,
     targetDurationSeconds,
     nodes: normalizedNodes,
-    bannedClipIds: [],
+    bannedClipIds: seededBannedClipIds,
     createdAt: now,
     updatedAt: now,
   };
@@ -24602,6 +24907,293 @@ const buildStoryArcV2Fcpxml = (
   return `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fcpxml version=\"1.10\">\n  <resources/>\n  <library>\n    <event name=\"StoryArcV2\">\n      <project name=\"${toStoryArcV2XmlSafe(proposal.scriptId)}\">\n        <sequence format=\"r1\" tcStart=\"0s\" tcFormat=\"NDF\">\n          <spine>\n${clipItems}\n          </spine>\n        </sequence>\n      </project>\n    </event>\n  </library>\n</fcpxml>`;
 };
 
+const createStoryArcV2TimelineProposal = (
+  script: StoryArcV2StoryScript,
+  selectedVariant: StoryArcV2Variant,
+  constraints: {
+    shotMin: number;
+    shotMax: number;
+    noOverlap: boolean;
+    repetitionCaps: Record<string, number>;
+    beatCoverageRequired: boolean;
+  }
+): StoryArcV2TimelineProposal => {
+  const safe = buildStoryArcV2TimelineVariant(script, 'safe', constraints);
+  const balanced = buildStoryArcV2TimelineVariant(script, 'balanced', constraints);
+  const bold = buildStoryArcV2TimelineVariant(script, 'bold', constraints);
+  const explainabilityByClipId: Record<string, Record<string, unknown>> = {};
+
+  [safe, balanced, bold].forEach((variantPlan) => {
+    variantPlan.timeline.clips.forEach((clip) => {
+      explainabilityByClipId[clip.id] = {
+        variant: variantPlan.variant,
+        beat: clip.beatName,
+        reason:
+          readString(clip.metadata?.rationale) ||
+          'Selected by script-to-timeline planner',
+        sourceClipId: readString(clip.metadata?.sourceClipId) || clip.sourceFile || null,
+        speaker: readString(clip.metadata?.speaker) || null,
+      };
+    });
+  });
+
+  return {
+    proposalId: toStoryArcV2Id('proposal'),
+    scriptId: script.scriptId,
+    revision: script.revision,
+    generatedAt: new Date().toISOString(),
+    selectedVariant,
+    variants: {
+      safe,
+      balanced,
+      bold,
+    },
+    explainabilityByClipId,
+    warnings: [],
+  };
+};
+
+const evaluateStoryArcV2QualityScorecard = (
+  script: StoryArcV2StoryScript,
+  proposal: StoryArcV2TimelineProposal,
+  feedbackProfile?: StoryArcV2FeedbackProfile | null
+): StoryArcV2QualityScorecard => {
+  const selected = proposal.variants[proposal.selectedVariant] || proposal.variants.balanced;
+  const clips = selected?.timeline.clips || [];
+  const warnings: string[] = [];
+
+  const beatCoverage = Number(
+    clampStoryArcV2Number(
+      new Set(script.nodes.map((node) => node.beat)).size / STORY_ARC_V2_AVAILABLE_BEATS.length,
+      0,
+      1
+    ).toFixed(3)
+  );
+
+  const beatOrder: Record<StoryArcV2NarrativeBeat, number> = {
+    hook: 0,
+    context: 1,
+    conflict: 2,
+    turning_point: 3,
+    resolution: 4,
+  };
+  let inversions = 0;
+  for (let index = 1; index < script.nodes.length; index += 1) {
+    const previous = beatOrder[script.nodes[index - 1].beat];
+    const current = beatOrder[script.nodes[index].beat];
+    if (current < previous) inversions += 1;
+  }
+  const narrativeCoherence = Number(
+    clampStoryArcV2Number(1 - inversions / Math.max(1, script.nodes.length - 1), 0, 1).toFixed(3)
+  );
+
+  const sortedClips = [...clips].sort((left, right) => left.start - right.start);
+  let noOverlap = true;
+  for (let index = 1; index < sortedClips.length; index += 1) {
+    const previous = sortedClips[index - 1];
+    const current = sortedClips[index];
+    if (current.start + 1e-6 < previous.start + previous.duration) {
+      noOverlap = false;
+      break;
+    }
+  }
+  if (!noOverlap) warnings.push('Detected overlap in selected timeline clips.');
+
+  const validDurationCount = clips.filter((clip) => clip.duration > 0).length;
+  const validTrackCount = clips.filter((clip) => Boolean(readString(clip.trackId))).length;
+  const technicalCompliance = Number(
+    clampStoryArcV2Number(
+      (clips.length > 0
+        ? (validDurationCount / clips.length + validTrackCount / clips.length + (noOverlap ? 1 : 0)) / 3
+        : 1),
+      0,
+      1
+    ).toFixed(3)
+  );
+
+  const uniqueSources = new Set(
+    clips
+      .map((clip) => readString(clip.sourceFile))
+      .filter((value): value is string => Boolean(value))
+  ).size;
+  const repetitionBalance = Number(
+    clampStoryArcV2Number(clips.length > 0 ? uniqueSources / clips.length : 1, 0, 1).toFixed(3)
+  );
+
+  const explainabilityCoverage = Number(
+    clampStoryArcV2Number(
+      clips.length > 0
+        ? clips.filter((clip) => Boolean(readString(proposal.explainabilityByClipId[clip.id]?.reason))).length / clips.length
+        : 1,
+      0,
+      1
+    ).toFixed(3)
+  );
+
+  const durationFit = Number(
+    clampStoryArcV2Number(
+      1 - Math.abs((selected?.timeline.totalDuration || 0) - script.targetDurationSeconds) / Math.max(1, script.targetDurationSeconds),
+      0,
+      1
+    ).toFixed(3)
+  );
+
+  const feedback =
+    feedbackProfile ||
+    createStoryArcV2EmptyFeedbackProfile(resolveStoryArcV2ProjectKey(null));
+  const feedbackAlignmentRaw =
+    clips.length > 0
+      ? clips.reduce((sum, clip) => {
+          const sourceClipId = readString(clip.metadata?.sourceClipId) || readString(clip.sourceFile) || null;
+          const speaker = readString(clip.metadata?.speaker) || null;
+          return sum + scoreStoryArcV2FeedbackAlignment(feedback, sourceClipId, speaker);
+        }, 0) / clips.length
+      : 0;
+  const feedbackAlignment = Number(clampStoryArcV2Number(0.5 + feedbackAlignmentRaw / 6, 0, 1).toFixed(3));
+
+  const overallScore = Number(
+    (
+      beatCoverage * 0.2 +
+      narrativeCoherence * 0.2 +
+      technicalCompliance * 0.2 +
+      repetitionBalance * 0.1 +
+      explainabilityCoverage * 0.1 +
+      durationFit * 0.1 +
+      feedbackAlignment * 0.1
+    ).toFixed(3)
+  );
+
+  if (beatCoverage < 0.95) warnings.push('Narrative beat coverage below target threshold.');
+  if (explainabilityCoverage < 1) warnings.push('Explainability is missing for one or more selected clips.');
+
+  return {
+    scorecardId: toStoryArcV2Id('scorecard'),
+    proposalId: proposal.proposalId,
+    scriptId: script.scriptId,
+    analysisId: script.analysisId,
+    projectId: readString(storyArcV2AnalysisRuns.get(script.analysisId)?.projectId) || null,
+    variant: proposal.selectedVariant,
+    metrics: {
+      beatCoverage,
+      narrativeCoherence,
+      technicalCompliance,
+      repetitionBalance,
+      explainabilityCoverage,
+      durationFit,
+      feedbackAlignment,
+    },
+    overallScore,
+    warnings,
+    generatedAt: new Date().toISOString(),
+  };
+};
+
+const runStoryArcV2GoldenBenchmark = async (
+  datasetName: string,
+  cases: StoryArcV2GoldenBenchmarkCase[]
+): Promise<StoryArcV2GoldenBenchmarkRun> => {
+  const startedAt = new Date().toISOString();
+  const results: StoryArcV2GoldenBenchmarkRun['results'] = [];
+
+  for (const testCase of cases) {
+    const failures: string[] = [];
+    const analysis = await loadStoryArcV2AnalysisRunFromDb(testCase.analysisId);
+    if (!analysis) {
+      results.push({
+        caseId: testCase.caseId,
+        analysisId: testCase.analysisId,
+        scriptId: '',
+        proposalId: '',
+        scorecardId: '',
+        overallScore: 0,
+        beatCoverage: 0,
+        passed: false,
+        failures: ['Missing analysis run'],
+      });
+      continue;
+    }
+
+    const feedbackProfile = await ensureStoryArcV2FeedbackProfile(
+      resolveStoryArcV2ProjectKey(analysis.projectId)
+    );
+    const script = buildStoryArcV2Script(analysis, testCase.targetDuration, feedbackProfile);
+    storyArcV2Scripts.set(script.scriptId, script);
+    void persistStoryArcV2TablePayload(
+      'storyarc_story_scripts',
+      'script_id',
+      script.scriptId,
+      'script_payload',
+      script as unknown as Record<string, unknown>
+    );
+    void persistStoryArcV2ScriptNodes(script);
+
+    const proposal = createStoryArcV2TimelineProposal(script, testCase.variant, {
+      shotMin: 1.2,
+      shotMax: 8,
+      noOverlap: true,
+      repetitionCaps: {},
+      beatCoverageRequired: true,
+    });
+    storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
+    void persistStoryArcV2TablePayload(
+      'storyarc_timeline_proposals',
+      'proposal_id',
+      proposal.proposalId,
+      'proposal_payload',
+      proposal as unknown as Record<string, unknown>
+    );
+
+    const scorecard = evaluateStoryArcV2QualityScorecard(script, proposal, feedbackProfile);
+    storyArcV2QualityScorecards.set(scorecard.scorecardId, scorecard);
+    void persistStoryArcV2QualityScorecard(scorecard);
+
+    if (scorecard.overallScore < testCase.minOverallScore) {
+      failures.push(
+        `overallScore ${scorecard.overallScore.toFixed(3)} < required ${testCase.minOverallScore.toFixed(3)}`
+      );
+    }
+    if (scorecard.metrics.beatCoverage < testCase.minBeatCoverage) {
+      failures.push(
+        `beatCoverage ${scorecard.metrics.beatCoverage.toFixed(3)} < required ${testCase.minBeatCoverage.toFixed(3)}`
+      );
+    }
+
+    results.push({
+      caseId: testCase.caseId,
+      analysisId: testCase.analysisId,
+      scriptId: script.scriptId,
+      proposalId: proposal.proposalId,
+      scorecardId: scorecard.scorecardId,
+      overallScore: scorecard.overallScore,
+      beatCoverage: scorecard.metrics.beatCoverage,
+      passed: failures.length === 0,
+      failures,
+    });
+  }
+
+  const passedCases = results.filter((entry) => entry.passed).length;
+  const averageOverallScore =
+    results.length > 0
+      ? Number((results.reduce((sum, entry) => sum + entry.overallScore, 0) / results.length).toFixed(3))
+      : 0;
+
+  const run: StoryArcV2GoldenBenchmarkRun = {
+    runId: toStoryArcV2Id('golden-run'),
+    datasetName,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    totalCases: results.length,
+    passedCases,
+    failedCases: Math.max(0, results.length - passedCases),
+    averageOverallScore,
+    results,
+  };
+
+  storyArcV2GoldenBenchmarkRuns.set(run.runId, run);
+  void persistStoryArcV2GoldenBenchmarkRun(run);
+  return run;
+};
+
 const persistStoryArcV2TablePayload = async (
   tableName: string,
   idColumn: string,
@@ -24620,6 +25212,306 @@ const persistStoryArcV2TablePayload = async (
     );
   } catch (error) {
     console.warn(`story-arc-v2 persistence warning (${tableName}):`, error);
+  }
+};
+
+const persistStoryArcV2SemanticProfiles = async (
+  analysisId: string,
+  media: StoryArcV2AnalyzedMedia[]
+): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_clip_semantic_profiles'))) return;
+    const rows = media.flatMap((mediaItem) =>
+      mediaItem.semanticProfiles.map((profile) => ({
+        profileId: `${analysisId}:${profile.clipId}`,
+        clipId: profile.clipId,
+        payload: {
+          analysisId,
+          ...profile,
+        },
+      }))
+    );
+    if (rows.length === 0) return;
+
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('delete from storyarc_clip_semantic_profiles where analysis_id = $1', [analysisId]);
+      for (const row of rows) {
+        await client.query(
+          `insert into storyarc_clip_semantic_profiles
+             (profile_id, analysis_id, clip_id, profile_payload, created_at, updated_at)
+           values ($1, $2, $3, $4::jsonb, now(), now())
+           on conflict (profile_id)
+           do update set
+             analysis_id = excluded.analysis_id,
+             clip_id = excluded.clip_id,
+             profile_payload = excluded.profile_payload,
+             updated_at = now()`,
+          [row.profileId, analysisId, row.clipId, JSON.stringify(row.payload)]
+        );
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_clip_semantic_profiles):', error);
+  }
+};
+
+const persistStoryArcV2PersonIdentities = async (
+  analysisId: string,
+  identities: StoryArcV2PersonIdentity[]
+): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_person_identities'))) return;
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('delete from storyarc_person_identities where analysis_id = $1', [analysisId]);
+      for (const identity of identities) {
+        await client.query(
+          `insert into storyarc_person_identities
+             (identity_id, analysis_id, person_label, identity_payload, created_at, updated_at)
+           values ($1, $2, $3, $4::jsonb, now(), now())
+           on conflict (identity_id)
+           do update set
+             analysis_id = excluded.analysis_id,
+             person_label = excluded.person_label,
+             identity_payload = excluded.identity_payload,
+             updated_at = now()`,
+          [
+            identity.identityId,
+            analysisId,
+            identity.personLabel,
+            JSON.stringify(identity),
+          ]
+        );
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_person_identities):', error);
+  }
+};
+
+const persistStoryArcV2ScriptNodes = async (script: StoryArcV2StoryScript): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_script_nodes'))) return;
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('delete from storyarc_script_nodes where script_id = $1', [script.scriptId]);
+      for (let index = 0; index < script.nodes.length; index += 1) {
+        const node = script.nodes[index];
+        await client.query(
+          `insert into storyarc_script_nodes
+             (node_id, script_id, node_index, node_payload, created_at, updated_at)
+           values ($1, $2, $3, $4::jsonb, now(), now())
+           on conflict (node_id)
+           do update set
+             script_id = excluded.script_id,
+             node_index = excluded.node_index,
+             node_payload = excluded.node_payload,
+             updated_at = now()`,
+          [node.id, script.scriptId, index, JSON.stringify(node)]
+        );
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_script_nodes):', error);
+  }
+};
+
+const persistStoryArcV2TimelineApplyEvent = async (payload: {
+  proposalId: string;
+  scriptId: string;
+  revision: number;
+  applyKey: string;
+  eventType: 'apply' | 'revert';
+  eventPayload: Record<string, unknown>;
+}): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_timeline_apply_events'))) return;
+    await pool.query(
+      `insert into storyarc_timeline_apply_events
+         (event_id, proposal_id, script_id, revision, apply_key, event_type, event_payload, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, now(), now())`,
+      [
+        toStoryArcV2Id(`timeline-${payload.eventType}`),
+        payload.proposalId,
+        payload.scriptId,
+        payload.revision,
+        payload.applyKey,
+        payload.eventType,
+        JSON.stringify(payload.eventPayload),
+      ]
+    );
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_timeline_apply_events):', error);
+  }
+};
+
+const persistStoryArcV2QualityScorecard = async (
+  scorecard: StoryArcV2QualityScorecard
+): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_quality_scorecards'))) return;
+    await pool.query(
+      `insert into storyarc_quality_scorecards
+         (scorecard_id, proposal_id, script_id, analysis_id, project_id, scorecard_payload, created_at, updated_at)
+       values ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
+       on conflict (scorecard_id)
+       do update set
+         proposal_id = excluded.proposal_id,
+         script_id = excluded.script_id,
+         analysis_id = excluded.analysis_id,
+         project_id = excluded.project_id,
+         scorecard_payload = excluded.scorecard_payload,
+         updated_at = now()`,
+      [
+        scorecard.scorecardId,
+        scorecard.proposalId,
+        scorecard.scriptId,
+        scorecard.analysisId,
+        scorecard.projectId,
+        JSON.stringify(scorecard),
+      ]
+    );
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_quality_scorecards):', error);
+  }
+};
+
+const persistStoryArcV2GoldenBenchmarkRun = async (
+  run: StoryArcV2GoldenBenchmarkRun
+): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_golden_benchmark_runs'))) return;
+    await pool.query(
+      `insert into storyarc_golden_benchmark_runs
+         (run_id, dataset_name, run_payload, created_at, updated_at)
+       values ($1, $2, $3::jsonb, now(), now())
+       on conflict (run_id)
+       do update set
+         dataset_name = excluded.dataset_name,
+         run_payload = excluded.run_payload,
+         updated_at = now()`,
+      [run.runId, run.datasetName, JSON.stringify(run)]
+    );
+  } catch (error) {
+    console.warn('story-arc-v2 persistence warning (storyarc_golden_benchmark_runs):', error);
+  }
+};
+
+const loadStoryArcV2AnalysisRunFromDb = async (
+  analysisId: string
+): Promise<StoryArcV2AnalysisRun | null> => {
+  const fromMemory = storyArcV2AnalysisRuns.get(analysisId);
+  if (fromMemory) return fromMemory;
+
+  try {
+    if (!(await hasTable('storyarc_analysis_runs'))) return null;
+    const result = await pool.query(
+      'select analysis_payload from storyarc_analysis_runs where analysis_id = $1 limit 1',
+      [analysisId]
+    );
+    const payload = result.rows?.[0]?.analysis_payload;
+    if (!isUnknownRecord(payload)) return null;
+    const analysis = payload as unknown as StoryArcV2AnalysisRun;
+    if (!analysis.analysisId) return null;
+    storyArcV2AnalysisRuns.set(analysis.analysisId, analysis);
+    return analysis;
+  } catch (error) {
+    console.warn('story-arc-v2 analysis load warning:', error);
+    return null;
+  }
+};
+
+const loadStoryArcV2ScriptFromDb = async (
+  scriptId: string
+): Promise<StoryArcV2StoryScript | null> => {
+  const fromMemory = storyArcV2Scripts.get(scriptId);
+  if (fromMemory) return fromMemory;
+
+  try {
+    if (!(await hasTable('storyarc_story_scripts'))) return null;
+    const result = await pool.query(
+      'select script_payload from storyarc_story_scripts where script_id = $1 limit 1',
+      [scriptId]
+    );
+    const payload = result.rows?.[0]?.script_payload;
+    if (!isUnknownRecord(payload)) return null;
+    const script = payload as unknown as StoryArcV2StoryScript;
+    if (!script.scriptId) return null;
+    storyArcV2Scripts.set(script.scriptId, script);
+    return script;
+  } catch (error) {
+    console.warn('story-arc-v2 script load warning:', error);
+    return null;
+  }
+};
+
+const loadStoryArcV2ProposalFromDb = async (
+  proposalId: string
+): Promise<StoryArcV2TimelineProposal | null> => {
+  const fromMemory = storyArcV2TimelineProposals.get(proposalId);
+  if (fromMemory) return fromMemory;
+
+  try {
+    if (!(await hasTable('storyarc_timeline_proposals'))) return null;
+    const result = await pool.query(
+      'select proposal_payload from storyarc_timeline_proposals where proposal_id = $1 limit 1',
+      [proposalId]
+    );
+    const payload = result.rows?.[0]?.proposal_payload;
+    if (!isUnknownRecord(payload)) return null;
+    const proposal = payload as unknown as StoryArcV2TimelineProposal;
+    if (!proposal.proposalId) return null;
+    storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
+    return proposal;
+  } catch (error) {
+    console.warn('story-arc-v2 proposal load warning:', error);
+    return null;
+  }
+};
+
+const loadStoryArcV2QualityScorecardFromDb = async (
+  scorecardId: string
+): Promise<StoryArcV2QualityScorecard | null> => {
+  const fromMemory = storyArcV2QualityScorecards.get(scorecardId);
+  if (fromMemory) return fromMemory;
+
+  try {
+    if (!(await hasTable('storyarc_quality_scorecards'))) return null;
+    const result = await pool.query(
+      'select scorecard_payload from storyarc_quality_scorecards where scorecard_id = $1 limit 1',
+      [scorecardId]
+    );
+    const payload = result.rows?.[0]?.scorecard_payload;
+    if (!isUnknownRecord(payload)) return null;
+    const scorecard = payload as unknown as StoryArcV2QualityScorecard;
+    if (!scorecard.scorecardId) return null;
+    storyArcV2QualityScorecards.set(scorecard.scorecardId, scorecard);
+    return scorecard;
+  } catch (error) {
+    console.warn('story-arc-v2 quality scorecard load warning:', error);
+    return null;
   }
 };
 
@@ -24769,6 +25661,11 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
       createdAt: new Date().toISOString(),
     };
 
+    const personIdentities = buildStoryArcV2PersonIdentities(
+      analysisRun.analysisId,
+      analyzedMedia
+    );
+
     storyArcV2AnalysisRuns.set(analysisRun.analysisId, analysisRun);
     void persistStoryArcV2TablePayload(
       'storyarc_analysis_runs',
@@ -24777,6 +25674,8 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
       'analysis_payload',
       analysisRun as unknown as Record<string, unknown>
     );
+    void persistStoryArcV2SemanticProfiles(analysisRun.analysisId, analyzedMedia);
+    void persistStoryArcV2PersonIdentities(analysisRun.analysisId, personIdentities);
 
     const primaryMedia = analysisRun.media[0];
     const resultPayload = {
@@ -24785,6 +25684,7 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
       summary: analysisRun.summary,
       scenes: primaryMedia?.scenes || [],
       semanticProfiles: analysisRun.media.flatMap((media) => media.semanticProfiles).slice(0, 250),
+      personIdentities: personIdentities.slice(0, 100),
       warnings: analysisRun.warnings,
       createdAt: analysisRun.createdAt,
     };
@@ -24981,7 +25881,7 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
         error: 'Missing analysisId',
       });
     }
-    const analysis = storyArcV2AnalysisRuns.get(analysisId);
+    const analysis = await loadStoryArcV2AnalysisRunFromDb(analysisId);
     if (!analysis) {
       return res.status(404).json({
         success: false,
@@ -24991,7 +25891,10 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
     const targetDurationSeconds = Number(
       clampStoryArcV2Number(readNumber(req.body?.targetDuration) ?? 90, 20, 1800).toFixed(2)
     );
-    const script = buildStoryArcV2Script(analysis, targetDurationSeconds);
+    const feedbackProfile = await ensureStoryArcV2FeedbackProfile(
+      resolveStoryArcV2ProjectKey(analysis.projectId)
+    );
+    const script = buildStoryArcV2Script(analysis, targetDurationSeconds, feedbackProfile);
     storyArcV2Scripts.set(script.scriptId, script);
     void persistStoryArcV2TablePayload(
       'storyarc_story_scripts',
@@ -25000,6 +25903,7 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
       'script_payload',
       script as unknown as Record<string, unknown>
     );
+    void persistStoryArcV2ScriptNodes(script);
 
     const storyArc = {
       id: `story-${script.scriptId}`,
@@ -25041,16 +25945,26 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
     if (!scriptId) {
       return res.status(400).json({ success: false, error: 'Missing scriptId' });
     }
-    const script = storyArcV2Scripts.get(scriptId);
+    const script =
+      storyArcV2Scripts.get(scriptId) ||
+      (await loadStoryArcV2ScriptFromDb(scriptId));
     if (!script) {
       return res.status(404).json({ success: false, error: 'Script not found' });
     }
+    storyArcV2Scripts.set(scriptId, script);
+
+    const analysis = await loadStoryArcV2AnalysisRunFromDb(script.analysisId);
+    const projectKey = resolveStoryArcV2ProjectKey(analysis?.projectId || null);
+    const feedbackProfile = await ensureStoryArcV2FeedbackProfile(projectKey);
+
     const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
     const nextScript: StoryArcV2StoryScript = {
       ...script,
       nodes: script.nodes.map((node) => ({ ...node, candidateClipIds: [...node.candidateClipIds] })),
       bannedClipIds: [...script.bannedClipIds],
     };
+
+    const feedbackEvents: Array<Record<string, unknown>> = [];
 
     operations.forEach((operationRaw: unknown) => {
       if (!isUnknownRecord(operationRaw)) return;
@@ -25064,8 +25978,10 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
         }
         return;
       }
+
       const nodeId = readString(operationRaw.nodeId);
       const node = nextScript.nodes.find((entry) => entry.id === nodeId);
+
       if (op === 'locknode' && node) {
         node.locked = readBoolean(operationRaw.locked) !== false;
         return;
@@ -25086,19 +26002,34 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
         const clipId = readString(operationRaw.clipId);
         if (clipId && !nextScript.bannedClipIds.includes(clipId)) {
           nextScript.bannedClipIds.push(clipId);
-          void persistStoryArcV2TablePayload(
-            'storyarc_feedback_events',
-            'event_id',
-            toStoryArcV2Id('feedback'),
-            'event_payload',
-            {
-              scriptId,
-              type: 'ban_clip',
-              clipId,
-              reason: readString(operationRaw.reason),
-              createdAt: new Date().toISOString(),
-            }
-          );
+          feedbackEvents.push({
+            scriptId,
+            analysisId: script.analysisId,
+            projectKey,
+            type: 'ban_clip',
+            clipId,
+            speaker: node?.speaker || null,
+            reason: readString(operationRaw.reason),
+            createdAt: new Date().toISOString(),
+          });
+        }
+        return;
+      }
+      if (op === 'approvenode' && node) {
+        const clipId = readString(operationRaw.clipId) || node.candidateClipIds[0] || null;
+        node.pinned = true;
+        if (clipId) {
+          feedbackEvents.push({
+            scriptId,
+            analysisId: script.analysisId,
+            projectKey,
+            type: 'approve_node',
+            nodeId: node.id,
+            clipId,
+            speaker: node.speaker || null,
+            reason: readString(operationRaw.reason),
+            createdAt: new Date().toISOString(),
+          });
         }
         return;
       }
@@ -25107,6 +26038,34 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
         node.candidateClipIds.push(first);
       }
     });
+
+    feedbackEvents.forEach((eventPayload) => {
+      const eventType = normalizeModelLookupValue(readString(eventPayload.type) || '');
+      if (eventType === 'ban_clip') {
+        applyStoryArcV2FeedbackToProfile(feedbackProfile, {
+          type: 'ban',
+          clipId: readString(eventPayload.clipId),
+          speaker: readString(eventPayload.speaker),
+          reason: readString(eventPayload.reason),
+        });
+      }
+      if (eventType === 'approve_node') {
+        applyStoryArcV2FeedbackToProfile(feedbackProfile, {
+          type: 'approve',
+          clipId: readString(eventPayload.clipId),
+          speaker: readString(eventPayload.speaker),
+          reason: readString(eventPayload.reason),
+        });
+      }
+      void persistStoryArcV2TablePayload(
+        'storyarc_feedback_events',
+        'event_id',
+        toStoryArcV2Id('feedback'),
+        'event_payload',
+        eventPayload
+      );
+    });
+    storyArcV2FeedbackProfiles.set(projectKey, feedbackProfile);
 
     nextScript.revision += 1;
     nextScript.updatedAt = new Date().toISOString();
@@ -25118,6 +26077,7 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
       'script_payload',
       nextScript as unknown as Record<string, unknown>
     );
+    void persistStoryArcV2ScriptNodes(nextScript);
     return res.json({
       success: true,
       script: nextScript,
@@ -25134,10 +26094,13 @@ app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
     if (!scriptId) {
       return res.status(400).json({ success: false, error: 'Missing scriptId' });
     }
-    const script = storyArcV2Scripts.get(scriptId);
+    const script =
+      storyArcV2Scripts.get(scriptId) ||
+      (await loadStoryArcV2ScriptFromDb(scriptId));
     if (!script) {
       return res.status(404).json({ success: false, error: 'Script not found' });
     }
+    storyArcV2Scripts.set(scriptId, script);
     const variantRaw = normalizeModelLookupValue(readString(req.body?.variant) || 'balanced');
     const selectedVariant: StoryArcV2Variant =
       variantRaw === 'safe' || variantRaw === 'bold' ? (variantRaw as StoryArcV2Variant) : 'balanced';
@@ -25171,38 +26134,7 @@ app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
       beatCoverageRequired,
     };
 
-    const safe = buildStoryArcV2TimelineVariant(script, 'safe', constraints);
-    const balanced = buildStoryArcV2TimelineVariant(script, 'balanced', constraints);
-    const bold = buildStoryArcV2TimelineVariant(script, 'bold', constraints);
-    const explainabilityByClipId: Record<string, Record<string, unknown>> = {};
-    [safe, balanced, bold].forEach((variantPlan) => {
-      variantPlan.timeline.clips.forEach((clip) => {
-        explainabilityByClipId[clip.id] = {
-          variant: variantPlan.variant,
-          beat: clip.beatName,
-          reason:
-            readString(clip.metadata?.rationale) ||
-            'Selected by script-to-timeline planner',
-          sourceClipId: readString(clip.metadata?.sourceClipId) || clip.sourceFile || null,
-          speaker: readString(clip.metadata?.speaker) || null,
-        };
-      });
-    });
-
-    const proposal: StoryArcV2TimelineProposal = {
-      proposalId: toStoryArcV2Id('proposal'),
-      scriptId: script.scriptId,
-      revision: script.revision,
-      generatedAt: new Date().toISOString(),
-      selectedVariant,
-      variants: {
-        safe,
-        balanced,
-        bold,
-      },
-      explainabilityByClipId,
-      warnings: [],
-    };
+    const proposal = createStoryArcV2TimelineProposal(script, selectedVariant, constraints);
 
     storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
     void persistStoryArcV2TablePayload(
@@ -25230,7 +26162,7 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
     if (!proposalId) {
       return res.status(400).json({ success: false, error: 'Missing proposalId' });
     }
-    const proposal = storyArcV2TimelineProposals.get(proposalId);
+    const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
     if (!proposal) {
       return res.status(404).json({ success: false, error: 'Proposal not found' });
     }
@@ -25242,7 +26174,7 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
     }
     const ledgerKey = `${proposalId}:${proposal.revision}`;
     const existing = storyArcV2ApplyLedger.get(ledgerKey);
-    if (existing) {
+    if (existing && !existing.revertedAt) {
       return res.json({
         success: true,
         idempotent: true,
@@ -25250,14 +26182,33 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
         revision: proposal.revision,
         appliedAt: existing.appliedAt,
         applyCount: existing.applyCount,
+        revertedAt: existing.revertedAt,
+        revertCount: existing.revertCount,
         timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
       });
     }
-    const entry = {
+
+    const entry: StoryArcV2ApplyLedgerEntry = {
       appliedAt: new Date().toISOString(),
-      applyCount: 1,
+      applyCount: (existing?.applyCount || 0) + 1,
+      revertedAt: null,
+      revertCount: existing?.revertCount || 0,
     };
     storyArcV2ApplyLedger.set(ledgerKey, entry);
+    void persistStoryArcV2TimelineApplyEvent({
+      proposalId,
+      scriptId: proposal.scriptId,
+      revision: proposal.revision,
+      applyKey: ledgerKey,
+      eventType: 'apply',
+      eventPayload: {
+        idempotent: false,
+        appliedAt: entry.appliedAt,
+        applyCount: entry.applyCount,
+        revertedAt: entry.revertedAt,
+        revertCount: entry.revertCount,
+      },
+    });
     return res.json({
       success: true,
       idempotent: false,
@@ -25265,10 +26216,275 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
       revision: proposal.revision,
       appliedAt: entry.appliedAt,
       applyCount: entry.applyCount,
+      revertedAt: entry.revertedAt,
+      revertCount: entry.revertCount,
       timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to apply timeline';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/timeline/revert', async (req, res) => {
+  try {
+    const proposalId = readString(req.body?.proposalId);
+    const revision = Math.round(readNumber(req.body?.revision) ?? -1);
+    const reason = readString(req.body?.reason);
+    if (!proposalId) {
+      return res.status(400).json({ success: false, error: 'Missing proposalId' });
+    }
+    const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ success: false, error: 'Proposal not found' });
+    }
+    if (revision > 0 && revision !== proposal.revision) {
+      return res.status(409).json({
+        success: false,
+        error: `Revision mismatch. Requested ${revision}, current ${proposal.revision}.`,
+      });
+    }
+
+    const ledgerKey = `${proposalId}:${proposal.revision}`;
+    const existing = storyArcV2ApplyLedger.get(ledgerKey);
+    if (!existing) {
+      return res.status(409).json({
+        success: false,
+        error: 'Timeline has not been applied yet for this proposal revision.',
+      });
+    }
+    if (existing.revertedAt) {
+      return res.json({
+        success: true,
+        idempotent: true,
+        proposalId,
+        revision: proposal.revision,
+        appliedAt: existing.appliedAt,
+        applyCount: existing.applyCount,
+        revertedAt: existing.revertedAt,
+        revertCount: existing.revertCount,
+      });
+    }
+
+    const next: StoryArcV2ApplyLedgerEntry = {
+      ...existing,
+      revertedAt: new Date().toISOString(),
+      revertCount: existing.revertCount + 1,
+    };
+    storyArcV2ApplyLedger.set(ledgerKey, next);
+    void persistStoryArcV2TimelineApplyEvent({
+      proposalId,
+      scriptId: proposal.scriptId,
+      revision: proposal.revision,
+      applyKey: ledgerKey,
+      eventType: 'revert',
+      eventPayload: {
+        idempotent: false,
+        reason: reason || null,
+        appliedAt: next.appliedAt,
+        applyCount: next.applyCount,
+        revertedAt: next.revertedAt,
+        revertCount: next.revertCount,
+      },
+    });
+    return res.json({
+      success: true,
+      idempotent: false,
+      proposalId,
+      revision: proposal.revision,
+      appliedAt: next.appliedAt,
+      applyCount: next.applyCount,
+      revertedAt: next.revertedAt,
+      revertCount: next.revertCount,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to revert timeline';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/quality/evaluate', async (req, res) => {
+  try {
+    const proposalId = readString(req.body?.proposalId);
+    if (!proposalId) {
+      return res.status(400).json({ success: false, error: 'Missing proposalId' });
+    }
+
+    const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
+    if (!proposal) {
+      return res.status(404).json({ success: false, error: 'Proposal not found' });
+    }
+
+    const script = await loadStoryArcV2ScriptFromDb(proposal.scriptId);
+    if (!script) {
+      return res.status(404).json({ success: false, error: 'Script not found for proposal' });
+    }
+
+    const analysis = await loadStoryArcV2AnalysisRunFromDb(script.analysisId);
+    const feedbackProfile = await ensureStoryArcV2FeedbackProfile(
+      resolveStoryArcV2ProjectKey(analysis?.projectId || null)
+    );
+
+    const scorecard = evaluateStoryArcV2QualityScorecard(script, proposal, feedbackProfile);
+    storyArcV2QualityScorecards.set(scorecard.scorecardId, scorecard);
+    void persistStoryArcV2QualityScorecard(scorecard);
+
+    return res.json({
+      success: true,
+      scorecard,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to evaluate quality';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.get('/api/story-arc/v2/quality/scorecards', async (req, res) => {
+  try {
+    const requestedProjectKey = resolveStoryArcV2ProjectKey(readString(req.query?.projectId) || null);
+    const filterByProject = Boolean(readString(req.query?.projectId));
+    const limit = Math.max(1, Math.min(100, Math.round(readNumber(req.query?.limit) ?? 20)));
+
+    const fromMemory = Array.from(storyArcV2QualityScorecards.values())
+      .filter((entry) =>
+        filterByProject ? resolveStoryArcV2ProjectKey(entry.projectId) === requestedProjectKey : true
+      )
+      .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt));
+
+    if (fromMemory.length < limit && (await hasTable('storyarc_quality_scorecards'))) {
+      const dbRows = filterByProject
+        ? await pool.query(
+            `select scorecard_payload from storyarc_quality_scorecards
+             where coalesce(project_id, 'global') = $1
+             order by created_at desc
+             limit $2`,
+            [requestedProjectKey, limit]
+          )
+        : await pool.query(
+            `select scorecard_payload from storyarc_quality_scorecards
+             order by created_at desc
+             limit $1`,
+            [limit]
+          );
+
+      dbRows.rows.forEach((row) => {
+        if (!isUnknownRecord(row.scorecard_payload)) return;
+        const scorecard = row.scorecard_payload as unknown as StoryArcV2QualityScorecard;
+        if (!scorecard.scorecardId) return;
+        storyArcV2QualityScorecards.set(scorecard.scorecardId, scorecard);
+      });
+    }
+
+    const scorecards = Array.from(storyArcV2QualityScorecards.values())
+      .filter((entry) =>
+        filterByProject ? resolveStoryArcV2ProjectKey(entry.projectId) === requestedProjectKey : true
+      )
+      .sort((left, right) => right.generatedAt.localeCompare(left.generatedAt))
+      .slice(0, limit);
+
+    return res.json({
+      success: true,
+      total: scorecards.length,
+      scorecards,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to list quality scorecards';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.get('/api/story-arc/v2/quality/scorecards/:scorecardId', async (req, res) => {
+  try {
+    const scorecardId = readString(req.params?.scorecardId);
+    if (!scorecardId) {
+      return res.status(400).json({ success: false, error: 'Missing scorecardId' });
+    }
+    const scorecard = await loadStoryArcV2QualityScorecardFromDb(scorecardId);
+    if (!scorecard) {
+      return res.status(404).json({ success: false, error: 'Scorecard not found' });
+    }
+    return res.json({ success: true, scorecard });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load quality scorecard';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.post('/api/story-arc/v2/benchmark/golden/run', async (req, res) => {
+  try {
+    const datasetName = readString(req.body?.datasetName) || 'storyarc-v2-golden';
+    const rawCases = Array.isArray(req.body?.cases) ? req.body.cases : [];
+    const testCases: StoryArcV2GoldenBenchmarkCase[] = rawCases
+      .map((entry: unknown, index: number) => {
+        if (!isUnknownRecord(entry)) return null;
+        const analysisId = readString(entry.analysisId);
+        if (!analysisId) return null;
+        const variantRaw = normalizeModelLookupValue(readString(entry.variant) || 'balanced');
+        const variant: StoryArcV2Variant =
+          variantRaw === 'safe' || variantRaw === 'bold' ? (variantRaw as StoryArcV2Variant) : 'balanced';
+        return {
+          caseId: readString(entry.caseId) || `case-${index + 1}`,
+          analysisId,
+          targetDuration: Number(
+            clampStoryArcV2Number(readNumber(entry.targetDuration) ?? 90, 20, 1800).toFixed(2)
+          ),
+          variant,
+          minOverallScore: Number(
+            clampStoryArcV2Number(readNumber(entry.minOverallScore) ?? 0.65, 0, 1).toFixed(3)
+          ),
+          minBeatCoverage: Number(
+            clampStoryArcV2Number(readNumber(entry.minBeatCoverage) ?? 0.95, 0, 1).toFixed(3)
+          ),
+        };
+      })
+      .filter((entry: StoryArcV2GoldenBenchmarkCase | null): entry is StoryArcV2GoldenBenchmarkCase =>
+        entry !== null
+      );
+
+    if (testCases.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one valid benchmark case is required' });
+    }
+
+    const run = await runStoryArcV2GoldenBenchmark(datasetName, testCases);
+    return res.json({ success: true, run });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to run golden benchmark';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+app.get('/api/story-arc/v2/benchmark/golden/runs', async (req, res) => {
+  try {
+    const limit = Math.max(1, Math.min(50, Math.round(readNumber(req.query?.limit) ?? 10)));
+    let runs = Array.from(storyArcV2GoldenBenchmarkRuns.values()).sort((left, right) =>
+      right.startedAt.localeCompare(left.startedAt)
+    );
+
+    if (runs.length < limit && (await hasTable('storyarc_golden_benchmark_runs'))) {
+      const result = await pool.query(
+        `select run_payload from storyarc_golden_benchmark_runs
+         order by created_at desc
+         limit $1`,
+        [limit]
+      );
+      result.rows.forEach((row) => {
+        if (!isUnknownRecord(row.run_payload)) return;
+        const run = row.run_payload as unknown as StoryArcV2GoldenBenchmarkRun;
+        if (!run.runId) return;
+        storyArcV2GoldenBenchmarkRuns.set(run.runId, run);
+      });
+      runs = Array.from(storyArcV2GoldenBenchmarkRuns.values()).sort((left, right) =>
+        right.startedAt.localeCompare(left.startedAt)
+      );
+    }
+
+    return res.json({
+      success: true,
+      total: Math.min(limit, runs.length),
+      runs: runs.slice(0, limit),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to list benchmark runs';
     return res.status(500).json({ success: false, error: message });
   }
 });
@@ -25279,7 +26495,7 @@ app.post('/api/story-arc/v2/export', async (req, res) => {
     if (!proposalId) {
       return res.status(400).json({ success: false, error: 'Missing proposalId' });
     }
-    const proposal = storyArcV2TimelineProposals.get(proposalId);
+    const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
     if (!proposal) {
       return res.status(404).json({ success: false, error: 'Proposal not found' });
     }
@@ -26166,6 +27382,22 @@ interface AudioMixCalibrationConfig {
   profiles: Partial<Record<AudioMixDeliveryProfile, AudioMixCalibrationProfile>>;
 }
 
+function resolveAudioMixDemucsPythonBin(): string {
+  const explicit =
+    readString(process.env.AUDIO_MIX_DEMUCS_PYTHON_BIN) ||
+    readString(process.env.PYTHON_BIN);
+  if (explicit) return explicit;
+
+  const candidates = [
+    path.join(process.cwd(), 'python-services', 'venv_py310', 'bin', 'python'),
+    path.join(process.cwd(), 'python-services', 'venv', 'bin', 'python'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'python3';
+}
+
 const AUDIO_MIX_CALIBRATION_PATH =
   readString(process.env.AUDIO_MIX_CALIBRATION_PATH) ||
   path.join(process.cwd(), 'config', 'storyarc-audio-calibration.json');
@@ -26182,8 +27414,7 @@ const AUDIO_MIX_ARNNDN_R2_RETRY_MS = Math.max(
   1_000,
   Math.round(readNumber(process.env.AUDIO_MIX_ARNNDN_R2_RETRY_MS) ?? 60_000)
 );
-const AUDIO_MIX_DEMUCS_PYTHON_BIN =
-  readString(process.env.AUDIO_MIX_DEMUCS_PYTHON_BIN) || 'python3';
+const AUDIO_MIX_DEMUCS_PYTHON_BIN = resolveAudioMixDemucsPythonBin();
 const AUDIO_MIX_DEMUCS_SCRIPT_PATH =
   readString(process.env.AUDIO_MIX_DEMUCS_SCRIPT_PATH) ||
   path.join(process.cwd(), 'scripts', 'audio_demucs_denoise.py');

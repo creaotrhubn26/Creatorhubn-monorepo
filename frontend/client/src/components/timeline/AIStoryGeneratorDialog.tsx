@@ -3,7 +3,7 @@
  * Upload video → AI analyzes → Auto-generates story arc → Creates timeline
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -28,7 +28,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  TextField,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -36,14 +35,25 @@ import {
   Timeline as TimelineIcon,
   CheckCircle,
   Psychology,
+  ArrowUpward,
+  ArrowDownward,
+  Lock,
+  LockOpen,
+  Refresh,
+  Block,
 } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
+  editStoryArcV2Script,
+  evaluateStoryArcV2Quality,
   generateStoryArcV2Script,
   planStoryArcV2Timeline,
   pollStoryArcV2AnalyzeJob,
   startStoryArcV2AnalyzeJob,
+  type StoryArcV2QualityScorecard,
+  type StoryArcV2ScriptEditOperation,
+  type StoryArcV2StoryScript,
 } from '@/services/story-arc-v2-server';
 
 interface AIStoryGeneratorDialogProps {
@@ -64,11 +74,32 @@ interface StoryArcAnalyzeUiResult {
   warnings: string[];
 }
 
+const buildStoryArcPreview = (script: StoryArcV2StoryScript): Record<string, unknown> => ({
+  id: `story-${script.scriptId}`,
+  title: script.title,
+  beats: script.nodes.map((node) => ({
+    id: node.id,
+    beat: node.beat,
+    text: node.text,
+    start: node.start,
+    end: node.end,
+    confidence: node.confidence,
+    locked: node.locked,
+  })),
+  transitionPoints: script.nodes
+    .slice(0, Math.max(0, script.nodes.length - 1))
+    .map((node) => ({
+      at: Number((node.start + node.duration).toFixed(3)),
+      type: 'cross_dissolve',
+    })),
+});
+
 export default function AIStoryGeneratorDialog({
   open,
   onClose,
   onStoryGenerated
 }: AIStoryGeneratorDialogProps) {
+  const ANALYZE_JOB_STORAGE_KEY = 'storyarc-v2:last-analyze-job-id';
   const [activeStep, setActiveStep] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [settings, setSettings] = useState({
@@ -77,6 +108,10 @@ export default function AIStoryGeneratorDialog({
     analysisSpeed: 'balanced' as 'fast' | 'balanced' | 'detailed'
   });
   const [analysisResult, setAnalysisResult] = useState<StoryArcAnalyzeUiResult | null>(null);
+  const [scriptDraft, setScriptDraft] = useState<StoryArcV2StoryScript | null>(null);
+  const [scriptEditError, setScriptEditError] = useState<string | null>(null);
+  const [qualityScorecard, setQualityScorecard] = useState<StoryArcV2QualityScorecard | null>(null);
+  const [resumeChecked, setResumeChecked] = useState(false);
   
   // Upload video
   const uploadMutation = useMutation({
@@ -91,6 +126,9 @@ export default function AIStoryGeneratorDialog({
     },
     onSuccess: (data) => {
       console.log('✅ Video uploaded: ', data);
+      setScriptDraft(null);
+      setScriptEditError(null);
+      setQualityScorecard(null);
       setActiveStep(1);
       // Start analysis automatically
       const uploadedVideoPath =
@@ -99,14 +137,20 @@ export default function AIStoryGeneratorDialog({
           : typeof data?.filePath === 'string'
             ? data.filePath
             : '';
-      analyzeVideoMutation.mutate(uploadedVideoPath);
+      analyzeVideoMutation.mutate({ videoPath: uploadedVideoPath });
     }
   });
   
   // Analyze video with AI
   const analyzeVideoMutation = useMutation({
-    mutationFn: async (videoPath: string) => {
-      if (!videoPath) {
+    mutationFn: async (input: { videoPath?: string; resumeJobId?: string }) => {
+      if (input.resumeJobId) {
+        return await pollStoryArcV2AnalyzeJob(input.resumeJobId, {
+          intervalMs: 1500,
+          timeoutMs: settings.analysisSpeed === 'detailed' ? 12 * 60 * 1000 : 8 * 60 * 1000,
+        });
+      }
+      if (!input.videoPath) {
         throw new Error('Missing video path after upload');
       }
       const languagePolicy = settings.analysisSpeed === 'fast' ? 'fast-no' : 'balanced-no';
@@ -116,12 +160,17 @@ export default function AIStoryGeneratorDialog({
           {
             id: 'primary-video',
             type: 'video',
-            path: videoPath,
+            path: input.videoPath,
           },
         ],
         intentProfileId: 'balanced-story',
         languagePolicy,
       });
+      try {
+        window.localStorage.setItem(ANALYZE_JOB_STORAGE_KEY, jobId);
+      } catch {
+        // Ignore storage errors.
+      }
       return await pollStoryArcV2AnalyzeJob(jobId, {
         intervalMs: 1500,
         timeoutMs: settings.analysisSpeed === 'detailed' ? 12 * 60 * 1000 : 8 * 60 * 1000,
@@ -129,6 +178,11 @@ export default function AIStoryGeneratorDialog({
     },
     onSuccess: (data) => {
       console.log('✅ Video analyzed:', data.summary.sceneCount, 'scenes');
+      try {
+        window.localStorage.removeItem(ANALYZE_JOB_STORAGE_KEY);
+      } catch {
+        // Ignore storage errors.
+      }
       const uiResult: StoryArcAnalyzeUiResult = {
         analysisId: data.analysisId,
         sceneCount: data.summary.sceneCount,
@@ -140,7 +194,7 @@ export default function AIStoryGeneratorDialog({
       setActiveStep(2);
       // Auto-generate story arc
       generateArcMutation.mutate(uiResult.analysisId);
-    }
+    },
   });
   
   // Generate story arc
@@ -158,20 +212,33 @@ export default function AIStoryGeneratorDialog({
     },
     onSuccess: (data) => {
       console.log('✅ Story arc generated:', data.storyArc.beats.length, 'beats');
+      setScriptDraft(data.script);
+      setScriptEditError(null);
       setActiveStep(3);
-      // Auto-build timeline
-      buildTimelineMutation.mutate({
-        scriptId: data.script.scriptId,
-        storyArc: data.storyArc,
-      });
     }
+  });
+
+  const editScriptMutation = useMutation({
+    mutationFn: async (payload: {
+      scriptId: string;
+      operations: StoryArcV2ScriptEditOperation[];
+    }) => {
+      return await editStoryArcV2Script(payload);
+    },
+    onSuccess: (nextScript) => {
+      setScriptDraft(nextScript);
+      setScriptEditError(null);
+    },
+    onError: (error) => {
+      setScriptEditError(error instanceof Error ? error.message : 'Failed to edit script');
+    },
   });
   
   // Build timeline
   const buildTimelineMutation = useMutation({
-    mutationFn: async ({ scriptId, storyArc }: { scriptId: string; storyArc: Record<string, unknown> }) => {
+    mutationFn: async (script: StoryArcV2StoryScript) => {
       const proposal = await planStoryArcV2Timeline({
-        scriptId,
+        scriptId: script.scriptId,
         variant: 'balanced',
         constraints: {
           shotMin: 1.2,
@@ -185,16 +252,26 @@ export default function AIStoryGeneratorDialog({
         },
       });
       const selectedVariant = proposal.variants[proposal.selectedVariant] || proposal.variants.balanced;
+      let quality: StoryArcV2QualityScorecard | null = null;
+      try {
+        quality = await evaluateStoryArcV2Quality({
+          proposalId: proposal.proposalId,
+        });
+      } catch {
+        quality = null;
+      }
       return {
-        storyArc,
+        storyArc: buildStoryArcPreview(script),
         proposal,
         timeline: selectedVariant.timeline,
         clipCount: selectedVariant.timeline.clips.length,
         totalDuration: selectedVariant.timeline.totalDuration,
+        qualityScorecard: quality,
       };
     },
     onSuccess: (data) => {
       console.log('✅ Timeline built:', data.clipCount, 'clips');
+      setQualityScorecard(data.qualityScorecard || null);
       setActiveStep(4);
       
       // Return complete result to parent
@@ -215,8 +292,63 @@ export default function AIStoryGeneratorDialog({
   
   const handleStartGeneration = () => {
     if (selectedFile) {
+      setScriptDraft(null);
+      setScriptEditError(null);
+      setQualityScorecard(null);
+      setAnalysisResult(null);
+      try {
+        window.localStorage.removeItem(ANALYZE_JOB_STORAGE_KEY);
+      } catch {
+        // Ignore storage errors.
+      }
       uploadMutation.mutate(selectedFile);
     }
+  };
+
+  useEffect(() => {
+    if (!open) {
+      setResumeChecked(false);
+      return;
+    }
+    if (resumeChecked || analyzeVideoMutation.isPending || analysisResult) return;
+
+    setResumeChecked(true);
+    try {
+      const savedJobId = window.localStorage.getItem(ANALYZE_JOB_STORAGE_KEY);
+      if (savedJobId) {
+        setActiveStep(1);
+        analyzeVideoMutation.mutate({ resumeJobId: savedJobId });
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [analysisResult, analyzeVideoMutation.isPending, open, resumeChecked]);
+
+  const applyScriptOperations = (operations: StoryArcV2ScriptEditOperation[]) => {
+    if (!scriptDraft || operations.length === 0 || editScriptMutation.isPending) return;
+    setScriptEditError(null);
+    editScriptMutation.mutate({
+      scriptId: scriptDraft.scriptId,
+      operations,
+    });
+  };
+
+  const handleMoveNode = (index: number, direction: 'up' | 'down') => {
+    if (!scriptDraft) return;
+    const toIndex = direction === 'up' ? index - 1 : index + 1;
+    if (toIndex < 0 || toIndex >= scriptDraft.nodes.length) return;
+    applyScriptOperations([
+      {
+        op: 'reorder',
+        fromIndex: index,
+        toIndex,
+      },
+    ]);
+  };
+
+  const handleBuildTimeline = () => {
+    if (!scriptDraft || buildTimelineMutation.isPending) return;
+    buildTimelineMutation.mutate(scriptDraft);
   };
   
   const steps = [
@@ -391,13 +523,175 @@ export default function AIStoryGeneratorDialog({
       )
     },
     {
-      label: 'Auto-Timeline Building',
+      label: 'Script Review & Timeline Plan',
       content: (
         <Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            AI is arranging clips into timeline...
+            Review and adjust beats before timeline planning.
           </Typography>
-          
+
+          {scriptEditError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {scriptEditError}
+            </Alert>
+          )}
+
+          {editScriptMutation.isPending && (
+            <LinearProgress sx={{ mb: 2 }} />
+          )}
+
+          {scriptDraft ? (
+            <>
+              <Alert severity="success" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  Script ready: {scriptDraft.nodes.length} beats, revision {scriptDraft.revision}
+                </Typography>
+              </Alert>
+
+              <Paper sx={{ p: 1.5, mb: 2, maxHeight: 360, overflowY: 'auto' }}>
+                <List dense>
+                  {scriptDraft.nodes.map((node, index) => {
+                    const primaryCandidate = node.candidateClipIds[0];
+                    return (
+                      <ListItem
+                        key={node.id}
+                        alignItems="flex-start"
+                        sx={{ borderBottom: '1px solid', borderColor: 'divider', py: 1 }}
+                      >
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                              <Chip size="small" color="primary" label={`${index + 1}. ${node.beat}`} />
+                              <Chip
+                                size="small"
+                                variant="outlined"
+                                color={node.locked ? 'success' : 'default'}
+                                label={node.locked ? 'Locked' : 'Editable'}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {node.speaker || 'Unknown speaker'}
+                              </Typography>
+                            </Box>
+                          }
+                          secondary={
+                            <Box sx={{ mt: 0.5 }}>
+                              <Typography variant="body2">{node.text}</Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Candidate: {primaryCandidate || 'none'} • {node.duration.toFixed(1)}s
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, ml: 1 }}>
+                          <Button
+                            size="small"
+                            startIcon={<ArrowUpward />}
+                            disabled={index === 0 || editScriptMutation.isPending}
+                            onClick={() => handleMoveNode(index, 'up')}
+                          >
+                            Up
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<ArrowDownward />}
+                            disabled={index === scriptDraft.nodes.length - 1 || editScriptMutation.isPending}
+                            onClick={() => handleMoveNode(index, 'down')}
+                          >
+                            Down
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={node.locked ? <LockOpen /> : <Lock />}
+                            disabled={editScriptMutation.isPending}
+                            onClick={() =>
+                              applyScriptOperations([
+                                {
+                                  op: 'lockNode',
+                                  nodeId: node.id,
+                                  locked: !node.locked,
+                                },
+                              ])
+                            }
+                          >
+                            {node.locked ? 'Unlock' : 'Lock'}
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<Refresh />}
+                            disabled={editScriptMutation.isPending || node.candidateClipIds.length < 2}
+                            onClick={() =>
+                              applyScriptOperations([
+                                {
+                                  op: 'regenerateNode',
+                                  nodeId: node.id,
+                                },
+                              ])
+                            }
+                          >
+                            Rotate
+                          </Button>
+                          <Button
+                            size="small"
+                            color="success"
+                            startIcon={<CheckCircle />}
+                            disabled={editScriptMutation.isPending}
+                            onClick={() =>
+                              applyScriptOperations([
+                                {
+                                  op: 'approveNode',
+                                  nodeId: node.id,
+                                  clipId: primaryCandidate,
+                                  reason: 'Approved in Story Arc script review',
+                                },
+                              ])
+                            }
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="small"
+                            color="error"
+                            startIcon={<Block />}
+                            disabled={editScriptMutation.isPending || !primaryCandidate}
+                            onClick={() =>
+                              primaryCandidate
+                                ? applyScriptOperations([
+                                    {
+                                      op: 'banClip',
+                                      nodeId: node.id,
+                                      clipId: primaryCandidate,
+                                      reason: 'Rejected in Story Arc script review',
+                                    },
+                                  ])
+                                : undefined
+                            }
+                          >
+                            Ban
+                          </Button>
+                        </Box>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              </Paper>
+
+              <Button
+                variant="contained"
+                onClick={handleBuildTimeline}
+                disabled={buildTimelineMutation.isPending || editScriptMutation.isPending}
+                fullWidth
+                startIcon={<TimelineIcon />}
+                sx={{ mb: 2 }}
+              >
+                {buildTimelineMutation.isPending ? 'Building Timeline...' : 'Build Timeline from Script'}
+              </Button>
+            </>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Waiting for script generation...
+            </Alert>
+          )}
+
           {buildTimelineMutation.isPending && (
             <>
               <LinearProgress sx={{ mb: 2 }} />
@@ -417,7 +711,7 @@ export default function AIStoryGeneratorDialog({
               </Paper>
             </>
           )}
-          
+
           {buildTimelineMutation.data && (
             <Alert severity="success">
               <Typography variant="body2" gutterBottom>
@@ -444,6 +738,29 @@ export default function AIStoryGeneratorDialog({
             </Typography>
           </Alert>
           
+          {qualityScorecard && (
+            <Paper sx={{ p: 2, mb: 2, bgcolor: 'success.50' }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Quality Scorecard
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Overall: {(qualityScorecard.overallScore * 100).toFixed(1)}%
+              </Typography>
+              <Typography variant="caption" display="block">
+                Beat coverage: {(qualityScorecard.metrics.beatCoverage * 100).toFixed(1)}%
+              </Typography>
+              <Typography variant="caption" display="block">
+                Technical compliance: {(qualityScorecard.metrics.technicalCompliance * 100).toFixed(1)}%
+              </Typography>
+              <Typography variant="caption" display="block">
+                Explainability coverage: {(qualityScorecard.metrics.explainabilityCoverage * 100).toFixed(1)}%
+              </Typography>
+              <Typography variant="caption" display="block">
+                Feedback alignment: {(qualityScorecard.metrics.feedbackAlignment * 100).toFixed(1)}%
+              </Typography>
+            </Paper>
+          )}
+
           <Paper sx={{ p: 2, mb: 2, bgcolor: 'grey.50' }}>
             <Typography variant="subtitle2" gutterBottom>
               📊 Generation Summary:
@@ -539,6 +856,9 @@ export default function AIStoryGeneratorDialog({
             setActiveStep(0);
             setSelectedFile(null);
             setAnalysisResult(null);
+            setScriptDraft(null);
+            setScriptEditError(null);
+            setQualityScorecard(null);
           }}>
             Generate Another
           </Button>
@@ -547,4 +867,3 @@ export default function AIStoryGeneratorDialog({
     </Dialog>
   );
 }
-

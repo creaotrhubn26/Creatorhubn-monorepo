@@ -92,7 +92,9 @@
     "audio:dataset:ifaa:r2": "node scripts/ingest-audio-manifest-to-r2.mjs --source-manifest scripts/storyarc-audio-benchmark.manifest.ifaa-web.json --output-manifest scripts/storyarc-audio-benchmark.manifest.ifaa-r2.json --expires-seconds 259200",
     "storyarc:wedding:e2e": "tsx scripts/storyarc-wedding-e2e-from-url.ts",
     "storyarc:wedding:e2e:upload-r2": "node scripts/upload-storyarc-e2e-artifacts-r2.mjs",
-    "storyarc:year-reel:from-cases": "tsx scripts/storyarc-year-reel-from-cases.ts"
+    "storyarc:year-reel:from-cases": "tsx scripts/storyarc-year-reel-from-cases.ts",
+    "storyarc:v2:benchmark": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3001",
+    "storyarc:v2:benchmark:nightly": "tsx scripts/storyarc-v2-golden-benchmark.ts --manifest scripts/storyarc-v2-golden.manifest.example.json --base-url http://127.0.0.1:3001 --nightly true --fail-on-regression true"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.928.0",

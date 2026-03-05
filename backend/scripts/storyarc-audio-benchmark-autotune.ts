@@ -317,6 +317,22 @@ function normalizeDemucsDevice(value: string | undefined): 'auto' | 'cpu' | 'cud
   return 'auto';
 }
 
+function resolveDefaultDemucsPythonBin(): string {
+  const explicit =
+    process.env.AUDIO_MIX_DEMUCS_PYTHON_BIN ||
+    process.env.PYTHON_BIN;
+  if (explicit) return explicit;
+
+  const candidates = [
+    path.join(process.cwd(), 'python-services', 'venv_py310', 'bin', 'python'),
+    path.join(process.cwd(), 'python-services', 'venv', 'bin', 'python'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'python3';
+}
+
 function createRng(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -1211,9 +1227,7 @@ function parseArgs(argv: string[]): CliOptions {
     noiseEngine: normalizeNoiseEngine(args.get('noise-engine') || process.env.STORYARC_AUDIO_BENCHMARK_NOISE_ENGINE),
     demucsPythonBin:
       args.get('demucs-python') ||
-      process.env.AUDIO_MIX_DEMUCS_PYTHON_BIN ||
-      process.env.PYTHON_BIN ||
-      'python3',
+      resolveDefaultDemucsPythonBin(),
     demucsScriptPath:
       args.get('demucs-script') ||
       process.env.AUDIO_MIX_DEMUCS_SCRIPT_PATH ||

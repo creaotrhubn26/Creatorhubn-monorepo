@@ -23,8 +23,8 @@ Script path: `backend/scripts/audio_demucs_denoise.py`.
 
 ```bash
 cd python-services
-python3 -m venv venv
-source venv/bin/activate
+python3.10 -m venv venv_py310
+source venv_py310/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -70,6 +70,7 @@ gunicorn -w 2 -b 0.0.0.0:5100 edge_tts_service:app &
 - `PYANNOTE_DIARIZATION_MODEL`: default `pyannote/speaker-diarization-3.1`
 - `PYANNOTE_SEGMENTATION_MODEL`: default `pyannote/segmentation-3.0`
 - `PYANNOTE_ENABLE_SEGMENTATION_CONFIDENCE`: `true|false` (default `true`)
+- `PYANNOTE_PYTHON_BIN`: Optional override for interpreter used by `backend/scripts/start-pyannote-service.sh`
 - `PORT`: Service port (default: 5001)
 
 ### Backend (.env)
@@ -78,7 +79,7 @@ gunicorn -w 2 -b 0.0.0.0:5100 edge_tts_service:app &
 - `EDGE_TTS_URL`: URL of edge-tts service (default: http://localhost:5100)
 - `PYANNOTE_DIARIZATION_URL`: URL of pyannote diarization service (default: http://localhost:5001)
 - `AUDIO_MIX_DEMUCS_SCRIPT_PATH`: Optional override for Demucs script path
-- `AUDIO_MIX_DEMUCS_PYTHON_BIN`: Python binary used to run Demucs script (default: `python3`)
+- `AUDIO_MIX_DEMUCS_PYTHON_BIN`: Python binary used to run Demucs script (default: `backend/python-services/venv_py310/bin/python` if present, otherwise `backend/python-services/venv/bin/python`, otherwise `python3`)
 - `AUDIO_MIX_DEMUCS_MODEL`: Default Demucs model (default: `htdemucs`)
 - `AUDIO_MIX_DEMUCS_DEVICE`: `auto|cpu|cuda` (default: `auto`)
 - `AUDIO_MIX_DEMUCS_TIMEOUT_MS`: Timeout for Demucs preprocessing calls (default: `180000`)

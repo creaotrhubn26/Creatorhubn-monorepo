@@ -65,6 +65,9 @@ Frameworks/
 *.egg-info/
 .venv/
 venv/
+backend/python-services/venv*/
+backend/tmp/
+tmp/
 *.env.bak
 **/.env.bak
 *.env.backup
