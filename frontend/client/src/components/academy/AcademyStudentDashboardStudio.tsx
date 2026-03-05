@@ -67,7 +67,7 @@ interface PointItem {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -445,13 +445,13 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -493,7 +493,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -515,7 +515,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -540,7 +540,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                       width: 48,
                       height: 48,
                       borderRadius: '50%',
-                      border: '1px solid rgba(248,179,33,0.35)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)',
                       background: placeholderBackgrounds[index % placeholderBackgrounds.length],
                       display: 'grid',
                       placeItems: 'center',
@@ -559,7 +559,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
             sx={{
               height: 74,
               px: 2,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -671,7 +671,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                   sx={{
                     height: { xs: 180, md: 220 },
                     borderRadius: 1,
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                     background: placeholderBackgrounds[0],
                     position: 'relative',
                     overflow: 'hidden',
@@ -714,7 +714,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                           sx={{
                             height: 120,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             background: placeholderBackgrounds[(card.imageTheme + index) % placeholderBackgrounds.length],
                             mb: 0.8,
                           }}
@@ -749,7 +749,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                             mt: 0.8,
                             color: '#edf0f7',
                             bgcolor: 'rgba(248,179,33,0.15)',
-                            border: '1px solid rgba(248,179,33,0.35)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)',
                           }}
                         />
                       </Box>
@@ -762,7 +762,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                     <Typography sx={{ fontSize: { xs: 32, md: 48 }, fontWeight: 600 }}>Our Newest Courses</Typography>
                     <Button
                       size="small"
-                      sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
+                      sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                     >
                       See All
                     </Button>
@@ -782,7 +782,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                         minWidth: 920,
                         px: 1,
                         py: 0.8,
-                        borderBottom: '1px solid rgba(255,255,255,0.1)',
+                        borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                         background: 'rgba(255,255,255,0.03)',
                       }}
                     >
@@ -804,7 +804,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                             px: 1,
                             py: 1,
                             gap: 1,
-                            borderBottom: '1px solid rgba(255,255,255,0.08)',
+                            borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                             '&:hover': {
                               background: 'linear-gradient(90deg, rgba(248,179,33,0.08), rgba(255,255,255,0.01))',
                             },
@@ -815,7 +815,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                               sx={{
                                 width: 34,
                                 height: 34,
-                                border: '1px solid rgba(255,255,255,0.14)',
+                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                                 background: placeholderBackgrounds[row.avatarTheme % placeholderBackgrounds.length],
                               }}
                             >
@@ -906,7 +906,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: 'rgba(10,14,22,0.72)',
                         }}
                       >
@@ -957,7 +957,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: index === 0 ? 'rgba(248,179,33,0.08)' : 'rgba(10,14,22,0.7)',
                         }}
                       >
@@ -979,7 +979,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                     <Typography sx={{ fontSize: 44, lineHeight: 1, fontWeight: 600 }}>Points</Typography>
                     <Button
                       size="small"
-                      sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
+                      sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                     >
                       See All
                     </Button>
@@ -996,7 +996,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: 'rgba(10,14,22,0.7)',
                         }}
                       >
@@ -1005,7 +1005,7 @@ function AcademyStudentDashboardStudio({ courseId }: AcademyStudentDashboardStud
                             width: 32,
                             height: 32,
                             background: placeholderBackgrounds[row.avatarTheme % placeholderBackgrounds.length],
-                            border: '1px solid rgba(255,255,255,0.14)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                           }}
                         >
                           {row.name.charAt(0).toUpperCase()}

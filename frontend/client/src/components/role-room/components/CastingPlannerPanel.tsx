@@ -132,8 +132,7 @@ import type { CastingProject, Role, Candidate, Schedule } from '../models/castin
 import { RichTextEditor } from './RichTextEditor';
 import { AuditionSchedulePanel } from './AuditionSchedulePanel';
 import rolesBackdrop4 from './icons/Keep/roles_backdrop_4.png';
-import type { StoryLogicState } from '../services/storyLogicService';
-import { storyLogicService } from '../services/storyLogicService';
+import { storyLogicService, type StoryLogicState } from '../services/storyLogicService';
 
 // Custom icon: Person holding camera with list/clipboard
 import { castingService } from '../services/castingService';
@@ -176,8 +175,7 @@ const CastingSharingDialog = lazy(() => import('./CastingSharingDialog').then(m 
 const CastingProfessionDialog = lazy(() => import('./CastingProfessionDialog').then(m => ({ default: m.CastingProfessionDialog })));
 const ProfessionOnboardingDialog = lazy(() => import('./ProfessionOnboardingDialog').then(m => ({ default: m.ProfessionOnboardingDialog })));
 
-import type { ProfessionType } from './ProfessionOnboardingDialog';
-import { useProfessionOnboarding } from './ProfessionOnboardingDialog';
+import { useProfessionOnboarding, type ProfessionType } from './ProfessionOnboardingDialog';
 import { useAuth } from '@/hooks/useAuth';
 import authSessionService from '../services/authSessionService';
 import settingsService from '../services/settingsService';
@@ -2984,7 +2982,58 @@ export function CastingPlannerPanel({
               </Typography>
             </Box>
           ) : (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, height: '100%' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                  px: { xs: 1.5, sm: 2 },
+                  py: { xs: 1.25, sm: 1.5 },
+                  borderRadius: 2.5,
+                  border: '1px solid rgba(148,163,184,0.24)',
+                  background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                      border: '1px solid rgba(233,213,255,0.34)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
+                    }}
+                  >
+                    <CalendarIcon sx={{ color: '#fff', fontSize: 18 }} />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                      Kalender
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
+                      Role Room produksjonsplan
+                    </Typography>
+                  </Box>
+                </Box>
+                <Chip
+                  size="small"
+                  label="PRO-VISNING"
+                  sx={{
+                    bgcolor: 'rgba(192,132,252,0.2)',
+                    color: '#f5d0fe',
+                    border: '1px solid rgba(192,132,252,0.45)',
+                    fontWeight: 700,
+                    letterSpacing: 0.4,
+                  }}
+                />
+              </Box>
               {/* Calendar View Toggle */}
               <Box sx={{ 
                 display: 'flex', 
@@ -3104,16 +3153,69 @@ export function CastingPlannerPanel({
               </Typography>
             </Box>
           ) : (
-            <CastingShotListPanel
-              projectId={currentProject.id}
-              onUpdate={async () => {
-                const updated = await castingService.getProject(currentProject.id);
-                if (updated) setCurrentProject(updated);
-              }}
-              profession={profession}
-              teamDashboardOpenSignal={teamDashboardOpenSignal}
-              teamDashboardDefaultSegment={teamDashboardDefaultSegment}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                  px: { xs: 1.5, sm: 2 },
+                  py: { xs: 1.25, sm: 1.5 },
+                  borderRadius: 2.5,
+                  border: '1px solid rgba(148,163,184,0.24)',
+                  background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                      border: '1px solid rgba(233,213,255,0.34)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
+                    }}
+                  >
+                    <ShotListIcon sx={{ color: '#fff', fontSize: 18 }} />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                      Shot list
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
+                      Role Room planlegging og progresjon
+                    </Typography>
+                  </Box>
+                </Box>
+                <Chip
+                  size="small"
+                  label="PRO-VISNING"
+                  sx={{
+                    bgcolor: 'rgba(192,132,252,0.2)',
+                    color: '#f5d0fe',
+                    border: '1px solid rgba(192,132,252,0.45)',
+                    fontWeight: 700,
+                    letterSpacing: 0.4,
+                  }}
+                />
+              </Box>
+              <CastingShotListPanel
+                projectId={currentProject.id}
+                onUpdate={async () => {
+                  const updated = await castingService.getProject(currentProject.id);
+                  if (updated) setCurrentProject(updated);
+                }}
+                profession={profession}
+                teamDashboardOpenSignal={teamDashboardOpenSignal}
+                teamDashboardDefaultSegment={teamDashboardDefaultSegment}
+              />
+            </Box>
           )}
         </TabPanel>
 
@@ -3354,10 +3456,63 @@ export function CastingPlannerPanel({
               </Typography>
             </Box>
           ) : (
-            <SharingPanel
-              project={currentProject}
-              onOpenSharingDialog={openSharingDialog}
-            />
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1.5,
+                  px: { xs: 1.5, sm: 2 },
+                  py: { xs: 1.25, sm: 1.5 },
+                  borderRadius: 2.5,
+                  border: '1px solid rgba(148,163,184,0.24)',
+                  background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                  <Box
+                    sx={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 1.5,
+                      background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                      border: '1px solid rgba(233,213,255,0.34)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
+                    }}
+                  >
+                    <_ShareIcon sx={{ color: '#fff', fontSize: 18 }} />
+                  </Box>
+                  <Box>
+                    <Typography sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.2 }}>
+                      Deling
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
+                      Tilgang, lenker og samarbeid
+                    </Typography>
+                  </Box>
+                </Box>
+                <Chip
+                  size="small"
+                  label="PRO-VISNING"
+                  sx={{
+                    bgcolor: 'rgba(192,132,252,0.2)',
+                    color: '#f5d0fe',
+                    border: '1px solid rgba(192,132,252,0.45)',
+                    fontWeight: 700,
+                    letterSpacing: 0.4,
+                  }}
+                />
+              </Box>
+              <SharingPanel
+                project={currentProject}
+                onOpenSharingDialog={openSharingDialog}
+              />
+            </Box>
           )}
         </TabPanel>
 

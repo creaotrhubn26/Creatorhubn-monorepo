@@ -180,6 +180,14 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
     <ThemeProvider theme={academyTheme}>
       <GlobalStyles
         styles={{
+          'body.academy-route': {
+            '--academy-shell-max-width': '1920px',
+            '--academy-hairline-width': '1px',
+            '--academy-divider-width': '1px',
+            textRendering: 'optimizeLegibility',
+            WebkitFontSmoothing: 'antialiased',
+            MozOsxFontSmoothing: 'grayscale',
+          },
           'body.academy-route .MuiTypography-root': {
             letterSpacing: '0.005em',
             lineHeight: 1.4,
@@ -204,6 +212,21 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
             fontWeight: 600,
             letterSpacing: '0.01em',
           },
+          'body.academy-route .MuiOutlinedInput-notchedOutline': {
+            borderWidth: 'var(--academy-hairline-width)',
+          },
+          'body.academy-route .MuiPaper-root.MuiPaper-outlined, body.academy-route .MuiCard-root': {
+            borderWidth: 'var(--academy-hairline-width)',
+          },
+          'body.academy-route .MuiDivider-root': {
+            borderBottomWidth: 'var(--academy-divider-width)',
+          },
+          'body.academy-route .MuiSvgIcon-root': {
+            shapeRendering: 'geometricPrecision',
+          },
+          'body.academy-route img, body.academy-route video, body.academy-route canvas': {
+            backfaceVisibility: 'hidden',
+          },
           'body.academy-route aside .MuiButton-root': {
             fontSize: 'clamp(0.83rem, 0.8rem + 0.12vw, 0.92rem) !important',
           },
@@ -212,6 +235,20 @@ export default function AcademyDesignProvider({ children }: AcademyDesignProvide
           },
           'body.academy-route aside .MuiButton-root + .MuiButton-root': {
             marginTop: 4,
+          },
+          '@media (min-resolution: 2dppx)': {
+            'body.academy-route': {
+              '--academy-shell-max-width': '2140px',
+              '--academy-hairline-width': '0.75px',
+              '--academy-divider-width': '0.75px',
+            },
+          },
+          '@media (min-resolution: 3dppx)': {
+            'body.academy-route': {
+              '--academy-shell-max-width': '2280px',
+              '--academy-hairline-width': '0.66px',
+              '--academy-divider-width': '0.66px',
+            },
           },
         }}
       />

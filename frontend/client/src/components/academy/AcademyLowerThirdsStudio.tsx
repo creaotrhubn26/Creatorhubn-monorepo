@@ -106,9 +106,11 @@ interface LowerThirdItem {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
+
+const academyShellMaxWidth = 'min(100%, var(--academy-shell-max-width, 1920px))';
 
 const formatTime = (seconds: number): string => {
   const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
@@ -490,13 +492,16 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
 
   const leftNavItems = [
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
     { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
     { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
@@ -521,13 +526,23 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', lg: 'row' },
+          minHeight: '100vh',
+          position: 'relative',
+          zIndex: 1,
+          width: academyShellMaxWidth,
+          mx: 'auto',
+        }}
+      >
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -569,7 +584,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -591,7 +606,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -605,7 +620,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -701,7 +716,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                     px: 1.2,
                     py: 0.8,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.34)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
                     background: 'rgba(248,179,33,0.08)',
                     color: '#f8d56f',
                   }}
@@ -740,7 +755,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                 <Box
                   sx={{
                     borderRadius: 1.1,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                     overflow: 'hidden',
                     position: 'relative',
                     aspectRatio: '16 / 9',
@@ -777,7 +792,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                         top: selectedLowerThird.position.includes('top') ? 24 : 'auto',
                         width: { xs: '88%', sm: '56%' },
                         borderRadius: `${selectedLowerThird.style.borderRadius}px`,
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                         background: selectedLowerThird.style.background,
                         color: selectedLowerThird.style.text,
                         p: `${selectedLowerThird.style.padding}px`,
@@ -799,7 +814,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                       <Stack sx={{ pl: 1.1 }}>
                         <Typography
                           sx={{
-                            fontSize: `${selectedLowerThird.style.fontSize + 14}px`,
+                            fontSize: `clamp(1.25rem, 0.9rem + 1.4vw, ${selectedLowerThird.style.fontSize + 14}px)`,
                             lineHeight: 1.05,
                             fontFamily: 'Barlow Condensed, sans-serif',
                           }}
@@ -810,7 +825,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                           sx={{
                             mt: 0.2,
                             color: alpha(selectedLowerThird.style.text, 0.88),
-                            fontSize: `${selectedLowerThird.style.fontSize + 6}px`,
+                            fontSize: `clamp(0.85rem, 0.7rem + 0.8vw, ${selectedLowerThird.style.fontSize + 6}px)`,
                           }}
                         >
                           {selectedLowerThird.subtitle}
@@ -1149,7 +1164,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                               textTransform: 'none',
                               color: '#edf0f7',
                               borderRadius: 1,
-                              border: active ? '1px solid rgba(248,179,33,0.52)' : '1px solid rgba(255,255,255,0.14)',
+                              border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.52)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                               background: active
                                 ? 'linear-gradient(90deg, rgba(248,179,33,0.18), rgba(248,179,33,0.04))'
                                 : 'rgba(255,255,255,0.02)',
@@ -1173,13 +1188,13 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                       <IconButton
                         size="small"
                         onClick={duplicateLowerThird}
-                        sx={{ color: '#edf0f7', border: '1px solid rgba(255,255,255,0.2)' }}
+                        sx={{ color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)' }}
                       >
                         <AutoAwesome fontSize="small" />
                       </IconButton>
                       <IconButton
                         size="small"
-                        sx={{ color: '#edf0f7', border: '1px solid rgba(255,255,255,0.2)' }}
+                        sx={{ color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)' }}
                       >
                         <MoreHoriz fontSize="small" />
                       </IconButton>
@@ -1194,7 +1209,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                     mt: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.2)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                   }}
                 >
                   New Lower Third
@@ -1208,7 +1223,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -1483,7 +1498,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   Preview
@@ -1495,7 +1510,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   Save
@@ -1511,7 +1526,7 @@ function AcademyLowerThirdsStudio({ courseId, onSave, onCancel }: AcademyLowerTh
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.76)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   Close

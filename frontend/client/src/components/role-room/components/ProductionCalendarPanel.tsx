@@ -6,7 +6,6 @@ import {
   CardContent,
   Button,
   Chip,
-  Grid,
   TextField,
   Dialog,
   DialogTitle,
@@ -41,11 +40,6 @@ import {
   LocationsIcon as LocationOnIcon 
 } from './icons/CastingIcons';
 import { useSnackbar } from 'notistack';
-import type {
-  CalendarEvent,
-  CrewConflict,
-  Equipment,
-  EquipmentConflict} from '../services/castingApiService';
 import {
   calendarEventsApi,
   crewConflictsApi,
@@ -55,7 +49,11 @@ import {
   locationsApi,
   equipmentApi,
   equipmentBookingsApi,
-  equipmentConflictsApi
+  equipmentConflictsApi,
+  type CalendarEvent,
+  type CrewConflict,
+  type Equipment,
+  type EquipmentConflict,
 } from '../services/castingApiService';
 import WarningIcon from '@mui/icons-material/Warning';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -452,23 +450,73 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
   const groupedEvents = groupEventsByDate();
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6" sx={{ color: '#fff', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <CalendarMonthIcon sx={{ color: '#10b981' }} />
-          Produksjonskalender
-        </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 1.5,
+          px: { xs: 1.5, sm: 2 },
+          py: { xs: 1.25, sm: 1.5 },
+          borderRadius: 2.5,
+          border: '1px solid rgba(148,163,184,0.28)',
+          background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.24) 100%)',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+          <Box
+            sx={{
+              width: 36,
+              height: 36,
+              borderRadius: 1.5,
+              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+              border: '1px solid rgba(233,213,255,0.34)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 20px rgba(147,51,234,0.3)',
+            }}
+          >
+            <CalendarMonthIcon sx={{ color: '#fff', fontSize: 18 }} />
+          </Box>
+          <Box>
+            <Typography variant="h6" sx={{ color: '#fff', fontWeight: 700, lineHeight: 1.15 }}>
+              Produksjonskalender
+            </Typography>
+            <Typography variant="caption" sx={{ color: 'rgba(226,232,240,0.78)' }}>
+              Role Room Pro-visning
+            </Typography>
+          </Box>
+        </Box>
+        <Chip
+          size="small"
+          label="PRO"
+          sx={{
+            bgcolor: 'rgba(192,132,252,0.2)',
+            color: '#f5d0fe',
+            border: '1px solid rgba(192,132,252,0.45)',
+            fontWeight: 700,
+            letterSpacing: 0.4,
+          }}
+        />
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
-          sx={{ bgcolor: '#10b981' }}
+          sx={{
+            bgcolor: '#10b981',
+            color: '#fff',
+            fontWeight: 700,
+            '&:hover': { bgcolor: '#059669' },
+          }}
         >
           Ny hendelse
         </Button>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
         {EVENT_TYPES.map((type) => (
           <Chip
             key={type.value}
@@ -491,15 +539,15 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
       ) : (
         <Box>
           {Object.entries(groupedEvents).map(([dateKey, dayEvents]) => (
-            <Box key={dateKey} sx={{ mb: 3 }}>
+            <Box key={dateKey} sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Typography 
                 variant="subtitle1" 
                 sx={{ 
                   color: '#fff', 
                   fontWeight: 600, 
-                  mb: 2,
+                  mb: 0,
                   pb: 1,
-                  borderBottom: '1px solid rgba(255,255,255,0.1)',
+                  borderBottom: '1px solid rgba(148,163,184,0.24)',
                 }}
               >
                 {new Date(dateKey).toLocaleDateString('nb-NO', { 
@@ -509,7 +557,7 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   year: 'numeric',
                 })}
               </Typography>
-              <Grid container spacing={2}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                 {dayEvents.map((event) => {
                   const typeConfig = getEventTypeConfig(event.event_type);
                   const location = locations.find(l => l.id === event.location_id);
@@ -517,7 +565,17 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                   const eventCrew = crew.filter(c => event.crew_ids?.includes(c.id));
 
                   return (
-                    <Grid item xs={12} md={6} lg={4} key={event.id}>
+                    <Box
+                      key={event.id}
+                      sx={{
+                        width: {
+                          xs: '100%',
+                          md: 'calc(50% - 8px)',
+                          lg: 'calc(33.333% - 11px)',
+                        },
+                        minWidth: 0,
+                      }}
+                    >
                       <Card 
                         sx={{ 
                           bgcolor: 'rgba(255,255,255,0.05)', 
@@ -599,10 +657,10 @@ const ProductionCalendarPanel: React.FC<ProductionCalendarPanelProps> = ({
                           )}
                         </CardContent>
                       </Card>
-                    </Grid>
+                    </Box>
                   );
                 })}
-              </Grid>
+              </Box>
             </Box>
           ))}
         </Box>

@@ -37,6 +37,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
+import AcademyPlayerStudio from './AcademyPlayerStudio';
 
 interface QuizOption {
   id: string;
@@ -83,7 +84,7 @@ const defaultQuestions = (): QuizQuestion[] => [
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -338,6 +339,8 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
     { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
     { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
@@ -366,13 +369,13 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -414,7 +417,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -436,7 +439,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -450,7 +453,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -524,7 +527,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                       borderRadius: 1,
                     }}
                   >
-                    Player
+                    {tt('Spiller', 'Player')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -537,7 +540,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                       borderRadius: 1,
                     }}
                   >
-                    Monetize
+                    {tt('Monetisering', 'Monetization')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -549,9 +552,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                       color: '#edf0f7',
                       borderRadius: 1,
                     }}
-                  >
-                    CTA
-                  </Button>
+                  >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
                   <Button
                     variant="outlined"
                     startIcon={<Subtitles />}
@@ -563,7 +564,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                       borderRadius: 1,
                     }}
                   >
-                    LowerThirds
+                    {tt('Nedre tredeler', 'Lower Thirds')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -639,26 +640,14 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                   flexDirection: 'column',
                 }}
               >
-                <Box
-                  sx={{
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    position: 'relative',
-                    aspectRatio: '16 / 9',
-                    background:
-                      'radial-gradient(circle at 70% 16%, rgba(248,179,33,0.18), rgba(9,12,18,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))',
-                  }}
+                <AcademyPlayerStudio
+                  src={VIDEO_PLACEHOLDER}
+                  videoRef={videoRef}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
                 >
-                  <video
-                    ref={videoRef}
-                    src={VIDEO_PLACEHOLDER}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onTimeUpdate={handleTimeUpdate}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
 
                   {activeQuestion && (
                     <Box
@@ -669,7 +658,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                         transform: 'translateX(-50%)',
                         width: 'min(84%, 820px)',
                         borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                         background: 'linear-gradient(180deg, rgba(13,16,24,0.9), rgba(8,11,18,0.95))',
                         p: 2,
                       }}
@@ -693,7 +682,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                                 textTransform: 'none',
                                 color: '#edf0f7',
                                 borderRadius: 1,
-                                border: `1px solid ${
+                                border: `var(--academy-hairline-width, 1px) solid ${
                                   showCorrect
                                     ? alpha(quizGold, 0.85)
                                     : showWrong
@@ -764,12 +753,12 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                             },
                           }}
                         >
-                          {submitted ? 'Answer Submitted' : 'Submit Answer'}
+                          {submitted ? tt('Svar sendt', 'Answer Submitted') : tt('Send svar', 'Submit Answer')}
                         </Button>
                       </Box>
                     </Box>
                   )}
-                </Box>
+                </AcademyPlayerStudio>
 
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ mt: 1.1 }}>
                   <TextField
@@ -795,7 +784,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                       textTransform: 'none',
                       minWidth: 166,
                       color: '#f7f8fb',
-                      border: '1px solid rgba(255,255,255,0.2)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                       borderRadius: 1,
                     }}
                   >
@@ -815,7 +804,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -976,7 +965,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                           justifyContent: 'flex-start',
                           textTransform: 'none',
                           color: '#edf0f7',
-                          border: question.id === activeQuestion.id ? '1px solid rgba(248,179,33,0.55)' : '1px solid rgba(255,255,255,0.14)',
+                          border: question.id === activeQuestion.id ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.55)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                           background:
                             question.id === activeQuestion.id
                               ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
@@ -1079,7 +1068,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                         flex: 1,
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
                       Save Draft
@@ -1124,7 +1113,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   Save
@@ -1140,7 +1129,7 @@ function QuizManager({ courseId, onSave, onCancel }: QuizManagerProps) {
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.76)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   Close

@@ -2128,7 +2128,7 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
                           p: 3,
                           mb: 2,
                           bgcolor: 'rgba(66, 133, 244, 0.05)',
-                          border: '1px solid rgba(66, 133, 244, 0.2)'}}
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(66, 133, 244, 0.2)'}}
                       >
                         <Box
                           sx={{
@@ -2486,7 +2486,7 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
                         sx={{
                           p: 2,
                           bgcolor: 'rgba(76, 175, 80, 0.05)',
-                          border: '1px solid rgba(76, 175, 80, 0.2)'}}
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(76, 175, 80, 0.2)'}}
                       >
                         <Box
                           sx={{
@@ -2891,7 +2891,7 @@ export function AcademySettingsPanel({ onClose }: AcademySettingsPanelProps) {
                   p: 2,
                   bgcolor: 'rgba(26, 31, 46, 0.8)',
                   borderRadius: 2,
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255, 255, 255, 0.1)',
                   boxShadow: '0 4px 6px rgba(0,0,0,0.1)'}}
               >
                 <Typography

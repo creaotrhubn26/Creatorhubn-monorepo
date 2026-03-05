@@ -42,6 +42,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
+import AcademyPlayerStudio from './AcademyPlayerStudio';
 
 interface AcademyLessonStudioProps {
   courseId?: string;
@@ -72,7 +73,7 @@ const VIDEO_PLACEHOLDER = '/assets/academy/intro-video.mp4';
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -514,8 +515,11 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
     { id: 'lesson-current', label: lessonTitle || tt('Lyssetting grunnleggende', 'Lighting Basics'), route: '/academy/lesson-editor', inset: true },
     { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -541,13 +545,13 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -575,7 +579,6 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
           <Stack spacing={0.5} sx={{ px: 1.5 }}>
             {leftNavItems.map((item) => {
               const active = item.id === leftNav;
-              const isSubItem = item.id === 'lesson-current';
               return (
                 <Button
                   key={item.id}
@@ -585,23 +588,23 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   }}
                   sx={{
                     justifyContent: 'flex-start',
-                    color: active ? '#fce3a1' : isSubItem ? 'rgba(237,240,247,0.74)' : 'rgba(237,240,247,0.82)',
-                    borderRadius: isSubItem ? 0.8 : 1,
+                    color: active ? '#fce3a1' : item.id === 'lesson-current' ? 'rgba(237,240,247,0.74)' : 'rgba(237,240,247,0.82)',
+                    borderRadius: item.id === 'lesson-current' ? 0.8 : 1,
                     textTransform: 'none',
-                    px: isSubItem ? 1.4 : 2,
-                    py: isSubItem ? 0.75 : 1.15,
-                    ml: isSubItem ? 2.1 : 0,
-                    width: isSubItem ? 'calc(100% - 16px)' : '100%',
-                    border: isSubItem ? '1px solid transparent' : active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
-                    borderLeft: isSubItem ? (active ? '2px solid rgba(248,179,33,0.55)' : '2px solid rgba(255,255,255,0.18)') : 'none',
-                    background: isSubItem
+                    px: item.id === 'lesson-current' ? 1.4 : 2,
+                    py: item.id === 'lesson-current' ? 0.75 : 1.15,
+                    ml: item.id === 'lesson-current' ? 2.1 : 0,
+                    width: item.id === 'lesson-current' ? 'calc(100% - 16px)' : '100%',
+                    border: item.id === 'lesson-current' ? 'var(--academy-hairline-width, 1px) solid transparent' : active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
+                    borderLeft: item.id === 'lesson-current' ? (active ? '2px solid rgba(248,179,33,0.55)' : '2px solid rgba(255,255,255,0.18)') : 'none',
+                    background: item.id === 'lesson-current'
                       ? active
                         ? 'rgba(248,179,33,0.08)'
                         : 'transparent'
                       : active
                         ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                         : 'transparent',
-                    fontSize: isSubItem ? 13.5 : 15,
+                    fontSize: item.id === 'lesson-current' ? 13.5 : 15,
                   }}
                 >
                   {item.label}
@@ -620,7 +623,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -634,7 +637,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -771,7 +774,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     px: 1.2,
                     py: 0.85,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.34)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
                     color: '#f8d56f',
                     bgcolor: 'rgba(248,179,33,0.08)',
                   }}
@@ -810,7 +813,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 <Box
                   sx={{
                     borderRadius: 1,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                     overflow: 'hidden',
                     background: 'linear-gradient(145deg, rgba(18,22,32,0.96), rgba(10,13,20,0.95))',
                   }}
@@ -823,25 +826,15 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       p: 1,
                     }}
                   >
-                    <Box
-                      sx={{
-                        borderRadius: 1,
-                        overflow: 'hidden',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        position: 'relative',
-                        aspectRatio: '16 / 9',
+                    <AcademyPlayerStudio
+                      src={activeLesson?.videoUrl || VIDEO_PLACEHOLDER}
+                      muted
+                      loop
+                      containerSx={{
                         background:
                           'radial-gradient(circle at 72% 20%, rgba(248,179,33,0.18), rgba(10,13,20,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))',
                       }}
                     >
-                      <video
-                        src={activeLesson?.videoUrl || VIDEO_PLACEHOLDER}
-                        muted
-                        autoPlay={false}
-                        loop
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                      />
-
                       <Box
                         sx={{
                           position: 'absolute',
@@ -852,6 +845,8 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       >
                         <IconButton
                           onClick={() => setIsPlaying((prev) => !prev)}
+                          disableRipple
+                          disableFocusRipple
                           sx={{
                             width: 84,
                             height: 84,
@@ -904,13 +899,13 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                           </Typography>
                         </Stack>
                       </Box>
-                    </Box>
+                    </AcademyPlayerStudio>
 
                     <Stack spacing={1}>
                       <Box
                         sx={{
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                           background: placeholderBackgrounds[0],
                           minHeight: 130,
                           p: 1,
@@ -926,7 +921,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             sx={{
                               textTransform: 'none',
                               color: '#edf0f7',
-                              border: '1px solid rgba(255,255,255,0.18)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                             }}
                           >
                             Edit
@@ -936,7 +931,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             sx={{
                               textTransform: 'none',
                               color: '#edf0f7',
-                              border: '1px solid rgba(255,255,255,0.18)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                             }}
                           >
                             Set to Video
@@ -954,7 +949,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             borderRadius: 1,
                             minHeight: 86,
                             background: placeholderBackgrounds[1],
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           }}
                         />
                       </Box>
@@ -969,7 +964,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                               spacing={0.8}
                               sx={{
                                 borderRadius: 1,
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                                 px: 0.9,
                                 py: 0.75,
                                 bgcolor: 'rgba(11,15,24,0.7)',
@@ -1000,8 +995,8 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     sx={{
                       mt: 0.2,
                       px: 0.6,
-                      borderTop: '1px solid rgba(255,255,255,0.08)',
-                      borderBottom: '1px solid rgba(255,255,255,0.08)',
+                      borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
+                      borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                       '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                       '& .MuiTab-root': {
                         color: 'rgba(237,240,247,0.74)',
@@ -1031,7 +1026,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                               px: 1,
                               py: 1,
                               borderRadius: 1,
-                              border: '1px solid rgba(255,255,255,0.11)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.11)',
                               bgcolor: 'rgba(11,15,24,0.74)',
                             }}
                           >
@@ -1121,14 +1116,14 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             sx={{
                               textTransform: 'none',
                               color: '#edf0f7',
-                              border: '1px solid rgba(255,255,255,0.16)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                             }}
                           >
-                            Open Quiz Manager
+                            {tt('Åpne Quiz Manager', 'Open Quiz Manager')}
                           </Button>
                         </Stack>
                         <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                          Add in-video checks, short assignments and auto-feedback for this lesson.
+                          {tt('Legg til sjekkpunkter i video, korte oppgaver og automatisk tilbakemelding for denne leksjonen.', 'Add in-video checks, short assignments and auto-feedback for this lesson.')}
                         </Typography>
                       </Box>
                     )}
@@ -1136,21 +1131,21 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     {centerTab === 'monetization' && (
                       <Box sx={{ ...cinematicPanelSx, p: 1.2 }}>
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>Monetization Controls</Typography>
+                          <Typography sx={{ fontSize: 18, fontWeight: 600 }}>{tt('Monetiseringskontroller', 'Monetization Controls')}</Typography>
                           <Button
                             startIcon={<MonetizationOn />}
                             onClick={() => setLocation('/academy/monetization')}
                             sx={{
                               textTransform: 'none',
                               color: '#edf0f7',
-                              border: '1px solid rgba(255,255,255,0.16)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                             }}
                           >
-                            Open Monetization
+                            {tt('Åpne monetisering', 'Open Monetization')}
                           </Button>
                         </Stack>
                         <Typography sx={{ color: 'rgba(237,240,247,0.72)' }}>
-                          Configure preview access, upsell moments, and bundle visibility for this lesson.
+                          {tt('Konfigurer forhåndsvisningstilgang, mersalgspunkter og pakkesynlighet for denne leksjonen.', 'Configure preview access, upsell moments, and bundle visibility for this lesson.')}
                         </Typography>
                       </Box>
                     )}
@@ -1200,7 +1195,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -1229,7 +1224,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                         size="small"
                         sx={{
                           color: 'rgba(237,240,247,0.74)',
-                          border: '1px solid rgba(255,255,255,0.12)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                         }}
                       >
                         <Icon fontSize="small" />
@@ -1261,7 +1256,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       alignSelf: 'flex-start',
                       textTransform: 'none',
                       color: '#edf0f7',
-                      border: '1px solid rgba(255,255,255,0.16)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                     }}
                   >
                     {tt('Legg til læringsmål', 'Add Objective')}
@@ -1294,7 +1289,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             px: 0.9,
                             py: 0.75,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             bgcolor: 'rgba(9,12,19,0.74)',
                           }}
                         >
@@ -1328,7 +1323,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                           px: 0.95,
                           py: 0.75,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: 'rgba(9,12,19,0.74)',
                         }}
                       >
@@ -1363,7 +1358,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       sx={{
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
                       {tt('Eksporter disposisjon', 'Export Outline')}
@@ -1402,7 +1397,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                             px: 0.9,
                             py: 0.75,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             bgcolor: 'rgba(11,15,24,0.74)',
                           }}
                         >
@@ -1435,7 +1430,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                       sx={{
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
                       Upload
@@ -1521,11 +1516,9 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
-                >
-                  CTA
-                </Button>
+                >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
                 <Button
                   startIcon={<Subtitles />}
                   onClick={() => setLocation('/academy/lower-thirds')}
@@ -1533,10 +1526,10 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
-                  {tt('LowerThirds', 'LowerThirds')}
+                  {tt('Nedre tredeler', 'Lower Thirds')}
                 </Button>
               </Stack>
 
@@ -1547,7 +1540,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Dupliser leksjon', 'Duplicate Lesson')}
@@ -1574,10 +1567,10 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
-                  {tt('Monetiser', 'Monetize')}
+                  {tt('Monetisering', 'Monetization')}
                 </Button>
                 <Button
                   startIcon={<Quiz />}
@@ -1586,7 +1579,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   Quiz
@@ -1601,7 +1594,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lagre utkast', 'Save Draft')}
@@ -1617,7 +1610,7 @@ function AcademyLessonStudio({ courseId, lessonId, onSave, onCancel }: AcademyLe
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.78)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lukk', 'Close')}

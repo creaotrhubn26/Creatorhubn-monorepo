@@ -46,6 +46,7 @@ import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegr
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
 import { useAcademyLocale } from './academyLocale';
 import AcademyBrandMark from './AcademyBrandMark';
+import AcademyPlayerStudio from './AcademyPlayerStudio';
 
 interface ChapterItem {
   id: string;
@@ -90,9 +91,11 @@ const VIDEO_PLACEHOLDER = '/assets/academy/intro-video.mp4';
 
 const cinematicPanelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
+
+const academyShellMaxWidth = 'min(100%, var(--academy-shell-max-width, 1920px))';
 
 const formatTime = (seconds: number): string => {
   const safe = Number.isFinite(seconds) && seconds >= 0 ? seconds : 0;
@@ -437,6 +440,8 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
     { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
     { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
@@ -467,13 +472,23 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', lg: 'row' },
+          minHeight: '100vh',
+          position: 'relative',
+          zIndex: 1,
+          width: academyShellMaxWidth,
+          mx: 'auto',
+        }}
+      >
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -514,7 +529,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -536,7 +551,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -550,7 +565,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -638,7 +653,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Monetiser', 'Monetize')}
+                    {tt('Monetisering', 'Monetization')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -650,9 +665,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       color: '#edf0f7',
                       borderRadius: 1,
                     }}
-                  >
-                    CTA
-                  </Button>
+                  >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
                   <Button
                     variant="outlined"
                     startIcon={<Subtitles />}
@@ -664,7 +677,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       borderRadius: 1,
                     }}
                   >
-                    {tt('LowerThirds', 'LowerThirds')}
+                    {tt('Nedre tredeler', 'Lower Thirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -684,26 +697,14 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
               </Stack>
 
               <Box sx={{ ...cinematicPanelSx, p: 1, position: 'relative' }}>
-                <Box
-                  sx={{
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    position: 'relative',
-                    aspectRatio: '16 / 9',
-                    background:
-                      'radial-gradient(circle at 70% 16%, rgba(248,179,33,0.18), rgba(9,12,18,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))',
-                  }}
+                <AcademyPlayerStudio
+                  src={activeLesson?.videoUrl || activeCourse?.videoUrl || VIDEO_PLACEHOLDER}
+                  videoRef={videoRef}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
                 >
-                  <video
-                    ref={videoRef}
-                    src={activeLesson?.videoUrl || activeCourse?.videoUrl || VIDEO_PLACEHOLDER}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onTimeUpdate={handleTimeUpdate}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
 
                   <Box
                     sx={{
@@ -713,12 +714,12 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       transform: 'translateX(-50%)',
                       width: 'min(84%, 900px)',
                       borderRadius: 1,
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                       background: 'linear-gradient(180deg, rgba(13,16,24,0.9), rgba(8,11,18,0.95))',
                       p: 1.6,
                     }}
                   >
-                    <Typography sx={{ fontSize: 22, fontWeight: 600, mb: 1, textAlign: 'left' }}>
+                    <Typography sx={{ fontSize: 'clamp(1rem, 0.82rem + 0.9vw, 1.38rem)', fontWeight: 600, mb: 1, textAlign: 'left' }}>
                       {activeQuiz.question}
                     </Typography>
 
@@ -739,7 +740,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                               textTransform: 'none',
                               color: '#edf0f7',
                               borderRadius: 0.8,
-                              border: `1px solid ${
+                              border: `var(--academy-hairline-width, 1px) solid ${
                                 showCorrect
                                   ? 'rgba(248,179,33,0.85)'
                                   : showWrong
@@ -791,7 +792,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       </Button>
                     </Stack>
                   </Box>
-                </Box>
+                </AcademyPlayerStudio>
 
                 <Box sx={{ mt: 1.1, ...cinematicPanelSx, p: 0.9 }}>
                   <Stack direction="row" spacing={0.8} alignItems="center">
@@ -902,7 +903,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       sx={{
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
                       {tt('Legg til notat', 'Add Note')}
@@ -913,7 +914,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       sx={{
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.18)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                       }}
                     >
                       Quiz
@@ -935,7 +936,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -969,7 +970,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                             textTransform: 'none',
                             color: '#edf0f7',
                             borderRadius: 1,
-                            border: active ? '1px solid rgba(248,179,33,0.62)' : '1px solid rgba(255,255,255,0.12)',
+                            border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.62)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                             background: active
                               ? 'linear-gradient(90deg, rgba(248,179,33,0.18), rgba(248,179,33,0.03))'
                               : 'rgba(255,255,255,0.01)',
@@ -1005,7 +1006,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                         ml: 'auto',
                         textTransform: 'none',
                         color: state.settings.subtitles ? '#f8d56f' : '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.16)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                       }}
                     >
                       {state.settings.subtitles ? tt('På', 'On') : tt('Av', 'Off')}
@@ -1063,7 +1064,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                       <Box
                         key={note}
                         sx={{
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           borderRadius: 1,
                           px: 1,
                           py: 0.8,
@@ -1102,7 +1103,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                             setCurrentTime(line.timestamp);
                           }}
                           sx={{
-                            border: '1px solid rgba(255,255,255,0.08)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                             borderRadius: 1,
                             p: 1,
                             background: 'rgba(10,13,20,0.72)',
@@ -1141,7 +1142,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   {tt('Spiller', 'Player')}
@@ -1153,7 +1154,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   Quiz
@@ -1169,7 +1170,7 @@ function AcademyVideoPlayerStudio({ courseId, lessonId, onSave, onCancel }: Acad
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.76)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   Close

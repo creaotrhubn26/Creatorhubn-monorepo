@@ -43,6 +43,7 @@ import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC'
 import { useAcademyLocale } from './academyLocale';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import AcademyBrandMark from './AcademyBrandMark';
+import AcademyPlayerStudio from './AcademyPlayerStudio';
 
 export interface VideoAnnotation {
   id: string;
@@ -112,7 +113,7 @@ const waveformPattern = [
 
 const panelSectionSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -526,9 +527,11 @@ function VideoAnnotationEditor({
   const leftNavItems = [
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
     { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
-    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
     { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
     { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
@@ -557,13 +560,13 @@ function VideoAnnotationEditor({
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -604,7 +607,7 @@ function VideoAnnotationEditor({
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -626,7 +629,7 @@ function VideoAnnotationEditor({
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -640,7 +643,7 @@ function VideoAnnotationEditor({
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -755,7 +758,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    {tt('Monetiser', 'Monetize')}
+                    {tt('Monetisering', 'Monetization')}
                   </Button>
                   <Button
                     variant="outlined"
@@ -767,9 +770,7 @@ function VideoAnnotationEditor({
                       color: '#edf0f7',
                       borderRadius: 1,
                     }}
-                  >
-                    CTA
-                  </Button>
+                  >{tt('CTA-overlegg', 'CTA Overlay')}</Button>
                   <Button
                     variant="outlined"
                     startIcon={<Subtitles />}
@@ -781,7 +782,7 @@ function VideoAnnotationEditor({
                       borderRadius: 1,
                     }}
                   >
-                    {tt('LowerThirds', 'LowerThirds')}
+                    {tt('Nedre tredeler', 'Lower Thirds')}
                   </Button>
                   <Button
                     variant="contained"
@@ -825,7 +826,7 @@ function VideoAnnotationEditor({
                       sx={{
                         color: type.value === activeTool ? '#0f0f0f' : '#edf0f7',
                         bgcolor: type.value === activeTool ? type.color : 'rgba(255,255,255,0.07)',
-                        border: `1px solid ${alpha(type.color, 0.5)}`,
+                        border: `var(--academy-hairline-width, 1px) solid ${alpha(type.color, 0.5)}`,
                         fontWeight: 600,
                       }}
                     />
@@ -854,27 +855,14 @@ function VideoAnnotationEditor({
                   minHeight: 360,
                 }}
               >
-                <Box
-                  sx={{
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    position: 'relative',
-                    aspectRatio: '16 / 9',
-                    background:
-                      'radial-gradient(circle at 70% 16%, rgba(248,179,33,0.18), rgba(9,12,18,0) 46%), linear-gradient(145deg, rgba(20,24,35,0.96), rgba(9,12,18,0.96))',
-                  }}
+                <AcademyPlayerStudio
+                  src={videoUrl}
+                  videoRef={videoRef}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onTimeUpdate={handleTimeUpdate}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
                 >
-                  <video
-                    ref={videoRef}
-                    src={videoUrl}
-                    onLoadedMetadata={handleLoadedMetadata}
-                    onTimeUpdate={handleTimeUpdate}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-
                   <canvas
                     ref={canvasRef}
                     onMouseDown={handleCanvasMouseDown}
@@ -903,7 +891,7 @@ function VideoAnnotationEditor({
                       <IconButton
                         onClick={handlePlayPause}
                         size="small"
-                        sx={{ color: '#f9fafc', border: '1px solid rgba(255,255,255,0.18)', borderRadius: 1 }}
+                        sx={{ color: '#f9fafc', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)', borderRadius: 1 }}
                       >
                         {isPlaying ? <Pause fontSize="small" /> : <PlayArrow fontSize="small" />}
                       </IconButton>
@@ -926,20 +914,20 @@ function VideoAnnotationEditor({
                       />
                     </Stack>
                   </Box>
-                </Box>
+                </AcademyPlayerStudio>
 
                 <Box sx={{ ...panelSectionSx, p: 1.2 }}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Typography sx={{ fontSize: 12, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'rgba(237,240,247,0.65)' }}>
-                      Timeline
+                      {tt('Tidslinje', 'Timeline')}
                     </Typography>
                     <Box sx={{ ml: 'auto', display: 'flex', gap: 1 }}>
-                      <Chip label="Resolved" size="small" sx={{ bgcolor: 'rgba(126,232,179,0.16)', color: '#9ef1ca' }} />
-                      <Chip label={`${annotationItems.length} markers`} size="small" sx={{ bgcolor: 'rgba(248,179,33,0.16)', color: '#f8d675' }} />
+                      <Chip label={tt('Løst', 'Resolved')} size="small" sx={{ bgcolor: 'rgba(126,232,179,0.16)', color: '#9ef1ca' }} />
+                      <Chip label={tt(`${annotationItems.length} markører`, `${annotationItems.length} markers`)} size="small" sx={{ bgcolor: 'rgba(248,179,33,0.16)', color: '#f8d675' }} />
                     </Box>
                   </Stack>
 
-                  <Box sx={{ position: 'relative', height: 76, mt: 1, borderRadius: 1, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <Box sx={{ position: 'relative', height: 76, mt: 1, borderRadius: 1, overflow: 'hidden', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)' }}>
                     <Box
                       sx={{
                         position: 'absolute',
@@ -1028,7 +1016,7 @@ function VideoAnnotationEditor({
                         textTransform: 'none',
                         minWidth: 148,
                         color: '#f7f8fb',
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                         borderRadius: 1,
                       }}
                     >
@@ -1051,7 +1039,7 @@ function VideoAnnotationEditor({
                 onChange={(_, value: RightPanelTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -1094,7 +1082,7 @@ function VideoAnnotationEditor({
                         label={type.label}
                         onClick={() => addAnnotation(type.value)}
                         sx={{
-                          border: `1px solid ${alpha(type.color, 0.55)}`,
+                          border: `var(--academy-hairline-width, 1px) solid ${alpha(type.color, 0.55)}`,
                           color: '#edf0f7',
                           bgcolor: alpha(type.color, 0.16),
                         }}
@@ -1123,7 +1111,7 @@ function VideoAnnotationEditor({
                             key={annotation.id}
                             onClick={() => prepareDraft(annotation)}
                             sx={{
-                              border: selected ? `1px solid ${alpha('#f8b321', 0.7)}` : '1px solid rgba(255,255,255,0.08)',
+                              border: selected ? `var(--academy-hairline-width, 1px) solid ${alpha('#f8b321', 0.7)}` : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                               borderRadius: 1,
                               p: 1,
                               background:
@@ -1192,7 +1180,7 @@ function VideoAnnotationEditor({
                   </Box>
 
                   {draftAnnotation && (
-                    <Box sx={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1, p: 1.1, bgcolor: 'rgba(7,10,16,0.85)' }}>
+                    <Box sx={{ border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)', borderRadius: 1, p: 1.1, bgcolor: 'rgba(7,10,16,0.85)' }}>
                       <Typography sx={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'rgba(237,240,247,0.62)', mb: 0.8 }}>
                         {tt('Rediger annotering', 'Edit Annotation')}
                       </Typography>
@@ -1369,7 +1357,7 @@ function VideoAnnotationEditor({
                         spacing={1}
                         alignItems="center"
                         sx={{
-                          border: '1px solid rgba(255,255,255,0.08)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                           borderRadius: 1,
                           px: 1,
                           py: 0.7,
@@ -1408,7 +1396,7 @@ function VideoAnnotationEditor({
                       alignItems="center"
                       spacing={1}
                       sx={{
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                         borderRadius: 1,
                         px: 1,
                         py: 0.8,
@@ -1448,7 +1436,7 @@ function VideoAnnotationEditor({
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   {tt('Lagre', 'Save')}
@@ -1464,7 +1452,7 @@ function VideoAnnotationEditor({
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.76)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   Close

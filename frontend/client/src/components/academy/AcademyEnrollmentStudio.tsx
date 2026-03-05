@@ -81,7 +81,7 @@ interface TopCohortItem {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -716,6 +716,8 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
     { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -741,13 +743,13 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -789,7 +791,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -811,7 +813,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -825,7 +827,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -926,7 +928,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     px: 1.2,
                     py: 0.85,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.34)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
                     color: '#f8d56f',
                     bgcolor: 'rgba(248,179,33,0.08)',
                   }}
@@ -1081,7 +1083,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     borderRadius: 1,
                     overflowX: 'auto',
                     overflowY: 'hidden',
-                    border: '1px solid rgba(255,255,255,0.09)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)',
                   }}
                 >
                   <Box
@@ -1092,7 +1094,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                       px: 1,
                       py: 0.8,
                       background: 'rgba(255,255,255,0.04)',
-                      borderBottom: '1px solid rgba(255,255,255,0.1)',
+                      borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                     }}
                   >
                     <Typography sx={{ fontSize: 13, color: 'rgba(237,240,247,0.7)' }}>Name</Typography>
@@ -1114,7 +1116,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           py: 1,
                           gap: 1,
                           background: 'rgba(8,11,18,0.6)',
-                          borderBottom: '1px solid rgba(255,255,255,0.08)',
+                          borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                           '&:hover': {
                             background: 'linear-gradient(90deg, rgba(248,179,33,0.12), rgba(255,255,255,0.02))',
                           },
@@ -1125,7 +1127,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             sx={{
                               width: 42,
                               height: 42,
-                              border: '1px solid rgba(255,255,255,0.14)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                               bgcolor: 'rgba(248,179,33,0.32)',
                               backgroundImage: placeholderBackgrounds[student.avatarTheme % placeholderBackgrounds.length],
                             }}
@@ -1240,7 +1242,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             width: 120,
                             height: 72,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             background: placeholderBackgrounds[(card.imageTheme + index) % placeholderBackgrounds.length],
                             flexShrink: 0,
                           }}
@@ -1258,13 +1260,13 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           <Stack direction="row" spacing={0.8} sx={{ mt: 0.8 }}>
                             <Button
                               size="small"
-                              sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
+                              sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                             >
                               {tt('Administrer', 'Manage')}
                             </Button>
                             <Button
                               size="small"
-                              sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}
+                              sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}
                             >
                               {tt('Mesterklasse', 'Masterclass')}
                             </Button>
@@ -1282,7 +1284,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
             </Box>
 
             <Box sx={{ ...panelSx, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              <Box sx={{ p: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <Box sx={{ p: 1.2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                 <Typography sx={{ fontSize: 34, fontWeight: 600 }}>{tt('Studentinnsikt', 'Student Insights')}</Typography>
 
                 <Stack direction="row" spacing={0.8} sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
@@ -1422,7 +1424,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: 'rgba(10,14,22,0.7)',
                         }}
                       >
@@ -1431,7 +1433,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                             width: 44,
                             height: 44,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             background: placeholderBackgrounds[cohort.imageTheme % placeholderBackgrounds.length],
                             flexShrink: 0,
                           }}
@@ -1465,7 +1467,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                           px: 0.8,
                           py: 0.8,
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                           bgcolor: index === 0 ? 'rgba(248,179,33,0.08)' : 'rgba(10,14,22,0.7)',
                         }}
                       >
@@ -1497,7 +1499,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   CTA
@@ -1509,7 +1511,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   {tt('LowerThirds', 'LowerThirds')}
@@ -1524,7 +1526,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Legg til student', 'Add Student')}
@@ -1536,7 +1538,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Monetisering', 'Monetization')}
@@ -1551,7 +1553,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lagre', 'Save')}
@@ -1580,7 +1582,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.78)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lukk', 'Close')}
@@ -1595,7 +1597,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Analyser', 'Analytics')}
@@ -1606,7 +1608,7 @@ function AcademyEnrollmentStudio({ courseId, onSave, onCancel }: AcademyEnrollme
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Kohorter', 'Cohorts')}

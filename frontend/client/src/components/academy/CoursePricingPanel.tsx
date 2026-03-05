@@ -33,15 +33,14 @@ import {
 import { useTheming } from '../../utils/theming-helper';
 import { useEnhancedMasterIntegration } from '@/integration/EnhancedMasterIntegrationProvider';
 import { withUniversalIntegration } from '@/integration/UniversalIntegrationHOC';
-import type {
-  InstructorPlan} from '@shared/revenue-calculator';
 import {
   calculateRevenueSplit,
   calculateEarningsProjection,
   formatNOK,
   nokToOre,
   oreToNok,
-  suggestCoursePrice
+  suggestCoursePrice,
+  type InstructorPlan,
 } from '@shared/revenue-calculator';
 
 interface CoursePricingPanelProps {
@@ -229,7 +228,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
 
               {/* AI Suggestion */}
               <Paper
-                sx={{ p: 2, bgcolor: 'info.light', border: '1px solid', borderColor: 'info.main' }}
+                sx={{ p: 2, bgcolor: 'info.light', border: 'var(--academy-hairline-width, 1px) solid', borderColor: 'info.main' }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                   <AutoAwesome sx={{ color: 'info.dark', mr: 1 }} />
@@ -308,7 +307,7 @@ const CoursePricingPanel: React.FC<CoursePricingPanelProps> = ({
                     display: 'flex',
                     justifyContent: 'space-between',
                     pt: 1,
-                    borderTop: '1px solid',
+                    borderTop: 'var(--academy-hairline-width, 1px) solid',
                     borderColor: 'success.dark'}}
                 >
                   <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'success.dark' }}>
@@ -527,4 +526,3 @@ const CoursePricingPanelWithIntegration = withUniversalIntegration(CoursePricing
 
 export { CoursePricingPanelWithIntegration as CoursePricingPanel };
 export default CoursePricingPanelWithIntegration;
-

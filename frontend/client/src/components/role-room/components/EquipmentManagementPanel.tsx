@@ -150,6 +150,23 @@ const OPEN_PROP_CREATE_MODAL_EVENT = 'role-room:open-prop-create-modal';
 type SortField = 'name' | 'category' | 'status' | 'condition' | 'quantity';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'grid' | 'table';
+type WorkspaceView = 'standard' | 'pro';
+type EquipmentProFocus = 'all' | 'overview' | 'risks' | 'operations' | 'catalog';
+type ProActionSeverity = 'low' | 'medium' | 'high';
+type EquipmentProActionId =
+  | 'missing-owners'
+  | 'maintenance'
+  | 'warehouse'
+  | 'offline-sync'
+  | 'catalog-sync';
+
+interface EquipmentProActionItem {
+  id: EquipmentProActionId;
+  title: string;
+  detail: string;
+  focus: EquipmentProFocus;
+  severity: ProActionSeverity;
+}
 
 // ── Bridge: data shapes from external database APIs ───────────────────────────
 interface GearNewsArticle {
@@ -428,6 +445,21 @@ const stringifySpecValue = (value: unknown): string => {
   return String(value);
 };
 
+const dedupeLabels = (values: string[]): string[] => {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  values.forEach((rawValue) => {
+    const label = rawValue.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    const normalized = label.toLowerCase();
+    if (!label || seen.has(normalized)) return;
+    seen.add(normalized);
+    unique.push(label);
+  });
+
+  return unique;
+};
+
 const STATUS_LABELS: Record<string, string> = {
   available: 'Tilgjengelig',
   in_use: 'I bruk',
@@ -491,6 +523,98 @@ const CATALOG_BRIDGE_TAB_PANEL_SX = {
   border: '1px solid rgba(148,163,184,0.2)',
   background: 'linear-gradient(155deg, rgba(2,6,23,0.56) 0%, rgba(15,23,42,0.44) 55%, rgba(30,41,59,0.34) 100%)',
   boxShadow: '0 12px 28px rgba(2,6,23,0.26)',
+};
+
+type RoleRoomDialogAccent =
+  | 'primary'
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'violet'
+  | 'teal';
+
+const ROLE_ROOM_DIALOG_ACCENTS: Record<RoleRoomDialogAccent, {
+  headerGradient: string;
+  iconGradient: string;
+  iconBorder: string;
+  iconShadow: string;
+}> = {
+  primary: {
+    headerGradient: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(109,40,217,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
+    iconBorder: '1px solid rgba(233,213,255,0.34)',
+    iconShadow: '0 8px 20px rgba(147,51,234,0.3)',
+  },
+  info: {
+    headerGradient: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
+    iconBorder: '1px solid rgba(147,197,253,0.34)',
+    iconShadow: '0 8px 20px rgba(33,150,243,0.3)',
+  },
+  success: {
+    headerGradient: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
+    iconBorder: '1px solid rgba(134,239,172,0.34)',
+    iconShadow: '0 8px 20px rgba(76,175,80,0.3)',
+  },
+  warning: {
+    headerGradient: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(245,124,0,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
+    iconBorder: '1px solid rgba(250,204,21,0.34)',
+    iconShadow: '0 8px 20px rgba(147,51,234,0.3)',
+  },
+  danger: {
+    headerGradient: 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
+    iconBorder: '1px solid rgba(252,165,165,0.34)',
+    iconShadow: '0 8px 20px rgba(244,67,54,0.3)',
+  },
+  violet: {
+    headerGradient: 'linear-gradient(135deg, rgba(156,39,176,0.15) 0%, rgba(142,36,170,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #9c27b0 0%, #8e24aa 100%)',
+    iconBorder: '1px solid rgba(221,214,254,0.32)',
+    iconShadow: '0 8px 20px rgba(156,39,176,0.3)',
+  },
+  teal: {
+    headerGradient: 'linear-gradient(135deg, rgba(0,150,136,0.15) 0%, rgba(0,137,123,0.1) 100%)',
+    iconGradient: 'linear-gradient(135deg, #009688 0%, #00897b 100%)',
+    iconBorder: '1px solid rgba(94,234,212,0.32)',
+    iconShadow: '0 8px 20px rgba(0,150,136,0.3)',
+  },
+};
+
+const getRoleRoomDialogTitleSx = (
+  accent: RoleRoomDialogAccent,
+  align: 'center' | 'space-between' = 'space-between'
+) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: align,
+  borderBottom: '1px solid rgba(148,163,184,0.22)',
+  background: ROLE_ROOM_DIALOG_ACCENTS[accent].headerGradient,
+  py: 2,
+  px: 3,
+});
+
+const getRoleRoomDialogIconSx = (accent: RoleRoomDialogAccent, size = 44) => ({
+  width: size,
+  height: size,
+  borderRadius: 2,
+  background: ROLE_ROOM_DIALOG_ACCENTS[accent].iconGradient,
+  border: ROLE_ROOM_DIALOG_ACCENTS[accent].iconBorder,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxShadow: ROLE_ROOM_DIALOG_ACCENTS[accent].iconShadow,
+  flexShrink: 0,
+});
+
+const ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX = {
+  ...focusVisibleStyles,
+  bgcolor: 'rgba(255,255,255,0.05)',
+  color: 'rgba(226,232,240,0.86)',
+  '&:hover': { bgcolor: 'rgba(255,255,255,0.12)', color: '#fff' },
 };
 
 const TRUSTED_VENDOR_PRICE_MAX_AGE_DAYS = 14;
@@ -690,6 +814,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('standard');
+  const [proViewFocus, setProViewFocus] = useState<EquipmentProFocus>('all');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [filterOpen, setFilterOpen] = useState(false);
@@ -1254,6 +1380,15 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
     matchesSelectedCategory,
   ]);
 
+  const uniqueManufacturerOptions = useMemo(
+    () => dedupeLabels(manufacturerOptions),
+    [manufacturerOptions]
+  );
+  const uniqueModelOptions = useMemo(
+    () => dedupeLabels(modelOptions),
+    [modelOptions]
+  );
+
   const isCameraCategorySelected = useMemo(() => {
     const selected = formData.category.trim().toLowerCase();
     if (!selected || selected === 'all') return false;
@@ -1537,7 +1672,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   const [selectedEquipmentMaintenance, setSelectedEquipmentMaintenance] = useState<Equipment | null>(null);
   const [maintenanceForm, setMaintenanceForm] = useState({
     scheduledDate: '',
-    type: 'routine' as 'routine' | 'repair' | 'calibration' | 'cleaning',
+    type: 'routine' as 'routine' | 'repair' | 'inspection' | 'calibration' | 'cleaning',
     notes: '',
     reminderDays: 7,
   });
@@ -3324,7 +3459,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
   // Categories for filter dropdown: combines equipment categories + custom categories
   const categories = useMemo(() => {
-    const equipmentCats = new Set(equipment.map(eq => eq.category).filter(Boolean));
+    const equipmentCats = new Set(
+      equipment
+        .map((eq) => eq.category)
+        .filter((cat): cat is string => Boolean(cat && cat.trim()))
+    );
     const allCats = new Set([...equipmentCats, ...customCategories]);
     return Array.from(allCats).sort();
   }, [equipment, customCategories]);
@@ -3342,10 +3481,155 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
   // Items assigned/checked-out today
   const assignedToday = useMemo(() => {
     const today = new Date().toDateString();
-    return equipment.filter(eq =>
-      eq.assignedTo && eq.updatedAt && new Date(eq.updatedAt as string).toDateString() === today
-    ).length;
+    return equipment.filter((eq) => {
+      const hasAssignment = (eq.assignees?.length ?? 0) > 0 || eq.status === 'in_use';
+      const updatedAt = eq.updated_at ?? eq.created_at;
+      if (!hasAssignment || !updatedAt) return false;
+      return new Date(updatedAt).toDateString() === today;
+    }).length;
   }, [equipment]);
+
+  const equipmentProInsights = useMemo(() => {
+    const available = equipment.filter((eq) => eq.status === 'available').length;
+    const inUse = equipment.filter((eq) => eq.status === 'in_use').length;
+    const service = equipment.filter((eq) => eq.status === 'maintenance').length;
+    const retired = equipment.filter((eq) => eq.status === 'retired').length;
+    const totalUnits = equipment.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    const filteredUnits = filteredEquipment.reduce((sum, item) => sum + (item.quantity || 1), 0);
+    const visibleRatio = equipment.length > 0 ? Math.round((filteredEquipment.length / equipment.length) * 100) : 100;
+
+    return {
+      available,
+      inUse,
+      service,
+      retired,
+      totalUnits,
+      filteredUnits,
+      visibleRatio,
+      missingOwners: missingItems.length,
+      maintenance: maintenanceItems.length,
+      warehouseIssues: warehouseIssueCount,
+      offlineQueue: offlineQueueCount,
+      assignedToday,
+      catalogCameraCount: cameraCatalogItems.length,
+      cameraCategoryCount: categories.filter((cat) => {
+        const normalized = String(cat ?? '').trim().toLowerCase();
+        if (!normalized) return false;
+        return ['kamera', 'camera', 'cine', 'cinema', 'camcorder', 'mirrorless', 'dslr'].some((token) =>
+          normalized.includes(token)
+        );
+      }).length,
+    };
+  }, [
+    equipment,
+    filteredEquipment,
+    missingItems.length,
+    maintenanceItems.length,
+    warehouseIssueCount,
+    offlineQueueCount,
+    assignedToday,
+    cameraCatalogItems.length,
+    categories,
+  ]);
+
+  const showProOverview = proViewFocus === 'all' || proViewFocus === 'overview';
+  const showProRisks = proViewFocus === 'all' || proViewFocus === 'risks';
+  const showProOperations = proViewFocus === 'all' || proViewFocus === 'operations';
+  const showProCatalog = proViewFocus === 'all' || proViewFocus === 'catalog';
+
+  const proActionItems = useMemo<EquipmentProActionItem[]>(() => {
+    const items: EquipmentProActionItem[] = [];
+
+    if (equipmentProInsights.missingOwners > 0) {
+      items.push({
+        id: 'missing-owners',
+        title: 'Tildel ansvarlig utstyr',
+        detail: `${equipmentProInsights.missingOwners} utstyrselement(er) mangler ansvarlig`,
+        focus: 'risks',
+        severity: 'high',
+      });
+    }
+
+    if (equipmentProInsights.maintenance > 0) {
+      items.push({
+        id: 'maintenance',
+        title: 'Planlegg service-vindu',
+        detail: `${equipmentProInsights.maintenance} element(er) står i service / trenger reparasjon`,
+        focus: 'risks',
+        severity: 'medium',
+      });
+    }
+
+    if (equipmentProInsights.warehouseIssues > 0) {
+      items.push({
+        id: 'warehouse',
+        title: 'Følg opp lageravvik',
+        detail: `${equipmentProInsights.warehouseIssues} lageravvik trenger avklaring`,
+        focus: 'operations',
+        severity: 'medium',
+      });
+    }
+
+    if (equipmentProInsights.offlineQueue > 0) {
+      items.push({
+        id: 'offline-sync',
+        title: isOnline ? 'Synkroniser offline-kø' : 'Gjennomgå offline-kø',
+        detail: `${equipmentProInsights.offlineQueue} ventende operasjon(er)`,
+        focus: 'operations',
+        severity: isOnline ? 'medium' : 'high',
+      });
+    }
+
+    items.push({
+      id: 'catalog-sync',
+      title: 'Synk katalog og databaser',
+      detail: `Kamera-katalog: ${equipmentProInsights.catalogCameraCount} modeller`,
+      focus: 'catalog',
+      severity: 'low',
+    });
+
+    return items.slice(0, 5);
+  }, [
+    equipmentProInsights.missingOwners,
+    equipmentProInsights.maintenance,
+    equipmentProInsights.warehouseIssues,
+    equipmentProInsights.offlineQueue,
+    equipmentProInsights.catalogCameraCount,
+    isOnline,
+  ]);
+
+  const handleProActionClick = useCallback((action: EquipmentProActionItem) => {
+    setProViewFocus(action.focus);
+
+    if (action.id === 'missing-owners') {
+      setReportsTab(1);
+      setReportsDialogOpen(true);
+      return;
+    }
+
+    if (action.id === 'maintenance') {
+      setReportsTab(2);
+      setReportsDialogOpen(true);
+      return;
+    }
+
+    if (action.id === 'warehouse') {
+      setWarehouseDialogOpen(true);
+      return;
+    }
+
+    if (action.id === 'offline-sync') {
+      if (isOnline && offlineQueueCount > 0) {
+        void handleSyncOfflineQueue();
+      } else {
+        setOfflineOutboxOpen(true);
+      }
+      return;
+    }
+
+    setCatalogBridgeOpen(true);
+    setCatalogDialogTab(4);
+  }, [isOnline, offlineQueueCount, handleSyncOfflineQueue]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -3441,6 +3725,40 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         </Box>
         
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant={workspaceView === 'standard' ? 'contained' : 'outlined'}
+            onClick={() => setWorkspaceView('standard')}
+            sx={{
+              minHeight: TOUCH_TARGET_SIZE,
+              bgcolor: workspaceView === 'standard' ? 'rgba(147,51,234,0.24)' : 'transparent',
+              color: '#fff',
+              borderColor: workspaceView === 'standard' ? '#c084fc' : 'rgba(255,255,255,0.2)',
+              '&:hover': {
+                bgcolor: workspaceView === 'standard' ? 'rgba(147,51,234,0.3)' : 'rgba(255,255,255,0.08)',
+                borderColor: '#c084fc',
+              },
+              ...focusVisibleStyles,
+            }}
+          >
+            Standard
+          </Button>
+          <Button
+            variant={workspaceView === 'pro' ? 'contained' : 'outlined'}
+            onClick={() => setWorkspaceView('pro')}
+            sx={{
+              minHeight: TOUCH_TARGET_SIZE,
+              bgcolor: workspaceView === 'pro' ? 'rgba(147,51,234,0.24)' : 'transparent',
+              color: '#fff',
+              borderColor: workspaceView === 'pro' ? '#c084fc' : 'rgba(255,255,255,0.2)',
+              '&:hover': {
+                bgcolor: workspaceView === 'pro' ? 'rgba(147,51,234,0.3)' : 'rgba(255,255,255,0.08)',
+                borderColor: '#c084fc',
+              },
+              ...focusVisibleStyles,
+            }}
+          >
+            Pro view
+          </Button>
           <Tooltip title="Oppdater">
             <IconButton
               onClick={loadEquipment}
@@ -3777,6 +4095,223 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         )}
       </Box>
 
+      {workspaceView === 'pro' && (
+        <Box
+          sx={{
+            mb: 2,
+            p: 2,
+            borderRadius: 3,
+            border: '1px solid rgba(192,132,252,0.35)',
+            background: 'linear-gradient(140deg, rgba(15,23,42,0.82) 0%, rgba(45,27,78,0.58) 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.25,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+            <Box>
+              <Typography sx={{ color: '#fff', fontWeight: 800, fontSize: '0.98rem' }}>
+                Pro kontrollsenter
+              </Typography>
+              <Typography sx={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem' }}>
+                Fokus: risiko, drift og katalog for raskere beslutninger i utstyrsflyten.
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+              {[
+                { value: 'all', label: 'Alle' },
+                { value: 'overview', label: 'Oversikt' },
+                { value: 'risks', label: 'Risiko' },
+                { value: 'operations', label: 'Drift' },
+                { value: 'catalog', label: 'Katalog' },
+              ].map((focusOption) => {
+                const active = proViewFocus === focusOption.value;
+                return (
+                  <Button
+                    key={focusOption.value}
+                    size="small"
+                    variant={active ? 'contained' : 'outlined'}
+                    onClick={() => setProViewFocus(focusOption.value as EquipmentProFocus)}
+                    sx={{
+                      minHeight: 32,
+                      textTransform: 'none',
+                      bgcolor: active ? 'rgba(147,51,234,0.3)' : 'transparent',
+                      borderColor: active ? '#c084fc' : 'rgba(148,163,184,0.35)',
+                      color: '#fff',
+                      '&:hover': {
+                        bgcolor: active ? 'rgba(147,51,234,0.38)' : 'rgba(148,163,184,0.12)',
+                        borderColor: '#c084fc',
+                      },
+                    }}
+                  >
+                    {focusOption.label}
+                  </Button>
+                );
+              })}
+            </Box>
+          </Box>
+
+          {showProOverview && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {[
+                { label: 'Tilgjengelig', value: equipmentProInsights.available, color: '#4caf50' },
+                { label: 'I bruk', value: equipmentProInsights.inUse, color: '#64b5f6' },
+                { label: 'Service', value: equipmentProInsights.service, color: '#ffb74d' },
+                { label: 'Synlig nå', value: `${equipmentProInsights.visibleRatio}%`, color: '#c084fc' },
+                { label: 'Kamera-kategorier', value: equipmentProInsights.cameraCategoryCount, color: '#a78bfa' },
+              ].map((item) => (
+                <Box
+                  key={item.label}
+                  sx={{
+                    minWidth: 116,
+                    flex: '1 1 116px',
+                    p: 1,
+                    borderRadius: 1.5,
+                    border: `1px solid ${item.color}55`,
+                    bgcolor: `${item.color}18`,
+                  }}
+                >
+                  <Typography sx={{ color: item.color, fontSize: '0.72rem', fontWeight: 700 }}>{item.label}</Typography>
+                  <Typography sx={{ color: '#fff', fontSize: '1rem', fontWeight: 800 }}>{item.value}</Typography>
+                </Box>
+              ))}
+            </Box>
+          )}
+
+          {showProRisks && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                onClick={() => handleProActionClick({ id: 'missing-owners', title: '', detail: '', focus: 'risks', severity: 'high' })}
+                sx={{
+                  flex: '1 1 260px',
+                  minHeight: 42,
+                  justifyContent: 'space-between',
+                  textTransform: 'none',
+                  borderColor: equipmentProInsights.missingOwners > 0 ? 'rgba(244,67,54,0.65)' : 'rgba(148,163,184,0.35)',
+                  color: '#fff',
+                  bgcolor: equipmentProInsights.missingOwners > 0 ? 'rgba(244,67,54,0.12)' : 'rgba(148,163,184,0.08)',
+                }}
+              >
+                <span>Mangler ansvarlig</span>
+                <strong>{equipmentProInsights.missingOwners}</strong>
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => handleProActionClick({ id: 'maintenance', title: '', detail: '', focus: 'risks', severity: 'medium' })}
+                sx={{
+                  flex: '1 1 260px',
+                  minHeight: 42,
+                  justifyContent: 'space-between',
+                  textTransform: 'none',
+                  borderColor: equipmentProInsights.maintenance > 0 ? 'rgba(255,152,0,0.62)' : 'rgba(148,163,184,0.35)',
+                  color: '#fff',
+                  bgcolor: equipmentProInsights.maintenance > 0 ? 'rgba(255,152,0,0.12)' : 'rgba(148,163,184,0.08)',
+                }}
+              >
+                <span>Service / reparasjon</span>
+                <strong>{equipmentProInsights.maintenance}</strong>
+              </Button>
+            </Box>
+          )}
+
+          {showProOperations && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                onClick={() => setWarehouseDialogOpen(true)}
+                sx={{
+                  flex: '1 1 260px',
+                  minHeight: 42,
+                  justifyContent: 'space-between',
+                  textTransform: 'none',
+                  borderColor: equipmentProInsights.warehouseIssues > 0 ? 'rgba(244,67,54,0.65)' : 'rgba(148,163,184,0.35)',
+                  color: '#fff',
+                  bgcolor: equipmentProInsights.warehouseIssues > 0 ? 'rgba(244,67,54,0.12)' : 'rgba(148,163,184,0.08)',
+                }}
+              >
+                <span>Lageravvik</span>
+                <strong>{equipmentProInsights.warehouseIssues}</strong>
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  if (isOnline && equipmentProInsights.offlineQueue > 0) {
+                    void handleSyncOfflineQueue();
+                  } else {
+                    setOfflineOutboxOpen(true);
+                  }
+                }}
+                sx={{
+                  flex: '1 1 260px',
+                  minHeight: 42,
+                  justifyContent: 'space-between',
+                  textTransform: 'none',
+                  borderColor: equipmentProInsights.offlineQueue > 0 ? 'rgba(147,51,234,0.65)' : 'rgba(148,163,184,0.35)',
+                  color: '#fff',
+                  bgcolor: equipmentProInsights.offlineQueue > 0 ? 'rgba(147,51,234,0.12)' : 'rgba(148,163,184,0.08)',
+                }}
+              >
+                <span>{isOnline ? 'Offline-kø (sync)' : 'Offline-kø'}</span>
+                <strong>{equipmentProInsights.offlineQueue}</strong>
+              </Button>
+            </Box>
+          )}
+
+          {showProCatalog && (
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setCatalogBridgeOpen(true);
+                  setCatalogDialogTab(4);
+                }}
+                sx={{
+                  flex: '1 1 260px',
+                  minHeight: 42,
+                  justifyContent: 'space-between',
+                  textTransform: 'none',
+                  borderColor: 'rgba(100,181,246,0.5)',
+                  color: '#fff',
+                  bgcolor: 'rgba(33,150,243,0.12)',
+                }}
+              >
+                <span>Kamera i katalog</span>
+                <strong>{equipmentProInsights.catalogCameraCount}</strong>
+              </Button>
+            </Box>
+          )}
+
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+            {proActionItems.map((action) => {
+              const tone =
+                action.severity === 'high'
+                  ? { border: 'rgba(244,67,54,0.6)', bg: 'rgba(244,67,54,0.12)' }
+                  : action.severity === 'medium'
+                  ? { border: 'rgba(255,152,0,0.55)', bg: 'rgba(255,152,0,0.12)' }
+                  : { border: 'rgba(76,175,80,0.5)', bg: 'rgba(76,175,80,0.12)' };
+              return (
+                <Button
+                  key={action.id}
+                  variant="outlined"
+                  onClick={() => handleProActionClick(action)}
+                  sx={{
+                    textTransform: 'none',
+                    justifyContent: 'flex-start',
+                    borderColor: tone.border,
+                    bgcolor: tone.bg,
+                    color: '#fff',
+                    minHeight: 36,
+                  }}
+                >
+                  {action.title}
+                </Button>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+
       {/* Compact Stats Bar */}
       {equipment.length > 0 && (
         <Box sx={{
@@ -4029,7 +4564,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           p: 2.5,
           background: 'linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%)',
           borderRadius: 3,
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid rgba(148,163,184,0.22)',
           backdropFilter: 'blur(10px)',
         }}>
           <TextField
@@ -4071,7 +4606,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4101,7 +4636,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               }}
               MenuProps={{
                 PaperProps: {
-                  sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' }
+                  sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' }
                 }
               }}
             >
@@ -4178,7 +4713,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         <Grid container spacing={2.5}>
           {filteredEquipment.length === 0 ? (
             <Grid
-              size={{ xs: 12 }}
+              item
+              xs={12}
               sx={{
                 width: '100%',
                 flexBasis: '100%',
@@ -4214,7 +4750,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             filteredEquipment.map((eq, index) => {
               const warehouseTotals = warehouseStockByItem[eq.id];
               return (
-                <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={eq.id}>
+                <Grid item xs={12} sm={6} md={4} lg={3} key={eq.id}>
               <Grow in timeout={200 + index * 50}>
               <Card sx={{
                 bgcolor: 'rgba(28, 33, 40, 0.8)',
@@ -4649,7 +5185,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           bgcolor: 'rgba(28, 33, 40, 0.8)', 
           backdropFilter: 'blur(10px)',
           borderRadius: 3,
-          border: '1px solid rgba(255,255,255,0.08)',
+          border: '1px solid rgba(148,163,184,0.22)',
           overflow: 'hidden',
         }}>
           <Table>
@@ -4657,7 +5193,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <TableRow sx={{ 
                 background: 'linear-gradient(135deg, rgba(147,51,234,0.1) 0%, rgba(109,40,217,0.05) 100%)',
               }}>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
                     active={sortField === 'name'}
                     direction={sortField === 'name' ? sortDirection : 'asc'}
@@ -4667,7 +5203,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     Navn
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
                     active={sortField === 'category'}
                     direction={sortField === 'category' ? sortDirection : 'asc'}
@@ -4677,8 +5213,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     Kategori
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Merke/Modell</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Merke/Modell</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>
                   <TableSortLabel
                     active={sortField === 'status'}
                     direction={sortField === 'status' ? sortDirection : 'asc'}
@@ -4688,11 +5224,11 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     Status
                   </TableSortLabel>
                 </TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Tilstand</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="center">Antall</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="center">Lagerstatus</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Lokasjon</TableCell>
-                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(255,255,255,0.1)' }} align="right">Handlinger</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Tilstand</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">Antall</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="center">Lagerstatus</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }}>Lokasjon</TableCell>
+                <TableCell sx={{ color: '#fff', fontWeight: 700, borderBottom: '1px solid rgba(148,163,184,0.22)' }} align="right">Handlinger</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -4718,7 +5254,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                             height: 40, 
                             borderRadius: 1.5, 
                             objectFit: 'cover',
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: '1px solid rgba(148,163,184,0.26)',
                           }} 
                         />
                       ) : (
@@ -4944,31 +5480,26 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            bgcolor: '#1c2128',
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           },
         }}
       >
-        <DialogTitle
-          component="div"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            py: 2,
-            px: 3,
-          }}
-        >
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Ny post
-          </Typography>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('primary')}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
+              <AddIcon sx={{ color: '#fff', fontSize: 20 }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Ny post
+            </Typography>
+          </Box>
           <IconButton
             onClick={() => setCreateTypeDialogOpen(false)}
-            sx={{ color: 'rgba(255,255,255,0.7)', ...focusVisibleStyles }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -5069,7 +5600,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Button>
           </Box>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5 }}>
           <Button
             onClick={() => setCreateTypeDialogOpen(false)}
             sx={{ color: 'rgba(255,255,255,0.8)', minHeight: TOUCH_TARGET_SIZE, ...focusVisibleStyles }}
@@ -5087,34 +5618,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
         }}
       >
-        <DialogTitle component="div" id={dialogTitleId} sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(109,40,217,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" id={dialogTitleId} sx={getRoleRoomDialogTitleSx('primary')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('primary')}>
               <BuildIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -5128,11 +5643,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -5192,7 +5703,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)', maxHeight: 350 } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)', maxHeight: 350 } }
                   }}
                 >
                   {allCategories.map(cat => (
@@ -5239,7 +5750,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 openOnFocus={false}
                 clearOnBlur={false}
                 forcePopupIcon={false}
-                options={manufacturerOptions}
+                options={uniqueManufacturerOptions}
                 inputValue={brandInputValue}
                 onInputChange={(_event, newInputValue, reason) => {
                   setBrandInputValue(newInputValue);
@@ -5258,7 +5769,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 open={
                   brandShouldSuggest &&
                   brandInputValue.trim().length > 0 &&
-                  manufacturerOptions.some((option) =>
+                  uniqueManufacturerOptions.some((option) =>
                     option.toLowerCase().includes(brandInputValue.trim().toLowerCase())
                   )
                 }
@@ -5272,7 +5783,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     {...params}
                     fullWidth
                     label="Merke"
-                    helperText={manufacturerOptions.length > 0 ? 'Skriv for å få forslag fra produsentdatabasen' : 'Ingen produsentforslag tilgjengelig'}
+                    helperText={uniqueManufacturerOptions.length > 0 ? 'Skriv for å få forslag fra produsentdatabasen' : 'Ingen produsentforslag tilgjengelig'}
                     sx={{ 
                       '& .MuiOutlinedInput-root': { 
                         bgcolor: 'rgba(0,0,0,0.2)', 
@@ -5297,7 +5808,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 openOnFocus={false}
                 clearOnBlur={false}
                 forcePopupIcon={false}
-                options={modelOptions}
+                options={uniqueModelOptions}
                 inputValue={modelInputValue}
                 onInputChange={(_event, newInputValue, reason) => {
                   setModelInputValue(newInputValue);
@@ -5339,7 +5850,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 open={
                   modelShouldSuggest &&
                   modelInputValue.trim().length > 0 &&
-                  modelOptions.some((option) =>
+                  uniqueModelOptions.some((option) =>
                     option.toLowerCase().includes(modelInputValue.trim().toLowerCase())
                   )
                 }
@@ -5351,10 +5862,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 renderOption={(props, option, state) => {
                   const camera = modelOptionCameraLookup.get(option.trim().toLowerCase());
                   const specPreview = camera ? getCameraSpecChips(camera).slice(0, 2) : [];
-                  const optionProps = {
-                    ...(props as unknown as HTMLAttributes<HTMLLIElement> & { key?: string | number }),
-                  };
-                  delete optionProps.key;
+                  const { key: _unusedKey, ...optionProps } =
+                    props as unknown as HTMLAttributes<HTMLLIElement> & { key?: string | number };
                   const resolvedOptionKey = `${option.trim().toLowerCase()}-${camera?.id ?? 'option'}-${state.index}`;
 
                   return (
@@ -5395,7 +5904,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     {...params}
                     fullWidth
                     label="Modell"
-                    helperText={modelOptions.length > 0 ? 'Velg eksisterende modell eller skriv inn ny' : 'Ingen modellforslag for valgt kategori/merke'}
+                    helperText={uniqueModelOptions.length > 0 ? 'Velg eksisterende modell eller skriv inn ny' : 'Ingen modellforslag for valgt kategori/merke'}
                     sx={{ 
                       '& .MuiOutlinedInput-root': { 
                         bgcolor: 'rgba(0,0,0,0.2)', 
@@ -5702,7 +6211,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
@@ -5731,7 +6240,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   {Object.entries(CONDITION_LABELS).map(([value, label]) => (
@@ -5760,7 +6269,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     '&:hover fieldset': { borderColor: 'rgba(147,51,234,0.3)' },
                   }}
                   MenuProps={{
-                    PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
+                    PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
                   }}
                 >
                   <MenuItem value="">Ingen</MenuItem>
@@ -6029,7 +6538,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           gap: 1.5,
@@ -6081,34 +6590,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('info')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(33,150,243,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('info')}>
               <PersonIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -6122,11 +6615,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setAssignDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6157,7 +6646,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                 '&:hover fieldset': { borderColor: 'rgba(33,150,243,0.3)' },
               }}
               MenuProps={{
-                PaperProps: { sx: { bgcolor: '#1c2128', border: '1px solid rgba(255,255,255,0.1)' } }
+                PaperProps: { sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', border: '1px solid rgba(148,163,184,0.26)' } }
               }}
             >
               {crewMembers.map(crew => (
@@ -6185,7 +6674,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </FormControl>
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           gap: 1.5,
@@ -6238,34 +6727,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('success')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('success')}>
               <ScheduleIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -6279,11 +6752,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setBookingsDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6375,7 +6844,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           justifyContent: 'space-between',
@@ -6415,34 +6884,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('success')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('success')}>
               <BookmarkIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -6454,11 +6907,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setTemplatesDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -6624,7 +7073,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           justifyContent: 'space-between',
@@ -6669,41 +7118,31 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('success')}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box sx={getRoleRoomDialogIconSx('success')}>
             <BookmarkIcon sx={{ color: '#fff', fontSize: 24 }} />
+            </Box>
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                {editingTemplate ? 'Rediger mal' : 'Opprett mal'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+                {templateFormData.items.length} elementer
+              </Typography>
+            </Box>
           </Box>
-          <Box>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {editingTemplate ? 'Rediger mal' : 'Opprett mal'}
-            </Typography>
-            <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>
-              {templateFormData.items.length} elementer
-            </Typography>
-          </Box>
+          <IconButton onClick={() => setTemplateFormOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
+            <CloseIcon />
+          </IconButton>
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Stack spacing={2.5}>
@@ -6733,7 +7172,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               }}
             />
             <Grid container spacing={2}>
-              <Grid size={{ xs: 6 }}>
+              <Grid item xs={6}>
                 <TextField
                   label="Kategori"
                   value={templateFormData.category}
@@ -6746,7 +7185,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   }}
                 />
               </Grid>
-              <Grid size={{ xs: 6 }}>
+              <Grid item xs={6}>
                 <TextField
                   label="Bruksområde"
                   value={templateFormData.use_case}
@@ -6862,7 +7301,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Stack>
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5,
           gap: 1,
         }}>
@@ -6909,25 +7348,9 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(56,189,248,0.1) 100%)',
-          borderBottom: '1px solid rgba(148,163,184,0.2)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('primary')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9333ea 0%, #7c3aed 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(147,51,234,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('primary')}>
               <ShoppingCartIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -6939,11 +7362,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setShopDialogOpen(false)} 
-            sx={{ 
-              ...focusVisibleStyles,
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7135,7 +7554,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                       <Card 
                         sx={{ 
                           bgcolor: 'rgba(255,255,255,0.05)', 
-                          border: '1px solid rgba(255,255,255,0.1)',
+                          border: '1px solid rgba(148,163,184,0.26)',
                           cursor: 'pointer',
                           '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' }
                         }}
@@ -7181,7 +7600,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           background: 'linear-gradient(0deg, rgba(0,0,0,0.2) 0%, transparent 100%)',
@@ -7213,33 +7632,17 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(76,175,80,0.15) 0%, rgba(67,160,71,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('success')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 40,
-              height: 40,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #4caf50 0%, #43a047 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(76,175,80,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('success', 40)}>
               <AddIcon sx={{ color: '#fff', fontSize: 22 }} />
             </Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -7248,10 +7651,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setNewCategoryDialogOpen(false)}
-            sx={{ 
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7308,7 +7708,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           )}
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5, 
           px: 3,
           gap: 1.5,
@@ -7365,35 +7765,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         fullWidth
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3, 
             minHeight: 500,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             overflow: 'hidden',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(156,39,176,0.15) 0%, rgba(142,36,170,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('violet')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9c27b0 0%, #8e24aa 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(156,39,176,0.3)',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('violet')}>
               <PhotoLibraryIcon sx={{ color: '#fff', fontSize: 24 }} />
             </Box>
             <Box>
@@ -7407,10 +7791,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Box>
           <IconButton 
             onClick={() => setImagePickerOpen(false)}
-            sx={{ 
-              bgcolor: 'rgba(255,255,255,0.05)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' },
-            }}
+            sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}
           >
             <CloseIcon />
           </IconButton>
@@ -7420,11 +7801,25 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             value={imagePickerTab}
             onChange={(_, v) => setImagePickerTab(v)}
             sx={{
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
-              px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.87)' },
-              '& .Mui-selected': { color: '#9333ea' },
-              '& .MuiTabs-indicator': { bgcolor: '#9333ea' },
+              borderBottom: '1px solid rgba(148,163,184,0.22)',
+              px: 1.5,
+              py: 0.5,
+              bgcolor: 'rgba(15,23,42,0.58)',
+              '& .MuiTab-root': {
+                minHeight: 38,
+                textTransform: 'none',
+                color: 'rgba(203,213,225,0.78)',
+                borderRadius: 1.25,
+                border: '1px solid transparent',
+                mx: 0.5,
+                '&:hover': { bgcolor: 'rgba(148,163,184,0.08)' },
+              },
+              '& .MuiTab-root.Mui-selected': {
+                color: '#f5d0fe',
+                borderColor: 'rgba(192,132,252,0.42)',
+                bgcolor: 'rgba(147,51,234,0.22)',
+              },
+              '& .MuiTabs-indicator': { display: 'none' },
             }}
           >
             <Tab icon={<SearchIcon />} label="Søk bilder" iconPosition="start" />
@@ -7535,7 +7930,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                         maxHeight: 240,
                         objectFit: 'contain',
                         borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(148,163,184,0.26)',
                         bgcolor: 'rgba(0,0,0,0.3)',
                       }}
                     />
@@ -7681,7 +8076,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             )}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2 }}>
           <Button
             onClick={() => {
               setImagePickerOpen(false);
@@ -7701,7 +8096,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
             border: '1px solid rgba(255,77,77,0.3)',
@@ -7710,24 +8105,8 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(244,67,54,0.3)',
-          }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('danger', 'center')}>
+          <Box sx={getRoleRoomDialogIconSx('danger')}>
             <DeleteIcon sx={{ color: '#fff', fontSize: 24 }} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Bekreft sletting</Typography>
@@ -7741,7 +8120,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           </Typography>
         </DialogContent>
         <DialogActions sx={{ 
-          borderTop: '1px solid rgba(255,255,255,0.1)', 
+          borderTop: '1px solid rgba(148,163,184,0.22)', 
           p: 2.5,
           gap: 1,
         }}>
@@ -7779,36 +8158,17 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
             maxWidth: 450,
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: bulkActionType === 'delete' 
-            ? 'linear-gradient(135deg, rgba(244,67,54,0.15) 0%, rgba(211,47,47,0.1) 100%)'
-            : 'linear-gradient(135deg, rgba(147,51,234,0.15) 0%, rgba(245,124,0,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: bulkActionType === 'delete'
-              ? 'linear-gradient(135deg, #f44336 0%, #d32f2f 100%)'
-              : 'linear-gradient(135deg, #9333ea 0%, #6d28d9 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx(bulkActionType === 'delete' ? 'danger' : 'warning', 'center')}>
+          <Box sx={getRoleRoomDialogIconSx(bulkActionType === 'delete' ? 'danger' : 'warning')}>
             {bulkActionType === 'delete' ? <DeleteIcon /> : <EditIcon />}
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -7825,7 +8185,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Ny status</InputLabel>
               <Select
                 value={bulkNewStatus}
-                onChange={(e) => setBulkNewStatus(e.target.value)}
+                onChange={(e) => setBulkNewStatus(e.target.value as Equipment['status'])}
                 label="Ny status"
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
@@ -7864,7 +8224,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => setBulkActionDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             Avbryt
           </Button>
@@ -7890,32 +8250,17 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          background: 'linear-gradient(135deg, rgba(156,39,176,0.15) 0%, rgba(142,36,170,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('violet')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Box sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #9c27b0 0%, #8e24aa 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
+            <Box sx={getRoleRoomDialogIconSx('violet')}>
               <HistoryIcon sx={{ color: '#fff' }} />
             </Box>
             <Box>
@@ -7925,7 +8270,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
+          <IconButton onClick={() => setHistoryDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -7950,7 +8295,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             ))}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2 }}>
           <Button onClick={() => setHistoryDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
         </DialogActions>
       </Dialog>
@@ -7964,31 +8309,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(0,150,136,0.15) 0%, rgba(0,137,123,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #009688 0%, #00897b 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('teal', 'center')}>
+          <Box sx={getRoleRoomDialogIconSx('teal')}>
             <BuildIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
@@ -8020,7 +8350,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Type vedlikehold</InputLabel>
               <Select
                 value={maintenanceForm.type}
-                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, type: e.target.value })}
+                onChange={(e) => setMaintenanceForm({ ...maintenanceForm, type: e.target.value as typeof maintenanceForm.type })}
                 label="Type vedlikehold"
                 sx={{ 
                   bgcolor: 'rgba(255,255,255,0.05)',
@@ -8053,7 +8383,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => setMaintenanceDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             Avbryt
           </Button>
@@ -8076,31 +8406,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{ 
           sx: { 
-            bgcolor: '#1c2128', 
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', 
             color: '#fff', 
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           } 
         }}
       >
-        <DialogTitle component="div" sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          background: 'linear-gradient(135deg, rgba(33,150,243,0.15) 0%, rgba(30,136,229,0.1) 100%)',
-          borderBottom: '1px solid rgba(255,255,255,0.1)',
-          py: 2,
-        }}>
-          <Box sx={{
-            width: 44,
-            height: 44,
-            borderRadius: 2,
-            background: 'linear-gradient(135deg, #2196f3 0%, #1e88e5 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('info', 'center')}>
+          <Box sx={getRoleRoomDialogIconSx('info')}>
             <CalendarTodayIcon sx={{ color: '#fff' }} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>Ny booking</Typography>
@@ -8207,7 +8522,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => setCreateBookingDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>
             Avbryt
           </Button>
@@ -8223,16 +8538,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
       {/* ── Check-out Dialog ─────────────────────────── */}
       <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #2196f3, #1565c0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('info'), pb: 1 }}>
+          <Box sx={getRoleRoomDialogIconSx('info', 40)}>
             <CheckOutIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Sjekk ut utstyr</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkoutEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckoutDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckoutDialogOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
@@ -8260,7 +8575,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             )}
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
           <Button onClick={handleConfirmCheckout} variant="contained" disabled={!checkoutForm.crewId}
             sx={{ bgcolor: '#2196f3', '&:hover': { bgcolor: '#1e88e5' } }}>
@@ -8271,16 +8586,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
       {/* ── Check-in Dialog ──────────────────────────── */}
       <Dialog open={checkinDialogOpen} onClose={() => setCheckinDialogOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #4caf50, #2e7d32)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('success'), pb: 1 }}>
+          <Box sx={getRoleRoomDialogIconSx('success', 40)}>
             <CheckInIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Lever inn utstyr</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{checkinEquipment?.name}</Typography>
           </Box>
-          <IconButton onClick={() => setCheckinDialogOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setCheckinDialogOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Stack spacing={2.5}>
@@ -8295,7 +8610,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'rgba(255,255,255,0.05)', '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' } }, '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' } }} />
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => setCheckinDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Avbryt</Button>
           <Button onClick={handleConfirmCheckin} variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#43a047' } }}>Lever inn</Button>
         </DialogActions>
@@ -8334,19 +8649,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               'linear-gradient(120deg, rgba(147,51,234,0.2) 0%, rgba(59,130,246,0.1) 52%, rgba(15,23,42,0.25) 100%)',
           }}
         >
-          <Box
-            sx={{
-              width: 42,
-              height: 42,
-              borderRadius: 2,
-              background: 'linear-gradient(135deg, #a855f7, #7e22ce)',
-              border: '1px solid rgba(233,213,255,0.36)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 10px 22px rgba(147,51,234,0.34)',
-            }}
-          >
+          <Box sx={getRoleRoomDialogIconSx('primary', 42)}>
             <ReportIcon sx={{ color: '#fff' }} />
           </Box>
           <Box sx={{ minWidth: 0 }}>
@@ -8362,7 +8665,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             <Chip size="small" label={`${missingItems.length} mangler ansvarlig`} sx={{ bgcolor: 'rgba(234,179,8,0.15)', color: '#facc15', border: '1px solid rgba(250,204,21,0.3)' }} />
             <Chip size="small" label={`${maintenanceItems.length} vedlikehold`} sx={{ bgcolor: 'rgba(239,68,68,0.15)', color: '#fca5a5', border: '1px solid rgba(252,165,165,0.3)' }} />
           </Stack>
-          <IconButton onClick={() => setReportsDialogOpen(false)} sx={{ color: 'rgba(226,232,240,0.76)' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setReportsDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}><CloseIcon /></IconButton>
         </DialogTitle>
 
         <Box
@@ -8498,16 +8801,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
 
       {/* ── Offline outbox viewer ────────────────────── */}
       <Dialog open={offlineOutboxOpen} onClose={() => setOfflineOutboxOpen(false)} maxWidth="sm" fullWidth TransitionComponent={Grow}
-        PaperProps={{ sx: { bgcolor: 'rgba(28,33,40,0.97)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 3 } }}>
-        <DialogTitle component="div" sx={{ display: 'flex', alignItems: 'center', gap: 2, pb: 1 }}>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, background: 'linear-gradient(135deg, #f44336, #b71c1c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        PaperProps={{ sx: { background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)', backdropFilter: 'blur(20px)', border: '1px solid rgba(148,163,184,0.22)', borderRadius: 3 } }}>
+        <DialogTitle component="div" sx={{ ...getRoleRoomDialogTitleSx('danger'), pb: 1 }}>
+          <Box sx={getRoleRoomDialogIconSx('danger', 40)}>
             <OfflineIcon sx={{ color: '#fff' }} />
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Offline-kø</Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{offlineQueueCount} operasjon(er) venter</Typography>
           </Box>
-          <IconButton onClick={() => setOfflineOutboxOpen(false)} sx={{ ml: 'auto', color: 'rgba(255,255,255,0.6)' }}><CloseIcon /></IconButton>
+          <IconButton onClick={() => setOfflineOutboxOpen(false)} sx={{ ...ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX, ml: 'auto' }}><CloseIcon /></IconButton>
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           {offlineQueue.length === 0 ? (
@@ -8518,7 +8821,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
           ) : (
             <Box sx={{ maxHeight: 300, overflowY: 'auto' }}>
               {offlineQueue.map(e => (
-                <Box key={e.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <Box key={e.id} sx={{ display: 'flex', alignItems: 'center', gap: 2, py: 1.5, borderBottom: '1px solid rgba(148,163,184,0.16)' }}>
                   {e.type === 'checkout' ? <CheckOutIcon sx={{ color: '#2196f3', fontSize: 20 }} /> : <CheckInIcon sx={{ color: '#4caf50', fontSize: 20 }} />}
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600 }}>
@@ -8534,7 +8837,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Box>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2.5, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2.5, gap: 1 }}>
           <Button onClick={() => { persistOfflineQueue([]); setOfflineOutboxOpen(false); }} sx={{ color: '#f44336' }}>Slett kø</Button>
           <Button onClick={() => setOfflineOutboxOpen(false)} sx={{ color: 'rgba(255,255,255,0.87)' }}>Lukk</Button>
           <Button onClick={handleSyncOfflineQueue} variant="contained" startIcon={<SyncIcon />} disabled={!isOnline}
@@ -8561,17 +8864,16 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         <DialogTitle
           component="div"
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
-            color: '#fff',
             pb: 0.5,
             background: 'linear-gradient(90deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 100%)',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SearchIcon sx={{ color: '#c084fc' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box sx={getRoleRoomDialogIconSx('primary', 36)}>
+              <SearchIcon sx={{ color: '#fff', fontSize: 20 }} />
+            </Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Utstyr & Markeder</Typography>
             <Chip
               label="Importer til prosjekt"
@@ -8583,7 +8885,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               }}
             />
           </Box>
-          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => { setCatalogBridgeOpen(false); setCatalogDialogTab(0); }} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -8601,9 +8903,26 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             onChange={(_, v: number) => setCatalogDialogTab(v)}
             sx={{
               px: 2,
-              '& .MuiTab-root': { color: 'rgba(255,255,255,0.66)', minHeight: 50, fontSize: '0.82rem' },
-              '& .Mui-selected': { color: '#c084fc' },
-              '& .MuiTabs-indicator': { bgcolor: '#c084fc', height: 3 },
+              py: 0.5,
+              '& .MuiTabs-indicator': { display: 'none' },
+              '& .MuiTab-root': {
+                color: 'rgba(203,213,225,0.75)',
+                minHeight: 40,
+                textTransform: 'none',
+                fontSize: '0.8rem',
+                borderRadius: 1.25,
+                border: '1px solid rgba(148,163,184,0.22)',
+                bgcolor: 'rgba(15,23,42,0.56)',
+                mr: 0.75,
+                px: 1.4,
+                '&:hover': { bgcolor: 'rgba(148,163,184,0.1)' },
+              },
+              '& .MuiTab-root.Mui-selected': {
+                color: '#f5d0fe',
+                borderColor: 'rgba(192,132,252,0.48)',
+                bgcolor: 'rgba(147,51,234,0.24)',
+                boxShadow: '0 8px 20px rgba(147,51,234,0.22)',
+              },
             }}
           >
             <Tab icon={<SearchIcon sx={{ fontSize: 16 }} />} label="Produkt-katalog" iconPosition="start" />
@@ -8945,7 +9264,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               )}
 
               <Grid container spacing={0} sx={{ gap: CATALOG_BRIDGE_CARD_GAP, mb: 2.5 }}>
-                <Grid size={{ xs: 12, md: 5 }}>
+                <Grid item xs={12} md={5}>
                   <TextField
                     fullWidth
                     size="small"
@@ -8965,7 +9284,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     }}
                   />
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Kameratype</InputLabel>
                     <Select
@@ -8984,7 +9303,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.6)' }}>Merke</InputLabel>
                     <Select
@@ -9006,7 +9325,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                     </Select>
                   </FormControl>
                 </Grid>
-                <Grid size={{ xs: 12, md: 1 }}>
+                <Grid item xs={12} md={1}>
                   <Box
                     sx={{
                       height: '100%',
@@ -9262,26 +9581,19 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         TransitionComponent={Grow}
         PaperProps={{
           sx: {
-            bgcolor: '#1c2128',
+            background: 'linear-gradient(160deg, rgba(2,6,23,0.96) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           },
         }}
       >
-        <DialogTitle
-          component="div"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            py: 2,
-          }}
-        >
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('primary')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-            <QrCodeIcon sx={{ color: '#c084fc' }} />
+            <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
+              <QrCodeIcon sx={{ color: '#fff' }} />
+            </Box>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700 }}>
                 Lager-QR etikett
@@ -9291,7 +9603,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
               </Typography>
             </Box>
           </Box>
-          <IconButton onClick={() => setQrLabelDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrLabelDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9303,7 +9615,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
                   p: 2,
                   borderRadius: 2,
                   bgcolor: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: '1px solid rgba(148,163,184,0.26)',
                   display: 'flex',
                   justifyContent: 'center',
                 }}
@@ -9339,7 +9651,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Stack>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2, gap: 1 }}>
           <Button
             variant="outlined"
             startIcon={<CopyIcon />}
@@ -9388,28 +9700,21 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           },
         }}
       >
-        <DialogTitle
-          component="div"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            py: 2,
-          }}
-        >
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('primary')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-            <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
+            <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
+              <QrCodeScannerIcon sx={{ color: '#fff' }} />
+            </Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Skann lager-QR
             </Typography>
           </Box>
-          <IconButton onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setQrScanDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9454,7 +9759,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Alert>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2, gap: 1 }}>
           <Button onClick={() => setQrScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
             Avbryt
           </Button>
@@ -9501,28 +9806,21 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             background: 'linear-gradient(160deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.9) 52%, rgba(30,41,59,0.82) 100%)',
             color: '#fff',
             borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(148,163,184,0.26)',
             boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
           },
         }}
       >
-        <DialogTitle
-          component="div"
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderBottom: '1px solid rgba(255,255,255,0.1)',
-            py: 2,
-          }}
-        >
+        <DialogTitle component="div" sx={getRoleRoomDialogTitleSx('primary')}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-            <QrCodeScannerIcon sx={{ color: '#c084fc' }} />
+            <Box sx={getRoleRoomDialogIconSx('primary', 38)}>
+              <QrCodeScannerIcon sx={{ color: '#fff' }} />
+            </Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Skann serienummer
             </Typography>
           </Box>
-          <IconButton onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setSerialScanDialogOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>
@@ -9573,7 +9871,7 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
             </Alert>
           )}
         </DialogContent>
-        <DialogActions sx={{ borderTop: '1px solid rgba(255,255,255,0.1)', p: 2, gap: 1 }}>
+        <DialogActions sx={{ borderTop: '1px solid rgba(148,163,184,0.22)', p: 2, gap: 1 }}>
           <Button onClick={() => setSerialScanDialogOpen(false)} sx={{ color: 'rgba(255,255,255,0.8)' }}>
             Avbryt
           </Button>
@@ -9631,18 +9929,18 @@ export function EquipmentManagementPanel({ projectId, onUpdate }: EquipmentManag
         <DialogTitle
           component="div"
           sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            ...getRoleRoomDialogTitleSx('primary'),
             borderBottom: '1px solid rgba(148,163,184,0.24)',
             background: 'linear-gradient(90deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.12) 100%)',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <SyncIcon sx={{ color: '#38bdf8' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+            <Box sx={getRoleRoomDialogIconSx('primary', 36)}>
+              <SyncIcon sx={{ color: '#fff', fontSize: 20 }} />
+            </Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#fff' }}>Fastvare-oppdateringer</Typography>
           </Box>
-          <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={{ color: 'rgba(255,255,255,0.7)' }}>
+          <IconButton onClick={() => setFirmwarePanelOpen(false)} sx={ROLE_ROOM_DIALOG_CLOSE_BUTTON_SX}>
             <CloseIcon />
           </IconButton>
         </DialogTitle>

@@ -562,7 +562,7 @@ export const AcademyTutorial: React.FC<AcademyTutorialProps> = ({
             mb: 3,
             background: `linear-gradient(135deg, ${theming.colors.primary}15 0%, ${theming.colors.secondary}15 100%)`,
             borderRadius: 2,
-            border: `1px solid ${theming.colors.primary}30`
+            border: `var(--academy-hairline-width, 1px) solid ${theming.colors.primary}30`
           }}
         >
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -762,7 +762,7 @@ export const AcademyTutorial: React.FC<AcademyTutorialProps> = ({
                 p: 3,
                 borderRadius: 2,
                 background: `linear-gradient(135deg, ${theming.colors.primary}10 0%, ${theming.colors.secondary}10 100%)`,
-                border: `1px solid ${theming.colors.primary}30`
+                border: `var(--academy-hairline-width, 1px) solid ${theming.colors.primary}30`
               }}
             >
               <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>

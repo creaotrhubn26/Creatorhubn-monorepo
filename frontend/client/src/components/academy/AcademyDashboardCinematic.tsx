@@ -391,7 +391,7 @@ function AcademyDashboardCinematic() {
             gridTemplateColumns: { xs: '1fr', lg: '320px minmax(320px,1fr) 220px' },
             gap: 2,
             alignItems: 'center',
-            borderBottom: `1px solid ${alpha('#f5a623', 0.18)}`,
+            borderBottom: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.18)}`,
           }}
         >
           <Stack direction="row" spacing={1.2} alignItems="center">
@@ -467,7 +467,7 @@ function AcademyDashboardCinematic() {
           sx={{
             mt: 3,
             borderRadius: '14px',
-            border: `1px solid ${alpha('#f5a623', 0.2)}`,
+            border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`,
             background:
               'radial-gradient(circle at 25% 15%, rgba(86,120,168,0.28), rgba(8,11,18,0.92) 45%), linear-gradient(135deg, rgba(7,10,17,0.9), rgba(5,7,13,0.98))',
             overflow: 'hidden',
@@ -541,7 +541,7 @@ function AcademyDashboardCinematic() {
                     color: '#f8f1e7',
                     px: 1.3,
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.44)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.44)',
                     background: 'rgba(245,166,35,0.08)',
                   }}
                 >
@@ -558,7 +558,7 @@ function AcademyDashboardCinematic() {
                     color: '#f8f1e7',
                     px: 1.3,
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.44)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.44)',
                     background: 'rgba(245,166,35,0.08)',
                   }}
                 >
@@ -578,7 +578,7 @@ function AcademyDashboardCinematic() {
                     color: '#f8f1e7',
                     px: 1.3,
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.22)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                   }}
                 >
                   {tt('Åpne full arbeidsflate', 'Open Full Workspace')}
@@ -590,7 +590,7 @@ function AcademyDashboardCinematic() {
                   position: 'relative',
                   minHeight: { xs: 230, md: 300 },
                   borderRadius: '10px',
-                  border: '1px solid rgba(255,255,255,0.16)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   overflow: 'hidden',
                   background:
                     heroCourse?.thumbnail
@@ -646,7 +646,7 @@ function AcademyDashboardCinematic() {
                 }}
                 sx={{
                   borderRadius: '10px',
-                  border: `1px solid ${alpha('#f5a623', 0.22)}`,
+                  border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.22)}`,
                   overflow: 'hidden',
                   cursor: 'pointer',
                   transition: 'transform .22s ease, box-shadow .22s ease, border-color .22s ease',
@@ -700,7 +700,7 @@ function AcademyDashboardCinematic() {
         </Box>
 
         <Box sx={{ mt: 2.2, display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1.15fr 0.85fr' }, gap: 2 }}>
-          <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
+          <Box sx={{ borderRadius: '12px', border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.6rem', md: '2rem' }, mb: 1.2 }}>
               {tt('Mine spor', 'My Tracks')}
             </Typography>
@@ -712,7 +712,7 @@ function AcademyDashboardCinematic() {
                   onClick={() => openCourse(course)}
                   sx={{
                     borderRadius: '10px',
-                    border: '1px solid rgba(255,255,255,0.14)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                     overflow: 'hidden',
                     cursor: 'pointer',
                     background: 'rgba(8, 11, 18, 0.86)',
@@ -745,7 +745,7 @@ function AcademyDashboardCinematic() {
               sx={{
                 mt: 1.5,
                 borderRadius: '10px',
-                border: `1px solid ${alpha('#f5a623', 0.16)}`,
+                border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.16)}`,
                 background: 'rgba(9, 13, 20, 0.92)',
                 p: 1.6,
               }}
@@ -799,7 +799,7 @@ function AcademyDashboardCinematic() {
             </Box>
           </Box>
 
-          <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
+          <Box sx={{ borderRadius: '12px', border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.2 }}>
               <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.6rem', md: '2rem' } }}>
                 {tt('Kommende sesjoner', 'Upcoming Sessions')}
@@ -810,7 +810,7 @@ function AcademyDashboardCinematic() {
                   minWidth: 0,
                   textTransform: 'none',
                   color: '#f8f1e7',
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                   borderRadius: '8px',
                   px: 1.2,
                   py: 0.45,
@@ -824,7 +824,7 @@ function AcademyDashboardCinematic() {
                 <Box
                   key={`${session.dateLabel}-${session.title}`}
                   sx={{
-                    border: '1px solid rgba(255,255,255,0.13)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.13)',
                     borderRadius: '9px',
                     p: 1.2,
                     display: 'grid',

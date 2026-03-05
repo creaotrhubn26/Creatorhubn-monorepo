@@ -390,7 +390,7 @@ function AcademyLandingPage() {
             gridTemplateColumns: { xs: '1fr', lg: '330px minmax(320px,1fr) 280px' },
             gap: 2,
             alignItems: 'center',
-            borderBottom: `1px solid ${alpha('#f5a623', 0.18)}`,
+            borderBottom: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.18)}`,
           }}
         >
           <Stack direction="row" spacing={1.2} alignItems="center">
@@ -465,7 +465,7 @@ function AcademyLandingPage() {
           sx={{
             mt: 3,
             borderRadius: '14px',
-            border: `1px solid ${alpha('#f5a623', 0.2)}`,
+            border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`,
             background:
               'radial-gradient(circle at 25% 15%, rgba(86,120,168,0.28), rgba(8,11,18,0.92) 45%), linear-gradient(135deg, rgba(7,10,17,0.9), rgba(5,7,13,0.98))',
             overflow: 'hidden',
@@ -561,7 +561,7 @@ function AcademyLandingPage() {
                   position: 'relative',
                   minHeight: { xs: 230, md: 300 },
                   borderRadius: '10px',
-                  border: '1px solid rgba(255,255,255,0.16)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   overflow: 'hidden',
                   background:
                     heroCourse.thumbnail
@@ -605,7 +605,7 @@ function AcademyLandingPage() {
         </Box>
 
         <Box sx={{ mt: 2.4, display: 'grid', gridTemplateColumns: { xs: '1fr', xl: '1fr 1fr' }, gap: 2 }}>
-          <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
+          <Box sx={{ borderRadius: '12px', border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.55rem', md: '1.9rem' }, mb: 1 }}>
               {tt('Kjernefunksjoner', 'Core Features')}
             </Typography>
@@ -618,7 +618,7 @@ function AcademyLandingPage() {
                     justifyContent: 'space-between',
                     textTransform: 'none',
                     color: '#f8f1e7',
-                    border: '1px solid rgba(255,255,255,0.14)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                     borderRadius: '10px',
                     px: 1.1,
                     py: 1.05,
@@ -636,7 +636,7 @@ function AcademyLandingPage() {
                         height: 30,
                         bgcolor: 'rgba(245,166,35,0.2)',
                         color: '#ffd38c',
-                        border: '1px solid rgba(245,166,35,0.35)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                       }}
                     >
                       {item.icon}
@@ -660,7 +660,7 @@ function AcademyLandingPage() {
             </Stack>
           </Box>
 
-          <Box sx={{ borderRadius: '12px', border: `1px solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
+          <Box sx={{ borderRadius: '12px', border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`, background: 'rgba(7, 10, 16, 0.82)', p: 2 }}>
             <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: { xs: '1.55rem', md: '1.9rem' }, mb: 1 }}>
               {tt('Nye studio-funksjoner', 'New Studio Features')}
             </Typography>
@@ -678,7 +678,7 @@ function AcademyLandingPage() {
                   }}
                   sx={{
                     borderRadius: '10px',
-                    border: '1px solid rgba(255,255,255,0.14)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                     p: 1.1,
                     cursor: 'pointer',
                     background: 'rgba(10,14,22,0.72)',
@@ -696,7 +696,7 @@ function AcademyLandingPage() {
                         height: 28,
                         bgcolor: 'rgba(245,166,35,0.2)',
                         color: '#ffd38c',
-                        border: '1px solid rgba(245,166,35,0.35)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                       }}
                     >
                       {item.icon}
@@ -733,7 +733,7 @@ function AcademyLandingPage() {
               sx={{
                 textTransform: 'none',
                 color: '#f8f1e7',
-                border: '1px solid rgba(255,255,255,0.22)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                 borderRadius: '8px',
               }}
             >
@@ -747,7 +747,7 @@ function AcademyLandingPage() {
                 key={course.id}
                 sx={{
                   borderRadius: '11px',
-                  border: `1px solid ${alpha('#f5a623', 0.2)}`,
+                  border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`,
                   overflow: 'hidden',
                   background: 'rgba(8, 11, 18, 0.86)',
                 }}
@@ -811,7 +811,7 @@ function AcademyLandingPage() {
             mt: 2.4,
             p: 1.6,
             borderRadius: '10px',
-            border: `1px solid ${alpha('#f5a623', 0.2)}`,
+            border: `var(--academy-hairline-width, 1px) solid ${alpha('#f5a623', 0.2)}`,
             background: 'rgba(7, 10, 16, 0.8)',
             display: 'grid',
             gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, 1fr)' },

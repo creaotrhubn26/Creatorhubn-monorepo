@@ -90,9 +90,11 @@ interface CTAOverlayItem {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
+
+const academyShellMaxWidth = 'min(100%, var(--academy-shell-max-width, 1920px))';
 
 const toNok = (value: number): string =>
   new Intl.NumberFormat('nb-NO', {
@@ -490,13 +492,16 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
 
   const leftNavItems = [
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
+    { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
     { id: 'media', label: navLabel('Media'), route: '/academy/media' },
     { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
-    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
     { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
+    { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
 
@@ -521,13 +526,23 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', lg: 'row' },
+          minHeight: '100vh',
+          position: 'relative',
+          zIndex: 1,
+          width: academyShellMaxWidth,
+          mx: 'auto',
+        }}
+      >
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -569,7 +584,9 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active
+                      ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)'
+                      : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -591,7 +608,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -605,7 +622,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -746,7 +763,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     px: 1.2,
                     py: 0.8,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)',
                     background: 'rgba(248,179,33,0.08)',
                     color: '#f8d56f',
                   }}
@@ -785,7 +802,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 <Box
                   sx={{
                     borderRadius: 1.1,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                     overflow: 'hidden',
                     position: 'relative',
                     aspectRatio: '16 / 9',
@@ -823,7 +840,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                               : '58%',
                         transform: selectedOverlay.placement === 'center' ? 'translateY(-50%)' : 'none',
                         borderRadius: `${selectedOverlay.style.borderRadius}px`,
-                        border: '1px solid rgba(255,255,255,0.2)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                         background: selectedOverlay.style.bg,
                         color: selectedOverlay.style.text,
                         p: 1.6,
@@ -831,10 +848,22 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         boxShadow: '0 18px 34px rgba(0,0,0,0.45)',
                       }}
                     >
-                      <Typography sx={{ fontSize: 52, lineHeight: 1, fontFamily: 'Barlow Condensed, sans-serif' }}>
+                      <Typography
+                        sx={{
+                          fontSize: 'clamp(2rem, 1.1rem + 2.8vw, 3.25rem)',
+                          lineHeight: 1,
+                          fontFamily: 'Barlow Condensed, sans-serif',
+                        }}
+                      >
                         {selectedOverlay.title}
                       </Typography>
-                      <Typography sx={{ color: alpha(selectedOverlay.style.text, 0.9), mt: 0.3, fontSize: 23 }}>
+                      <Typography
+                        sx={{
+                          color: alpha(selectedOverlay.style.text, 0.9),
+                          mt: 0.3,
+                          fontSize: 'clamp(0.95rem, 0.7rem + 1vw, 1.45rem)',
+                        }}
+                      >
                         {selectedOverlay.subtitle}
                       </Typography>
 
@@ -846,7 +875,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                             background: selectedOverlay.style.button,
                             px: 2.2,
                             fontWeight: 700,
-                            fontSize: 24,
+                            fontSize: 'clamp(0.95rem, 0.62rem + 1.1vw, 1.5rem)',
                             borderRadius: 1,
                             '&:hover': { background: selectedOverlay.style.button },
                           }}
@@ -857,8 +886,8 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           sx={{
                             textTransform: 'none',
                             color: selectedOverlay.style.text,
-                            border: '1px solid rgba(255,255,255,0.26)',
-                            fontSize: 20,
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.26)',
+                            fontSize: 'clamp(0.88rem, 0.66rem + 0.7vw, 1.25rem)',
                             borderRadius: 1,
                           }}
                         >
@@ -866,7 +895,14 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         </Button>
                       </Stack>
 
-                      <Typography sx={{ mt: 0.8, color: '#f6d78d', fontWeight: 600, fontSize: 20 }}>
+                      <Typography
+                        sx={{
+                          mt: 0.8,
+                          color: '#f6d78d',
+                          fontWeight: 600,
+                          fontSize: 'clamp(0.85rem, 0.64rem + 0.68vw, 1.22rem)',
+                        }}
+                      >
                         {selectedOverlay.urgency}
                       </Typography>
                     </Box>
@@ -1120,7 +1156,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                   <Box
                     sx={{
                       borderRadius: 1,
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                       aspectRatio: '16/9',
                       position: 'relative',
                       overflow: 'hidden',
@@ -1136,7 +1172,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           bottom: 16,
                           width: '52%',
                           borderRadius: 1,
-                          border: '1px solid rgba(255,255,255,0.15)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
                           background: alpha(selectedOverlay.style.bg, 0.95),
                           p: 1,
                         }}
@@ -1169,7 +1205,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         flex: 1,
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.17)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.17)',
                       }}
                     >
                       {tt('Monetisering', 'Monetization')}
@@ -1181,7 +1217,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         flex: 1,
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.17)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.17)',
                       }}
                     >
                       {tt('LowerThirds', 'LowerThirds')}
@@ -1193,7 +1229,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         flex: 1,
                         textTransform: 'none',
                         color: '#edf0f7',
-                        border: '1px solid rgba(255,255,255,0.17)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.17)',
                       }}
                     >
                       {tt('Lagre', 'Save')}
@@ -1209,7 +1245,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                 onChange={(_, value: RightTab) => setRightTab(value)}
                 textColor="inherit"
                 sx={{
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   '& .MuiTabs-indicator': { backgroundColor: '#f8b321' },
                   '& .MuiTab-root': { color: 'rgba(237,240,247,0.78)', textTransform: 'none', minHeight: 44 },
                   '& .Mui-selected': { color: '#f7f8fb' },
@@ -1262,10 +1298,10 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         },
                       }}
                     />
-                    <IconButton onClick={duplicateOverlay} sx={{ color: '#edf0f7', border: '1px solid rgba(255,255,255,0.2)' }}>
+                    <IconButton onClick={duplicateOverlay} sx={{ color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)' }}>
                       <ContentCopy fontSize="small" />
                     </IconButton>
-                    <IconButton onClick={removeOverlay} sx={{ color: '#edf0f7', border: '1px solid rgba(255,255,255,0.2)' }}>
+                    <IconButton onClick={removeOverlay} sx={{ color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)' }}>
                       <Delete fontSize="small" />
                     </IconButton>
                   </Stack>
@@ -1282,7 +1318,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                             textTransform: 'none',
                             color: '#edf0f7',
                             borderRadius: 1,
-                            border: active ? '1px solid rgba(248,179,33,0.52)' : '1px solid rgba(255,255,255,0.14)',
+                            border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.52)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                             background: active
                               ? 'linear-gradient(90deg, rgba(248,179,33,0.18), rgba(248,179,33,0.04))'
                               : 'rgba(255,255,255,0.02)',
@@ -1328,7 +1364,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                         </Stack>
                       </Stack>
 
-                      <Box sx={{ mt: 1, height: 84, borderRadius: 1, border: '1px solid rgba(255,255,255,0.1)', p: 1 }}>
+                      <Box sx={{ mt: 1, height: 84, borderRadius: 1, border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)', p: 1 }}>
                         <Box
                           component="svg"
                           viewBox="0 0 100 30"
@@ -1398,7 +1434,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           flex: 1,
                           textTransform: 'none',
                           color: '#edf0f7',
-                          border: '1px solid rgba(255,255,255,0.18)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                         }}
                       >
                         {tt('Forhåndsvis', 'Preview')}
@@ -1410,7 +1446,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                           flex: 1,
                           textTransform: 'none',
                           color: '#edf0f7',
-                          border: '1px solid rgba(255,255,255,0.18)',
+                          border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                         }}
                       >
                         {tt('Inntekt', 'Revenue')}
@@ -1453,7 +1489,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   {tt('Lagre', 'Save')}
@@ -1469,7 +1505,7 @@ function AcademyCTAOverlayStudio({ courseId, onSave, onCancel }: AcademyCTAOverl
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.76)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lukk', 'Close')}

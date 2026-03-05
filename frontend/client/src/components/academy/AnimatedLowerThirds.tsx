@@ -1266,7 +1266,7 @@ function AnimatedLowerThirds({
               backgroundColor: lowerThird.style.backgroundColor,
               borderRadius: `${lowerThird.style.borderRadius}px`,
               border: lowerThird.style.borderColor
-                ? `1px solid ${lowerThird.style.borderColor}`
+                ? `var(--academy-hairline-width, 1px) solid ${lowerThird.style.borderColor}`
                 : 'none',
               display: 'flex',
               alignItems: 'center',
@@ -2137,7 +2137,7 @@ function CaptionEditor({
               backgroundColor: '#1a1a1a',
               borderRadius: 2,
               overflow: 'hidden',
-              border: '1px solid #333'}}
+              border: 'var(--academy-hairline-width, 1px) solid #333'}}
           >
             {/* Safe Guides */}
             {renderSafeGuides(captionStyle.safeGuides, 800, 300)}
@@ -2784,7 +2784,7 @@ function LowerThirdEditor({
               backgroundColor: '#1a1a1a',
               borderRadius: 2,
               overflow: 'hidden',
-              border: '1px solid #333'}}
+              border: 'var(--academy-hairline-width, 1px) solid #333'}}
           >
             {renderPreview(lowerThird, false)}
           </Box>

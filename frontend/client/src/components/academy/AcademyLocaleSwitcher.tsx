@@ -24,7 +24,7 @@ export default function AcademyLocaleSwitcher() {
         bottom: { xs: 12, md: 18 },
         zIndex: 1800,
         borderRadius: '10px',
-        border: '1px solid rgba(245,166,35,0.32)',
+        border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.32)',
         bgcolor: 'rgba(8,11,18,0.9)',
         backdropFilter: 'blur(10px)',
         boxShadow: '0 12px 32px rgba(0,0,0,0.35)',

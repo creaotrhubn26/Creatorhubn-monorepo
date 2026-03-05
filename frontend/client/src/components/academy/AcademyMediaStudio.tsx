@@ -78,7 +78,7 @@ interface AcademyMediaStudioProps {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.09)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.09)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -669,7 +669,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           sx={{
             px: { xs: 2, md: 3 },
             py: 1.4,
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
             background: 'linear-gradient(180deg, rgba(13,16,25,0.95), rgba(10,13,20,0.9))',
             display: 'flex',
             alignItems: 'center',
@@ -683,7 +683,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 width: 34,
                 height: 34,
                 borderRadius: '50%',
-                border: '1px solid rgba(248,179,33,0.45)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.45)',
                 display: 'grid',
                 placeItems: 'center',
                 background: 'linear-gradient(180deg, rgba(248,179,33,0.35), rgba(248,179,33,0.1))',
@@ -714,7 +714,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           sx={{
             px: { xs: 2, md: 3 },
             py: 1.1,
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
+            borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -877,7 +877,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                       justifyContent: 'space-between',
                       textTransform: 'none',
                       color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
-                      border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                      border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                       background: active
                         ? 'linear-gradient(90deg, rgba(248,179,33,0.2), rgba(248,179,33,0.02))'
                         : 'transparent',
@@ -918,7 +918,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                         textTransform: 'none',
                         color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
                         borderRadius: 1,
-                        border: active ? '1px solid rgba(248,179,33,0.4)' : '1px solid rgba(255,255,255,0.14)',
+                        border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.4)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                         background: active
                           ? 'linear-gradient(180deg, rgba(248,179,33,0.24), rgba(248,179,33,0.04))'
                           : 'rgba(255,255,255,0.02)',
@@ -989,7 +989,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                         color: active ? '#fce3a1' : 'rgba(237,240,247,0.82)',
                         borderRadius: 1,
                         px: 1.2,
-                        border: active ? '1px solid rgba(248,179,33,0.45)' : '1px solid rgba(255,255,255,0.14)',
+                        border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.45)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                         background: active
                           ? 'linear-gradient(180deg, rgba(248,179,33,0.24), rgba(248,179,33,0.05))'
                           : 'rgba(255,255,255,0.02)',
@@ -1010,7 +1010,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   onClick={() => setGridMode('list')}
                   sx={{
                     color: gridMode === 'list' ? '#f8c551' : 'rgba(237,240,247,0.75)',
-                    border: '1px solid rgba(255,255,255,0.14)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                     borderRadius: 1,
                   }}
                 >
@@ -1021,7 +1021,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                   onClick={() => setGridMode('grid')}
                   sx={{
                     color: gridMode === 'grid' ? '#f8c551' : 'rgba(237,240,247,0.75)',
-                    border: '1px solid rgba(255,255,255,0.14)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                     borderRadius: 1,
                   }}
                 >
@@ -1064,7 +1064,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                         onClick={() => setSelectedAssetId(asset.id)}
                         sx={{
                           borderRadius: 1,
-                          border: selected ? '1px solid rgba(248,179,33,0.6)' : '1px solid rgba(255,255,255,0.12)',
+                          border: selected ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.6)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                           background: 'linear-gradient(150deg, rgba(19,23,33,0.95), rgba(10,12,19,0.98))',
                           overflow: 'hidden',
                           cursor: 'pointer',
@@ -1220,7 +1220,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 <Box
                   sx={{
                     borderRadius: 1,
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                     aspectRatio: '16 / 9',
                     p: 1,
                     display: 'flex',
@@ -1299,7 +1299,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                     justifyContent: 'flex-start',
                     textTransform: 'none',
                     color: action.danger ? '#ff8f8f' : '#edf0f7',
-                    border: `1px solid ${action.danger ? 'rgba(255,87,87,0.38)' : 'rgba(255,255,255,0.15)'}`,
+                    border: `var(--academy-hairline-width, 1px) solid ${action.danger ? 'rgba(255,87,87,0.38)' : 'rgba(255,255,255,0.15)'}`,
                     background: action.danger
                       ? 'linear-gradient(180deg, rgba(255,87,87,0.14), rgba(255,87,87,0.03))'
                       : 'transparent',
@@ -1352,7 +1352,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
           sx={{
             px: { xs: 2, md: 3 },
             py: 1,
-            borderTop: '1px solid rgba(255,255,255,0.08)',
+            borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
             background: 'linear-gradient(180deg, rgba(10,14,22,0.9), rgba(8,12,19,0.95))',
             display: 'flex',
             justifyContent: 'space-between',
@@ -1381,7 +1381,7 @@ function AcademyMediaStudio({ courseId, onSave, onCancel }: AcademyMediaStudioPr
                 sx={{
                   textTransform: 'none',
                   color: item.id === 'media' ? '#fce3a1' : 'rgba(237,240,247,0.8)',
-                  border: item.id === 'media' ? '1px solid rgba(248,179,33,0.35)' : '1px solid rgba(255,255,255,0.16)',
+                  border: item.id === 'media' ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   background: item.id === 'media' ? 'linear-gradient(90deg, rgba(248,179,33,0.2), rgba(248,179,33,0.03))' : 'transparent',
                   borderRadius: 1,
                 }}

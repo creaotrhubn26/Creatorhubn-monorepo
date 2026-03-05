@@ -68,6 +68,9 @@ interface ModuleManagerProps {
   height?: number;
 }
 
+type RightPanelTab = 'module' | 'schedule' | 'prerequisites' | 'localization';
+type LocalizationDraft = { title: string; description: string };
+
 const buildLesson = (title: string, minutes: number): ModuleLesson => ({
   id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
   title,
@@ -134,13 +137,16 @@ function ModuleManager({
   const { tt, navLabel } = useAcademyLocale();
 
   const [leftNav, setLeftNav] = useState('curriculum');
-  const [rightTab, setRightTab] = useState<'module' | 'schedule' | 'prerequisites' | 'localization'>('module');
+  const [rightTab, setRightTab] = useState<RightPanelTab>('module');
   const [searchValue, setSearchValue] = useState('');
   const [scheduleMode, setScheduleMode] = useState<'manual' | 'scheduled'>('scheduled');
   const [timezone, setTimezone] = useState('(UTC+2)');
   const [saveMessage, setSaveMessage] = useState('');
   const [saving, setSaving] = useState(false);
   const [previewMode, setPreviewMode] = useState(Boolean(showPreview));
+  const [modulePrerequisites, setModulePrerequisites] = useState<Record<string, string[]>>({});
+  const [activeLocale, setActiveLocale] = useState('nb-NO');
+  const [moduleLocalizations, setModuleLocalizations] = useState<Record<string, LocalizationDraft>>({});
 
   const [moduleItems, setModuleItems] = useState<ModuleEntity[]>(DEFAULT_MODULES);
   const [activeModuleId, setActiveModuleId] = useState<string>('');
@@ -209,6 +215,26 @@ function ModuleManager({
     if (!activeModuleId) return visibleModules[0] || moduleItems[0] || null;
     return moduleItems.find((module) => module.id === activeModuleId) || null;
   }, [activeModuleId, moduleItems, visibleModules]);
+
+  const prerequisiteOptions = useMemo(() => {
+    if (!activeModuleId) return [];
+    return moduleItems.filter((module) => module.id !== activeModuleId);
+  }, [activeModuleId, moduleItems]);
+
+  const activePrerequisiteIds = useMemo(() => {
+    if (!activeModule) return [];
+    return modulePrerequisites[activeModule.id] || [];
+  }, [activeModule, modulePrerequisites]);
+
+  const activeLocalizationKey = useMemo(() => {
+    if (!activeModule) return '';
+    return `${activeModule.id}:${activeLocale}`;
+  }, [activeLocale, activeModule]);
+
+  const activeLocalizationDraft = useMemo<LocalizationDraft>(() => {
+    if (!activeModule) return { title: '', description: '' };
+    return moduleLocalizations[activeLocalizationKey] || { title: activeModule.title, description: activeModule.description };
+  }, [activeLocalizationKey, activeModule, moduleLocalizations]);
 
   const totalMinutes = useMemo(() => {
     return Math.round(
@@ -313,6 +339,30 @@ function ModuleManager({
     [updateActiveModule],
   );
 
+  const togglePrerequisiteModule = useCallback(
+    (moduleId: string) => {
+      if (!activeModule) return;
+      setModulePrerequisites((prev) => {
+        const existing = prev[activeModule.id] || [];
+        const next = existing.includes(moduleId) ? existing.filter((id) => id !== moduleId) : [...existing, moduleId];
+        return { ...prev, [activeModule.id]: next };
+      });
+    },
+    [activeModule],
+  );
+
+  const updateLocalizationDraft = useCallback(
+    (field: keyof LocalizationDraft, value: string) => {
+      if (!activeModule) return;
+      const key = `${activeModule.id}:${activeLocale}`;
+      setModuleLocalizations((prev) => {
+        const current = prev[key] || { title: activeModule.title, description: activeModule.description };
+        return { ...prev, [key]: { ...current, [field]: value } };
+      });
+    },
+    [activeLocale, activeModule],
+  );
+
   const saveModules = useCallback(
     async (publish: boolean) => {
       setSaving(true);
@@ -384,7 +434,7 @@ function ModuleManager({
               textTransform: 'none',
               color: '#f4ede1',
               borderRadius: '8px',
-              border: '1px solid rgba(245,166,35,0.4)',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.4)',
             }}
           >
             {tt('Tilbake til moduladministrator', 'Back to Module Manager')}
@@ -418,11 +468,11 @@ function ModuleManager({
       >
         <Box
           sx={{
-            borderRight: '1px solid rgba(245,166,35,0.15)',
+            borderRight: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
             background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
           }}
         >
-          <Box sx={{ p: 2, borderBottom: '1px solid rgba(245,166,35,0.15)' }}>
+          <Box sx={{ p: 2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
             <AcademyBrandMark />
           </Box>
 
@@ -435,7 +485,7 @@ function ModuleManager({
                 justifyContent: 'flex-start',
                 textTransform: 'none',
                 color: '#ffdca8',
-                border: '1px solid rgba(245,166,35,0.35)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                 borderRadius: '8px',
                 mb: 1.2,
               }}
@@ -489,7 +539,7 @@ function ModuleManager({
                       background: active
                         ? 'linear-gradient(90deg, rgba(245,166,35,0.32) 0%, rgba(245,166,35,0.08) 100%)'
                         : 'transparent',
-                      border: active ? '1px solid rgba(245,166,35,0.42)' : '1px solid transparent',
+                      border: active ? 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.42)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     }}
                   >
                     {navLabel(label)}
@@ -499,7 +549,7 @@ function ModuleManager({
             </Stack>
           </Box>
 
-          <Box sx={{ mt: 'auto', p: 1.5, borderTop: '1px solid rgba(245,166,35,0.15)' }}>
+          <Box sx={{ mt: 'auto', p: 1.5, borderTop: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
             <Button
               fullWidth
               startIcon={<Add />}
@@ -508,7 +558,7 @@ function ModuleManager({
                 justifyContent: 'flex-start',
                 textTransform: 'none',
                 color: '#f4ede1',
-                border: '1px solid rgba(255,255,255,0.18)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                 borderRadius: '8px',
               }}
             >
@@ -522,7 +572,7 @@ function ModuleManager({
             sx={{
               px: { xs: 2, md: 3 },
               py: 1.4,
-              borderBottom: '1px solid rgba(245,166,35,0.15)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
               background: 'rgba(7,10,16,0.72)',
               backdropFilter: 'blur(6px)',
             }}
@@ -545,7 +595,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -558,7 +608,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -571,7 +621,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -584,7 +634,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -597,7 +647,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -610,7 +660,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -623,7 +673,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.22)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                     px: 2,
                   }}
                 >
@@ -637,7 +687,7 @@ function ModuleManager({
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.22)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                     px: 2,
                   }}
                 >
@@ -673,7 +723,7 @@ function ModuleManager({
                   px: 1.1,
                   py: 0.8,
                   borderRadius: '8px',
-                  border: '1px solid rgba(245,166,35,0.3)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.3)',
                   background: 'rgba(245,166,35,0.08)',
                   color: '#ffdca8',
                   fontFamily: 'Rajdhani, sans-serif',
@@ -750,7 +800,7 @@ function ModuleManager({
                   <Box
                     key={module.id}
                     sx={{
-                      border: `1px solid ${selected ? 'rgba(245,166,35,0.5)' : 'rgba(255,255,255,0.14)'}`,
+                      border: `var(--academy-hairline-width, 1px) solid ${selected ? 'rgba(245,166,35,0.5)' : 'rgba(255,255,255,0.14)'}`,
                       borderRadius: '10px',
                       overflow: 'hidden',
                       background: 'rgba(8,12,18,0.78)',
@@ -780,7 +830,7 @@ function ModuleManager({
                             height: 20,
                             bgcolor: alpha('#f5a623', 0.25),
                             color: '#ffdca8',
-                            border: '1px solid rgba(245,166,35,0.3)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.3)',
                             fontFamily: 'Rajdhani, sans-serif',
                             fontWeight: 700,
                           }}
@@ -815,7 +865,7 @@ function ModuleManager({
                     </Button>
 
                     {selected && (
-                      <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <Box sx={{ borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                         {module.lessons.map((lesson, lessonIndex) => (
                           <Stack
                             key={lesson.id}
@@ -827,8 +877,8 @@ function ModuleManager({
                               py: 1,
                               borderBottom:
                                 lessonIndex === module.lessons.length - 1
-                                  ? '1px solid rgba(255,255,255,0.06)'
-                                  : '1px solid rgba(255,255,255,0.08)',
+                                  ? 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.06)'
+                                  : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                             }}
                           >
                             <DragIndicator sx={{ fontSize: 18, color: 'rgba(244,237,225,0.4)' }} />
@@ -839,7 +889,7 @@ function ModuleManager({
                                 minWidth: 200,
                                 height: 76,
                                 borderRadius: '7px',
-                                border: '1px solid rgba(255,255,255,0.12)',
+                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                                 background: lesson.thumbnail
                                   ? `url(${lesson.thumbnail}) center / cover no-repeat`
                                   : placeholderBackdrops[(moduleIndex + lessonIndex) % placeholderBackdrops.length],
@@ -871,7 +921,7 @@ function ModuleManager({
                                     height: 20,
                                     bgcolor: 'rgba(255,255,255,0.08)',
                                     color: '#f4ede1',
-                                    border: '1px solid rgba(255,255,255,0.15)',
+                                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
                                     fontFamily: 'Rajdhani, sans-serif',
                                   }}
                                 />
@@ -882,7 +932,7 @@ function ModuleManager({
                                     height: 20,
                                     bgcolor: alpha('#f5a623', 0.2),
                                     color: '#ffdca8',
-                                    border: '1px solid rgba(245,166,35,0.28)',
+                                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.28)',
                                     fontFamily: 'Rajdhani, sans-serif',
                                   }}
                                 />
@@ -901,7 +951,7 @@ function ModuleManager({
                       </Box>
                     )}
 
-                    <Box sx={{ px: 1.3, py: 0.85, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Box sx={{ px: 1.3, py: 0.85, borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                       <Stack direction="row" spacing={1.4}>
                         <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.72 }}>
                           {tt('Minutter', 'Minutes')} {moduleMinutes}
@@ -924,7 +974,7 @@ function ModuleManager({
                   textTransform: 'none',
                   color: '#f4ede1',
                   borderRadius: '9px',
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                   px: 2.4,
                 }}
               >
@@ -936,7 +986,7 @@ function ModuleManager({
 
         <Box
           sx={{
-            borderLeft: '1px solid rgba(245,166,35,0.15)',
+            borderLeft: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
             background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
             p: { xs: 2, lg: 1.5 },
           }}
@@ -976,165 +1026,327 @@ function ModuleManager({
 
           <Box
             sx={{
-              border: '1px solid rgba(255,255,255,0.14)',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
               borderRadius: '10px',
               p: 1.2,
               background: 'rgba(8,12,18,0.85)',
             }}
           >
-            <TextField
-              label={tt('Modultittel', 'Module Title')}
-              value={activeModule?.title || ''}
-              onChange={(event) => {
-                const value = event.target.value;
-                updateActiveModule((module) => ({ ...module, title: value }));
-              }}
-              fullWidth
-              size="small"
-              sx={{
-                mb: 1.2,
-                '& .MuiOutlinedInput-root': {
-                  color: '#f4ede1',
-                  borderRadius: '8px',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
-              }}
-            />
+            {rightTab === 'module' && (
+              <Box>
+                <TextField
+                  label={tt('Modultittel', 'Module Title')}
+                  value={activeModule?.title || ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateActiveModule((module) => ({ ...module, title: value }));
+                  }}
+                  fullWidth
+                  size="small"
+                  sx={{
+                    mb: 1.2,
+                    '& .MuiOutlinedInput-root': {
+                      color: '#f4ede1',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
+                  }}
+                />
 
-            <TextField
-              label={tt('Beskrivelse', 'Description')}
-              value={activeModule?.description || ''}
-              onChange={(event) => {
-                const value = event.target.value;
-                updateActiveModule((module) => ({ ...module, description: value }));
-              }}
-              fullWidth
-              multiline
-              minRows={3}
-              size="small"
-              sx={{
-                mb: 1.2,
-                '& .MuiOutlinedInput-root': {
-                  color: '#f4ede1',
-                  borderRadius: '8px',
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                },
-                '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
-              }}
-            />
+                <TextField
+                  label={tt('Beskrivelse', 'Description')}
+                  value={activeModule?.description || ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    updateActiveModule((module) => ({ ...module, description: value }));
+                  }}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  size="small"
+                  sx={{
+                    mb: 1.2,
+                    '& .MuiOutlinedInput-root': {
+                      color: '#f4ede1',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
+                  }}
+                />
 
-            <Button
-              startIcon={<Add />}
-              onClick={addLesson}
-              sx={{
-                textTransform: 'none',
-                color: '#1f1304',
-                borderRadius: '8px',
-                px: 2,
-                mb: 1.3,
-                background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
-              }}
-            >
-              {tt('Legg til leksjon', 'Add Lesson')}
-            </Button>
+                <Button
+                  startIcon={<Add />}
+                  onClick={addLesson}
+                  sx={{
+                    textTransform: 'none',
+                    color: '#1f1304',
+                    borderRadius: '8px',
+                    px: 2,
+                    background: 'linear-gradient(180deg, #ffd36d 0%, #f5a623 100%)',
+                  }}
+                >
+                  {tt('Legg til leksjon', 'Add Lesson')}
+                </Button>
+              </Box>
+            )}
 
-            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mb: 1.2 }} />
+            {rightTab === 'schedule' && (
+              <Box>
+                <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.8rem', mb: 0.8 }}>
+                  {tt('Publiseringsdato', 'Release Date')}
+                </Typography>
 
-            <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.8rem', mb: 0.8 }}>
-              {tt('Publiseringsdato', 'Release Date')}
-            </Typography>
+                <Stack spacing={1.1} sx={{ mb: 1.2 }}>
+                  <Button
+                    onClick={() => {
+                      setScheduleMode('manual');
+                      updateActiveModule((module) => ({ ...module, releaseMode: 'manual' }));
+                    }}
+                    sx={{
+                      justifyContent: 'flex-start',
+                      textTransform: 'none',
+                      color: scheduleMode === 'manual' ? '#ffe3b8' : 'rgba(244,237,225,0.72)',
+                      border: `var(--academy-hairline-width, 1px) solid ${scheduleMode === 'manual' ? 'rgba(245,166,35,0.42)' : 'rgba(255,255,255,0.2)'}`,
+                      borderRadius: '8px',
+                    }}
+                  >
+                    {scheduleMode === 'manual' ? '●' : '○'} {tt('Aktiver publisering manuelt', 'Manually Enable Release')}
+                  </Button>
 
-            <Stack spacing={1.1} sx={{ mb: 1.2 }}>
-              <Button
-                onClick={() => {
-                  setScheduleMode('manual');
-                  updateActiveModule((module) => ({ ...module, releaseMode: 'manual' }));
-                }}
-                sx={{
-                  justifyContent: 'flex-start',
-                  textTransform: 'none',
-                  color: scheduleMode === 'manual' ? '#ffe3b8' : 'rgba(244,237,225,0.72)',
-                  border: `1px solid ${scheduleMode === 'manual' ? 'rgba(245,166,35,0.42)' : 'rgba(255,255,255,0.2)'}`,
-                  borderRadius: '8px',
-                }}
-              >
-                {scheduleMode === 'manual' ? '●' : '○'} {tt('Aktiver publisering manuelt', 'Manually Enable Release')}
-              </Button>
+                  <Button
+                    onClick={() => {
+                      setScheduleMode('scheduled');
+                      updateActiveModule((module) => ({ ...module, releaseMode: 'scheduled' }));
+                    }}
+                    sx={{
+                      justifyContent: 'flex-start',
+                      textTransform: 'none',
+                      color: scheduleMode === 'scheduled' ? '#ffe3b8' : 'rgba(244,237,225,0.72)',
+                      border: `var(--academy-hairline-width, 1px) solid ${scheduleMode === 'scheduled' ? 'rgba(245,166,35,0.42)' : 'rgba(255,255,255,0.2)'}`,
+                      borderRadius: '8px',
+                    }}
+                  >
+                    {scheduleMode === 'scheduled' ? '●' : '○'} {tt('Planlegg publisering', 'Schedule Release')}
+                  </Button>
+                </Stack>
 
-              <Button
-                onClick={() => {
-                  setScheduleMode('scheduled');
-                  updateActiveModule((module) => ({ ...module, releaseMode: 'scheduled' }));
-                }}
-                sx={{
-                  justifyContent: 'flex-start',
-                  textTransform: 'none',
-                  color: scheduleMode === 'scheduled' ? '#ffe3b8' : 'rgba(244,237,225,0.72)',
-                  border: `1px solid ${scheduleMode === 'scheduled' ? 'rgba(245,166,35,0.42)' : 'rgba(255,255,255,0.2)'}`,
-                  borderRadius: '8px',
-                }}
-              >
-                {scheduleMode === 'scheduled' ? '●' : '○'} {tt('Planlegg publisering', 'Schedule Release')}
-              </Button>
-            </Stack>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    type="datetime-local"
+                    value={activeModule?.releaseDate || new Date().toISOString().slice(0, 16)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      updateActiveModule((module) => ({ ...module, releaseDate: value }));
+                    }}
+                    size="small"
+                    sx={{
+                      flex: 1,
+                      '& .MuiOutlinedInput-root': {
+                        color: '#f4ede1',
+                        borderRadius: '8px',
+                        '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                      },
+                    }}
+                  />
+                  <Select
+                    value={timezone}
+                    onChange={(event) => setTimezone(String(event.target.value))}
+                    size="small"
+                    sx={{
+                      minWidth: 110,
+                      color: '#f4ede1',
+                      borderRadius: '8px',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'rgba(255,255,255,0.2)',
+                      },
+                    }}
+                  >
+                    <MenuItem value="(UTC+2)">(UTC+2)</MenuItem>
+                    <MenuItem value="(UTC+1)">(UTC+1)</MenuItem>
+                    <MenuItem value="(UTC)">(UTC)</MenuItem>
+                  </Select>
+                </Stack>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <TextField
-                type="datetime-local"
-                value={activeModule?.releaseDate || new Date().toISOString().slice(0, 16)}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  updateActiveModule((module) => ({ ...module, releaseDate: value }));
-                }}
-                size="small"
-                sx={{
-                  flex: 1,
-                  '& .MuiOutlinedInput-root': {
+                <Box
+                  sx={{
+                    mt: 1.2,
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
+                    borderRadius: '8px',
+                    p: 1,
+                    background: placeholderBackdrops[2],
+                  }}
+                >
+                  <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.82 }}>
+                    {tt('Modulen blir publisert', 'The module will be released on')}
+                  </Typography>
+                  <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>
+                    {activeModule?.releaseDate
+                      ? new Date(activeModule.releaseDate).toLocaleString()
+                      : tt('Ikke planlagt', 'Not scheduled')}{' '}
+                    {timezone}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
+
+            {rightTab === 'prerequisites' && (
+              <Box>
+                <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.8rem', mb: 0.6 }}>
+                  {tt('Forutsetninger', 'Prerequisites')}
+                </Typography>
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.74, mb: 1.2 }}>
+                  {tt(
+                    'Velg hvilke moduler som må fullføres før denne modulen blir tilgjengelig.',
+                    'Select which modules must be completed before this module becomes available.',
+                  )}
+                </Typography>
+
+                {prerequisiteOptions.length === 0 ? (
+                  <Box
+                    sx={{
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
+                      borderRadius: '8px',
+                      p: 1.1,
+                      bgcolor: 'rgba(255,255,255,0.04)',
+                    }}
+                  >
+                    <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.78 }}>
+                      {tt('Ingen andre moduler tilgjengelig ennå.', 'No other modules available yet.')}
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Stack spacing={0.9}>
+                    {prerequisiteOptions.map((module) => {
+                      const selected = activePrerequisiteIds.includes(module.id);
+                      return (
+                        <Button
+                          key={module.id}
+                          onClick={() => togglePrerequisiteModule(module.id)}
+                          sx={{
+                            justifyContent: 'space-between',
+                            textTransform: 'none',
+                            color: selected ? '#ffe3b8' : 'rgba(244,237,225,0.82)',
+                            border: `var(--academy-hairline-width, 1px) solid ${selected ? 'rgba(245,166,35,0.42)' : 'rgba(255,255,255,0.2)'}`,
+                            borderRadius: '8px',
+                            px: 1.2,
+                            py: 0.75,
+                          }}
+                        >
+                          <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 600, textAlign: 'left' }}>
+                            {module.title}
+                          </Typography>
+                          <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.82 }}>
+                            {selected ? tt('Aktiv', 'Active') : tt('Inaktiv', 'Inactive')}
+                          </Typography>
+                        </Button>
+                      );
+                    })}
+                  </Stack>
+                )}
+
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.74, mt: 1.2 }}>
+                  {tt('Valgte forutsetninger', 'Selected prerequisites')}: {activePrerequisiteIds.length}
+                </Typography>
+              </Box>
+            )}
+
+            {rightTab === 'localization' && (
+              <Box>
+                <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.8rem', mb: 0.8 }}>
+                  {tt('Lokalisering', 'Localization')}
+                </Typography>
+                <Select
+                  value={activeLocale}
+                  onChange={(event) => setActiveLocale(String(event.target.value))}
+                  size="small"
+                  sx={{
+                    mb: 1.2,
+                    minWidth: 150,
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                  },
-                }}
-              />
-              <Select
-                value={timezone}
-                onChange={(event) => setTimezone(String(event.target.value))}
-                size="small"
-                sx={{
-                  minWidth: 110,
-                  color: '#f4ede1',
-                  borderRadius: '8px',
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: 'rgba(255,255,255,0.2)',
-                  },
-                }}
-              >
-                <MenuItem value="(UTC+2)">(UTC+2)</MenuItem>
-                <MenuItem value="(UTC+1)">(UTC+1)</MenuItem>
-                <MenuItem value="(UTC)">(UTC)</MenuItem>
-              </Select>
-            </Stack>
+                    '& .MuiOutlinedInput-notchedOutline': {
+                      borderColor: 'rgba(255,255,255,0.2)',
+                    },
+                  }}
+                >
+                  <MenuItem value="nb-NO">Norsk (nb-NO)</MenuItem>
+                  <MenuItem value="en-US">English (en-US)</MenuItem>
+                  <MenuItem value="de-DE">Deutsch (de-DE)</MenuItem>
+                </Select>
 
-            <Box
-              sx={{
-                mt: 1.2,
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: '8px',
-                p: 1,
-                background: placeholderBackdrops[2],
-              }}
-            >
-              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.82 }}>
-                {tt('Modulen blir publisert', 'The module will be released on')}
-              </Typography>
-              <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', fontWeight: 700 }}>
-                {activeModule?.releaseDate
-                  ? new Date(activeModule.releaseDate).toLocaleString()
-                  : tt('Ikke planlagt', 'Not scheduled')}{' '}
-                {timezone}
-              </Typography>
-            </Box>
+                <TextField
+                  label={tt('Lokalisert tittel', 'Localized title')}
+                  value={activeLocalizationDraft.title}
+                  onChange={(event) => updateLocalizationDraft('title', event.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={{
+                    mb: 1.2,
+                    '& .MuiOutlinedInput-root': {
+                      color: '#f4ede1',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
+                  }}
+                />
+
+                <TextField
+                  label={tt('Lokalisert beskrivelse', 'Localized description')}
+                  value={activeLocalizationDraft.description}
+                  onChange={(event) => updateLocalizationDraft('description', event.target.value)}
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  size="small"
+                  sx={{
+                    mb: 1.2,
+                    '& .MuiOutlinedInput-root': {
+                      color: '#f4ede1',
+                      borderRadius: '8px',
+                      '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                    },
+                    '& .MuiInputLabel-root': { color: 'rgba(244,237,225,0.68)' },
+                  }}
+                />
+
+                <Button
+                  onClick={() =>
+                    updateActiveModule((module) => ({
+                      ...module,
+                      title: activeLocalizationDraft.title,
+                      description: activeLocalizationDraft.description,
+                    }))
+                  }
+                  disabled={activeLocale !== 'nb-NO'}
+                  sx={{
+                    textTransform: 'none',
+                    color: activeLocale === 'nb-NO' ? '#1f1304' : 'rgba(244,237,225,0.55)',
+                    borderRadius: '8px',
+                    px: 2,
+                    bgcolor: activeLocale === 'nb-NO' ? '#f5a623' : 'rgba(255,255,255,0.1)',
+                  }}
+                >
+                  {tt('Synk til modulinnhold', 'Sync to module content')}
+                </Button>
+
+                <Typography sx={{ fontFamily: 'Rajdhani, sans-serif', opacity: 0.74, mt: 1.1 }}>
+                  {activeLocale === 'nb-NO'
+                    ? tt(
+                        'Norsk lokalisering kan synkroniseres direkte med hovedinnholdet.',
+                        'Norwegian localization can be synced directly with the primary content.',
+                      )
+                    : tt(
+                        'Andre språk lagres som utkast i editoren.',
+                        'Other languages are stored as drafts in this editor.',
+                      )}
+                </Typography>
+              </Box>
+            )}
+
+            <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', my: 1.2 }} />
 
             <Stack direction="row" spacing={1} sx={{ mt: 1.4 }}>
               <Button
@@ -1143,7 +1355,7 @@ function ModuleManager({
                   textTransform: 'none',
                   color: '#f4ede1',
                   borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                   flex: 1,
                 }}
               >

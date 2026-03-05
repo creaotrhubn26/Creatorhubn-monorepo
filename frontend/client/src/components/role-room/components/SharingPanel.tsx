@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Grid,
   Tooltip,
   Chip,
   Avatar,
@@ -167,23 +166,38 @@ export function SharingPanel({
     <Box
       component="section"
       aria-labelledby={titleId}
-      sx={{ p: containerPadding, width: '100%', maxWidth: '100%' }}
+      sx={{ p: containerPadding, width: '100%', maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: 2.5 }}
     >
       {/* Header with Icon and Title */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: 2,
+          px: { xs: 1.5, sm: 2 },
+          py: { xs: 1.25, sm: 1.5 },
+          borderRadius: 2.5,
+          border: '1px solid rgba(148,163,184,0.26)',
+          background: 'linear-gradient(120deg, rgba(124,58,237,0.16) 0%, rgba(56,189,248,0.1) 52%, rgba(15,23,42,0.22) 100%)',
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             sx={{
               width: { xs: 48, sm: 56 },
               height: { xs: 48, sm: 56 },
               borderRadius: 2,
-              bgcolor: 'rgba(0, 212, 255, 0.15)',
+              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+              border: '1px solid rgba(233,213,255,0.34)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: '0 10px 24px rgba(147,51,234,0.32)',
             }}
           >
-            <ShareIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: '#00d4ff' }} />
+            <ShareIcon sx={{ fontSize: { xs: 24, sm: 28 }, color: '#fff' }} />
           </Box>
           <Box>
             <Typography
@@ -193,43 +207,65 @@ export function SharingPanel({
             >
               Deling og tilgangskontroll
             </Typography>
-            <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.87)' }}>
+            <Typography variant="body2" sx={{ color: 'rgba(226,232,240,0.8)' }}>
               Administrer hvem som har tilgang til prosjektet
             </Typography>
           </Box>
         </Box>
-        <Tooltip title="Inviter nye brukere">
-          <Button
-            variant="contained"
-            startIcon={<PersonIcon />}
-            onClick={onOpenSharingDialog}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Chip
+            size="small"
+            label="PRO-VISNING"
             sx={{
-              bgcolor: '#00d4ff',
-              color: '#000',
-              fontWeight: 600,
-              minHeight: TOUCH_TARGET_SIZE,
-              '&:hover': { bgcolor: '#00b8e6' },
-              ...focusVisibleStyles,
+              bgcolor: 'rgba(192,132,252,0.2)',
+              color: '#f5d0fe',
+              border: '1px solid rgba(192,132,252,0.45)',
+              fontWeight: 700,
+              letterSpacing: 0.4,
             }}
-          >
-            {isMobile ? 'Inviter' : 'Inviter brukere'}
-          </Button>
-        </Tooltip>
+          />
+          <Tooltip title="Inviter nye brukere">
+            <Button
+              variant="contained"
+              startIcon={<PersonIcon />}
+              onClick={onOpenSharingDialog}
+              sx={{
+                background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                minHeight: TOUCH_TARGET_SIZE,
+                '&:hover': { background: 'linear-gradient(135deg, #c084fc 0%, #9333ea 100%)' },
+                ...focusVisibleStyles,
+              }}
+            >
+              {isMobile ? 'Inviter' : 'Inviter brukere'}
+            </Button>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Access Level Cards */}
       <Typography variant="h6" sx={{ color: '#fff', mb: 2, fontWeight: 600 }}>
         Tilgangsnivå
       </Typography>
-      <Grid container spacing={{ xs: 1.5, sm: 2 }} sx={{ mb: 4 }}>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2 } }}>
         {accessCards.map((card) => (
-          <Grid key={card.title} size={{ xs: 12, sm: 4 }}>
+          <Box
+            key={card.title}
+            sx={{
+              width: {
+                xs: '100%',
+                sm: 'calc(33.333% - 11px)',
+              },
+              minWidth: 0,
+            }}
+          >
             <Card
               component="button"
               sx={{
                 width: '100%',
-                bgcolor: card.active ? `${card.color}15` : 'rgba(255,255,255,0.03)',
-                border: card.active ? `2px solid ${card.color}` : '1px solid rgba(255,255,255,0.1)',
+                bgcolor: card.active ? `${card.color}15` : 'rgba(15,23,42,0.62)',
+                border: card.active ? `2px solid ${card.color}` : '1px solid rgba(148,163,184,0.24)',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
                 '&:hover': { borderColor: card.color, transform: 'translateY(-2px)' },
@@ -268,12 +304,12 @@ export function SharingPanel({
                 )}
               </CardContent>
             </Card>
-          </Grid>
+          </Box>
         ))}
-      </Grid>
+      </Box>
 
       {/* Share Link */}
-      <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', mb: 4 }}>
+      <Card sx={{ bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.24)' }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
             <LinkIcon sx={{ color: '#00d4ff' }} />
@@ -317,7 +353,7 @@ export function SharingPanel({
       </Card>
 
       {/* Shared Users List */}
-      <Card sx={{ bgcolor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)' }}>
+      <Card sx={{ bgcolor: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.24)' }}>
         <CardContent sx={{ p: { xs: 2, sm: 3 } }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

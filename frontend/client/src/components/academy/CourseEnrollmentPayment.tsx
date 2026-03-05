@@ -231,7 +231,7 @@ const CourseEnrollmentPayment: React.FC<CourseEnrollmentPaymentProps> = ({
             sx={{
               p: 2,
               bgcolor: 'info.light',
-              border: '1px solid',
+              border: 'var(--academy-hairline-width, 1px) solid',
               borderColor: 'info.main',
               mb: 3}}
           >

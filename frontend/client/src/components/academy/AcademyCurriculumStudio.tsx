@@ -60,7 +60,7 @@ interface CurriculumModule {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -407,6 +407,8 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
     { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
     { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -432,13 +434,13 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -480,7 +482,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -502,7 +504,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -516,7 +518,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -534,7 +536,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 sx={{
                   textTransform: 'none',
                   color: '#edf0f7',
-                  border: '1px solid rgba(255,255,255,0.18)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   borderRadius: 1,
                 }}
               >
@@ -547,7 +549,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                 sx={{
                   textTransform: 'none',
                   color: '#edf0f7',
-                  border: '1px solid rgba(255,255,255,0.18)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   borderRadius: 1,
                 }}
               >
@@ -623,10 +625,10 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   </Select>
 
                   <Stack direction="row" spacing={0.5}>
-                    <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                    <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}>
                       <ChevronLeft fontSize="small" />
                     </IconButton>
-                    <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                    <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}>
                       <ChevronRight fontSize="small" />
                     </IconButton>
                   </Stack>
@@ -639,7 +641,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     px: 1.2,
                     py: 0.85,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.34)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)',
                     color: '#f8d56f',
                     bgcolor: 'rgba(248,179,33,0.08)',
                   }}
@@ -702,7 +704,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                         key={module.id}
                         sx={{
                           borderRadius: 1,
-                          border: `1px solid ${selectedModule?.id === module.id ? 'rgba(248,179,33,0.4)' : 'rgba(255,255,255,0.14)'}`,
+                          border: `var(--academy-hairline-width, 1px) solid ${selectedModule?.id === module.id ? 'rgba(248,179,33,0.4)' : 'rgba(255,255,255,0.14)'}`,
                           bgcolor: 'rgba(8,11,18,0.7)',
                           boxShadow: `inset 3px 0 0 ${
                             moduleIndex % 2 === 0 ? 'rgba(248,179,33,0.36)' : 'rgba(111,149,219,0.25)'
@@ -768,7 +770,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                               sx={{
                                 textTransform: 'none',
                                 color: '#edf0f7',
-                                border: '1px solid rgba(255,255,255,0.16)',
+                                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                               }}
                             >
                               + {tt('Varigheter', 'Durations')}
@@ -780,7 +782,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                         </Box>
 
                         {module.expanded && (
-                          <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                          <Box sx={{ borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                             {module.lessons.map((lesson, lessonIndex) => (
                               <Stack
                                 key={lesson.id}
@@ -792,8 +794,8 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                                   py: 1,
                                   borderBottom:
                                     lessonIndex === module.lessons.length - 1
-                                      ? '1px solid rgba(255,255,255,0.08)'
-                                      : '1px solid rgba(255,255,255,0.06)',
+                                      ? 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)'
+                                      : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.06)',
                                 }}
                               >
                                 <DragIndicator sx={{ color: 'rgba(237,240,247,0.45)' }} />
@@ -803,7 +805,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                                     width: 210,
                                     height: 76,
                                     borderRadius: 1,
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                                     background:
                                       placeholderBackgrounds[(module.imageTheme + lessonIndex) % placeholderBackgrounds.length],
                                     flexShrink: 0,
@@ -886,13 +888,13 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                       },
                     }}
                   />
-                  <Button sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  <Button sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}>
                     {tt('Side 1 av 1', 'Page 1 of 1')}
                   </Button>
-                  <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}>
                     <ChevronLeft fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: '1px solid rgba(255,255,255,0.16)' }}>
+                  <IconButton size="small" sx={{ color: 'rgba(237,240,247,0.68)', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)' }}>
                     <ChevronRight fontSize="small" />
                   </IconButton>
                 </Stack>
@@ -932,7 +934,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                         mt: 0.8,
                         height: 72,
                         borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                         background:
                           'linear-gradient(180deg, rgba(248,179,33,0.08), rgba(248,179,33,0.01)), repeating-linear-gradient(90deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 42px)',
                         position: 'relative',
@@ -960,14 +962,14 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
               <Box
                 sx={{
                   height: 210,
-                  borderBottom: '1px solid rgba(255,255,255,0.08)',
+                  borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                   background: placeholderBackgrounds[selectedModule?.imageTheme || 0],
                   borderTopLeftRadius: 6,
                   borderTopRightRadius: 6,
                 }}
               />
 
-              <Box sx={{ p: 1.2, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <Box sx={{ p: 1.2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                 <Typography sx={{ fontSize: 38, fontWeight: 600 }}>
                   {selectedModule?.title || tt('Grunnlag', 'Foundations')}
                 </Typography>
@@ -985,7 +987,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                         px: 0.8,
                         py: 0.9,
                         borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                         bgcolor: idx === 0 ? 'rgba(248,179,33,0.08)' : 'rgba(10,14,22,0.7)',
                       }}
                     >
@@ -1011,7 +1013,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
 
                       <Button
                         size="small"
-                        sx={{ textTransform: 'none', color: '#edf0f7', border: '1px solid rgba(255,255,255,0.14)' }}
+                        sx={{ textTransform: 'none', color: '#edf0f7', border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)' }}
                       >
                         + {tt('Varighet', 'Duration')}
                       </Button>
@@ -1026,7 +1028,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     mt: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.18)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                   }}
                 >
                   {tt('Ny modul', 'New Module')}
@@ -1040,7 +1042,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   sx={{
                     height: 120,
                     borderRadius: 1,
-                    border: '1px solid rgba(255,255,255,0.12)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                     background:
                       'linear-gradient(180deg, rgba(248,179,33,0.08), rgba(248,179,33,0.01)), repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 46px), repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 28px)',
                     position: 'relative',
@@ -1070,7 +1072,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                     flex: 1,
                     textTransform: 'none',
                     color: '#edf0f7',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lagre', 'Save')}
@@ -1100,7 +1102,7 @@ function AcademyCurriculumStudio({ courseId, onSave, onCancel }: AcademyCurricul
                   sx={{
                     textTransform: 'none',
                     color: 'rgba(237,240,247,0.78)',
-                    border: '1px solid rgba(255,255,255,0.16)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.16)',
                   }}
                 >
                   {tt('Lukk', 'Close')}

@@ -2,15 +2,14 @@ import { useState, useMemo, useEffect, useId, useCallback, useRef, lazy, Suspens
 import { useShotListRealTime } from '../hooks/useShotListRealTime';
 import { useToast } from './ToastStack';
 import jsPDF from 'jspdf';
-import type {
-  DragEndEvent} from '@dnd-kit/core';
 import {
   DndContext,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
-  useSensors
+  useSensors,
+  type DragEndEvent,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -65,7 +64,6 @@ import {
   Divider as MuiDivider,
   LinearProgress,
 } from '@mui/material';
-import Grid from '@mui/material/Grid2';
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -106,8 +104,7 @@ import {
 } from '@mui/icons-material';
 import { TeamIcon, DashboardCustomIcon as DashboardIcon, StatsIcon } from './icons/CastingIcons';
 import { TeamDashboard, type TeamDashboardCrewSegment } from './TeamDashboard';
-import type { ShotList, CastingShot, ShotType, CameraAngle, CameraMovement, Role, ProductionDay, MediaType, ShotPriority, CrewMember, ShotComment, ShotStatus, UserRoleType, ProductionContext } from '../models/casting';
-import { PRODUCTION_PRESETS } from '../models/casting';
+import { PRODUCTION_PRESETS, type ShotList, type CastingShot, type ShotType, type CameraAngle, type CameraMovement, type Role, type ProductionDay, type MediaType, type ShotPriority, type CrewMember, type ShotComment, type ShotStatus, type UserRoleType, type ProductionContext } from '../models/casting';
 import { castingService } from '../services/castingService';
 import { RichTextEditor } from './RichTextEditor';
 import { Z_INDEX } from '../config/zIndex';
@@ -2496,28 +2493,45 @@ export function CastingShotListPanel({
               width: { xs: 36, sm: 42 },
               height: { xs: 36, sm: 42 },
               borderRadius: 2,
-              bgcolor: 'rgba(233, 30, 99, 0.15)',
+              background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+              border: '1px solid rgba(233,213,255,0.34)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              boxShadow: '0 8px 20px rgba(147,51,234,0.28)',
             }}
           >
-            <VideoCallIcon sx={{ color: '#e91e63', fontSize: { xs: 20, sm: 24 } }} />
+            <VideoCallIcon sx={{ color: '#fff', fontSize: { xs: 20, sm: 24 } }} />
           </Box>
           <Box>
-            <Typography
-              variant="h6"
-              component="h2"
-              id="shotlist-panel-title"
-              sx={{
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: { xs: '1.1rem', sm: '1.35rem' },
-                lineHeight: 1.2,
-              }}
-            >
-              Shot-list
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Typography
+                variant="h6"
+                component="h2"
+                id="shotlist-panel-title"
+                sx={{
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: { xs: '1.1rem', sm: '1.35rem' },
+                  lineHeight: 1.2,
+                }}
+              >
+                Shot-list
+              </Typography>
+              <Chip
+                size="small"
+                label="PRO-VISNING"
+                sx={{
+                  height: 20,
+                  bgcolor: 'rgba(192,132,252,0.2)',
+                  color: '#f5d0fe',
+                  border: '1px solid rgba(192,132,252,0.45)',
+                  fontSize: '0.62rem',
+                  fontWeight: 700,
+                  letterSpacing: 0.35,
+                }}
+              />
+            </Box>
             <Typography
               variant="caption"
               sx={{ color: 'rgba(255,255,255,0.87)', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
@@ -2727,18 +2741,23 @@ export function CastingShotListPanel({
       <Collapse in={showStats}>
         <Box
           sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(auto-fit, minmax(120px, 1fr))' },
+            display: 'flex',
+            flexWrap: 'wrap',
             gap: { xs: 1.5, sm: 2 },
             mb: 2,
             p: { xs: 1.5, sm: 2 },
             bgcolor: 'rgba(255,255,255,0.03)',
             borderRadius: 2,
+            border: '1px solid rgba(148,163,184,0.2)',
+            '& .shot-stat-item': {
+              flex: { xs: '1 1 calc(50% - 8px)', sm: '1 1 120px' },
+              minWidth: 0,
+            },
           }}
           role="region"
           aria-label="Statistikk over shot lists"
         >
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <VideoCallIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#e91e63' }} />
             </Box>
@@ -2747,7 +2766,7 @@ export function CastingShotListPanel({
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Shot Lists</Typography>
           </Box>
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <VideocamIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#2196f3' }} />
             </Box>
@@ -2756,7 +2775,7 @@ export function CastingShotListPanel({
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Totalt shots</Typography>
           </Box>
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <StarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#ffc107' }} />
             </Box>
@@ -2765,7 +2784,7 @@ export function CastingShotListPanel({
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Favoritter</Typography>
           </Box>
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
               <CalendarIcon sx={{ fontSize: { xs: 16, sm: 18, md: 17, lg: 19, xl: 22 }, color: '#9c27b0' }} />
             </Box>
@@ -2775,19 +2794,19 @@ export function CastingShotListPanel({
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Produksjonsdager</Typography>
           </Box>
           {/* Status breakdown */}
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Typography variant="h4" sx={{ color: '#78909c', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.not_started}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Venter</Typography>
           </Box>
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Typography variant="h4" sx={{ color: '#9333ea', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.in_progress}
             </Typography>
             <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)' }}>Pågår</Typography>
           </Box>
-          <Box sx={{ textAlign: 'center' }}>
+          <Box className="shot-stat-item" sx={{ textAlign: 'center' }}>
             <Typography variant="h4" sx={{ color: '#4caf50', fontWeight: 700, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
               {stats.byStatus.completed}
             </Typography>
@@ -2795,7 +2814,7 @@ export function CastingShotListPanel({
           </Box>
           {/* Overall completion progress bar */}
           {stats.totalShots > 0 && (
-            <Box sx={{ gridColumn: '1 / -1', mt: 0.5 }}>
+            <Box sx={{ width: '100%', mt: 0.5 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>Fremdrift totalt</Typography>
                 <Typography variant="caption" sx={{ color: '#4caf50', fontWeight: 600 }}>{stats.completionPercent}%</Typography>
@@ -2813,7 +2832,7 @@ export function CastingShotListPanel({
             </Box>
           )}
           {!isMobile && Object.entries(stats.shotTypeCount).slice(0, 3).map(([type, count]) => (
-            <Box key={type} sx={{ textAlign: 'center' }}>
+            <Box key={type} className="shot-stat-item" sx={{ textAlign: 'center' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mb: 0.5 }}>
                 <VideocamIcon sx={{ fontSize: { xs: 14, sm: 16 }, color: getShotTypeColor(type as ShotType), opacity: 0.8 }} />
               </Box>
@@ -3251,10 +3270,20 @@ export function CastingShotListPanel({
           </Suspense>
         </Box>
       ) : (
-        /* Grid View - Responsive */
-        <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
+        /* Card View - Responsive (flex + gap) */
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 1.5, sm: 2, md: 3 } }}>
           {filteredAndSortedShotLists.map((shotList) => (
-            <Grid key={shotList.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+            <Box
+              key={shotList.id}
+              sx={{
+                width: {
+                  xs: '100%',
+                  sm: 'calc(50% - 8px)',
+                  lg: 'calc(33.333% - 16px)',
+                },
+                minWidth: 0,
+              }}
+            >
               <Card
                 component="article"
                 sx={{
@@ -4288,9 +4317,9 @@ export function CastingShotListPanel({
                   )}
                 </CardContent>
               </Card>
-            </Grid>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Undo Delete Snackbar */}
@@ -4618,8 +4647,8 @@ export function CastingShotListPanel({
                   />
                 ))}
               </Box>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 6 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Shot type</InputLabel>
                     <Select
@@ -4640,8 +4669,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Media</InputLabel>
                     <Select
@@ -4660,8 +4689,8 @@ export function CastingShotListPanel({
                       <MenuItem value="hybrid">Hybrid</MenuItem>
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kameravinkel</InputLabel>
                     <Select
@@ -4680,8 +4709,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Kamerabevegelse</InputLabel>
                     <Select
@@ -4700,8 +4729,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Prioritet</InputLabel>
                     <Select
@@ -4720,8 +4749,8 @@ export function CastingShotListPanel({
                       <MenuItem value="nice_to_have">Bonus</MenuItem>
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 6 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                   <TextField
                     label="Estimert tid (min)"
                     type="number"
@@ -4738,8 +4767,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
+                </Box>
+                <Box sx={{ width: '100%' }}>
                   <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.87)', mb: 1, display: 'block' }}>
                     Fargekode
                   </Typography>
@@ -4776,8 +4805,8 @@ export function CastingShotListPanel({
                       </Tooltip>
                     ))}
                   </Stack>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </Box>
 
             <Box
@@ -4796,8 +4825,8 @@ export function CastingShotListPanel({
                   Knytt shot-et til riktig kontekst og person
                 </Typography>
               </Box>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 4 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Scene</InputLabel>
                     <Select
@@ -4816,8 +4845,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Rolle</InputLabel>
                     <Select
@@ -4836,8 +4865,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <FormControl fullWidth>
                     <InputLabel sx={{ color: 'rgba(255,255,255,0.87)' }}>Ansvarlig</InputLabel>
                     <Select
@@ -4866,8 +4895,8 @@ export function CastingShotListPanel({
                       ))}
                     </Select>
                   </FormControl>
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </Box>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 0.5 }}>
@@ -4901,10 +4930,10 @@ export function CastingShotListPanel({
                     Tilpasset {profession === 'photographer' ? 'foto' : profession === 'videographer' ? 'video' : 'shot'}-profilen din
                   </Typography>
                 </Box>
-                <Grid container spacing={2}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
                   {profession === 'photographer' ? (
                     <>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Brennvidde (mm)"
                           type="number"
@@ -4921,8 +4950,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Blenderåpning (f/)"
                           type="number"
@@ -4939,8 +4968,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Lukkerhastighet (1/s)"
                           type="number"
@@ -4957,8 +4986,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="ISO"
                           type="number"
@@ -4975,11 +5004,11 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
+                      </Box>
                     </>
                   ) : profession === 'videographer' ? (
                     <>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="FPS"
                           type="number"
@@ -4996,8 +5025,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Oppløsning"
                           value={shotFormData.resolution || ''}
@@ -5014,8 +5043,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Codec"
                           value={shotFormData.codec || ''}
@@ -5032,8 +5061,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Lydkanaler"
                           type="number"
@@ -5050,11 +5079,11 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
+                      </Box>
                     </>
                   ) : (
                     <>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Brennvidde (mm)"
                           type="number"
@@ -5071,8 +5100,8 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 6 }}>
+                      </Box>
+                      <Box sx={{ width: { xs: '100%', sm: 'calc(50% - 8px)' } }}>
                         <TextField
                           label="Varighet (sek)"
                           type="number"
@@ -5089,10 +5118,10 @@ export function CastingShotListPanel({
                             '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                           }}
                         />
-                      </Grid>
+                      </Box>
                     </>
                   )}
-                </Grid>
+                </Box>
               </Box>
             </Collapse>
 
@@ -5112,8 +5141,8 @@ export function CastingShotListPanel({
                   Gi teamet rask kontekst
                 </Typography>
               </Box>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ width: '100%' }}>
                   <TextField
                     label="Beskrivelse"
                     value={shotFormData.description || ''}
@@ -5130,8 +5159,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-                <Grid size={{ xs: 12 }}>
+                </Box>
+                <Box sx={{ width: '100%' }}>
                   <TextField
                     label="Notater"
                     value={shotFormData.notes || ''}
@@ -5148,8 +5177,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </Box>
 
             <Box
@@ -5168,8 +5197,8 @@ export function CastingShotListPanel({
                   Presets fra produksjon eller egne valg
                 </Typography>
               </Box>
-              <Grid container spacing={2}>
-                <Grid size={{ xs: 12, sm: 4 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
                     label="Objektiv-anbefaling"
                     value={shotFormData.lensRecommendation || ''}
@@ -5184,8 +5213,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
                     label="Lys-anbefaling"
                     value={shotFormData.lightingSetup || ''}
@@ -5200,8 +5229,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-                <Grid size={{ xs: 12, sm: 4 }}>
+                </Box>
+                <Box sx={{ width: { xs: '100%', sm: 'calc((100% - 32px) / 3)' } }}>
                   <TextField
                     label="Bakgrunn-anbefaling"
                     value={shotFormData.backgroundRecommendation || ''}
@@ -5216,8 +5245,8 @@ export function CastingShotListPanel({
                       '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.87)' },
                     }}
                   />
-                </Grid>
-              </Grid>
+                </Box>
+              </Box>
             </Box>
 
             <Box
@@ -5850,9 +5879,18 @@ export function CastingShotListPanel({
                 )}
               </Box>
               {currentStoryboard ? (
-                <Grid container spacing={{ xs: 2, md: 2.5 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: { xs: 2, md: 2.5 } }}>
                   {currentStoryboard.frames.map((frame) => (
-                    <Grid key={frame.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                    <Box
+                      key={frame.id}
+                      sx={{
+                        width: {
+                          xs: '100%',
+                          sm: 'calc(50% - 8px)',
+                          md: 'calc((100% - 40px) / 3)',
+                        },
+                      }}
+                    >
                       <Card
                         sx={{
                           bgcolor: 'rgba(255,255,255,0.04)',
@@ -5886,9 +5924,9 @@ export function CastingShotListPanel({
                           </Typography>
                         </CardContent>
                       </Card>
-                    </Grid>
+                    </Box>
                   ))}
-                </Grid>
+                </Box>
               ) : (
                 <Box
                   sx={{
@@ -6108,12 +6146,21 @@ export function CastingShotListPanel({
           <Typography sx={{ color: 'rgba(255,255,255,0.87)', mb: 3 }}>
             Administrer storyboards for dine scener. Du kan generere AI-storyboards for hver scene eller individuelle shots.
           </Typography>
-          <Grid container spacing={2}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
             {shotLists.map((sl) => {
               const relatedStoryboard = findRelatedStoryboard(sl);
               const storyboardPackImage = getStoryboardPackPreviewImage(sl, relatedStoryboard);
               return (
-                <Grid key={sl.id} size={{ xs: 12, sm: 6, md: 4 }}>
+                <Box
+                  key={sl.id}
+                  sx={{
+                    width: {
+                      xs: '100%',
+                      sm: 'calc(50% - 8px)',
+                      md: 'calc((100% - 32px) / 3)',
+                    },
+                  }}
+                >
                   <Card
                     sx={{
                       bgcolor: 'rgba(255,255,255,0.05)',
@@ -6251,10 +6298,10 @@ export function CastingShotListPanel({
                       </Stack>
                     </CardContent>
                   </Card>
-                </Grid>
+                </Box>
               );
             })}
-          </Grid>
+          </Box>
         </DialogContent>
       </Dialog>
 
@@ -6602,16 +6649,18 @@ export function CastingShotListPanel({
                 ))}
               </Stack>
               
-              {/* Results Grid */}
+              {/* Results */}
               {addShotReferenceResults.length > 0 && (
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-                  gap: 1.5,
-                  maxHeight: 280,
-                  overflow: 'auto',
-                  p: 1,
-                }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 1.5,
+                    maxHeight: 280,
+                    overflow: 'auto',
+                    p: 1,
+                  }}
+                >
                   {addShotReferenceResults.map((result) => (
                     <Box
                       key={result.id}
@@ -6619,6 +6668,7 @@ export function CastingShotListPanel({
                       sx={{
                         position: 'relative',
                         aspectRatio: '16/9',
+                        width: { xs: 'calc(50% - 6px)', sm: 'calc(33.333% - 8px)', md: 'calc(25% - 9px)' },
                         borderRadius: '8px',
                         overflow: 'hidden',
                         cursor: 'pointer',

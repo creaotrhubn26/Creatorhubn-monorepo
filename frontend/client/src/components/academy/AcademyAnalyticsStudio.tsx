@@ -63,7 +63,7 @@ interface SourceRow {
 
 const panelSx = {
   borderRadius: 1.4,
-  border: '1px solid rgba(255,255,255,0.08)',
+  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
   background: 'linear-gradient(145deg, rgba(20,24,36,0.88), rgba(11,14,22,0.96))',
 };
 
@@ -436,7 +436,13 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
     { id: 'overview', label: navLabel('Overview'), route: '/academy-dashboard' },
     { id: 'curriculum', label: navLabel('Curriculum'), route: '/academy/curriculum' },
     { id: 'lessons', label: navLabel('Lessons'), route: '/academy/lesson-editor' },
+    { id: 'media', label: navLabel('Media'), route: '/academy/media' },
+    { id: 'assignments', label: navLabel('Assignments'), route: '/academy/assignments' },
+    { id: 'enrollment', label: navLabel('Enrollment'), route: '/academy/enrollment' },
+    { id: 'cohort', label: navLabel('Cohort Settings'), route: '/academy/cohort-settings' },
     { id: 'analytics', label: navLabel('Analytics'), route: '/academy/analytics' },
+    { id: 'cta', label: navLabel('CTA Overlay'), route: '/academy/cta-overlay' },
+    { id: 'lower-thirds', label: navLabel('Animated Lower Thirds'), route: '/academy/lower-thirds' },
     { id: 'monetization', label: navLabel('Monetization'), route: '/academy/monetization' },
     { id: 'settings', label: navLabel('Settings'), route: '/academy/course-creator' },
   ];
@@ -486,13 +492,13 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
         }}
       />
 
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1 }}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, minHeight: '100vh', position: 'relative', zIndex: 1, width: 'min(100%, var(--academy-shell-max-width, 1920px))', mx: 'auto' }}>
         <Box
           component="aside"
           sx={{
             width: { xs: '100%', lg: 252 },
-            borderRight: { xs: 'none', lg: '1px solid rgba(255,255,255,0.08)' },
-            borderBottom: { xs: '1px solid rgba(255,255,255,0.08)', lg: 'none' },
+            borderRight: { xs: 'none', lg: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' },
+            borderBottom: { xs: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)', lg: 'none' },
             background: 'linear-gradient(180deg, rgba(10,13,22,0.95), rgba(8,10,16,0.96))',
             display: 'flex',
             flexDirection: 'column',
@@ -534,7 +540,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                     textTransform: 'none',
                     px: 2,
                     py: 1.15,
-                    border: active ? '1px solid rgba(248,179,33,0.35)' : '1px solid transparent',
+                    border: active ? 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.35)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     background: active
                       ? 'linear-gradient(90deg, rgba(248,179,33,0.22), rgba(248,179,33,0.04))'
                       : 'transparent',
@@ -556,7 +562,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 justifyContent: 'flex-start',
                 color: '#edf0f7',
                 textTransform: 'none',
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: 1,
               }}
             >
@@ -570,7 +576,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
             sx={{
               height: 74,
               px: 3,
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -678,7 +684,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 gap: 1,
               }}
             >
-              <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
+              <Box sx={{ borderRight: { xl: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <PeopleAlt sx={{ color: '#f8d56f' }} />
                   <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Studentpåmeldinger', 'Student Enrollments')}</Typography>
@@ -687,7 +693,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 15.2% mot siste 30 dager', '▲ 15.2% vs last 30 days')}</Typography>
               </Box>
 
-              <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
+              <Box sx={{ borderRight: { xl: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <PeopleAlt sx={{ color: '#f8d56f' }} />
                   <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Aktive studenter', 'Active Students')}</Typography>
@@ -696,7 +702,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                 <Typography sx={{ color: '#9acd6f', fontSize: 13, mt: 0.3 }}>{tt('▲ 17.9% mot siste 30 dager', '▲ 17.9% vs last 30 days')}</Typography>
               </Box>
 
-              <Box sx={{ borderRight: { xl: '1px solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
+              <Box sx={{ borderRight: { xl: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }, pr: { xl: 1 } }}>
                 <Stack direction="row" spacing={0.7} alignItems="center">
                   <MonetizationOn sx={{ color: '#f8d56f' }} />
                   <Typography sx={{ color: 'rgba(237,240,247,0.78)' }}>{tt('Total inntekt', 'Total Revenue')}</Typography>
@@ -766,7 +772,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
 
                 <Box
                   sx={{
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                     borderRadius: 1,
                     bgcolor: 'rgba(9,12,20,0.7)',
                     p: 0.8,
@@ -796,7 +802,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                         px: 0.7,
                         py: 0.55,
                         borderRadius: 1,
-                        border: '1px solid rgba(255,255,255,0.08)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                         bgcolor: 'rgba(10,14,22,0.62)',
                       }}
                     >
@@ -929,7 +935,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                             px: 0.6,
                             py: 0.6,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             bgcolor: 'rgba(10,14,22,0.7)',
                           }}
                         >
@@ -938,7 +944,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                               width: 42,
                               height: 42,
                               borderRadius: 1,
-                              border: '1px solid rgba(255,255,255,0.1)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                               background: placeholderBackgrounds[(course.imageTheme + index) % placeholderBackgrounds.length],
                               flexShrink: 0,
                             }}
@@ -973,7 +979,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                             px: 0.6,
                             py: 0.6,
                             borderRadius: 1,
-                            border: '1px solid rgba(255,255,255,0.1)',
+                            border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                             bgcolor: 'rgba(10,14,22,0.7)',
                           }}
                         >
@@ -982,7 +988,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                               width: 34,
                               height: 34,
                               background: placeholderBackgrounds[(student.avatarTheme + index) % placeholderBackgrounds.length],
-                              border: '1px solid rgba(255,255,255,0.14)',
+                              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                             }}
                           >
                             {student.name.charAt(0).toUpperCase()}
@@ -1013,14 +1019,14 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                     <Chip
                       label={tt('Seertid', 'Watch Time')}
                       size="small"
-                      sx={{ color: '#edf0f7', bgcolor: 'rgba(248,179,33,0.12)', border: '1px solid rgba(248,179,33,0.34)' }}
+                      sx={{ color: '#edf0f7', bgcolor: 'rgba(248,179,33,0.12)', border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.34)' }}
                     />
                   </Stack>
                 </Stack>
 
                 <Box
                   sx={{
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)',
                     borderRadius: 1,
                     bgcolor: 'rgba(9,12,20,0.7)',
                     p: 0.8,
@@ -1075,7 +1081,7 @@ function AcademyAnalyticsStudio({ courseId }: AcademyAnalyticsStudioProps) {
                     mt: 1.1,
                     p: 0.9,
                     borderRadius: 1,
-                    border: '1px solid rgba(248,179,33,0.26)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(248,179,33,0.26)',
                     background: 'rgba(248,179,33,0.08)',
                   }}
                 >

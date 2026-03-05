@@ -333,7 +333,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
               color: '#f8f1e7',
               textTransform: 'none',
               borderRadius: '8px',
-              border: '1px solid rgba(245,166,35,0.4)',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.4)',
             }}
           >
             {tt('Tilbake til kursredigering', 'Back to Course Creator')}
@@ -367,11 +367,11 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
       >
         <Box
           sx={{
-            borderRight: '1px solid rgba(245,166,35,0.15)',
+            borderRight: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
             background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
           }}
         >
-          <Box sx={{ p: 2, borderBottom: '1px solid rgba(245,166,35,0.15)' }}>
+          <Box sx={{ p: 2, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
             <AcademyBrandMark />
           </Box>
 
@@ -387,7 +387,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 justifyContent: 'flex-start',
                 textTransform: 'none',
                 color: '#ffdca8',
-                border: '1px solid rgba(245,166,35,0.35)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                 borderRadius: '8px',
                 mb: 1.2,
               }}
@@ -445,7 +445,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                       background: active
                         ? 'linear-gradient(90deg, rgba(245,166,35,0.32) 0%, rgba(245,166,35,0.08) 100%)'
                         : 'transparent',
-                      border: active ? '1px solid rgba(245,166,35,0.42)' : '1px solid transparent',
+                      border: active ? 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.42)' : 'var(--academy-hairline-width, 1px) solid transparent',
                     }}
                   >
                     {navLabel(label)}
@@ -455,7 +455,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             </Stack>
           </Box>
 
-          <Box sx={{ mt: 'auto', p: 1.5, borderTop: '1px solid rgba(245,166,35,0.15)' }}>
+          <Box sx={{ mt: 'auto', p: 1.5, borderTop: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)' }}>
             <Button
               fullWidth
               startIcon={<Add />}
@@ -464,7 +464,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 justifyContent: 'flex-start',
                 textTransform: 'none',
                 color: '#f4ede1',
-                border: '1px solid rgba(255,255,255,0.18)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.18)',
                 borderRadius: '8px',
               }}
             >
@@ -478,7 +478,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             sx={{
               px: { xs: 2, md: 3 },
               py: 1.4,
-              borderBottom: '1px solid rgba(245,166,35,0.15)',
+              borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
               background: 'rgba(7,10,16,0.72)',
               backdropFilter: 'blur(6px)',
             }}
@@ -522,7 +522,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             </Stack>
           </Box>
 
-          <Box sx={{ px: { xs: 2, md: 3 }, py: 1.5, borderBottom: '1px solid rgba(245,166,35,0.14)' }}>
+          <Box sx={{ px: { xs: 2, md: 3 }, py: 1.5, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.14)' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ gap: 1, flexWrap: 'wrap' }}>
               <Stack direction="row" spacing={1.4} alignItems="center" sx={{ minWidth: 260 }}>
                 <TextField
@@ -545,7 +545,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   sx={{
                     bgcolor: course.isPublished ? alpha('#f5a623', 0.26) : alpha('#9aa5b6', 0.2),
                     color: '#f4ede1',
-                    border: '1px solid rgba(255,255,255,0.2)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                     fontFamily: 'Rajdhani, sans-serif',
                     fontWeight: 700,
                   }}
@@ -560,7 +560,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -573,7 +573,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -586,7 +586,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -599,7 +599,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -612,7 +612,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -625,7 +625,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -638,7 +638,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -651,7 +651,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -664,7 +664,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -677,7 +677,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(245,166,35,0.35)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.35)',
                     px: 2,
                   }}
                 >
@@ -690,7 +690,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.22)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                     px: 2,
                   }}
                 >
@@ -704,7 +704,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.22)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.22)',
                     px: 2,
                   }}
                 >
@@ -764,7 +764,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   px: 1.1,
                   py: 0.8,
                   borderRadius: '8px',
-                  border: '1px solid rgba(245,166,35,0.3)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.3)',
                   background: 'rgba(245,166,35,0.08)',
                   color: '#ffdca8',
                   fontFamily: 'Rajdhani, sans-serif',
@@ -782,7 +782,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     <Box
                       key={module.id}
                       sx={{
-                        border: '1px solid rgba(255,255,255,0.14)',
+                        border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                         borderRadius: '10px',
                         overflow: 'hidden',
                         background: 'rgba(8,12,18,0.78)',
@@ -847,7 +847,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                       </Stack>
 
                       {!module.collapsed && (
-                        <Box sx={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                        <Box sx={{ borderTop: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)' }}>
                           {module.lessons.map((lesson, lessonIndex) => (
                             <Stack
                               key={lesson.id}
@@ -859,8 +859,8 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                                 py: 1.05,
                                 borderBottom:
                                   lessonIndex === module.lessons.length - 1
-                                    ? '1px solid rgba(255,255,255,0.06)'
-                                    : '1px solid rgba(255,255,255,0.08)',
+                                    ? 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.06)'
+                                    : 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.08)',
                               }}
                             >
                               <DragIndicator sx={{ fontSize: 18, color: 'rgba(244,237,225,0.4)' }} />
@@ -870,7 +870,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                                   minWidth: 180,
                                   height: 78,
                                   borderRadius: '7px',
-                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                                   background: lesson.thumbnail
                                     ? `url(${lesson.thumbnail}) center / cover no-repeat`
                                     : placeholderBackgrounds[(moduleIndex + lessonIndex) % placeholderBackgrounds.length],
@@ -919,7 +919,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                                     sx={{
                                       bgcolor: alpha('#f5a623', 0.2),
                                       color: '#ffdca8',
-                                      border: '1px solid rgba(245,166,35,0.28)',
+                                      border: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.28)',
                                       fontFamily: 'Rajdhani, sans-serif',
                                       fontWeight: 700,
                                     }}
@@ -967,7 +967,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                     textTransform: 'none',
                     color: '#f4ede1',
                     borderRadius: '9px',
-                    border: '1px solid rgba(255,255,255,0.2)',
+                    border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                     px: 2.2,
                   }}
                 >
@@ -979,7 +979,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             {centerTab !== 'curriculum' && (
               <Box
                 sx={{
-                  border: '1px solid rgba(255,255,255,0.14)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                   borderRadius: '10px',
                   p: 2,
                   background: 'rgba(8,12,18,0.8)',
@@ -1006,13 +1006,13 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
             <Box
               sx={{
                 mt: 2,
-                border: '1px solid rgba(255,255,255,0.14)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
                 borderRadius: '10px',
                 overflow: 'hidden',
                 background: 'rgba(8,12,18,0.75)',
               }}
             >
-              <Box sx={{ px: 1.4, py: 1, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+              <Box sx={{ px: 1.4, py: 1, borderBottom: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.1)' }}>
                 <Typography sx={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: '1.85rem' }}>
                   {tt('Ytelsesanalyse', 'Performance Analytics')}
                 </Typography>
@@ -1028,7 +1028,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                   <Box
                     key={card.label}
                     sx={{
-                      border: '1px solid rgba(255,255,255,0.12)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                       borderRadius: '8px',
                       p: 1.2,
                       minHeight: 130,
@@ -1047,7 +1047,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
 
         <Box
           sx={{
-            borderLeft: '1px solid rgba(245,166,35,0.15)',
+            borderLeft: 'var(--academy-hairline-width, 1px) solid rgba(245,166,35,0.15)',
             background: 'linear-gradient(180deg, rgba(7,10,16,0.96) 0%, rgba(6,8,13,0.96) 100%)',
             p: { xs: 2, lg: 1.5 },
           }}
@@ -1083,7 +1083,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
 
           <Box
             sx={{
-              border: '1px solid rgba(255,255,255,0.14)',
+              border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.14)',
               borderRadius: '10px',
               overflow: 'hidden',
               background: 'rgba(8,12,18,0.85)',
@@ -1172,7 +1172,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                       height: 24,
                       bgcolor: 'rgba(255,255,255,0.08)',
                       color: '#f4ede1',
-                      border: '1px solid rgba(255,255,255,0.15)',
+                      border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.15)',
                       fontFamily: 'Rajdhani, sans-serif',
                     }}
                   />
@@ -1184,7 +1184,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
                 sx={{
                   textTransform: 'none',
                   color: '#f4ede1',
-                  border: '1px solid rgba(255,255,255,0.2)',
+                  border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                   borderRadius: '8px',
                   px: 1.2,
                 }}
@@ -1258,7 +1258,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
 
             <Box
               sx={{
-                border: '1px solid rgba(255,255,255,0.12)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.12)',
                 borderRadius: '8px',
                 p: 1.1,
                 background: 'rgba(8,12,18,0.9)',
@@ -1298,7 +1298,7 @@ function CourseCreator({ courseId, onSave, onCancel }: CourseCreatorProps) {
               sx={{
                 textTransform: 'none',
                 color: '#f4ede1',
-                border: '1px solid rgba(255,255,255,0.2)',
+                border: 'var(--academy-hairline-width, 1px) solid rgba(255,255,255,0.2)',
                 borderRadius: '8px',
                 flex: 1,
               }}

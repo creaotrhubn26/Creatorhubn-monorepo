@@ -2490,7 +2490,7 @@ function CTAEditor({ cta, onChange, onPreview, renderPreview }: CTAEditorProps) 
               backgroundColor: '#1a1a1a',
               borderRadius: 2,
               overflow: 'hidden',
-              border: '1px solid #333'}}
+              border: 'var(--academy-hairline-width, 1px) solid #333'}}
           >
             {renderPreview(cta, false)}
           </Box>
