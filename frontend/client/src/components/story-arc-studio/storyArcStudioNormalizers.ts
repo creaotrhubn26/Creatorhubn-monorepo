@@ -17,6 +17,11 @@ export interface AIGeneratedTimelineClipInput {
 
 export interface AIGeneratedStoryArcInput {
   title?: string;
+  profile?: string;
+  editingMode?: string;
+  culturalProfile?: string;
+  culturalModules?: string[];
+  events?: Array<Record<string, unknown>>;
   musicSuggestions?: StoryArc['musicSuggestions'];
   transitionPoints?: StoryArc['transitionEffects'];
 }
@@ -149,6 +154,17 @@ export function normalizeAIGeneratedPayload(payload: unknown): AIGeneratedPayloa
   const storyArc = isRecord(payload.storyArc)
     ? ({
         title: typeof payload.storyArc.title === 'string' ? payload.storyArc.title : undefined,
+        profile: typeof payload.storyArc.profile === 'string' ? payload.storyArc.profile : undefined,
+        editingMode:
+          typeof payload.storyArc.editingMode === 'string' ? payload.storyArc.editingMode : undefined,
+        culturalProfile:
+          typeof payload.storyArc.culturalProfile === 'string' ? payload.storyArc.culturalProfile : undefined,
+        culturalModules: Array.isArray(payload.storyArc.culturalModules)
+          ? payload.storyArc.culturalModules.filter((entry): entry is string => typeof entry === 'string')
+          : undefined,
+        events: Array.isArray(payload.storyArc.events)
+          ? payload.storyArc.events.filter((entry): entry is Record<string, unknown> => isRecord(entry))
+          : undefined,
         musicSuggestions: Array.isArray(payload.storyArc.musicSuggestions)
           ? (payload.storyArc.musicSuggestions as StoryArc['musicSuggestions'])
           : undefined,

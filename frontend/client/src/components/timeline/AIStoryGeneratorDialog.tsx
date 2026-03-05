@@ -42,15 +42,18 @@ import {
   Refresh,
   Block,
 } from '@mui/icons-material';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import {
   editStoryArcV2Script,
   evaluateStoryArcV2Quality,
   generateStoryArcV2Script,
+  listStoryArcV2CulturalProfiles,
   planStoryArcV2Timeline,
   pollStoryArcV2AnalyzeJob,
   startStoryArcV2AnalyzeJob,
+  type StoryArcV2CulturalProfile,
+  type StoryArcV2CulturalProfileDescriptor,
   type StoryArcV2QualityScorecard,
   type StoryArcV2ScriptEditOperation,
   type StoryArcV2StoryScript,
@@ -91,8 +94,75 @@ const buildStoryArcPreview = (script: StoryArcV2StoryScript): Record<string, unk
     .map((node) => ({
       at: Number((node.start + node.duration).toFixed(3)),
       type: 'cross_dissolve',
-    })),
+  })),
 });
+
+const DEFAULT_MIXED_MODULES: StoryArcV2CulturalProfile[] = ['sikh', 'pakistani', 'norwegian'];
+
+const FALLBACK_CULTURAL_PROFILES: StoryArcV2CulturalProfileDescriptor[] = [
+  {
+    profile: 'mixed',
+    label: 'Mixed Wedding',
+    mustIncludeDefaults: ['vows', 'ring exchange', 'speeches', 'family moments'],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow'],
+    minClipLenByEventType: { vow: 4, ring_exchange: 3.6 },
+    pacing: {},
+    eventTaxonomy: [],
+  },
+  {
+    profile: 'sikh',
+    label: 'Sikh',
+    mustIncludeDefaults: ['anand karaj', 'laavan', 'ardaas', 'waheguru'],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow'],
+    minClipLenByEventType: { vow: 4.5 },
+    pacing: {},
+    eventTaxonomy: [],
+  },
+  {
+    profile: 'pakistani',
+    label: 'Pakistani',
+    mustIncludeDefaults: ['nikah', 'qubool hai', 'rukhsati', 'walima'],
+    noCutEventTypes: ['vow'],
+    sacredEventTypes: ['vow'],
+    minClipLenByEventType: { vow: 4.3 },
+    pacing: {},
+    eventTaxonomy: [],
+  },
+  {
+    profile: 'norwegian',
+    label: 'Norwegian',
+    mustIncludeDefaults: ['vows', 'ring exchange', 'taler', 'første dans'],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow', 'ring_exchange'],
+    minClipLenByEventType: { vow: 3.8 },
+    pacing: {},
+    eventTaxonomy: [],
+  },
+  {
+    profile: 'generic_wedding',
+    label: 'Generic Wedding',
+    mustIncludeDefaults: ['vows', 'ring exchange', 'kiss', 'speeches', 'first dance'],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow', 'ring_exchange'],
+    minClipLenByEventType: { vow: 4, ring_exchange: 3.8 },
+    pacing: {},
+    eventTaxonomy: [],
+  },
+];
+
+const resolveCulturalModules = (
+  profile: StoryArcV2CulturalProfile
+): StoryArcV2CulturalProfile[] => {
+  if (profile === 'mixed') {
+    return DEFAULT_MIXED_MODULES;
+  }
+  if (profile === 'generic_wedding') {
+    return [];
+  }
+  return [profile];
+};
 
 export default function AIStoryGeneratorDialog({
   open,
@@ -105,13 +175,28 @@ export default function AIStoryGeneratorDialog({
   const [settings, setSettings] = useState({
     targetDuration: 300, // 5 minutes
     structure: '3-act' as '3-act' | '5-act',
-    analysisSpeed: 'balanced' as 'fast' | 'balanced' | 'detailed'
+    analysisSpeed: 'balanced' as 'fast' | 'balanced' | 'detailed',
+    culturalProfile: 'mixed' as StoryArcV2CulturalProfile,
   });
   const [analysisResult, setAnalysisResult] = useState<StoryArcAnalyzeUiResult | null>(null);
   const [scriptDraft, setScriptDraft] = useState<StoryArcV2StoryScript | null>(null);
+  const [serverStoryArcDraft, setServerStoryArcDraft] = useState<Record<string, unknown> | null>(null);
   const [scriptEditError, setScriptEditError] = useState<string | null>(null);
   const [qualityScorecard, setQualityScorecard] = useState<StoryArcV2QualityScorecard | null>(null);
   const [resumeChecked, setResumeChecked] = useState(false);
+  const culturalProfilesQuery = useQuery({
+    queryKey: ['storyarc-v2-cultural-profiles'],
+    queryFn: listStoryArcV2CulturalProfiles,
+    enabled: open,
+    staleTime: 5 * 60 * 1000,
+  });
+  const culturalProfiles = culturalProfilesQuery.data && culturalProfilesQuery.data.length > 0
+    ? culturalProfilesQuery.data
+    : FALLBACK_CULTURAL_PROFILES;
+  const selectedCulturalProfile =
+    culturalProfiles.find((entry) => entry.profile === settings.culturalProfile) ||
+    culturalProfiles[0] ||
+    FALLBACK_CULTURAL_PROFILES[0];
   
   // Upload video
   const uploadMutation = useMutation({
@@ -127,6 +212,7 @@ export default function AIStoryGeneratorDialog({
     onSuccess: (data) => {
       console.log('✅ Video uploaded: ', data);
       setScriptDraft(null);
+      setServerStoryArcDraft(null);
       setScriptEditError(null);
       setQualityScorecard(null);
       setActiveStep(1);
@@ -153,7 +239,6 @@ export default function AIStoryGeneratorDialog({
       if (!input.videoPath) {
         throw new Error('Missing video path after upload');
       }
-      const languagePolicy = settings.analysisSpeed === 'fast' ? 'fast-no' : 'balanced-no';
       const jobId = await startStoryArcV2AnalyzeJob({
         projectId: null,
         media: [
@@ -164,7 +249,11 @@ export default function AIStoryGeneratorDialog({
           },
         ],
         intentProfileId: 'balanced-story',
-        languagePolicy,
+        projectProfile: 'wedding',
+        editingMode: 'highlight_music_sync',
+        culturalProfile: settings.culturalProfile,
+        culturalModules: resolveCulturalModules(settings.culturalProfile),
+        mustIncludeMoments: selectedCulturalProfile?.mustIncludeDefaults || [],
       });
       try {
         window.localStorage.setItem(ANALYZE_JOB_STORAGE_KEY, jobId);
@@ -213,6 +302,7 @@ export default function AIStoryGeneratorDialog({
     onSuccess: (data) => {
       console.log('✅ Story arc generated:', data.storyArc.beats.length, 'beats');
       setScriptDraft(data.script);
+      setServerStoryArcDraft(data.storyArc as Record<string, unknown>);
       setScriptEditError(null);
       setActiveStep(3);
     }
@@ -260,8 +350,16 @@ export default function AIStoryGeneratorDialog({
       } catch {
         quality = null;
       }
+      const baseStoryArcPreview = buildStoryArcPreview(script);
+      const mergedStoryArc = {
+        ...(serverStoryArcDraft || {}),
+        ...baseStoryArcPreview,
+        events: Array.isArray((serverStoryArcDraft as { events?: unknown[] } | null)?.events)
+          ? ((serverStoryArcDraft as { events?: unknown[] }).events || [])
+          : [],
+      };
       return {
-        storyArc: buildStoryArcPreview(script),
+        storyArc: mergedStoryArc,
         proposal,
         timeline: selectedVariant.timeline,
         clipCount: selectedVariant.timeline.clips.length,
@@ -293,6 +391,7 @@ export default function AIStoryGeneratorDialog({
   const handleStartGeneration = () => {
     if (selectedFile) {
       setScriptDraft(null);
+      setServerStoryArcDraft(null);
       setScriptEditError(null);
       setQualityScorecard(null);
       setAnalysisResult(null);
@@ -426,6 +525,27 @@ export default function AIStoryGeneratorDialog({
               <MenuItem value="fast">Fast (0.5 fps - 2 min)</MenuItem>
               <MenuItem value="balanced">Balanced (1 fps - 5 min) ✅ Recommended</MenuItem>
               <MenuItem value="detailed">Detailed (2 fps - 10 min)</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl fullWidth sx={{ mb: 2 }}>
+            <InputLabel>Cultural Profile</InputLabel>
+            <Select
+              value={settings.culturalProfile}
+              label="Cultural Profile"
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  culturalProfile: e.target.value as StoryArcV2CulturalProfile,
+                })
+              }
+            >
+              {culturalProfiles.map((profile) => (
+                <MenuItem key={profile.profile} value={profile.profile}>
+                  {profile.label}
+                  {profile.profile === 'mixed' ? ' (Recommended)' : ''}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           
@@ -829,7 +949,7 @@ export default function AIStoryGeneratorDialog({
       
       <DialogContent sx={{ p: 3 }}>
         <Stepper activeStep={activeStep} orientation="vertical">
-          {steps.map((step, index) => (
+          {steps.map((step) => (
             <Step key={step.label}>
               <StepLabel>
                 <Typography variant="subtitle1" fontWeight={600}>

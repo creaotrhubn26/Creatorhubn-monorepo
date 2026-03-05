@@ -93,7 +93,7 @@ const audioUpload = multer({
 });
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = Number(process.env.PORT) || 3003;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const tableColumnsCache = new Map<string, Set<string>>();
@@ -22332,6 +22332,24 @@ interface VideoAnalysisTranscriptionResult {
   words: VideoAnalysisWordTimestamp[];
 }
 
+interface VideoAnalysisAudioTrackDescriptor {
+  format: 'wav';
+  sampleRateHz: number;
+  channels: number;
+  source: 'video_audio' | 'demucs_vocals' | 'master_fallback' | 'none';
+  durationSeconds: number | null;
+}
+
+interface VideoAnalysisAudioTracks {
+  hasAudio: boolean;
+  master: VideoAnalysisAudioTrackDescriptor | null;
+  analysis: VideoAnalysisAudioTrackDescriptor | null;
+  demucsRequested: boolean;
+  demucsApplied: boolean;
+  demucsUsedModel: boolean;
+  demucsModel: string | null;
+}
+
 interface VideoAnalysisScene {
   scene_number: number;
   start_time: number;
@@ -22344,6 +22362,9 @@ interface VideoAnalysisJobResultTranscribe {
   detected_text: string[];
   warnings: string[];
   diarization_segments: VideoAnalysisDiarizationSegment[];
+  audio_tracks: VideoAnalysisAudioTracks;
+  transcription_provider: 'whisperx' | 'whisper' | 'fallback';
+  alignment_provider: 'whisperx' | 'none';
 }
 
 interface VideoAnalysisJobResultSceneDetection {
@@ -22359,7 +22380,7 @@ interface VideoAnalysisJobResultSceneDetection {
 
 interface VideoAnalysisJobInput {
   videoPath: string;
-  language: string;
+  language: string | null;
   threshold: number;
   minSceneLenSeconds: number;
   cleanupSourcePath?: string;
@@ -22399,13 +22420,48 @@ const VIDEO_ANALYSIS_TRANSCRIBE_RETRY_DELAY_MS = Math.max(
   Math.round(readNumber(process.env.VIDEO_ANALYSIS_TRANSCRIBE_RETRY_DELAY_MS) ?? 1_400)
 );
 const PYANNOTE_DIARIZATION_URL =
-  readString(process.env.PYANNOTE_DIARIZATION_URL) || 'http://localhost:5001';
+  readString(process.env.PYANNOTE_DIARIZATION_URL) || 'http://localhost:5502';
+const WHISPERX_TRANSCRIPTION_URL =
+  readString(process.env.WHISPERX_TRANSCRIPTION_URL) || 'http://localhost:5003';
 const VIDEO_ANALYSIS_DIARIZATION_TIMEOUT_MS = Math.max(
   30_000,
   Math.round(readNumber(process.env.VIDEO_ANALYSIS_DIARIZATION_TIMEOUT_MS) ?? 180_000)
 );
 const VIDEO_ANALYSIS_DIARIZATION_ENABLED = !['0', 'false', 'off', 'no'].includes(
   (readString(process.env.VIDEO_ANALYSIS_DIARIZATION_ENABLED) || 'true').toLowerCase()
+);
+const VIDEO_ANALYSIS_WHISPERX_TIMEOUT_MS = Math.max(
+  30_000,
+  Math.round(readNumber(process.env.VIDEO_ANALYSIS_WHISPERX_TIMEOUT_MS) ?? 420_000)
+);
+const VIDEO_ANALYSIS_WHISPERX_ENABLED = !['0', 'false', 'off', 'no'].includes(
+  (readString(process.env.VIDEO_ANALYSIS_WHISPERX_ENABLED) || 'true').toLowerCase()
+);
+const VIDEO_ANALYSIS_MASTER_TRACK_SAMPLE_RATE_HZ = Math.max(
+  16_000,
+  Math.round(readNumber(process.env.VIDEO_ANALYSIS_MASTER_TRACK_SAMPLE_RATE_HZ) ?? 48_000)
+);
+const VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ = Math.max(
+  16_000,
+  Math.round(readNumber(process.env.VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ) ?? 16_000)
+);
+const VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS = !['0', 'false', 'off', 'no'].includes(
+  (readString(process.env.VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS) || 'true').toLowerCase()
+);
+const STORY_ARC_V2_STARTUP_WARMUP_ENABLED = !['0', 'false', 'off', 'no'].includes(
+  (readString(process.env.STORY_ARC_V2_STARTUP_WARMUP_ENABLED) || 'true').toLowerCase()
+);
+const STORY_ARC_V2_STARTUP_WARMUP_RETRIES = Math.max(
+  1,
+  Math.min(6, Math.round(readNumber(process.env.STORY_ARC_V2_STARTUP_WARMUP_RETRIES) ?? 3))
+);
+const STORY_ARC_V2_STARTUP_WARMUP_TIMEOUT_MS = Math.max(
+  5_000,
+  Math.round(readNumber(process.env.STORY_ARC_V2_STARTUP_WARMUP_TIMEOUT_MS) ?? 90_000)
+);
+const STORY_ARC_V2_STARTUP_WARMUP_BACKOFF_MS = Math.max(
+  250,
+  Math.round(readNumber(process.env.STORY_ARC_V2_STARTUP_WARMUP_BACKOFF_MS) ?? 2_000)
 );
 let videoAnalysisStateWritePromise: Promise<void> = Promise.resolve();
 const VIDEO_SOURCE_ALLOWED_EXTENSIONS = new Set([
@@ -22562,12 +22618,11 @@ const normalizeVideoSourcePath = (rawVideoPath: string): string => {
 };
 
 const normalizeWhisperLanguage = (rawLanguage: string): string => {
-  const normalized = normalizeModelLookupValue(rawLanguage || '') || 'no';
+  const normalized = normalizeModelLookupValue(rawLanguage || '') || 'auto';
   const aliasMap: Record<string, string> = {
     nb: 'no',
     nn: 'no',
     nor: 'no',
-    auto: 'no',
     jp: 'ja',
     zhcn: 'zh',
     zhtw: 'zh',
@@ -22902,6 +22957,8 @@ interface VideoAnalysisTranscriptionApiResponse {
   transcription: VideoAnalysisTranscriptionResult;
   warnings: string[];
   diarizationSegments: VideoAnalysisDiarizationSegment[];
+  provider: 'whisperx' | 'whisper' | 'fallback';
+  alignmentProvider: 'whisperx' | 'none';
 }
 
 const normalizeDiarizationSegments = (payload: unknown): VideoAnalysisDiarizationSegment[] => {
@@ -23047,6 +23104,112 @@ const createAbortSignalWithTimeout = (
   };
 };
 
+const waitForStoryArcWarmupBackoff = (delayMs: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, Math.max(1, delayMs));
+  });
+
+const requestPyannoteWarmup = async (reason: string): Promise<{
+  statusCode: number;
+  payload: Record<string, unknown>;
+}> => {
+  const response = await fetch(`${PYANNOTE_DIARIZATION_URL}/warmup`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      reason,
+      requestedAt: new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(STORY_ARC_V2_STARTUP_WARMUP_TIMEOUT_MS),
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const error = readString(payload.error) || readString(payload.message) || `Warmup failed (${response.status})`;
+    throw new Error(error);
+  }
+  return {
+    statusCode: response.status,
+    payload,
+  };
+};
+
+const requestWhisperxWarmup = async (reason: string): Promise<{
+  statusCode: number;
+  payload: Record<string, unknown>;
+}> => {
+  const response = await fetch(`${WHISPERX_TRANSCRIPTION_URL}/warmup`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      reason,
+      requestedAt: new Date().toISOString(),
+    }),
+    signal: AbortSignal.timeout(STORY_ARC_V2_STARTUP_WARMUP_TIMEOUT_MS),
+  });
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const error = readString(payload.error) || readString(payload.message) || `Warmup failed (${response.status})`;
+    throw new Error(error);
+  }
+  return {
+    statusCode: response.status,
+    payload,
+  };
+};
+
+const runStoryArcV2StartupWarmup = async (): Promise<void> => {
+  if (!STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
+    return;
+  }
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('analyze', {
+    operation: 'startup_warmup',
+    target: PYANNOTE_DIARIZATION_URL,
+  });
+  let lastError = '';
+  for (let attempt = 1; attempt <= STORY_ARC_V2_STARTUP_WARMUP_RETRIES; attempt += 1) {
+    try {
+      const warmup = await requestPyannoteWarmup('backend-startup');
+      let whisperxStatus = 'skipped';
+      if (VIDEO_ANALYSIS_WHISPERX_ENABLED) {
+        try {
+          await requestWhisperxWarmup('backend-startup');
+          whisperxStatus = 'ok';
+        } catch (error) {
+          whisperxStatus = 'degraded';
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn(`[story-arc-v2] whisperx warmup failed: ${message}`);
+        }
+      }
+      completePhaseMetric('completed', {
+        attempt,
+        statusCode: warmup.statusCode,
+        warmupStatus: readString(warmup.payload.status) || 'ok',
+        whisperxStatus,
+      });
+      console.log(
+        `[story-arc-v2] pyannote warmup succeeded (attempt ${attempt}/${STORY_ARC_V2_STARTUP_WARMUP_RETRIES})`
+      );
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[story-arc-v2] pyannote warmup failed (attempt ${attempt}/${STORY_ARC_V2_STARTUP_WARMUP_RETRIES}): ${lastError}`
+      );
+      if (attempt < STORY_ARC_V2_STARTUP_WARMUP_RETRIES) {
+        await waitForStoryArcWarmupBackoff(STORY_ARC_V2_STARTUP_WARMUP_BACKOFF_MS * attempt);
+      }
+    }
+  }
+  completePhaseMetric('failed', {
+    attempt: STORY_ARC_V2_STARTUP_WARMUP_RETRIES,
+    error: lastError || 'warmup_failed',
+  });
+};
+
 const requestDiarizationViaLocalApi = async (
   audioPath: string,
   signal?: AbortSignal
@@ -23136,61 +23299,154 @@ const normalizeTranscriptionResult = (
   };
 };
 
+const extractTranscriptionWarnings = (payload: unknown): string[] => {
+  if (!isRecord(payload)) {
+    return [];
+  }
+  const sourceWarnings = isRecord(payload.data) && Array.isArray(payload.data.warnings)
+    ? payload.data.warnings
+    : Array.isArray(payload.warnings)
+      ? payload.warnings
+      : [];
+  return sourceWarnings
+    .map((warning) => readString(warning))
+    .filter((warning): warning is string => Boolean(warning));
+};
+
+const requestTranscriptionViaWhisperXLocalApi = async (
+  audioBuffer: Buffer,
+  fileName: string,
+  languageHint: string | null,
+  signal?: AbortSignal
+): Promise<{
+  transcription: VideoAnalysisTranscriptionResult;
+  warnings: string[];
+}> => {
+  const form = new FormData();
+  // @ts-ignore: Buffer satisfies BlobPart at runtime
+  form.append('file', new Blob([audioBuffer], { type: 'audio/wav' }), fileName);
+  if (languageHint) {
+    form.append('language', languageHint);
+  }
+  form.append('response_format', 'verbose_json');
+  form.append('timestamp_granularities', 'word,segment');
+
+  const { signal: requestSignal, cleanup } = createAbortSignalWithTimeout(
+    VIDEO_ANALYSIS_WHISPERX_TIMEOUT_MS,
+    signal
+  );
+
+  try {
+    const response = await fetch(`${WHISPERX_TRANSCRIPTION_URL}/v1/audio/transcriptions`, {
+      method: 'POST',
+      body: form,
+      signal: requestSignal,
+    });
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`WhisperX failed (${response.status}): ${body}`);
+    }
+    const payload = await response.json();
+    return {
+      transcription: normalizeTranscriptionResult(payload, languageHint || 'auto'),
+      warnings: extractTranscriptionWarnings(payload),
+    };
+  } finally {
+    cleanup();
+  }
+};
+
 const requestTranscriptionViaLocalApi = async (
   audioPath: string,
-  language: string,
+  languageHint: string | null,
   signal?: AbortSignal
 ): Promise<VideoAnalysisTranscriptionApiResponse> => {
   const warnings: string[] = [];
   const audioBuffer = await fs.readFile(audioPath);
   const fileName = path.basename(audioPath);
-
-  const whisperForm = new FormData();
-  whisperForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
-  whisperForm.append('language', language);
-  whisperForm.append('response_format', 'verbose_json');
-  whisperForm.append('timestamp_granularities', 'word,segment');
+  let provider: VideoAnalysisTranscriptionApiResponse['provider'] = 'fallback';
+  let alignmentProvider: VideoAnalysisTranscriptionApiResponse['alignmentProvider'] = 'none';
 
   let transcription: VideoAnalysisTranscriptionResult | null = null;
-  const whisperSignal = createAbortSignalWithTimeout(240_000, signal);
-  let whisperResponse: Response | null = null;
-  try {
-    whisperResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/whisper-transcribe`, {
-      method: 'POST',
-      body: whisperForm,
-      signal: whisperSignal.signal,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown whisper request error';
-    appendWarning(warnings, `Whisper request error: ${message}; attempting fallback transcriber`);
-  } finally {
-    whisperSignal.cleanup();
-  }
-
-  if (whisperResponse?.ok) {
-    const whisperPayload = await whisperResponse.json();
-    const normalizedWhisper = normalizeTranscriptionResult(whisperPayload, language);
-    const whisperHasText = normalizedWhisper.text.trim().length > 0;
-    const whisperHasSegments = normalizedWhisper.segments.length > 0;
-
-    if (whisperHasText || whisperHasSegments) {
-      transcription = normalizedWhisper;
-    } else {
-      appendWarning(warnings, 'Whisper returned empty transcription; attempting fallback transcriber');
+  if (VIDEO_ANALYSIS_WHISPERX_ENABLED) {
+    try {
+      const whisperXResult = await requestTranscriptionViaWhisperXLocalApi(
+        audioBuffer,
+        fileName,
+        languageHint,
+        signal
+      );
+      const normalizedWhisperX = whisperXResult.transcription;
+      const whisperXHasText = normalizedWhisperX.text.trim().length > 0;
+      const whisperXHasSegments = normalizedWhisperX.segments.length > 0;
+      if (whisperXHasText || whisperXHasSegments) {
+        transcription = normalizedWhisperX;
+        provider = 'whisperx';
+        alignmentProvider = 'whisperx';
+      } else {
+        appendWarning(warnings, 'WhisperX returned empty transcription; attempting Whisper fallback');
+      }
+      whisperXResult.warnings.forEach((warning) => appendWarning(warnings, warning));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown WhisperX request error';
+      appendWarning(warnings, `WhisperX unavailable: ${message}; attempting Whisper fallback`);
     }
   } else {
-    appendWarning(
-      warnings,
-      whisperResponse
-        ? `Whisper request failed (${whisperResponse.status}); attempting fallback transcriber`
-        : 'Whisper request unavailable; attempting fallback transcriber'
-    );
+    appendWarning(warnings, 'WhisperX is disabled; using Whisper fallback');
+  }
+
+  if (!transcription) {
+    const whisperForm = new FormData();
+    whisperForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
+    if (languageHint) {
+      whisperForm.append('language', languageHint);
+    }
+    whisperForm.append('response_format', 'verbose_json');
+    whisperForm.append('timestamp_granularities', 'word,segment');
+
+    const whisperSignal = createAbortSignalWithTimeout(240_000, signal);
+    let whisperResponse: Response | null = null;
+    try {
+      whisperResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/whisper-transcribe`, {
+        method: 'POST',
+        body: whisperForm,
+        signal: whisperSignal.signal,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown whisper request error';
+      appendWarning(warnings, `Whisper request error: ${message}; attempting fallback transcriber`);
+    } finally {
+      whisperSignal.cleanup();
+    }
+
+    if (whisperResponse?.ok) {
+      const whisperPayload = await whisperResponse.json();
+      const normalizedWhisper = normalizeTranscriptionResult(whisperPayload, languageHint || 'auto');
+      const whisperHasText = normalizedWhisper.text.trim().length > 0;
+      const whisperHasSegments = normalizedWhisper.segments.length > 0;
+
+      if (whisperHasText || whisperHasSegments) {
+        transcription = normalizedWhisper;
+        provider = 'whisper';
+      } else {
+        appendWarning(warnings, 'Whisper returned empty transcription; attempting fallback transcriber');
+      }
+    } else {
+      appendWarning(
+        warnings,
+        whisperResponse
+          ? `Whisper request failed (${whisperResponse.status}); attempting fallback transcriber`
+          : 'Whisper request unavailable; attempting fallback transcriber'
+      );
+    }
   }
 
   if (!transcription) {
     const fallbackForm = new FormData();
     fallbackForm.append('audio', new Blob([audioBuffer], { type: 'audio/mpeg' }), fileName);
-    fallbackForm.append('language', language);
+    if (languageHint) {
+      fallbackForm.append('language', languageHint);
+    }
     const fallbackSignal = createAbortSignalWithTimeout(240_000, signal);
 
     const fallbackResponse = await fetch(`http://127.0.0.1:${PORT}/api/ai/transcribe`, {
@@ -23207,7 +23463,9 @@ const requestTranscriptionViaLocalApi = async (
     }
 
     const fallbackPayload = await fallbackResponse.json();
-    transcription = normalizeTranscriptionResult(fallbackPayload, language);
+    transcription = normalizeTranscriptionResult(fallbackPayload, languageHint || 'auto');
+    provider = 'fallback';
+    alignmentProvider = 'none';
   }
 
   if (!transcription) {
@@ -23233,6 +23491,8 @@ const requestTranscriptionViaLocalApi = async (
     transcription,
     warnings,
     diarizationSegments,
+    provider,
+    alignmentProvider,
   };
 };
 
@@ -23322,8 +23582,8 @@ const getInstalledTesseractLanguages = async (): Promise<Set<string>> => {
   return tesseractLanguagesCache;
 };
 
-const getTesseractLanguageCandidates = async (language: string): Promise<string[]> => {
-  const requested = normalizeWhisperLanguage(language);
+const getTesseractLanguageCandidates = async (languageHint: string | null): Promise<string[]> => {
+  const requested = normalizeWhisperLanguage(languageHint || '');
   const mapped: Record<string, string[]> = {
     no: ['nor', 'eng'],
     en: ['eng'],
@@ -23340,7 +23600,14 @@ const getTesseractLanguageCandidates = async (language: string): Promise<string[
   };
 
   const installed = await getInstalledTesseractLanguages();
-  const preferred = mapped[requested] || ['eng'];
+  if (!requested || requested === 'auto') {
+    const installedList = Array.from(installed);
+    const prioritized = ['eng', 'nor', 'spa', 'fra', 'deu', 'ita', 'por', 'jpn', 'kor', 'chi_sim']
+      .filter((code) => installed.has(code));
+    return Array.from(new Set([...prioritized, ...installedList])).slice(0, 8);
+  }
+
+  const preferred = mapped[requested] || [requested, 'eng'];
   const available = preferred.filter((code) => installed.has(code));
 
   if (available.length > 0) {
@@ -23354,14 +23621,14 @@ const getTesseractLanguageCandidates = async (language: string): Promise<string[
 
 const detectOnscreenTextViaTesseract = async (
   stagedVideoPath: string,
-  language: string
+  languageHint: string | null
 ): Promise<{ detectedText: string[]; warnings: string[] }> => {
   const warnings: string[] = [];
   const detected = new Set<string>();
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-ocr-'));
 
   try {
-    const languageCandidates = await getTesseractLanguageCandidates(language);
+    const languageCandidates = await getTesseractLanguageCandidates(languageHint);
     const extractionFilters = [
       'fps=1/2,crop=iw:ih*0.28:0:ih*0.72,scale=1280:-2:force_original_aspect_ratio=decrease',
       'fps=1/2,crop=iw:ih*0.28:0:0,scale=1280:-2:force_original_aspect_ratio=decrease',
@@ -23460,7 +23727,7 @@ const detectOnscreenTextViaTesseract = async (
 
 const detectOnscreenTextFromVideo = async (
   stagedVideoPath: string,
-  language: string
+  languageHint: string | null
 ): Promise<{ detectedText: string[]; warnings: string[] }> => {
   const warnings: string[] = [];
   const detected = new Set<string>();
@@ -23526,7 +23793,7 @@ const detectOnscreenTextFromVideo = async (
   }
 
   if (detected.size === 0 || ffmpegOcrUnavailable) {
-    const tesseractResult = await detectOnscreenTextViaTesseract(stagedVideoPath, language);
+    const tesseractResult = await detectOnscreenTextViaTesseract(stagedVideoPath, languageHint);
     for (const entry of tesseractResult.detectedText) {
       detected.add(entry);
     }
@@ -23578,21 +23845,124 @@ const exportCaptionsToVtt = (segments: VideoAnalysisCaptionSegment[]): string =>
   return `WEBVTT\n\n${body}`;
 };
 
+const createEmptyVideoAnalysisAudioTracks = (): VideoAnalysisAudioTracks => ({
+  hasAudio: false,
+  master: null,
+  analysis: null,
+  demucsRequested: VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS,
+  demucsApplied: false,
+  demucsUsedModel: false,
+  demucsModel: null,
+});
+
+const prepareVideoAnalysisAudioTracks = async (
+  masterAudioPath: string,
+  analysisAudioPath: string,
+  warnings: string[],
+  signal?: AbortSignal
+): Promise<VideoAnalysisAudioTracks> => {
+  const tracks = createEmptyVideoAnalysisAudioTracks();
+  tracks.hasAudio = true;
+  tracks.master = {
+    format: 'wav',
+    sampleRateHz: VIDEO_ANALYSIS_MASTER_TRACK_SAMPLE_RATE_HZ,
+    channels: 1,
+    source: 'video_audio',
+    durationSeconds: null,
+  };
+  tracks.analysis = {
+    format: 'wav',
+    sampleRateHz: VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ,
+    channels: 1,
+    source: 'master_fallback',
+    durationSeconds: null,
+  };
+
+  let analysisReady = false;
+  if (VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS) {
+    try {
+      const demucsResult = await runAudioMixDemucsDenoise(
+        masterAudioPath,
+        analysisAudioPath,
+        {
+          demucsModel: readString(process.env.VIDEO_ANALYSIS_DEMUCS_MODEL) || AUDIO_MIX_DEMUCS_MODEL,
+          demucsDevice: readString(process.env.VIDEO_ANALYSIS_DEMUCS_DEVICE) || AUDIO_MIX_DEMUCS_DEVICE,
+          preEmphasisAlpha: readNumber(process.env.VIDEO_ANALYSIS_PRE_EMPHASIS_ALPHA) ?? 0.97,
+          wienerFloor: readNumber(process.env.VIDEO_ANALYSIS_WIENER_FLOOR) ?? 0.05,
+        }
+      );
+      tracks.demucsApplied = demucsResult.applied;
+      tracks.demucsUsedModel = demucsResult.demucsUsed;
+      tracks.demucsModel = demucsResult.model;
+      if (demucsResult.applied) {
+        tracks.analysis = {
+          format: 'wav',
+          sampleRateHz: VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ,
+          channels: 1,
+          source: 'demucs_vocals',
+          durationSeconds: null,
+        };
+        analysisReady = true;
+      } else if (demucsResult.warning) {
+        appendWarning(warnings, `[analysis-track] ${demucsResult.warning}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Demucs preparation failed';
+      appendWarning(warnings, `[analysis-track] demucs error: ${message}`);
+    }
+  }
+
+  if (!analysisReady) {
+    const normalizeAnalysisTrack = await runBinaryCommand(
+      FFMPEG_BINARY,
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        masterAudioPath,
+        '-ac',
+        '1',
+        '-ar',
+        String(VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ),
+        '-c:a',
+        'pcm_s16le',
+        analysisAudioPath,
+      ],
+      180_000,
+      signal
+    );
+    if (normalizeAnalysisTrack.timedOut) {
+      throw new Error('Analysis track normalization timed out');
+    }
+    if (normalizeAnalysisTrack.code !== 0) {
+      throw new Error(`Analysis track normalization failed: ${normalizeAnalysisTrack.stderr.slice(0, 400)}`);
+    }
+  }
+
+  return tracks;
+};
+
 const transcribeVideoSource = async (
   videoPath: string,
-  language: string,
+  languageHint: string | null,
   signal?: AbortSignal
 ): Promise<VideoAnalysisJobResultTranscribe> => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-transcribe-'));
   const warnings: string[] = [];
   let diarizationSegments: VideoAnalysisDiarizationSegment[] = [];
+  let audioTracks = createEmptyVideoAnalysisAudioTracks();
+  let transcriptionProvider: VideoAnalysisJobResultTranscribe['transcription_provider'] = 'fallback';
+  let alignmentProvider: VideoAnalysisJobResultTranscribe['alignment_provider'] = 'none';
 
   try {
     const stagedVideoPath = await stageVideoSource(videoPath, tempDir, signal);
-    const audioPath = path.join(tempDir, 'audio.mp3');
+    const masterAudioPath = path.join(tempDir, 'audio-master.wav');
+    const analysisAudioPath = path.join(tempDir, 'audio-analysis.wav');
     let transcription: VideoAnalysisTranscriptionResult = {
       text: '',
-      language,
+      language: languageHint || 'auto',
       duration: null,
       segments: [],
       words: [],
@@ -23610,10 +23980,10 @@ const transcribeVideoSource = async (
         '-ac',
         '1',
         '-ar',
-        '16000',
+        String(VIDEO_ANALYSIS_MASTER_TRACK_SAMPLE_RATE_HZ),
         '-c:a',
-        'mp3',
-        audioPath,
+        'pcm_s16le',
+        masterAudioPath,
       ],
       180_000,
       signal
@@ -23636,9 +24006,21 @@ const transcribeVideoSource = async (
       appendWarning(warnings, 'Video has no audio track; using OCR-only analysis');
     } else {
       try {
-        const transcriptionResult = await requestTranscriptionViaLocalApi(audioPath, language, signal);
+        audioTracks = await prepareVideoAnalysisAudioTracks(
+          masterAudioPath,
+          analysisAudioPath,
+          warnings,
+          signal
+        );
+        const transcriptionResult = await requestTranscriptionViaLocalApi(
+          analysisAudioPath,
+          languageHint,
+          signal
+        );
         transcription = transcriptionResult.transcription;
         diarizationSegments = transcriptionResult.diarizationSegments;
+        transcriptionProvider = transcriptionResult.provider;
+        alignmentProvider = transcriptionResult.alignmentProvider;
         transcriptionResult.warnings.forEach((warning) => appendWarning(warnings, warning));
       } catch (error) {
         const message =
@@ -23647,7 +24029,10 @@ const transcribeVideoSource = async (
       }
     }
 
-    const ocrResult = await detectOnscreenTextFromVideo(stagedVideoPath, language);
+    const ocrLanguageHint = normalizeStoryArcV2LanguageHint(
+      readString(transcription.language) || languageHint || 'auto'
+    );
+    const ocrResult = await detectOnscreenTextFromVideo(stagedVideoPath, ocrLanguageHint);
     ocrResult.warnings.forEach((warning) => appendWarning(warnings, warning));
 
     return {
@@ -23655,6 +24040,9 @@ const transcribeVideoSource = async (
       detected_text: ocrResult.detectedText,
       warnings,
       diarization_segments: diarizationSegments,
+      audio_tracks: audioTracks,
+      transcription_provider: transcriptionProvider,
+      alignment_provider: alignmentProvider,
     };
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -23925,7 +24313,7 @@ app.post('/api/video-analysis/transcribe', videoSourceUpload.single('video'), as
       return res.status(400).json({ success: false, error: 'Missing video_path' });
     }
 
-    const language = normalizeWhisperLanguage(readString(req.body?.language) || 'no');
+    const language = normalizeStoryArcV2LanguageHint(readString(req.body?.language));
     const job = createVideoAnalysisJob('transcribe', {
       videoPath,
       language,
@@ -23991,7 +24379,7 @@ app.post('/api/video-analysis/scene-detection', videoSourceUpload.single('video'
 
     const job = createVideoAnalysisJob('scene-detection', {
       videoPath,
-      language: 'no',
+      language: null,
       threshold,
       minSceneLenSeconds,
       cleanupSourcePath,
@@ -24068,6 +24456,49 @@ type StoryArcV2JobPhase = 'analyze' | 'script' | 'timeline' | 'apply' | 'export'
 type StoryArcV2JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 type StoryArcV2NarrativeBeat = 'hook' | 'context' | 'conflict' | 'turning_point' | 'resolution';
 type StoryArcV2Variant = 'safe' | 'balanced' | 'bold';
+type StoryArcV2ProjectProfile =
+  | 'wedding'
+  | 'a_roll_story_cut'
+  | 'highlight_reel'
+  | 'dialogue_clean_jumpcut'
+  | 'corporate_brand'
+  | 'youtube_vlog';
+type StoryArcV2EditingMode =
+  | 'co_pilot'
+  | 'full_auto'
+  | 'guided_story'
+  | 'dialogue_clean'
+  | 'highlight_music_sync';
+type StoryArcV2CulturalProfile =
+  | 'generic_wedding'
+  | 'sikh'
+  | 'pakistani'
+  | 'norwegian'
+  | 'mixed';
+type StoryArcV2EventPriority = 'A' | 'B' | 'C';
+type StoryArcV2DetectedEventType =
+  | 'emotional_speech'
+  | 'speech_highlight'
+  | 'vow'
+  | 'applause'
+  | 'laughter'
+  | 'kiss'
+  | 'hug'
+  | 'ring_exchange'
+  | 'dancing'
+  | 'first_dance';
+type StoryArcV2VisualAction =
+  | 'speech'
+  | 'hugging'
+  | 'kissing'
+  | 'dancing'
+  | 'ring_exchange'
+  | 'walking_aisle'
+  | 'clapping'
+  | 'cheering'
+  | 'ceremony'
+  | 'toast'
+  | 'moment';
 
 interface StoryArcV2MediaInput {
   id: string;
@@ -24080,8 +24511,124 @@ interface StoryArcV2AnalyzeInput {
   projectId: string | null;
   media: StoryArcV2MediaInput[];
   intentProfileId: string | null;
-  languagePolicy: string;
+  languageHint: string | null;
   musicTrackId: string | null;
+  projectProfile: StoryArcV2ProjectProfile;
+  editingMode: StoryArcV2EditingMode;
+  culturalProfile: StoryArcV2CulturalProfile;
+  culturalModules: StoryArcV2CulturalProfile[];
+  mustIncludeMoments: string[];
+  avoidMoments: string[];
+}
+
+interface StoryArcV2DetectedEvent {
+  eventId: string;
+  mediaId: string;
+  type: StoryArcV2DetectedEventType;
+  label: string;
+  start: number;
+  end: number;
+  confidence: number;
+  speaker: string | null;
+  source: 'transcript' | 'audio_proxy' | 'semantic' | 'ocr' | 'composite';
+  beatHint: StoryArcV2NarrativeBeat;
+  keywords: string[];
+  priority: StoryArcV2EventPriority;
+  culturalProfile: StoryArcV2CulturalProfile;
+  rationale: string;
+}
+
+interface StoryArcV2NarrativeAnchor {
+  anchorId: string;
+  mediaId: string;
+  start: number;
+  end: number;
+  text: string;
+  score: number;
+  type: 'quote' | 'event';
+  speaker: string | null;
+  beatHint: StoryArcV2NarrativeBeat;
+  eventType: StoryArcV2DetectedEventType | null;
+}
+
+interface StoryArcV2MusicBeatPoint {
+  time: number;
+  confidence: number;
+  energy: number;
+}
+
+interface StoryArcV2MusicSection {
+  sectionId: string;
+  start: number;
+  end: number;
+  label: 'intro' | 'verse' | 'build' | 'chorus' | 'bridge' | 'outro';
+  energyLevel: 'low' | 'medium' | 'high';
+}
+
+interface StoryArcV2MusicAnalysis {
+  source: 'video_audio' | 'none';
+  durationSeconds: number | null;
+  bpm: number | null;
+  beatIntervalSeconds: number | null;
+  beats: StoryArcV2MusicBeatPoint[];
+  sections: StoryArcV2MusicSection[];
+  energyCurve: number[];
+  warnings: string[];
+}
+
+interface StoryArcV2VisualFeatureFace {
+  id: string;
+  bbox: [number, number, number, number];
+  emotion: string;
+  confidence: number;
+}
+
+interface StoryArcV2VisualFeaturePosePoint {
+  x: number;
+  y: number;
+  confidence: number;
+}
+
+interface StoryArcV2VisualFeaturePose {
+  id: string;
+  keypoints: StoryArcV2VisualFeaturePosePoint[];
+}
+
+interface StoryArcV2VisualFeaturePoint {
+  featureId: string;
+  mediaId: string;
+  t: number;
+  objects: string[];
+  faces: StoryArcV2VisualFeatureFace[];
+  poses: StoryArcV2VisualFeaturePose[];
+  actions: StoryArcV2VisualAction[];
+  scene: {
+    location: string;
+    shot: 'wide' | 'medium' | 'close';
+    qualityScore: number;
+  };
+  confidence: number;
+  source: 'semantic_proxy';
+}
+
+interface StoryArcV2EventTakeCandidate {
+  clipId: string;
+  start: number;
+  end: number;
+  score: number;
+  reasons: string[];
+}
+
+interface StoryArcV2EventMarker {
+  markerId: string;
+  mediaId: string;
+  eventType: StoryArcV2DetectedEventType;
+  label: string;
+  start: number;
+  end: number;
+  confidence: number;
+  reasons: string[];
+  bestTakes: StoryArcV2EventTakeCandidate[];
 }
 
 interface StoryArcV2SemanticProfile {
@@ -24109,27 +24656,89 @@ interface StoryArcV2AnalyzedMedia {
   path: string;
   durationSeconds: number;
   scenes: VideoAnalysisScene[];
+  detectedText: string[];
   transcription: VideoAnalysisTranscriptionResult;
+  audioTracks: VideoAnalysisAudioTracks;
+  musicAnalysis: StoryArcV2MusicAnalysis;
+  transcriptionProvider: VideoAnalysisJobResultTranscribe['transcription_provider'];
+  alignmentProvider: VideoAnalysisJobResultTranscribe['alignment_provider'];
+  detectedEvents: StoryArcV2DetectedEvent[];
+  narrativeAnchors: StoryArcV2NarrativeAnchor[];
   warnings: string[];
   semanticProfiles: StoryArcV2SemanticProfile[];
+  visualFeatures: StoryArcV2VisualFeaturePoint[];
+  eventMarkers: StoryArcV2EventMarker[];
 }
 
 interface StoryArcV2AnalysisRun {
   analysisId: string;
   projectId: string | null;
   intentProfileId: string | null;
-  languagePolicy: string;
+  languageHint: string | null;
   musicTrackId: string | null;
+  projectProfile: StoryArcV2ProjectProfile;
+  editingMode: StoryArcV2EditingMode;
+  culturalProfile: StoryArcV2CulturalProfile;
+  culturalModules: StoryArcV2CulturalProfile[];
+  mustIncludeMoments: string[];
+  avoidMoments: string[];
   media: StoryArcV2AnalyzedMedia[];
+  detectedEvents: StoryArcV2DetectedEvent[];
+  narrativeAnchors: StoryArcV2NarrativeAnchor[];
+  musicAnalysis: StoryArcV2MusicAnalysis;
+  visualFeatures: StoryArcV2VisualFeaturePoint[];
+  eventMarkers: StoryArcV2EventMarker[];
   summary: {
     sceneCount: number;
     totalDuration: number;
     transcriptionSegments: number;
     detectedSpeakers: number;
+    detectedEvents: number;
+    narrativeAnchors: number;
+    musicBeats: number;
+    visualFeaturePoints: number;
+    eventMarkers: number;
   };
   warnings: string[];
   createdAt: string;
 }
+
+interface StoryArcV2CulturalEventRule {
+  type: StoryArcV2DetectedEventType;
+  priority: StoryArcV2EventPriority;
+  keywords: string[];
+  noCut?: boolean;
+  sacred?: boolean;
+  minClipLenSec?: number;
+}
+
+interface StoryArcV2CulturalRulebook {
+  profile: StoryArcV2CulturalProfile;
+  label: string;
+  eventRules: StoryArcV2CulturalEventRule[];
+  noCutEventTypes: StoryArcV2DetectedEventType[];
+  sacredEventTypes: StoryArcV2DetectedEventType[];
+  minClipLenByEventType: Partial<Record<StoryArcV2DetectedEventType, number>>;
+  pacing: {
+    ceremony: { shotMin: number; shotMax: number };
+    speeches: { shotMin: number; shotMax: number };
+    party: { shotMin: number; shotMax: number };
+  };
+  mustIncludeDefaults: string[];
+}
+
+type StoryArcV2StoryThread =
+  | 'couple'
+  | 'vows'
+  | 'family'
+  | 'friends'
+  | 'ceremony'
+  | 'reactions'
+  | 'dance'
+  | 'prep'
+  | 'party'
+  | 'speech'
+  | 'details';
 
 interface StoryArcV2StoryScriptNode {
   id: string;
@@ -24145,6 +24754,26 @@ interface StoryArcV2StoryScriptNode {
   pinned: boolean;
   rationale: string;
   confidence: number;
+  storyThreads: StoryArcV2StoryThread[];
+  primaryThread: StoryArcV2StoryThread;
+  narrativeScore: number;
+  brollPlaceholders: StoryArcV2BrollPlaceholder[];
+}
+
+interface StoryArcV2BrollPlaceholder {
+  id: string;
+  nodeId: string;
+  beat: StoryArcV2NarrativeBeat;
+  start: number;
+  end: number;
+  intent: 'reaction' | 'cutaway' | 'establishing' | 'detail';
+  query: string;
+  candidateClipIds: string[];
+  rationale: string;
+  confidence: number;
+  requiresExternalBroll?: boolean;
+  fallbackMessage?: string | null;
+  suggestionQueries?: string[];
 }
 
 interface StoryArcV2StoryScript {
@@ -24180,6 +24809,58 @@ interface StoryArcV2TimelineVariantPlan {
   summary: string[];
 }
 
+interface StoryArcV2EditDecisionClip {
+  order: number;
+  clipId: string;
+  sourceClipId: string | null;
+  nodeId: string | null;
+  type: 'A_ROLL' | 'B_ROLL';
+  trackId: string;
+  beat: StoryArcV2NarrativeBeat | null;
+  start: number;
+  end: number;
+  duration: number;
+  speaker: string | null;
+  segmentRole: 'primary_speech' | 'focus_cutaway' | 'unknown';
+  maintainSpeechSync: boolean;
+  audioSourceClipId: string | null;
+  audioSourceStart: number | null;
+  audioSourceEnd: number | null;
+  eventType?: StoryArcV2DetectedEventType | null;
+  eventPriority?: StoryArcV2EventPriority | null;
+  noJumpcuts?: boolean;
+  requiresExternalBroll?: boolean;
+  externalBrollSuggestions?: string[];
+  fallbackMessage?: string | null;
+  rationale: string;
+}
+
+interface StoryArcV2EditDecisionList {
+  schemaVersion: 'storyarc.edit_decisions.v1';
+  proposalId: string;
+  scriptId: string;
+  revision: number;
+  variant: StoryArcV2Variant;
+  fps: number;
+  clips: StoryArcV2EditDecisionClip[];
+  brollPlaceholders: StoryArcV2BrollPlaceholder[];
+  transitions: Array<{
+    fromClipId: string;
+    toClipId: string;
+    type: 'cut' | 'cross_dissolve';
+    duration: number;
+  }>;
+  audio: {
+    duckMusicDb: number;
+    targetLufs: number;
+    analysisTrackSource: VideoAnalysisAudioTrackDescriptor['source'] | null;
+    demucsApplied: boolean;
+    transcriptionProvider: VideoAnalysisJobResultTranscribe['transcription_provider'] | null;
+    alignmentProvider: VideoAnalysisJobResultTranscribe['alignment_provider'] | null;
+  };
+  generatedAt: string;
+}
+
 interface StoryArcV2TimelineProposal {
   proposalId: string;
   scriptId: string;
@@ -24187,6 +24868,8 @@ interface StoryArcV2TimelineProposal {
   generatedAt: string;
   selectedVariant: StoryArcV2Variant;
   variants: Record<StoryArcV2Variant, StoryArcV2TimelineVariantPlan>;
+  editDecisions: StoryArcV2EditDecisionList;
+  editDecisionsByVariant: Record<StoryArcV2Variant, StoryArcV2EditDecisionList>;
   explainabilityByClipId: Record<string, Record<string, unknown>>;
   warnings: string[];
 }
@@ -24270,6 +24953,28 @@ interface StoryArcV2GoldenBenchmarkRun {
   }>;
 }
 
+type StoryArcV2PhaseMetricStatus = Extract<StoryArcV2JobStatus, 'completed' | 'failed' | 'cancelled'>;
+
+interface StoryArcV2PhaseMetricSample {
+  metricId: string;
+  phase: StoryArcV2JobPhase;
+  status: StoryArcV2PhaseMetricStatus;
+  latencyMs: number;
+  startedAt: string;
+  endedAt: string;
+  jobId: string | null;
+  context: Record<string, unknown>;
+}
+
+interface StoryArcV2QualityTrendPoint {
+  timestamp: string;
+  overallScore: number;
+  beatCoverage: number;
+  narrativeCoherence: number;
+  technicalCompliance: number;
+  explainabilityCoverage: number;
+}
+
 interface StoryArcV2Job {
   jobId: string;
   phase: StoryArcV2JobPhase;
@@ -24303,6 +25008,19 @@ const storyArcV2ApplyLedger = new Map<string, StoryArcV2ApplyLedgerEntry>();
 const storyArcV2FeedbackProfiles = new Map<string, StoryArcV2FeedbackProfile>();
 const storyArcV2QualityScorecards = new Map<string, StoryArcV2QualityScorecard>();
 const storyArcV2GoldenBenchmarkRuns = new Map<string, StoryArcV2GoldenBenchmarkRun>();
+const storyArcV2PhaseMetricsInMemory: StoryArcV2PhaseMetricSample[] = [];
+const storyArcV2JobRuntimeContext = new Map<
+  string,
+  {
+    phase: StoryArcV2JobPhase;
+    phaseStartedAt: string;
+    phaseStartedAtMs: number;
+  }
+>();
+const STORY_ARC_V2_OBSERVABILITY_SAMPLE_LIMIT = Math.max(
+  100,
+  Math.min(10_000, Math.round(readNumber(process.env.STORY_ARC_V2_OBSERVABILITY_SAMPLE_LIMIT) ?? 2_000))
+);
 
 const isStoryArcV2Enabled = (): boolean => {
   const raw = normalizeModelLookupValue(readString(process.env.STORY_ARC_V2_ENABLED) || 'true');
@@ -24315,6 +25033,405 @@ const toStoryArcV2Id = (prefix: string): string => {
 
 const clampStoryArcV2Number = (value: number, minValue: number, maxValue: number): number => {
   return Math.max(minValue, Math.min(maxValue, value));
+};
+
+const isStoryArcV2TerminalStatus = (
+  status: StoryArcV2JobStatus
+): status is StoryArcV2PhaseMetricStatus => {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+};
+
+const pushStoryArcV2PhaseMetricInMemory = (sample: StoryArcV2PhaseMetricSample): void => {
+  storyArcV2PhaseMetricsInMemory.push(sample);
+  const overflow = storyArcV2PhaseMetricsInMemory.length - STORY_ARC_V2_OBSERVABILITY_SAMPLE_LIMIT;
+  if (overflow > 0) {
+    storyArcV2PhaseMetricsInMemory.splice(0, overflow);
+  }
+};
+
+const persistStoryArcV2PhaseMetricSample = async (
+  sample: StoryArcV2PhaseMetricSample
+): Promise<void> => {
+  try {
+    if (!(await hasTable('storyarc_observability_phase_metrics'))) return;
+    await pool.query(
+      `insert into storyarc_observability_phase_metrics
+         (metric_id, phase, status, latency_ms, metric_payload, created_at, updated_at)
+       values ($1, $2, $3, $4, $5::jsonb, now(), now())
+       on conflict (metric_id)
+       do update set
+         phase = excluded.phase,
+         status = excluded.status,
+         latency_ms = excluded.latency_ms,
+         metric_payload = excluded.metric_payload,
+         updated_at = now()`,
+      [
+        sample.metricId,
+        sample.phase,
+        sample.status,
+        Math.max(1, Math.round(sample.latencyMs)),
+        JSON.stringify(sample),
+      ]
+    );
+  } catch (error) {
+    console.warn('story-arc-v2 observability warning (storyarc_observability_phase_metrics):', error);
+  }
+};
+
+const recordStoryArcV2PhaseMetricSample = (params: {
+  phase: StoryArcV2JobPhase;
+  status: StoryArcV2PhaseMetricStatus;
+  latencyMs: number;
+  startedAt: string;
+  endedAt: string;
+  jobId?: string | null;
+  context?: Record<string, unknown>;
+}): StoryArcV2PhaseMetricSample => {
+  const sample: StoryArcV2PhaseMetricSample = {
+    metricId: toStoryArcV2Id('storyarc-v2-metric'),
+    phase: params.phase,
+    status: params.status,
+    latencyMs: Number(Math.max(1, params.latencyMs).toFixed(1)),
+    startedAt: params.startedAt,
+    endedAt: params.endedAt,
+    jobId: params.jobId || null,
+    context: params.context || {},
+  };
+  pushStoryArcV2PhaseMetricInMemory(sample);
+  void persistStoryArcV2PhaseMetricSample(sample);
+  return sample;
+};
+
+const createStoryArcV2PhaseMetricRecorder = (
+  phase: StoryArcV2JobPhase,
+  baseContext: Record<string, unknown> = {}
+): ((status: StoryArcV2PhaseMetricStatus, context?: Record<string, unknown>) => void) => {
+  const startedAtMs = Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  let recorded = false;
+  return (status, context = {}) => {
+    if (recorded) return;
+    recorded = true;
+    const endedAtMs = Date.now();
+    recordStoryArcV2PhaseMetricSample({
+      phase,
+      status,
+      latencyMs: endedAtMs - startedAtMs,
+      startedAt,
+      endedAt: new Date(endedAtMs).toISOString(),
+      context: {
+        ...baseContext,
+        ...context,
+      },
+    });
+  };
+};
+
+const toStoryArcV2Percentile = (values: number[], percentile: number): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const rank = clampStoryArcV2Number(percentile, 0, 1) * (sorted.length - 1);
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  if (low === high) return sorted[low];
+  const weight = rank - low;
+  return sorted[low] * (1 - weight) + sorted[high] * weight;
+};
+
+const summarizeStoryArcV2PhaseMetrics = (
+  samples: StoryArcV2PhaseMetricSample[]
+): {
+  totals: {
+    sampleCount: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    failRate: number;
+  };
+  phases: Record<
+    StoryArcV2JobPhase,
+    {
+      sampleCount: number;
+      completed: number;
+      failed: number;
+      cancelled: number;
+      failRate: number;
+      avgLatencyMs: number;
+      p50LatencyMs: number;
+      p95LatencyMs: number;
+      minLatencyMs: number;
+      maxLatencyMs: number;
+      lastLatencyMs: number | null;
+    }
+  >;
+} => {
+  const phaseOrder: StoryArcV2JobPhase[] = ['analyze', 'script', 'timeline', 'apply', 'export'];
+  const perPhase = Object.fromEntries(
+    phaseOrder.map((phase) => [
+      phase,
+      {
+        sampleCount: 0,
+        completed: 0,
+        failed: 0,
+        cancelled: 0,
+        failRate: 0,
+        avgLatencyMs: 0,
+        p50LatencyMs: 0,
+        p95LatencyMs: 0,
+        minLatencyMs: 0,
+        maxLatencyMs: 0,
+        lastLatencyMs: null as number | null,
+        _latencies: [] as number[],
+      },
+    ])
+  ) as Record<
+    StoryArcV2JobPhase,
+    {
+      sampleCount: number;
+      completed: number;
+      failed: number;
+      cancelled: number;
+      failRate: number;
+      avgLatencyMs: number;
+      p50LatencyMs: number;
+      p95LatencyMs: number;
+      minLatencyMs: number;
+      maxLatencyMs: number;
+      lastLatencyMs: number | null;
+      _latencies: number[];
+    }
+  >;
+
+  samples.forEach((sample) => {
+    const bucket = perPhase[sample.phase];
+    bucket.sampleCount += 1;
+    if (sample.status === 'completed') bucket.completed += 1;
+    if (sample.status === 'failed') bucket.failed += 1;
+    if (sample.status === 'cancelled') bucket.cancelled += 1;
+    bucket.lastLatencyMs = sample.latencyMs;
+    bucket._latencies.push(sample.latencyMs);
+  });
+
+  phaseOrder.forEach((phase) => {
+    const bucket = perPhase[phase];
+    const totalTerminal = bucket.completed + bucket.failed + bucket.cancelled;
+    const failureBase = bucket.completed + bucket.failed;
+    bucket.failRate =
+      failureBase > 0
+        ? Number((bucket.failed / failureBase).toFixed(4))
+        : 0;
+    if (bucket._latencies.length > 0) {
+      const sum = bucket._latencies.reduce((acc, value) => acc + value, 0);
+      bucket.avgLatencyMs = Number((sum / bucket._latencies.length).toFixed(2));
+      bucket.p50LatencyMs = Number(toStoryArcV2Percentile(bucket._latencies, 0.5).toFixed(2));
+      bucket.p95LatencyMs = Number(toStoryArcV2Percentile(bucket._latencies, 0.95).toFixed(2));
+      bucket.minLatencyMs = Number(Math.min(...bucket._latencies).toFixed(2));
+      bucket.maxLatencyMs = Number(Math.max(...bucket._latencies).toFixed(2));
+    }
+    if (totalTerminal === 0) {
+      bucket.failRate = 0;
+    }
+    delete (bucket as { _latencies?: number[] })._latencies;
+  });
+
+  const totals = samples.reduce(
+    (acc, sample) => {
+      acc.sampleCount += 1;
+      if (sample.status === 'completed') acc.completed += 1;
+      if (sample.status === 'failed') acc.failed += 1;
+      if (sample.status === 'cancelled') acc.cancelled += 1;
+      return acc;
+    },
+    {
+      sampleCount: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      failRate: 0,
+    }
+  );
+  const totalsFailureBase = totals.completed + totals.failed;
+  totals.failRate =
+    totalsFailureBase > 0 ? Number((totals.failed / totalsFailureBase).toFixed(4)) : 0;
+
+  return {
+    totals,
+    phases: perPhase,
+  };
+};
+
+const loadStoryArcV2PhaseMetricsForWindow = async (
+  windowDays: number,
+  limit: number
+): Promise<StoryArcV2PhaseMetricSample[]> => {
+  const cutoffMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const inMemory = storyArcV2PhaseMetricsInMemory
+    .filter((entry) => new Date(entry.endedAt).getTime() >= cutoffMs)
+    .sort((left, right) => left.endedAt.localeCompare(right.endedAt))
+    .slice(-limit);
+
+  if (inMemory.length >= limit) {
+    return inMemory;
+  }
+
+  try {
+    if (!(await hasTable('storyarc_observability_phase_metrics'))) {
+      return inMemory;
+    }
+    const remaining = Math.max(0, limit - inMemory.length);
+    if (remaining === 0) return inMemory;
+    const result = await pool.query(
+      `select metric_payload
+       from storyarc_observability_phase_metrics
+       where created_at >= now() - ($1::int * interval '1 day')
+       order by created_at desc
+       limit $2`,
+      [windowDays, remaining]
+    );
+    const merged = new Map<string, StoryArcV2PhaseMetricSample>();
+    inMemory.forEach((entry) => merged.set(entry.metricId, entry));
+    result.rows.forEach((row) => {
+      if (!isUnknownRecord(row.metric_payload)) return;
+      const payload = row.metric_payload as Record<string, unknown>;
+      const metricId = readString(payload.metricId);
+      const phaseRaw = normalizeModelLookupValue(readString(payload.phase) || '');
+      const statusRaw = normalizeModelLookupValue(readString(payload.status) || '');
+      const latencyMs = readNumber(payload.latencyMs);
+      const startedAt = readString(payload.startedAt);
+      const endedAt = readString(payload.endedAt);
+      if (!metricId || !startedAt || !endedAt || latencyMs === null) return;
+      const phase: StoryArcV2JobPhase =
+        phaseRaw === 'script' || phaseRaw === 'timeline' || phaseRaw === 'apply' || phaseRaw === 'export'
+          ? (phaseRaw as StoryArcV2JobPhase)
+          : 'analyze';
+      const status: StoryArcV2PhaseMetricStatus =
+        statusRaw === 'failed' || statusRaw === 'cancelled' ? (statusRaw as StoryArcV2PhaseMetricStatus) : 'completed';
+      merged.set(metricId, {
+        metricId,
+        phase,
+        status,
+        latencyMs: Number(Math.max(1, latencyMs).toFixed(1)),
+        startedAt,
+        endedAt,
+        jobId: readString(payload.jobId) || null,
+        context: isUnknownRecord(payload.context) ? (payload.context as Record<string, unknown>) : {},
+      });
+    });
+    return Array.from(merged.values())
+      .filter((entry) => new Date(entry.endedAt).getTime() >= cutoffMs)
+      .sort((left, right) => left.endedAt.localeCompare(right.endedAt))
+      .slice(-limit);
+  } catch (error) {
+    console.warn('story-arc-v2 observability warning (load phase metrics):', error);
+    return inMemory;
+  }
+};
+
+const loadStoryArcV2QualityScorecardsForWindow = async (
+  windowDays: number,
+  limit: number
+): Promise<StoryArcV2QualityScorecard[]> => {
+  const cutoffMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const inMemory = Array.from(storyArcV2QualityScorecards.values())
+    .filter((entry) => new Date(entry.generatedAt).getTime() >= cutoffMs)
+    .sort((left, right) => left.generatedAt.localeCompare(right.generatedAt))
+    .slice(-limit);
+  if (inMemory.length >= limit) return inMemory;
+  try {
+    if (!(await hasTable('storyarc_quality_scorecards'))) return inMemory;
+    const remaining = Math.max(0, limit - inMemory.length);
+    if (remaining === 0) return inMemory;
+    const result = await pool.query(
+      `select scorecard_payload
+       from storyarc_quality_scorecards
+       where created_at >= now() - ($1::int * interval '1 day')
+       order by created_at desc
+       limit $2`,
+      [windowDays, remaining]
+    );
+    result.rows.forEach((row) => {
+      if (!isUnknownRecord(row.scorecard_payload)) return;
+      const scorecard = row.scorecard_payload as unknown as StoryArcV2QualityScorecard;
+      if (!scorecard.scorecardId) return;
+      storyArcV2QualityScorecards.set(scorecard.scorecardId, scorecard);
+    });
+    return Array.from(storyArcV2QualityScorecards.values())
+      .filter((entry) => new Date(entry.generatedAt).getTime() >= cutoffMs)
+      .sort((left, right) => left.generatedAt.localeCompare(right.generatedAt))
+      .slice(-limit);
+  } catch (error) {
+    console.warn('story-arc-v2 observability warning (load quality scorecards):', error);
+    return inMemory;
+  }
+};
+
+const buildStoryArcV2QualityTrend = (
+  scorecards: StoryArcV2QualityScorecard[]
+): {
+  points: StoryArcV2QualityTrendPoint[];
+  summary: {
+    sampleCount: number;
+    averageOverallScore: number;
+    minOverallScore: number;
+    maxOverallScore: number;
+    latestOverallScore: number | null;
+    deltaOverallScore: number;
+    direction: 'up' | 'down' | 'flat';
+    averageBeatCoverage: number;
+  };
+} => {
+  const points = scorecards
+    .slice()
+    .sort((left, right) => left.generatedAt.localeCompare(right.generatedAt))
+    .map((scorecard) => ({
+      timestamp: scorecard.generatedAt,
+      overallScore: scorecard.overallScore,
+      beatCoverage: scorecard.metrics.beatCoverage,
+      narrativeCoherence: scorecard.metrics.narrativeCoherence,
+      technicalCompliance: scorecard.metrics.technicalCompliance,
+      explainabilityCoverage: scorecard.metrics.explainabilityCoverage,
+    }));
+
+  if (points.length === 0) {
+    return {
+      points,
+      summary: {
+        sampleCount: 0,
+        averageOverallScore: 0,
+        minOverallScore: 0,
+        maxOverallScore: 0,
+        latestOverallScore: null,
+        deltaOverallScore: 0,
+        direction: 'flat',
+        averageBeatCoverage: 0,
+      },
+    };
+  }
+
+  const overallScores = points.map((entry) => entry.overallScore);
+  const averageOverallScore =
+    overallScores.reduce((sum, value) => sum + value, 0) / overallScores.length;
+  const averageBeatCoverage =
+    points.reduce((sum, value) => sum + value.beatCoverage, 0) / points.length;
+  const first = points[0].overallScore;
+  const last = points[points.length - 1].overallScore;
+  const deltaOverallScore = Number((last - first).toFixed(4));
+  const direction: 'up' | 'down' | 'flat' =
+    deltaOverallScore > 0.01 ? 'up' : deltaOverallScore < -0.01 ? 'down' : 'flat';
+
+  return {
+    points,
+    summary: {
+      sampleCount: points.length,
+      averageOverallScore: Number(averageOverallScore.toFixed(4)),
+      minOverallScore: Number(Math.min(...overallScores).toFixed(4)),
+      maxOverallScore: Number(Math.max(...overallScores).toFixed(4)),
+      latestOverallScore: Number(last.toFixed(4)),
+      deltaOverallScore,
+      direction,
+      averageBeatCoverage: Number(averageBeatCoverage.toFixed(4)),
+    },
+  };
 };
 
 const normalizeStoryArcV2MediaInput = (
@@ -24346,15 +25463,1228 @@ const normalizeStoryArcV2MediaInput = (
   };
 };
 
-const normalizeStoryArcV2Language = (policy: string): string => {
-  const normalized = normalizeModelLookupValue(policy);
-  if (normalized.includes('no') || normalized.includes('norwegian') || normalized.includes('nb')) {
+const normalizeStoryArcV2LanguageHint = (value: string | null | undefined): string | null => {
+  const raw = readString(value);
+  const normalized = normalizeModelLookupValue(raw || '');
+  if (!normalized) return null;
+  if (
+    normalized === 'auto' ||
+    normalized === 'any' ||
+    normalized === 'all' ||
+    normalized === 'multilingual' ||
+    normalized === 'multi' ||
+    normalized === '*'
+  ) {
+    return null;
+  }
+
+  const languageNameMap: Record<string, string> = {
+    norwegian: 'no',
+    norsk: 'no',
+    english: 'en',
+    engelsk: 'en',
+  };
+  if (languageNameMap[normalized]) {
+    return languageNameMap[normalized];
+  }
+
+  const legacyPolicyMatch =
+    normalized.startsWith('fast-') || normalized.startsWith('balanced-')
+      ? normalized.match(/(?:^|[-_])(nb|nn|no|en)(?:$|[-_])/)
+      : null;
+  if (legacyPolicyMatch?.[1]) {
+    if (legacyPolicyMatch[1] === 'nb' || legacyPolicyMatch[1] === 'nn') {
+      return 'no';
+    }
+    return legacyPolicyMatch[1];
+  }
+
+  const bcp47Match = (raw || '').trim().match(/^([A-Za-z]{2,3})(?:[-_][A-Za-z0-9]{2,8})*$/);
+  if (bcp47Match?.[1]) {
+    const primaryCode = bcp47Match[1].toLowerCase();
+    if (primaryCode === 'nb' || primaryCode === 'nn') {
+      return 'no';
+    }
+    return primaryCode;
+  }
+
+  if (normalized === 'no' || normalized === 'nb' || normalized === 'nn') {
     return 'no';
   }
-  if (normalized.includes('en') || normalized.includes('english')) {
+  if (normalized === 'en') {
     return 'en';
   }
-  return 'no';
+
+  return null;
+};
+
+const resolveStoryArcV2MediaLanguageHint = (
+  media: StoryArcV2MediaInput,
+  fallbackHint: string | null
+): string | null => {
+  const metadataLanguage = isUnknownRecord(media.metadata)
+    ? readString(media.metadata.language) ||
+      readString(media.metadata.lang) ||
+      readString(media.metadata.languageCode)
+    : null;
+  return normalizeStoryArcV2LanguageHint(metadataLanguage || fallbackHint);
+};
+
+const STORY_ARC_V2_SUPPORTED_PROJECT_PROFILES: StoryArcV2ProjectProfile[] = [
+  'wedding',
+  'a_roll_story_cut',
+  'highlight_reel',
+  'dialogue_clean_jumpcut',
+  'corporate_brand',
+  'youtube_vlog',
+];
+
+const STORY_ARC_V2_SUPPORTED_EDITING_MODES: StoryArcV2EditingMode[] = [
+  'co_pilot',
+  'full_auto',
+  'guided_story',
+  'dialogue_clean',
+  'highlight_music_sync',
+];
+
+const STORY_ARC_V2_SUPPORTED_CULTURAL_PROFILES: StoryArcV2CulturalProfile[] = [
+  'generic_wedding',
+  'sikh',
+  'pakistani',
+  'norwegian',
+  'mixed',
+];
+
+const STORY_ARC_V2_EVENT_KEYWORDS: Record<StoryArcV2DetectedEventType, string[]> = {
+  emotional_speech: [
+    'i love you',
+    'love you',
+    'elsker deg',
+    'so proud',
+    'stolt av',
+    'when we first met',
+    'første gang vi møttes',
+    'family',
+    'familie',
+    'forever',
+    'for alltid',
+    'thank you mom',
+    'thank you dad',
+    'takk mamma',
+    'takk pappa',
+  ],
+  speech_highlight: [
+    'today',
+    'i remember',
+    'jeg husker',
+    'this moment',
+    'dette øyeblikket',
+    'never forget',
+    'aldri glemme',
+  ],
+  vow: [
+    'i promise',
+    'i vow',
+    'i will always',
+    'jeg lover',
+    'løfter',
+    'til døden',
+    'in sickness and in health',
+  ],
+  applause: ['applause', 'clapping', 'cheering', 'crowd cheering', 'klapper', 'applaus', '[applause]'],
+  laughter: ['laughter', 'laughing', 'everyone laughed', 'ler', 'latter', '[laughter]'],
+  kiss: ['kiss', 'first kiss', 'kysser', 'kyss'],
+  hug: ['hug', 'embrace', 'klem', 'omfavner'],
+  ring_exchange: ['ring', 'rings', 'ring exchange', 'ringer', 'ringen', 'put the ring'],
+  dancing: ['dance', 'dancing', 'party', 'dans', 'danser'],
+  first_dance: ['first dance', 'første dans', 'brudevals', 'wedding dance'],
+};
+
+const STORY_ARC_V2_EVENT_IMPORTANCE: Record<StoryArcV2DetectedEventType, number> = {
+  emotional_speech: 0.18,
+  speech_highlight: 0.12,
+  vow: 0.28,
+  applause: 0.1,
+  laughter: 0.09,
+  kiss: 0.26,
+  hug: 0.17,
+  ring_exchange: 0.24,
+  dancing: 0.11,
+  first_dance: 0.2,
+};
+
+const STORY_ARC_V2_EVENT_ACTION_HINTS: Record<StoryArcV2DetectedEventType, string[]> = {
+  emotional_speech: ['speech', 'toast', 'moment'],
+  speech_highlight: ['speech', 'toast', 'moment'],
+  vow: ['ceremony', 'moment'],
+  applause: ['clapping', 'cheering', 'moment'],
+  laughter: ['cheering', 'moment'],
+  kiss: ['kissing', 'moment'],
+  hug: ['hugging', 'moment'],
+  ring_exchange: ['ring_exchange', 'ceremony', 'moment'],
+  dancing: ['dancing', 'moment'],
+  first_dance: ['dancing', 'moment'],
+};
+
+const STORY_ARC_V2_EVENT_PRIORITY_SCORE: Record<StoryArcV2EventPriority, number> = {
+  A: 3,
+  B: 2,
+  C: 1,
+};
+
+const STORY_ARC_V2_CULTURAL_RULEBOOKS: Record<
+  Exclude<StoryArcV2CulturalProfile, 'mixed'>,
+  StoryArcV2CulturalRulebook
+> = {
+  generic_wedding: {
+    profile: 'generic_wedding',
+    label: 'Generic Wedding',
+    eventRules: [
+      {
+        type: 'vow',
+        priority: 'A',
+        keywords: ['i promise', 'i vow', 'jeg lover', 'for alltid'],
+        noCut: true,
+        sacred: true,
+        minClipLenSec: 4,
+      },
+      {
+        type: 'ring_exchange',
+        priority: 'A',
+        keywords: ['ring exchange', 'put the ring', 'ringen', 'ringer'],
+        noCut: true,
+        sacred: true,
+        minClipLenSec: 3.8,
+      },
+      { type: 'kiss', priority: 'A', keywords: ['kiss', 'first kiss', 'kyss'], minClipLenSec: 3 },
+      { type: 'first_dance', priority: 'A', keywords: ['first dance', 'første dans', 'brudevals'], minClipLenSec: 3 },
+      {
+        type: 'emotional_speech',
+        priority: 'B',
+        keywords: ['family', 'familie', 'so proud', 'stolt av', 'love you', 'elsker deg'],
+      },
+      { type: 'speech_highlight', priority: 'B', keywords: ['toast', 'skål', 'speech', 'tale'] },
+      { type: 'hug', priority: 'B', keywords: ['hug', 'embrace', 'klem'] },
+      { type: 'dancing', priority: 'C', keywords: ['dance', 'dancing', 'dans'] },
+      { type: 'applause', priority: 'C', keywords: ['applause', 'klapper', 'applaus'] },
+      { type: 'laughter', priority: 'C', keywords: ['laughter', 'latter', 'ler'] },
+    ],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow', 'ring_exchange'],
+    minClipLenByEventType: {
+      vow: 4,
+      ring_exchange: 3.8,
+      kiss: 3,
+      first_dance: 3,
+    },
+    pacing: {
+      ceremony: { shotMin: 2.8, shotMax: 11 },
+      speeches: { shotMin: 2.2, shotMax: 9 },
+      party: { shotMin: 1.2, shotMax: 5.2 },
+    },
+    mustIncludeDefaults: ['vows', 'ring exchange', 'kiss', 'speeches', 'first dance'],
+  },
+  sikh: {
+    profile: 'sikh',
+    label: 'Sikh Wedding',
+    eventRules: [
+      {
+        type: 'vow',
+        priority: 'A',
+        keywords: ['anand karaj', 'laavan', 'laavaan', 'ardaas', 'waheguru', 'hukamnama'],
+        noCut: true,
+        sacred: true,
+        minClipLenSec: 4.5,
+      },
+      {
+        type: 'ring_exchange',
+        priority: 'B',
+        keywords: ['ring', 'rings', 'milni', 'ceremony'],
+        noCut: true,
+        minClipLenSec: 3.6,
+      },
+      {
+        type: 'speech_highlight',
+        priority: 'B',
+        keywords: ['gurdwara', 'anand karaj', 'laavan', 'blessing'],
+      },
+      { type: 'emotional_speech', priority: 'B', keywords: ['family', 'blessing', 'grateful'] },
+      { type: 'hug', priority: 'B', keywords: ['hug', 'embrace', 'klem'] },
+      { type: 'dancing', priority: 'B', keywords: ['sangeet', 'dance', 'bhangra'] },
+      { type: 'first_dance', priority: 'C', keywords: ['first dance', 'dance floor'] },
+      { type: 'applause', priority: 'C', keywords: ['applause', 'cheering'] },
+      { type: 'laughter', priority: 'C', keywords: ['laughter', 'laughing'] },
+      { type: 'kiss', priority: 'C', keywords: ['kiss', 'couple moment'] },
+    ],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow'],
+    minClipLenByEventType: {
+      vow: 4.5,
+      ring_exchange: 3.6,
+    },
+    pacing: {
+      ceremony: { shotMin: 3.2, shotMax: 12.5 },
+      speeches: { shotMin: 2.4, shotMax: 9.5 },
+      party: { shotMin: 1.2, shotMax: 5.4 },
+    },
+    mustIncludeDefaults: ['anand karaj', 'laavan', 'ardaas', 'family blessings'],
+  },
+  pakistani: {
+    profile: 'pakistani',
+    label: 'Pakistani Wedding',
+    eventRules: [
+      {
+        type: 'vow',
+        priority: 'A',
+        keywords: ['nikah', 'qubool hai', 'qabool hai', 'ijab', 'qabul', 'dua', 'mehr'],
+        noCut: true,
+        sacred: true,
+        minClipLenSec: 4.3,
+      },
+      {
+        type: 'emotional_speech',
+        priority: 'A',
+        keywords: ['rukhsati', 'walima', 'family', 'blessing', 'dua'],
+        minClipLenSec: 3.2,
+      },
+      {
+        type: 'speech_highlight',
+        priority: 'B',
+        keywords: ['nikah', 'walima', 'rukhsati', 'toast', 'speech'],
+      },
+      { type: 'ring_exchange', priority: 'B', keywords: ['ring exchange', 'ring ceremony', 'rings'] },
+      { type: 'hug', priority: 'B', keywords: ['hug', 'embrace', 'farewell'] },
+      { type: 'dancing', priority: 'B', keywords: ['mehndi', 'dance', 'dhol'] },
+      { type: 'first_dance', priority: 'C', keywords: ['first dance', 'dance floor'] },
+      { type: 'applause', priority: 'C', keywords: ['applause', 'cheering', 'clapping'] },
+      { type: 'laughter', priority: 'C', keywords: ['laughter', 'joke', 'laughing'] },
+      { type: 'kiss', priority: 'C', keywords: ['couple moment', 'romantic look'] },
+    ],
+    noCutEventTypes: ['vow'],
+    sacredEventTypes: ['vow'],
+    minClipLenByEventType: {
+      vow: 4.3,
+      emotional_speech: 3.2,
+    },
+    pacing: {
+      ceremony: { shotMin: 3.1, shotMax: 12 },
+      speeches: { shotMin: 2.5, shotMax: 9.8 },
+      party: { shotMin: 1.2, shotMax: 5.8 },
+    },
+    mustIncludeDefaults: ['nikah', 'qubool hai', 'rukhsati', 'walima'],
+  },
+  norwegian: {
+    profile: 'norwegian',
+    label: 'Norwegian Wedding',
+    eventRules: [
+      {
+        type: 'vow',
+        priority: 'A',
+        keywords: ['vows', 'løfter', 'i do', 'ja', 'for alltid'],
+        noCut: true,
+        sacred: true,
+        minClipLenSec: 3.8,
+      },
+      {
+        type: 'ring_exchange',
+        priority: 'A',
+        keywords: ['ring exchange', 'ringen', 'ringer'],
+        noCut: true,
+        minClipLenSec: 3.6,
+      },
+      {
+        type: 'speech_highlight',
+        priority: 'A',
+        keywords: ['tale', 'toastmaster', 'skål', 'brudens far', 'forlover'],
+        minClipLenSec: 2.8,
+      },
+      { type: 'emotional_speech', priority: 'B', keywords: ['familie', 'stolt', 'elsker deg'] },
+      { type: 'kiss', priority: 'A', keywords: ['første kyss', 'kyss', 'kysser'], minClipLenSec: 3 },
+      { type: 'first_dance', priority: 'B', keywords: ['brudevals', 'første dans'] },
+      { type: 'hug', priority: 'B', keywords: ['klem', 'omfavnelse'] },
+      { type: 'applause', priority: 'C', keywords: ['applaus', 'klapper'] },
+      { type: 'laughter', priority: 'C', keywords: ['latter', 'ler'] },
+      { type: 'dancing', priority: 'C', keywords: ['dans', 'fest'] },
+    ],
+    noCutEventTypes: ['vow', 'ring_exchange'],
+    sacredEventTypes: ['vow', 'ring_exchange'],
+    minClipLenByEventType: {
+      vow: 3.8,
+      ring_exchange: 3.6,
+      speech_highlight: 2.8,
+    },
+    pacing: {
+      ceremony: { shotMin: 2.8, shotMax: 10.5 },
+      speeches: { shotMin: 2.8, shotMax: 10.2 },
+      party: { shotMin: 1.2, shotMax: 5.2 },
+    },
+    mustIncludeDefaults: ['vows', 'ring exchange', 'taler', 'første dans'],
+  },
+};
+
+const createEmptyStoryArcV2MusicAnalysis = (): StoryArcV2MusicAnalysis => ({
+  source: 'none',
+  durationSeconds: null,
+  bpm: null,
+  beatIntervalSeconds: null,
+  beats: [],
+  sections: [],
+  energyCurve: [],
+  warnings: [],
+});
+
+const resolveStoryArcV2CulturalProfile = (
+  value: string | null | undefined
+): StoryArcV2CulturalProfile => {
+  const normalized = normalizeModelLookupValue(value || '');
+  if (!normalized) return 'mixed';
+  if (normalized.includes('sikh') || normalized.includes('punjabi')) return 'sikh';
+  if (normalized.includes('pakistani') || normalized.includes('nikah')) return 'pakistani';
+  if (
+    normalized.includes('norwegian') ||
+    normalized === 'no' ||
+    normalized === 'nb' ||
+    normalized.includes('norsk')
+  ) {
+    return 'norwegian';
+  }
+  if (normalized.includes('generic')) return 'generic_wedding';
+  if (normalized.includes('mixed') || normalized.includes('multi')) return 'mixed';
+  return 'mixed';
+};
+
+const normalizeStoryArcV2MomentTokenList = (value: unknown): string[] => {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[,;\n|]+/)
+      : [];
+  return Array.from(
+    new Set(
+      rawValues
+        .map((entry) => normalizeModelLookupValue(typeof entry === 'string' ? entry : readString(entry) || ''))
+        .filter((entry) => entry.length >= 2)
+        .slice(0, 32)
+    )
+  );
+};
+
+const resolveStoryArcV2CulturalModules = (
+  value: unknown
+): StoryArcV2CulturalProfile[] => {
+  const modules = normalizeStoryArcV2MomentTokenList(value)
+    .map((entry) => resolveStoryArcV2CulturalProfile(entry))
+    .filter((entry) => entry !== 'mixed')
+    .slice(0, 4);
+  return Array.from(new Set(modules));
+};
+
+const toStoryArcV2EventPriorityFromRule = (
+  rulebook: StoryArcV2CulturalRulebook,
+  eventType: StoryArcV2DetectedEventType
+): StoryArcV2EventPriority => {
+  const fromRule = rulebook.eventRules.find((rule) => rule.type === eventType)?.priority;
+  return fromRule || 'C';
+};
+
+const toStoryArcV2EventPriorityWeight = (priority: StoryArcV2EventPriority): number => {
+  if (priority === 'A') return 0.34;
+  if (priority === 'B') return 0.22;
+  return 0.12;
+};
+
+const mergeStoryArcV2CulturalRulebook = (params: {
+  profile: StoryArcV2CulturalProfile;
+  modules: StoryArcV2CulturalProfile[];
+}): StoryArcV2CulturalRulebook => {
+  const selectedProfiles: Array<Exclude<StoryArcV2CulturalProfile, 'mixed'>> = ['generic_wedding'];
+  if (params.profile !== 'mixed') {
+    selectedProfiles.push(params.profile as Exclude<StoryArcV2CulturalProfile, 'mixed'>);
+  }
+
+  const moduleProfiles =
+    params.profile === 'mixed' && params.modules.length === 0
+      ? (['sikh', 'pakistani', 'norwegian'] as StoryArcV2CulturalProfile[])
+      : params.modules;
+  moduleProfiles.forEach((moduleProfile) => {
+    if (moduleProfile === 'mixed') return;
+    const resolved = moduleProfile as Exclude<StoryArcV2CulturalProfile, 'mixed'>;
+    if (!selectedProfiles.includes(resolved)) {
+      selectedProfiles.push(resolved);
+    }
+  });
+
+  const eventRuleMap = new Map<StoryArcV2DetectedEventType, StoryArcV2CulturalEventRule>();
+  const noCutSet = new Set<StoryArcV2DetectedEventType>();
+  const sacredSet = new Set<StoryArcV2DetectedEventType>();
+  const minClipLenByEventType: Partial<Record<StoryArcV2DetectedEventType, number>> = {};
+  const mustIncludeDefaults = new Set<string>();
+  const mergedPacing: StoryArcV2CulturalRulebook['pacing'] = {
+    ceremony: { shotMin: 2.8, shotMax: 11 },
+    speeches: { shotMin: 2.2, shotMax: 9 },
+    party: { shotMin: 1.2, shotMax: 5.2 },
+  };
+
+  selectedProfiles.forEach((profileKey) => {
+    const profileRulebook = STORY_ARC_V2_CULTURAL_RULEBOOKS[profileKey];
+    profileRulebook.eventRules.forEach((rule) => {
+      const existing = eventRuleMap.get(rule.type);
+      if (!existing) {
+        eventRuleMap.set(rule.type, {
+          ...rule,
+          keywords: [...rule.keywords],
+        });
+      } else {
+        const existingPriorityScore = STORY_ARC_V2_EVENT_PRIORITY_SCORE[existing.priority];
+        const incomingPriorityScore = STORY_ARC_V2_EVENT_PRIORITY_SCORE[rule.priority];
+        existing.priority =
+          incomingPriorityScore > existingPriorityScore ? rule.priority : existing.priority;
+        existing.keywords = Array.from(new Set([...existing.keywords, ...rule.keywords]));
+        existing.noCut = Boolean(existing.noCut || rule.noCut);
+        existing.sacred = Boolean(existing.sacred || rule.sacred);
+        existing.minClipLenSec = Math.max(
+          existing.minClipLenSec || 0,
+          rule.minClipLenSec || 0
+        ) || undefined;
+      }
+    });
+    profileRulebook.noCutEventTypes.forEach((eventType) => noCutSet.add(eventType));
+    profileRulebook.sacredEventTypes.forEach((eventType) => sacredSet.add(eventType));
+    Object.entries(profileRulebook.minClipLenByEventType).forEach(([eventType, value]) => {
+      const key = eventType as StoryArcV2DetectedEventType;
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return;
+      minClipLenByEventType[key] = Math.max(minClipLenByEventType[key] || 0, numeric);
+    });
+    profileRulebook.mustIncludeDefaults.forEach((token) => mustIncludeDefaults.add(token));
+    mergedPacing.ceremony.shotMin = Math.max(mergedPacing.ceremony.shotMin, profileRulebook.pacing.ceremony.shotMin);
+    mergedPacing.ceremony.shotMax = Math.max(mergedPacing.ceremony.shotMax, profileRulebook.pacing.ceremony.shotMax);
+    mergedPacing.speeches.shotMin = Math.max(mergedPacing.speeches.shotMin, profileRulebook.pacing.speeches.shotMin);
+    mergedPacing.speeches.shotMax = Math.max(mergedPacing.speeches.shotMax, profileRulebook.pacing.speeches.shotMax);
+    mergedPacing.party.shotMin = Math.max(mergedPacing.party.shotMin, profileRulebook.pacing.party.shotMin);
+    mergedPacing.party.shotMax = Math.max(mergedPacing.party.shotMax, profileRulebook.pacing.party.shotMax);
+  });
+
+  eventRuleMap.forEach((rule) => {
+    if (rule.noCut) noCutSet.add(rule.type);
+    if (rule.sacred) sacredSet.add(rule.type);
+    if (rule.minClipLenSec && Number.isFinite(rule.minClipLenSec)) {
+      minClipLenByEventType[rule.type] = Math.max(
+        minClipLenByEventType[rule.type] || 0,
+        rule.minClipLenSec
+      );
+    }
+  });
+
+  return {
+    profile: params.profile,
+    label:
+      params.profile === 'mixed'
+        ? 'Mixed Cultural Wedding'
+        : STORY_ARC_V2_CULTURAL_RULEBOOKS[params.profile as Exclude<StoryArcV2CulturalProfile, 'mixed'>].label,
+    eventRules: Array.from(eventRuleMap.values()),
+    noCutEventTypes: Array.from(noCutSet),
+    sacredEventTypes: Array.from(sacredSet),
+    minClipLenByEventType,
+    pacing: mergedPacing,
+    mustIncludeDefaults: Array.from(mustIncludeDefaults),
+  };
+};
+
+const buildStoryArcV2EventKeywordMap = (
+  rulebook: StoryArcV2CulturalRulebook
+): Record<StoryArcV2DetectedEventType, string[]> => {
+  const keywords = {
+    ...STORY_ARC_V2_EVENT_KEYWORDS,
+  };
+  rulebook.eventRules.forEach((rule) => {
+    keywords[rule.type] = Array.from(new Set([...(keywords[rule.type] || []), ...rule.keywords]));
+  });
+  return keywords;
+};
+
+const buildStoryArcV2EventImportanceFromRulebook = (
+  rulebook: StoryArcV2CulturalRulebook,
+  profile: StoryArcV2ProjectProfile
+): Record<StoryArcV2DetectedEventType, number> => {
+  const weights = {
+    ...STORY_ARC_V2_EVENT_IMPORTANCE,
+  };
+  rulebook.eventRules.forEach((rule) => {
+    weights[rule.type] = Math.max(weights[rule.type], toStoryArcV2EventPriorityWeight(rule.priority));
+  });
+  if (profile === 'wedding') {
+    weights.vow = Math.max(weights.vow, 0.32);
+    weights.ring_exchange = Math.max(weights.ring_exchange, 0.3);
+    weights.kiss = Math.max(weights.kiss, 0.3);
+    weights.first_dance = Math.max(weights.first_dance, 0.25);
+  }
+  return weights;
+};
+
+const resolveStoryArcV2ProjectProfile = (value: string | null | undefined): StoryArcV2ProjectProfile => {
+  const normalized = normalizeModelLookupValue(value || '');
+  if (!normalized) return 'wedding';
+  if (normalized.includes('corporate') || normalized.includes('brand')) return 'corporate_brand';
+  if (normalized.includes('youtube') || normalized.includes('vlog')) return 'youtube_vlog';
+  if (normalized.includes('highlight')) return 'highlight_reel';
+  if (normalized.includes('dialogue') || normalized.includes('jumpcut')) return 'dialogue_clean_jumpcut';
+  if (normalized.includes('aroll') || normalized.includes('interview') || normalized.includes('podcast')) {
+    return 'a_roll_story_cut';
+  }
+  if (normalized.includes('wedding') || normalized.includes('bryllup')) return 'wedding';
+  return 'wedding';
+};
+
+const resolveStoryArcV2EditingMode = (
+  value: string | null | undefined,
+  profile: StoryArcV2ProjectProfile
+): StoryArcV2EditingMode => {
+  const normalized = normalizeModelLookupValue(value || '');
+  if (normalized.includes('fullauto') || normalized.includes('full_auto')) return 'full_auto';
+  if (normalized.includes('guided')) return 'guided_story';
+  if (normalized.includes('dialogueclean') || normalized.includes('dialogue_clean')) return 'dialogue_clean';
+  if (normalized.includes('highlightsync') || normalized.includes('music') || normalized.includes('beat')) {
+    return 'highlight_music_sync';
+  }
+  if (normalized.includes('copilot') || normalized.includes('co_pilot')) return 'co_pilot';
+
+  if (profile === 'dialogue_clean_jumpcut') return 'dialogue_clean';
+  if (profile === 'highlight_reel' || profile === 'wedding') return 'highlight_music_sync';
+  return 'co_pilot';
+};
+
+const toStoryArcV2BeatHintFromEventType = (
+  eventType: StoryArcV2DetectedEventType,
+  fallback: StoryArcV2NarrativeBeat
+): StoryArcV2NarrativeBeat => {
+  if (eventType === 'vow' || eventType === 'ring_exchange') return 'turning_point';
+  if (eventType === 'kiss' || eventType === 'first_dance') return 'resolution';
+  if (eventType === 'emotional_speech' || eventType === 'speech_highlight') return 'conflict';
+  if (eventType === 'applause' || eventType === 'laughter' || eventType === 'dancing' || eventType === 'hug') {
+    return 'resolution';
+  }
+  return fallback;
+};
+
+const collectStoryArcV2KeywordHits = (normalizedText: string, keywords: string[]): string[] =>
+  keywords.filter((keyword) => normalizedText.includes(normalizeModelLookupValue(keyword))).slice(0, 6);
+
+const rangesOverlapStoryArcV2 = (
+  startA: number,
+  endA: number,
+  startB: number,
+  endB: number
+): boolean => endA > startB && endB > startA;
+
+const medianStoryArcV2Number = (values: number[]): number | null => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle];
+};
+
+const parseStoryArcV2WavMono16 = (
+  wavBuffer: Buffer
+): { sampleRate: number; samples: Int16Array } | null => {
+  if (wavBuffer.length < 44) return null;
+  if (wavBuffer.toString('ascii', 0, 4) !== 'RIFF' || wavBuffer.toString('ascii', 8, 12) !== 'WAVE') {
+    return null;
+  }
+
+  let offset = 12;
+  let channels = 1;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataOffset = -1;
+  let dataLength = 0;
+
+  while (offset + 8 <= wavBuffer.length) {
+    const chunkId = wavBuffer.toString('ascii', offset, offset + 4);
+    const chunkSize = wavBuffer.readUInt32LE(offset + 4);
+    const chunkStart = offset + 8;
+    const nextOffset = chunkStart + chunkSize + (chunkSize % 2);
+    if (nextOffset > wavBuffer.length + 1) {
+      break;
+    }
+
+    if (chunkId === 'fmt ' && chunkSize >= 16) {
+      channels = wavBuffer.readUInt16LE(chunkStart + 2);
+      sampleRate = wavBuffer.readUInt32LE(chunkStart + 4);
+      bitsPerSample = wavBuffer.readUInt16LE(chunkStart + 14);
+    } else if (chunkId === 'data') {
+      dataOffset = chunkStart;
+      dataLength = chunkSize;
+      break;
+    }
+
+    offset = nextOffset;
+  }
+
+  if (dataOffset < 0 || sampleRate <= 0 || bitsPerSample !== 16 || dataLength <= 0) {
+    return null;
+  }
+  if (channels <= 0) channels = 1;
+
+  const bytesPerSampleFrame = channels * 2;
+  const frameCount = Math.floor(dataLength / bytesPerSampleFrame);
+  if (frameCount <= 0) {
+    return null;
+  }
+
+  const samples = new Int16Array(frameCount);
+  for (let index = 0; index < frameCount; index += 1) {
+    const frameOffset = dataOffset + index * bytesPerSampleFrame;
+    if (channels === 1) {
+      samples[index] = wavBuffer.readInt16LE(frameOffset);
+      continue;
+    }
+
+    let sum = 0;
+    for (let channel = 0; channel < channels; channel += 1) {
+      sum += wavBuffer.readInt16LE(frameOffset + channel * 2);
+    }
+    samples[index] = Math.round(sum / channels);
+  }
+
+  return { sampleRate, samples };
+};
+
+const analyzeStoryArcV2MusicFromVideo = async (
+  videoPath: string,
+  signal?: AbortSignal
+): Promise<StoryArcV2MusicAnalysis> => {
+  const analysis = createEmptyStoryArcV2MusicAnalysis();
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'storyarc-v2-music-'));
+  const reducedWavPath = path.join(tempDir, 'music-analysis.wav');
+  try {
+    const extractResult = await runBinaryCommand(
+      FFMPEG_BINARY,
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-y',
+        '-i',
+        videoPath,
+        '-vn',
+        '-ac',
+        '1',
+        '-ar',
+        '200',
+        '-c:a',
+        'pcm_s16le',
+        reducedWavPath,
+      ],
+      240_000,
+      signal
+    );
+
+    if (extractResult.timedOut) {
+      analysis.warnings.push('Music analysis timed out while extracting audio.');
+      return analysis;
+    }
+
+    const noAudioStreamDetected =
+      /does not contain any stream/i.test(extractResult.stderr) ||
+      /stream map .*matches no streams/i.test(extractResult.stderr) ||
+      /audio.*not found/i.test(extractResult.stderr);
+    if (extractResult.code !== 0) {
+      analysis.warnings.push(
+        noAudioStreamDetected
+          ? 'Music analysis skipped (video has no audio stream).'
+          : `Music analysis extraction failed: ${extractResult.stderr.slice(0, 280)}`
+      );
+      return analysis;
+    }
+
+    const wavBuffer = await fs.readFile(reducedWavPath);
+    const parsed = parseStoryArcV2WavMono16(wavBuffer);
+    if (!parsed) {
+      analysis.warnings.push('Music analysis could not parse extracted WAV track.');
+      return analysis;
+    }
+
+    const { sampleRate, samples } = parsed;
+    if (samples.length === 0) {
+      analysis.warnings.push('Music analysis received empty audio samples.');
+      return analysis;
+    }
+
+    const windowDurationSeconds = 0.2;
+    const windowSize = Math.max(1, Math.round(sampleRate * windowDurationSeconds));
+    const rawEnergy: number[] = [];
+    for (let offset = 0; offset < samples.length; offset += windowSize) {
+      const end = Math.min(samples.length, offset + windowSize);
+      let squared = 0;
+      for (let index = offset; index < end; index += 1) {
+        const normalized = samples[index] / 32768;
+        squared += normalized * normalized;
+      }
+      const rms = Math.sqrt(squared / Math.max(1, end - offset));
+      rawEnergy.push(rms);
+    }
+
+    if (rawEnergy.length === 0) {
+      analysis.warnings.push('Music analysis energy curve is empty.');
+      return analysis;
+    }
+
+    const smoothedEnergy = rawEnergy.map((value, index) => {
+      const from = Math.max(0, index - 2);
+      const to = Math.min(rawEnergy.length - 1, index + 2);
+      let total = 0;
+      let count = 0;
+      for (let cursor = from; cursor <= to; cursor += 1) {
+        total += rawEnergy[cursor];
+        count += 1;
+      }
+      return total / Math.max(1, count);
+    });
+
+    const avgEnergy = smoothedEnergy.reduce((sum, value) => sum + value, 0) / smoothedEnergy.length;
+    const minPeakGapSeconds = 0.24;
+    let lastPeakTime = -100;
+    const beats: StoryArcV2MusicBeatPoint[] = [];
+    for (let index = 1; index < smoothedEnergy.length - 1; index += 1) {
+      const energy = smoothedEnergy[index];
+      const prev = smoothedEnergy[index - 1];
+      const next = smoothedEnergy[index + 1];
+      const time = index * windowDurationSeconds;
+      if (energy <= prev || energy < next) continue;
+      if (energy < avgEnergy * 1.12) continue;
+      if (time - lastPeakTime < minPeakGapSeconds) continue;
+      const confidence = clampStoryArcV2Number((energy - avgEnergy) / Math.max(0.0001, avgEnergy), 0, 1);
+      beats.push({
+        time: Number(time.toFixed(3)),
+        confidence: Number(confidence.toFixed(3)),
+        energy: Number(clampStoryArcV2Number(energy * 3.4, 0, 1).toFixed(3)),
+      });
+      lastPeakTime = time;
+    }
+
+    const beatIntervals = beats
+      .slice(1)
+      .map((beat, index) => beat.time - beats[index].time)
+      .filter((interval) => interval >= 0.28 && interval <= 1.4);
+    const medianInterval = medianStoryArcV2Number(beatIntervals);
+    const bpm = medianInterval ? clampStoryArcV2Number(60 / medianInterval, 50, 190) : null;
+    const beatIntervalSeconds = bpm ? Number((60 / bpm).toFixed(3)) : null;
+
+    const sectionWindowPoints = Math.max(12, Math.round(8 / windowDurationSeconds));
+    const sectionMeans: number[] = [];
+    for (let offset = 0; offset < smoothedEnergy.length; offset += sectionWindowPoints) {
+      const section = smoothedEnergy.slice(offset, offset + sectionWindowPoints);
+      const mean = section.reduce((sum, value) => sum + value, 0) / Math.max(1, section.length);
+      sectionMeans.push(mean);
+    }
+    const sortedMeans = [...sectionMeans].sort((left, right) => left - right);
+    const q33 = sortedMeans[Math.max(0, Math.floor(sortedMeans.length * 0.33) - 1)] ?? 0;
+    const q66 = sortedMeans[Math.max(0, Math.floor(sortedMeans.length * 0.66) - 1)] ?? q33;
+
+    const durationSeconds = Number(((samples.length / sampleRate) || 0).toFixed(3));
+    const sections: StoryArcV2MusicSection[] = sectionMeans.map((mean, index) => {
+      const start = Number((index * sectionWindowPoints * windowDurationSeconds).toFixed(3));
+      const end = Number(
+        Math.min(durationSeconds, (index + 1) * sectionWindowPoints * windowDurationSeconds).toFixed(3)
+      );
+      const energyLevel: StoryArcV2MusicSection['energyLevel'] =
+        mean < q33 ? 'low' : mean < q66 ? 'medium' : 'high';
+      let label: StoryArcV2MusicSection['label'] = 'verse';
+      if (index === 0) {
+        label = 'intro';
+      } else if (index === sectionMeans.length - 1) {
+        label = 'outro';
+      } else if (energyLevel === 'high') {
+        label = 'chorus';
+      } else if (energyLevel === 'medium' && sectionMeans[index - 1] < q33) {
+        label = 'build';
+      } else if (index % 4 === 0) {
+        label = 'bridge';
+      }
+      return {
+        sectionId: `section-${index + 1}`,
+        start,
+        end: end > start ? end : Number((start + 0.2).toFixed(3)),
+        label,
+        energyLevel,
+      };
+    });
+
+    const maxCurvePoints = 400;
+    const curveStep = Math.max(1, Math.floor(smoothedEnergy.length / maxCurvePoints));
+    const energyCurve = smoothedEnergy
+      .filter((_value, index) => index % curveStep === 0)
+      .slice(0, maxCurvePoints)
+      .map((value) => Number(clampStoryArcV2Number(value * 3.2, 0, 1).toFixed(4)));
+
+    return {
+      source: 'video_audio',
+      durationSeconds,
+      bpm: bpm ? Number(bpm.toFixed(2)) : null,
+      beatIntervalSeconds,
+      beats: beats.slice(0, 2400),
+      sections: sections.slice(0, 240),
+      energyCurve,
+      warnings: [],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown music analysis error';
+    analysis.warnings.push(`Music analysis failed: ${message}`);
+    return analysis;
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+};
+
+const detectStoryArcV2EventsForMedia = (params: {
+  mediaId: string;
+  profile: StoryArcV2ProjectProfile;
+  rulebook: StoryArcV2CulturalRulebook;
+  mustIncludeMoments: string[];
+  avoidMoments: string[];
+  transcription: VideoAnalysisTranscriptionResult;
+  semanticProfiles: StoryArcV2SemanticProfile[];
+  detectedText: string[];
+}): StoryArcV2DetectedEvent[] => {
+  const {
+    mediaId,
+    profile,
+    rulebook,
+    mustIncludeMoments,
+    avoidMoments,
+    transcription,
+    semanticProfiles,
+    detectedText,
+  } = params;
+  const events: StoryArcV2DetectedEvent[] = [];
+  const eventKeywordMap = buildStoryArcV2EventKeywordMap(rulebook);
+  const normalizedMustInclude = mustIncludeMoments
+    .map((entry) => normalizeModelLookupValue(entry))
+    .filter((entry) => entry.length >= 2);
+  const normalizedAvoid = avoidMoments
+    .map((entry) => normalizeModelLookupValue(entry))
+    .filter((entry) => entry.length >= 2);
+  const mediaDuration = Number(
+    (
+      transcription.duration ??
+      semanticProfiles.reduce((max, profileItem) => Math.max(max, profileItem.end), 0)
+    ).toFixed(3)
+  );
+
+  const pushEvent = (event: Omit<StoryArcV2DetectedEvent, 'eventId'>) => {
+    const normalizedStart = Number(Math.max(0, event.start).toFixed(3));
+    const normalizedEnd = Number(Math.max(normalizedStart + 0.2, event.end).toFixed(3));
+    events.push({
+      eventId: `${mediaId}:${event.type}:${normalizedStart.toFixed(2)}:${events.length + 1}`,
+      ...event,
+      start: normalizedStart,
+      end: normalizedEnd,
+      confidence: Number(clampStoryArcV2Number(event.confidence, 0, 1).toFixed(3)),
+      keywords: event.keywords.slice(0, 8),
+      priority: event.priority || 'C',
+      culturalProfile: event.culturalProfile || rulebook.profile,
+    });
+  };
+
+  const segmentEventTypes: StoryArcV2DetectedEventType[] = [
+    'vow',
+    'emotional_speech',
+    'speech_highlight',
+    'applause',
+    'laughter',
+    'first_dance',
+    'dancing',
+  ];
+
+  transcription.segments.forEach((segment, index) => {
+    const text = readString(segment.text) || '';
+    const normalizedText = normalizeModelLookupValue(text);
+    if (!normalizedText) return;
+    const segmentStart = Number(readNumber(segment.start) ?? 0);
+    const segmentEnd = Number(readNumber(segment.end) ?? segmentStart + 1.4);
+    const speaker = readString(segment.speaker) || null;
+    const baseBeat = classifyStoryArcV2Beat(text, index, Math.max(1, transcription.segments.length));
+    const emotion = inferStoryArcV2Emotion(text);
+    const punctuationBoost = text.includes('!') || text.includes('?') ? 0.08 : 0;
+    const longSentenceBoost = text.trim().split(/\s+/).filter(Boolean).length >= 20 ? 0.06 : 0;
+    const profileBoost = profile === 'wedding' ? 0.06 : 0;
+    const mustIncludeHits = normalizedMustInclude.filter((token) => normalizedText.includes(token)).length;
+    const avoidHits = normalizedAvoid.filter((token) => normalizedText.includes(token)).length;
+
+    segmentEventTypes.forEach((eventType) => {
+      const hits = collectStoryArcV2KeywordHits(normalizedText, eventKeywordMap[eventType] || []);
+      if (hits.length === 0 && eventType !== 'speech_highlight') return;
+
+      const priority = toStoryArcV2EventPriorityFromRule(rulebook, eventType);
+      let confidence =
+        0.45 +
+        hits.length * 0.14 +
+        punctuationBoost +
+        profileBoost +
+        toStoryArcV2EventPriorityWeight(priority) * 0.18 +
+        mustIncludeHits * 0.08 -
+        avoidHits * 0.12;
+      if (eventType === 'emotional_speech') {
+        confidence += emotion.score * 0.25;
+      }
+      if (eventType === 'speech_highlight') {
+        if (hits.length === 0 && punctuationBoost === 0 && longSentenceBoost === 0) {
+          return;
+        }
+        confidence += longSentenceBoost;
+      }
+      pushEvent({
+        mediaId,
+        type: eventType,
+        label: eventType.replaceAll('_', ' '),
+        start: segmentStart,
+        end: segmentEnd,
+        confidence,
+        speaker,
+        source: 'transcript',
+        beatHint: toStoryArcV2BeatHintFromEventType(eventType, baseBeat),
+        keywords: hits,
+        priority,
+        culturalProfile: rulebook.profile,
+        rationale:
+          `Transcript matched ${eventType.replaceAll('_', ' ')} cues.` +
+          (mustIncludeHits > 0 ? ` Matched ${mustIncludeHits} must-include intent cues.` : '') +
+          (avoidHits > 0 ? ` Contains ${avoidHits} avoid-intent cues (confidence penalty applied).` : ''),
+      });
+    });
+  });
+
+  semanticProfiles.forEach((profileItem, index) => {
+    const profileEvents: StoryArcV2DetectedEventType[] = [];
+    if (profileItem.actions.includes('dance')) profileEvents.push('dancing');
+    if (profileItem.actions.includes('ceremony')) profileEvents.push('ring_exchange');
+    if (profileItem.emotion.label === 'emotional' && profileItem.emotion.score >= 0.7) {
+      profileEvents.push('emotional_speech');
+    }
+
+    profileEvents.forEach((eventType) => {
+      const beatHint = toStoryArcV2BeatHintFromEventType(
+        eventType,
+        classifyStoryArcV2Beat(eventType, index, Math.max(1, semanticProfiles.length))
+      );
+      const priority = toStoryArcV2EventPriorityFromRule(rulebook, eventType);
+      pushEvent({
+        mediaId,
+        type: eventType,
+        label: eventType.replaceAll('_', ' '),
+        start: profileItem.start,
+        end: profileItem.end,
+        confidence:
+          0.52 +
+          profileItem.emotion.score * 0.24 +
+          toStoryArcV2EventPriorityWeight(priority) * 0.2,
+        speaker: profileItem.people[0] || null,
+        source: 'semantic',
+        beatHint,
+        keywords: profileItem.actions,
+        priority,
+        culturalProfile: rulebook.profile,
+        rationale: `Semantic profile indicates ${eventType.replaceAll('_', ' ')} action.`,
+      });
+    });
+  });
+
+  const ocrEventOrder: StoryArcV2DetectedEventType[] = [
+    'kiss',
+    'hug',
+    'ring_exchange',
+    'first_dance',
+    'dancing',
+  ];
+  detectedText.forEach((line, index) => {
+    const normalizedLine = normalizeModelLookupValue(line);
+    if (!normalizedLine) return;
+    ocrEventOrder.forEach((eventType) => {
+      const hits = collectStoryArcV2KeywordHits(normalizedLine, eventKeywordMap[eventType] || []);
+      if (hits.length === 0) return;
+      const anchorRatio = mediaDuration > 0 ? index / Math.max(1, detectedText.length) : 0;
+      const start = Number((anchorRatio * mediaDuration).toFixed(3));
+      const priority = toStoryArcV2EventPriorityFromRule(rulebook, eventType);
+      pushEvent({
+        mediaId,
+        type: eventType,
+        label: eventType.replaceAll('_', ' '),
+        start,
+        end: Number((start + 2.2).toFixed(3)),
+        confidence:
+          0.58 +
+          hits.length * 0.1 +
+          (profile === 'wedding' ? 0.07 : 0) +
+          toStoryArcV2EventPriorityWeight(priority) * 0.16,
+        speaker: null,
+        source: 'ocr',
+        beatHint: toStoryArcV2BeatHintFromEventType(eventType, 'context'),
+        keywords: hits,
+        priority,
+        culturalProfile: rulebook.profile,
+        rationale: 'OCR detected a wedding visual cue.',
+      });
+    });
+  });
+
+  const sortedEvents = events.sort((left, right) => left.start - right.start);
+  const merged: StoryArcV2DetectedEvent[] = [];
+  sortedEvents.forEach((event) => {
+    const existing = merged.find(
+      (candidate) =>
+        candidate.mediaId === event.mediaId &&
+        candidate.type === event.type &&
+        (rangesOverlapStoryArcV2(candidate.start, candidate.end, event.start, event.end) ||
+          Math.abs(candidate.start - event.start) <= 1.2)
+    );
+    if (!existing) {
+      merged.push(event);
+      return;
+    }
+    existing.start = Number(Math.min(existing.start, event.start).toFixed(3));
+    existing.end = Number(Math.max(existing.end, event.end).toFixed(3));
+    existing.confidence = Number(Math.max(existing.confidence, event.confidence).toFixed(3));
+    existing.keywords = Array.from(new Set([...existing.keywords, ...event.keywords])).slice(0, 8);
+    existing.rationale = `${existing.rationale} ${event.rationale}`.trim();
+    existing.source = existing.source === event.source ? existing.source : 'composite';
+    existing.priority =
+      STORY_ARC_V2_EVENT_PRIORITY_SCORE[event.priority] > STORY_ARC_V2_EVENT_PRIORITY_SCORE[existing.priority]
+        ? event.priority
+        : existing.priority;
+  });
+
+  return merged
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, 260)
+    .sort((left, right) => left.start - right.start);
+};
+
+const buildStoryArcV2NarrativeAnchorsForMedia = (params: {
+  mediaId: string;
+  profile: StoryArcV2ProjectProfile;
+  rulebook: StoryArcV2CulturalRulebook;
+  transcription: VideoAnalysisTranscriptionResult;
+  events: StoryArcV2DetectedEvent[];
+}): StoryArcV2NarrativeAnchor[] => {
+  const { mediaId, profile, rulebook, transcription, events } = params;
+  const anchors: StoryArcV2NarrativeAnchor[] = [];
+  const maxQuotes = profile === 'wedding' ? 18 : 14;
+  const eventKeywordMap = buildStoryArcV2EventKeywordMap(rulebook);
+
+  transcription.segments.forEach((segment, index) => {
+    const text = (readString(segment.text) || '').trim();
+    if (!text) return;
+    const start = Number(readNumber(segment.start) ?? 0);
+    const end = Number(readNumber(segment.end) ?? start + 1.2);
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const emotion = inferStoryArcV2Emotion(text);
+    const keywordHits =
+      collectStoryArcV2KeywordHits(normalizeModelLookupValue(text), eventKeywordMap.emotional_speech || [])
+        .length +
+      collectStoryArcV2KeywordHits(normalizeModelLookupValue(text), eventKeywordMap.vow || []).length;
+    const score = clampStoryArcV2Number(
+      words / 26 +
+        emotion.score * 0.35 +
+        (text.includes('!') || text.includes('?') ? 0.08 : 0) +
+        keywordHits * 0.08 +
+        (profile === 'wedding' ? 0.04 : 0),
+      0,
+      1
+    );
+    if (score < 0.44) return;
+    anchors.push({
+      anchorId: `${mediaId}:quote:${index + 1}`,
+      mediaId,
+      start: Number(start.toFixed(3)),
+      end: Number(end.toFixed(3)),
+      text,
+      score: Number(score.toFixed(3)),
+      type: 'quote',
+      speaker: readString(segment.speaker) || null,
+      beatHint: classifyStoryArcV2Beat(text, index, Math.max(1, transcription.segments.length)),
+      eventType: null,
+    });
+  });
+
+  events
+    .slice()
+    .sort((left, right) => right.confidence - left.confidence)
+    .slice(0, profile === 'wedding' ? 28 : 16)
+    .forEach((event, index) => {
+      const priorityBoost =
+        event.priority === 'A' ? 0.12 : event.priority === 'B' ? 0.06 : 0.02;
+      anchors.push({
+        anchorId: `${mediaId}:event:${index + 1}:${event.type}`,
+        mediaId,
+        start: event.start,
+        end: event.end,
+        text: `${event.label}: ${event.rationale}`,
+        score: Number(clampStoryArcV2Number(event.confidence + 0.08 + priorityBoost, 0, 1).toFixed(3)),
+        type: 'event',
+        speaker: event.speaker,
+        beatHint: event.beatHint,
+        eventType: event.type,
+      });
+    });
+
+  return anchors
+    .sort((left, right) => right.score - left.score)
+    .slice(0, maxQuotes + 18)
+    .sort((left, right) => left.start - right.start);
+};
+
+const mergeStoryArcV2MusicAnalysis = (media: StoryArcV2AnalyzedMedia[]): StoryArcV2MusicAnalysis => {
+  const valid = media
+    .map((item) => item.musicAnalysis)
+    .filter((entry) => entry && entry.source !== 'none' && entry.beats.length > 0);
+  if (valid.length === 0) {
+    return createEmptyStoryArcV2MusicAnalysis();
+  }
+
+  const bpmValues = valid
+    .map((entry) => entry.bpm)
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const bpm = medianStoryArcV2Number(bpmValues);
+  const beatIntervalSeconds = bpm ? Number((60 / bpm).toFixed(3)) : valid[0].beatIntervalSeconds;
+
+  let offset = 0;
+  const beats: StoryArcV2MusicBeatPoint[] = [];
+  const sections: StoryArcV2MusicSection[] = [];
+  const energyCurve: number[] = [];
+  valid.forEach((entry, mediaIndex) => {
+    entry.beats.forEach((beat) => {
+      beats.push({
+        time: Number((beat.time + offset).toFixed(3)),
+        confidence: beat.confidence,
+        energy: beat.energy,
+      });
+    });
+    entry.sections.forEach((section, sectionIndex) => {
+      sections.push({
+        ...section,
+        sectionId: `m${mediaIndex + 1}-s${sectionIndex + 1}`,
+        start: Number((section.start + offset).toFixed(3)),
+        end: Number((section.end + offset).toFixed(3)),
+      });
+    });
+    energyCurve.push(...entry.energyCurve);
+    offset += entry.durationSeconds || 0;
+  });
+
+  return {
+    source: 'video_audio',
+    durationSeconds: Number(offset.toFixed(3)),
+    bpm: bpm ? Number(bpm.toFixed(2)) : null,
+    beatIntervalSeconds: beatIntervalSeconds || null,
+    beats: beats.slice(0, 2800),
+    sections: sections.slice(0, 320),
+    energyCurve: energyCurve.slice(0, 600),
+    warnings: [],
+  };
 };
 
 const resolveStoryArcV2ProjectKey = (projectId: string | null): string => {
@@ -24567,6 +26897,233 @@ const buildStoryArcV2SemanticProfiles = (
   });
 };
 
+const toStoryArcV2VisualActions = (actions: string[]): StoryArcV2VisualAction[] => {
+  const normalizedActions = actions.map((entry) => normalizeModelLookupValue(entry));
+  const visualActions: StoryArcV2VisualAction[] = [];
+  if (normalizedActions.some((entry) => entry.includes('speech') || entry.includes('toast'))) {
+    visualActions.push('speech');
+  }
+  if (normalizedActions.some((entry) => entry.includes('dance'))) {
+    visualActions.push('dancing');
+  }
+  if (normalizedActions.some((entry) => entry.includes('ring') || entry.includes('ceremony'))) {
+    visualActions.push('ring_exchange', 'ceremony');
+  }
+  if (normalizedActions.some((entry) => entry.includes('walk') || entry.includes('aisle'))) {
+    visualActions.push('walking_aisle');
+  }
+  if (normalizedActions.some((entry) => entry.includes('clap') || entry.includes('applause'))) {
+    visualActions.push('clapping');
+  }
+  if (normalizedActions.some((entry) => entry.includes('cheer') || entry.includes('party'))) {
+    visualActions.push('cheering');
+  }
+  if (visualActions.length === 0) {
+    visualActions.push('moment');
+  }
+  return Array.from(new Set(visualActions)).slice(0, 4);
+};
+
+const inferStoryArcV2VisualObjects = (params: {
+  semanticProfile: StoryArcV2SemanticProfile;
+  detectedTextContext: string;
+  culturalProfile: StoryArcV2CulturalProfile;
+}): string[] => {
+  const { semanticProfile, detectedTextContext, culturalProfile } = params;
+  const normalizedContext = normalizeModelLookupValue(
+    `${detectedTextContext} ${semanticProfile.actions.join(' ')} ${semanticProfile.locationTags.join(' ')}`
+  );
+  const objects = new Set<string>();
+  if (semanticProfile.people.length > 0) objects.add('person');
+  if (semanticProfile.people.length > 1) objects.add('group');
+  if (normalizedContext.includes('ring') || normalizedContext.includes('ringer')) objects.add('ring');
+  if (normalizedContext.includes('bouquet') || normalizedContext.includes('flowers')) objects.add('bouquet');
+  if (normalizedContext.includes('microphone') || normalizedContext.includes('mikrofon')) objects.add('microphone');
+  if (normalizedContext.includes('altar') || normalizedContext.includes('church')) objects.add('altar');
+  if (normalizedContext.includes('cake')) objects.add('cake');
+  if (normalizedContext.includes('confetti') || normalizedContext.includes('sparkler')) objects.add('confetti');
+  if (culturalProfile === 'sikh' && normalizedContext.includes('gurdwara')) objects.add('gurdwara');
+  if (culturalProfile === 'pakistani' && normalizedContext.includes('nikah')) objects.add('nikah-contract');
+  return Array.from(objects).slice(0, 8);
+};
+
+const inferStoryArcV2VisualLocation = (params: {
+  detectedTextContext: string;
+  profile: StoryArcV2ProjectProfile;
+  culturalProfile: StoryArcV2CulturalProfile;
+}): string => {
+  const normalized = normalizeModelLookupValue(params.detectedTextContext);
+  if (normalized.includes('gurdwara')) return 'gurdwara';
+  if (normalized.includes('mosque') || normalized.includes('nikah')) return 'mosque';
+  if (normalized.includes('church') || normalized.includes('kirke')) return 'church';
+  if (normalized.includes('dance floor') || normalized.includes('party')) return 'reception';
+  if (params.culturalProfile === 'sikh') return 'ceremony_hall_sikh';
+  if (params.culturalProfile === 'pakistani') return 'ceremony_hall_pakistani';
+  if (params.profile === 'wedding') return 'wedding_venue';
+  return 'event_space';
+};
+
+const buildStoryArcV2VisualFeaturesForMedia = (params: {
+  mediaId: string;
+  profile: StoryArcV2ProjectProfile;
+  culturalProfile: StoryArcV2CulturalProfile;
+  semanticProfiles: StoryArcV2SemanticProfile[];
+  detectedText: string[];
+}): StoryArcV2VisualFeaturePoint[] => {
+  const { mediaId, profile, culturalProfile, semanticProfiles, detectedText } = params;
+  const textPool = detectedText
+    .map((entry) => normalizeModelLookupValue(entry))
+    .filter((entry) => entry.length > 0)
+    .slice(0, 256);
+  const contextWindow = textPool.join(' ');
+
+  return semanticProfiles.map((semanticProfile, index) => {
+    const t = Number(((semanticProfile.start + semanticProfile.end) / 2).toFixed(3));
+    const shot: StoryArcV2VisualFeaturePoint['scene']['shot'] =
+      semanticProfile.people.length <= 1
+        ? semanticProfile.quality.visual >= 0.76
+          ? 'close'
+          : 'medium'
+        : semanticProfile.people.length >= 4
+          ? 'wide'
+          : 'medium';
+    const faces: StoryArcV2VisualFeatureFace[] = semanticProfile.people.slice(0, 3).map((person, faceIndex) => ({
+      id: `${mediaId}:face:${index + 1}:${faceIndex + 1}:${normalizeModelLookupValue(person) || 'person'}`,
+      bbox:
+        faceIndex === 0
+          ? [0.26, 0.14, 0.48, 0.64]
+          : faceIndex === 1
+            ? [0.54, 0.16, 0.78, 0.66]
+            : [0.08, 0.2, 0.28, 0.68],
+      emotion: semanticProfile.emotion.label,
+      confidence: Number(clampStoryArcV2Number(semanticProfile.emotion.score * 0.88 + 0.08, 0, 1).toFixed(3)),
+    }));
+    const poses: StoryArcV2VisualFeaturePose[] = faces.map((face) => ({
+      id: `${face.id}:pose`,
+      keypoints: [],
+    }));
+    const visualActions = toStoryArcV2VisualActions(semanticProfile.actions);
+    const objects = inferStoryArcV2VisualObjects({
+      semanticProfile,
+      detectedTextContext: contextWindow,
+      culturalProfile,
+    });
+    const location = inferStoryArcV2VisualLocation({
+      detectedTextContext: contextWindow,
+      profile,
+      culturalProfile,
+    });
+    return {
+      featureId: `${mediaId}:vf:${index + 1}`,
+      mediaId,
+      t,
+      objects,
+      faces,
+      poses,
+      actions: visualActions,
+      scene: {
+        location,
+        shot,
+        qualityScore: Number(
+          clampStoryArcV2Number(
+            semanticProfile.quality.visual * 0.55 + semanticProfile.quality.stability * 0.45,
+            0,
+            1
+          ).toFixed(3)
+        ),
+      },
+      confidence: Number(
+        clampStoryArcV2Number(
+          semanticProfile.quality.visual * 0.52 +
+            semanticProfile.quality.stability * 0.24 +
+            semanticProfile.emotion.score * 0.24,
+          0,
+          1
+        ).toFixed(3)
+      ),
+      source: 'semantic_proxy',
+    };
+  });
+};
+
+const buildStoryArcV2EventMarkersForMedia = (params: {
+  mediaId: string;
+  events: StoryArcV2DetectedEvent[];
+  semanticProfiles: StoryArcV2SemanticProfile[];
+}): StoryArcV2EventMarker[] => {
+  const { mediaId, events, semanticProfiles } = params;
+  return events
+    .map((event, eventIndex) => {
+      const actionHints = STORY_ARC_V2_EVENT_ACTION_HINTS[event.type] || [];
+      const localCandidates = semanticProfiles
+        .filter((profile) =>
+          rangesOverlapStoryArcV2(profile.start, profile.end, event.start - 0.6, event.end + 0.6)
+        )
+        .map((profile) => {
+          const normalizedActions = profile.actions.map((entry) => normalizeModelLookupValue(entry));
+          const actionMatches = actionHints.filter((hint) =>
+            normalizedActions.some((action) => action.includes(normalizeModelLookupValue(hint)))
+          ).length;
+          const speakerMatch =
+            event.speaker &&
+            profile.people
+              .map((entry) => normalizeModelLookupValue(entry))
+              .includes(normalizeModelLookupValue(event.speaker))
+              ? 1
+              : 0;
+          const score = clampStoryArcV2Number(
+            profile.quality.visual * 0.42 +
+              profile.quality.stability * 0.2 +
+              profile.quality.audio * 0.16 +
+              profile.emotion.score * 0.14 +
+              event.confidence * 0.08 +
+              actionMatches * 0.08 +
+              speakerMatch * 0.08 +
+              toStoryArcV2EventPriorityWeight(event.priority) * 0.14,
+            0,
+            1
+          );
+          return {
+            clipId: profile.clipId,
+            start: Number(profile.start.toFixed(3)),
+            end: Number(profile.end.toFixed(3)),
+            score: Number(score.toFixed(3)),
+            reasons: [
+              `Matched event ${event.type}`,
+              `Priority ${event.priority}`,
+              actionMatches > 0 ? `Action hint matches ${actionMatches}` : 'Fallback by proximity/quality',
+              speakerMatch > 0 ? 'Speaker visible in candidate clip' : 'Speaker visibility uncertain',
+            ],
+          } satisfies StoryArcV2EventTakeCandidate;
+        })
+        .sort((left, right) => right.score - left.score);
+
+      const bestTakes = localCandidates.slice(0, 3);
+      const markerConfidence =
+        bestTakes.length > 0
+          ? Number(clampStoryArcV2Number((event.confidence + bestTakes[0].score) / 2, 0, 1).toFixed(3))
+          : event.confidence;
+
+      return {
+        markerId: `${mediaId}:event-marker:${eventIndex + 1}:${event.type}`,
+        mediaId,
+        eventType: event.type,
+        label: `${event.priority} ${event.label}`,
+        start: event.start,
+        end: event.end,
+        confidence: markerConfidence,
+        reasons: [
+          event.rationale,
+          `Event priority ${event.priority}`,
+          `Cultural profile ${event.culturalProfile}`,
+        ],
+        bestTakes,
+      } satisfies StoryArcV2EventMarker;
+    })
+    .sort((left, right) => left.start - right.start)
+    .slice(0, 320);
+};
+
 const buildStoryArcV2PersonIdentities = (
   analysisId: string,
   media: StoryArcV2AnalyzedMedia[]
@@ -24675,6 +27232,238 @@ const classifyStoryArcV2Beat = (
   return 'resolution';
 };
 
+const STORY_ARC_V2_THREAD_KEYWORDS: Array<{
+  thread: StoryArcV2StoryThread;
+  keywords: string[];
+}> = [
+  { thread: 'couple', keywords: ['bride', 'groom', 'brud', 'brudgom', 'couple', 'partner', 'together'] },
+  { thread: 'vows', keywords: ['vow', 'promise', 'løfte', 'ringen', 'ring', 'forever', 'for alltid'] },
+  { thread: 'family', keywords: ['family', 'familie', 'mom', 'mother', 'dad', 'father', 'søster', 'bror'] },
+  { thread: 'friends', keywords: ['friend', 'venn', 'best man', 'maid of honor', 'toastmaster'] },
+  { thread: 'dance', keywords: ['dance', 'dancing', 'dans', 'first dance', 'brudevals'] },
+  { thread: 'party', keywords: ['party', 'celebrate', 'cheer', 'skål', 'fest'] },
+  { thread: 'speech', keywords: ['speech', 'tale', 'story', 'remember', 'husker', 'said', 'fortalte'] },
+  { thread: 'ceremony', keywords: ['ceremony', 'altar', 'aisle', 'seremoni', 'vielsen'] },
+  { thread: 'reactions', keywords: ['applause', 'laughter', 'cry', 'tårer', 'reaksjon', 'smile'] },
+  { thread: 'prep', keywords: ['ready', 'prepare', 'prep', 'morning', 'makeup', 'dress'] },
+  { thread: 'details', keywords: ['detail', 'flowers', 'bouquet', 'ring box', 'dekor', 'venue'] },
+];
+
+const inferStoryArcV2StoryThreads = (params: {
+  text: string;
+  beat: StoryArcV2NarrativeBeat;
+  speaker: string | null;
+  dominantEvent: StoryArcV2DetectedEvent | null;
+  overlappingEvents: StoryArcV2DetectedEvent[];
+  profile: StoryArcV2ProjectProfile;
+}): StoryArcV2StoryThread[] => {
+  const { text, beat, speaker, dominantEvent, overlappingEvents, profile } = params;
+  const normalized = normalizeModelLookupValue(text);
+  const weights = new Map<StoryArcV2StoryThread, number>();
+  const bump = (thread: StoryArcV2StoryThread, delta: number) => {
+    const next = (weights.get(thread) || 0) + delta;
+    weights.set(thread, next);
+  };
+
+  STORY_ARC_V2_THREAD_KEYWORDS.forEach((entry) => {
+    const hits = entry.keywords.filter((keyword) => normalized.includes(normalizeModelLookupValue(keyword))).length;
+    if (hits > 0) bump(entry.thread, hits * 0.22);
+  });
+
+  if (speaker) bump('speech', 0.22);
+
+  const allEvents = dominantEvent ? [dominantEvent, ...overlappingEvents] : overlappingEvents;
+  allEvents.forEach((event) => {
+    switch (event.type) {
+      case 'vow':
+      case 'ring_exchange':
+        bump('vows', 0.42 + event.confidence * 0.24);
+        bump('ceremony', 0.26 + event.confidence * 0.16);
+        break;
+      case 'kiss':
+      case 'hug':
+        bump('couple', 0.36 + event.confidence * 0.2);
+        bump('reactions', 0.18);
+        break;
+      case 'first_dance':
+      case 'dancing':
+        bump('dance', 0.32 + event.confidence * 0.2);
+        bump('party', 0.2);
+        break;
+      case 'speech_highlight':
+      case 'emotional_speech':
+        bump('speech', 0.28 + event.confidence * 0.18);
+        bump('reactions', 0.16);
+        break;
+      case 'applause':
+      case 'laughter':
+        bump('reactions', 0.3 + event.confidence * 0.12);
+        bump('party', 0.14);
+        break;
+      default:
+        break;
+    }
+  });
+
+  switch (beat) {
+    case 'hook':
+      bump('details', 0.2);
+      bump('prep', 0.14);
+      break;
+    case 'context':
+      bump('ceremony', 0.16);
+      bump('speech', 0.12);
+      break;
+    case 'conflict':
+      bump('speech', 0.2);
+      bump('family', 0.12);
+      break;
+    case 'turning_point':
+      bump('vows', 0.24);
+      bump('couple', 0.18);
+      break;
+    case 'resolution':
+      bump('couple', 0.22);
+      bump('reactions', 0.16);
+      break;
+    default:
+      break;
+  }
+
+  if (profile === 'wedding') {
+    bump('couple', 0.12);
+  }
+
+  const ranked = Array.from(weights.entries())
+    .sort((left, right) => right[1] - left[1])
+    .map(([thread]) => thread);
+  if (ranked.length === 0) {
+    return ['speech', 'details'];
+  }
+  const unique = Array.from(new Set(ranked)).slice(0, 3);
+  if (profile === 'wedding' && !unique.includes('couple')) {
+    unique.push('couple');
+  }
+  return unique.slice(0, 3);
+};
+
+const scoreStoryArcV2NarrativePotential = (params: {
+  text: string;
+  beat: StoryArcV2NarrativeBeat;
+  threads: StoryArcV2StoryThread[];
+  dominantEvent: StoryArcV2DetectedEvent | null;
+  index: number;
+  total: number;
+  profile: StoryArcV2ProjectProfile;
+}): number => {
+  const { text, beat, threads, dominantEvent, index, total, profile } = params;
+  const normalized = normalizeModelLookupValue(text);
+  const connectors = ['because', 'therefore', 'then', 'after', 'before', 'fordi', 'derfor', 'så', 'etter', 'før'];
+  const emotionalCues = ['love', 'grateful', 'forever', 'elsker', 'takknemlig', 'stolt', 'promise', 'løfte'];
+  const connectorHits = connectors.filter((token) => normalized.includes(token)).length;
+  const emotionalHits = emotionalCues.filter((token) => normalized.includes(token)).length;
+  const beatWeight: Record<StoryArcV2NarrativeBeat, number> = {
+    hook: 0.72,
+    context: 0.68,
+    conflict: 0.76,
+    turning_point: 0.9,
+    resolution: 0.82,
+  };
+  const ratio = total > 0 ? index / total : 0;
+  const positionalBonus =
+    (beat === 'hook' && ratio <= 0.25) ||
+    (beat === 'context' && ratio > 0.1 && ratio <= 0.55) ||
+    (beat === 'conflict' && ratio > 0.2 && ratio <= 0.8) ||
+    (beat === 'turning_point' && ratio > 0.45 && ratio <= 0.95) ||
+    (beat === 'resolution' && ratio >= 0.6)
+      ? 0.12
+      : -0.05;
+  const eventScore = dominantEvent ? dominantEvent.confidence * 0.24 : 0;
+  const threadDiversity = Math.min(threads.length, 3) * 0.045;
+  const profileBoost = profile === 'wedding' && (threads.includes('couple') || threads.includes('vows')) ? 0.08 : 0;
+  const lengthPenalty = text.trim().split(/\s+/).filter(Boolean).length < 5 ? 0.08 : 0;
+  return Number(
+    clampStoryArcV2Number(
+      0.34 +
+        beatWeight[beat] * 0.26 +
+        connectorHits * 0.07 +
+        emotionalHits * 0.05 +
+        eventScore +
+        threadDiversity +
+        positionalBonus +
+        profileBoost -
+        lengthPenalty,
+      0,
+      1
+    ).toFixed(3)
+  );
+};
+
+const buildStoryArcV2StoryGraph = (script: StoryArcV2StoryScript) => {
+  const threadCoverage: Record<string, number> = {};
+  const beatCoverage: Record<StoryArcV2NarrativeBeat, number> = {
+    hook: 0,
+    context: 0,
+    conflict: 0,
+    turning_point: 0,
+    resolution: 0,
+  };
+  const threadTransitions: Array<{ from: string; to: string; atNodeId: string }> = [];
+  const orphanNodeIds: string[] = [];
+
+  script.nodes.forEach((node, index) => {
+    beatCoverage[node.beat] += 1;
+    (node.storyThreads || []).forEach((thread) => {
+      threadCoverage[thread] = (threadCoverage[thread] || 0) + 1;
+    });
+    if (index > 0) {
+      const previous = script.nodes[index - 1];
+      const previousThreads = new Set(previous.storyThreads || []);
+      const currentThreads = node.storyThreads || [];
+      const shared = currentThreads.some((thread) => previousThreads.has(thread));
+      if (!shared) {
+        threadTransitions.push({
+          from: previous.primaryThread || (previous.storyThreads?.[0] || 'speech'),
+          to: node.primaryThread || (node.storyThreads?.[0] || 'speech'),
+          atNodeId: node.id,
+        });
+      }
+    }
+    const left = index > 0 ? script.nodes[index - 1] : null;
+    const right = index < script.nodes.length - 1 ? script.nodes[index + 1] : null;
+    const current = new Set(node.storyThreads || []);
+    const sharedLeft = left ? (left.storyThreads || []).some((thread) => current.has(thread)) : false;
+    const sharedRight = right ? (right.storyThreads || []).some((thread) => current.has(thread)) : false;
+    if (!sharedLeft && !sharedRight && script.nodes.length > 1) {
+      orphanNodeIds.push(node.id);
+    }
+  });
+
+  const avgNarrativeScore =
+    script.nodes.length > 0
+      ? Number(
+          (
+            script.nodes.reduce((sum, node) => sum + (readNumber(node.narrativeScore) ?? 0.6), 0) /
+            script.nodes.length
+          ).toFixed(3)
+        )
+      : 0;
+  return {
+    nodes: script.nodes.map((node) => ({
+      id: node.id,
+      beat: node.beat,
+      primaryThread: node.primaryThread || (node.storyThreads?.[0] || 'speech'),
+      storyThreads: node.storyThreads || [],
+      narrativeScore: readNumber(node.narrativeScore) ?? 0.6,
+    })),
+    threadCoverage,
+    beatCoverage,
+    threadTransitions: threadTransitions.slice(0, 120),
+    orphanNodeIds: orphanNodeIds.slice(0, 60),
+    avgNarrativeScore,
+  };
+};
+
 const ensureStoryArcV2BeatCoverage = (
   nodes: StoryArcV2StoryScriptNode[]
 ): StoryArcV2StoryScriptNode[] => {
@@ -24684,10 +27473,24 @@ const ensureStoryArcV2BeatCoverage = (
   STORY_ARC_V2_AVAILABLE_BEATS.forEach((beat, index) => {
     if (byBeat.has(beat)) return;
     const seed = fallback[Math.min(index, fallback.length - 1)];
+    const fallbackNodeId = toStoryArcV2Id(`node-${beat}`);
     fallback.push({
       ...seed,
-      id: toStoryArcV2Id(`node-${beat}`),
+      id: fallbackNodeId,
       beat,
+      storyThreads: (
+        seed.storyThreads && seed.storyThreads.length > 0
+          ? seed.storyThreads
+          : (['speech'] as StoryArcV2StoryThread[])
+      ).slice(0, 3),
+      primaryThread: seed.primaryThread || seed.storyThreads?.[0] || 'speech',
+      narrativeScore: Number(clampStoryArcV2Number(readNumber(seed.narrativeScore) ?? 0.62, 0, 1).toFixed(3)),
+      brollPlaceholders: (seed.brollPlaceholders || []).map((placeholder, placeholderIndex) => ({
+        ...placeholder,
+        id: `${fallbackNodeId}:broll-${placeholderIndex + 1}`,
+        nodeId: fallbackNodeId,
+        beat,
+      })),
       rationale: `Generated fallback beat node for ${beat}.`,
       confidence: Number(clampStoryArcV2Number(seed.confidence * 0.88, 0.35, 0.95).toFixed(3)),
     });
@@ -24698,58 +27501,437 @@ const ensureStoryArcV2BeatCoverage = (
 const buildStoryArcV2Script = (
   analysis: StoryArcV2AnalysisRun,
   targetDurationSeconds: number,
-  feedbackProfile?: StoryArcV2FeedbackProfile | null
+  feedbackProfile?: StoryArcV2FeedbackProfile | null,
+  options?: {
+    mustInclude?: string[];
+    mustAvoid?: string[];
+  }
 ): StoryArcV2StoryScript => {
   const feedback =
     feedbackProfile ||
     createStoryArcV2EmptyFeedbackProfile(resolveStoryArcV2ProjectKey(analysis.projectId));
 
-  const segmentRows = analysis.media.flatMap((media) =>
-    media.transcription.segments.map((segment, index) => ({
-      mediaId: media.mediaId,
-      segment,
-      index,
-      segmentId: `${media.mediaId}:segment-${segment.id || index + 1}`,
-      candidateClipIds: media.semanticProfiles
-        .filter((profile) => profile.end > segment.start && profile.start < segment.end)
-        .map((profile) => profile.clipId),
-    }))
-  );
-  const totalRows = Math.max(1, segmentRows.length);
+  const splitSentences = (text: string): string[] => {
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    if (!normalized) return [];
+    const matches = normalized.match(/[^.!?]+[.!?]?/g);
+    const sentences = (matches || [normalized])
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    return sentences.length > 0 ? sentences : [normalized];
+  };
 
-  const scoredRows = segmentRows.map((row, index) => {
-    const text = row.segment.text || '';
+  const semanticProfilesByClipId = new Map<string, StoryArcV2SemanticProfile>();
+  analysis.media.forEach((media) => {
+    media.semanticProfiles.forEach((profile) => {
+      semanticProfilesByClipId.set(profile.clipId, profile);
+    });
+  });
+  const eventsByMediaId = new Map<string, StoryArcV2DetectedEvent[]>();
+  const eventMarkersByMediaId = new Map<string, StoryArcV2EventMarker[]>();
+  analysis.media.forEach((media) => {
+    eventsByMediaId.set(media.mediaId, [...media.detectedEvents].sort((left, right) => left.start - right.start));
+    eventMarkersByMediaId.set(
+      media.mediaId,
+      [...(media.eventMarkers || [])].sort((left, right) => left.start - right.start)
+    );
+  });
+  const profile = resolveStoryArcV2ProjectProfile(readString(analysis.projectProfile));
+  const editingMode = resolveStoryArcV2EditingMode(readString(analysis.editingMode), profile);
+  const culturalProfile = resolveStoryArcV2CulturalProfile(readString(analysis.culturalProfile));
+  const culturalModules = resolveStoryArcV2CulturalModules(analysis.culturalModules);
+  const culturalRulebook = mergeStoryArcV2CulturalRulebook({
+    profile: culturalProfile,
+    modules: culturalModules,
+  });
+  const eventWeights = buildStoryArcV2EventImportanceFromRulebook(culturalRulebook, profile);
+  const mustIncludeTokens = Array.from(
+    new Set([
+      ...normalizeStoryArcV2MomentTokenList(analysis.mustIncludeMoments),
+      ...normalizeStoryArcV2MomentTokenList(options?.mustInclude || []),
+      ...normalizeStoryArcV2MomentTokenList(culturalRulebook.mustIncludeDefaults),
+    ])
+  ).slice(0, 48);
+  const mustAvoidTokens = Array.from(
+    new Set([
+      ...normalizeStoryArcV2MomentTokenList(analysis.avoidMoments),
+      ...normalizeStoryArcV2MomentTokenList(options?.mustAvoid || []),
+    ])
+  ).slice(0, 48);
+
+  type StoryArcV2SentenceRow = {
+    mediaId: string;
+    segmentId: string;
+    sentenceId: string;
+    start: number;
+    end: number;
+    text: string;
+    speaker: string | null;
+    candidateClipIds: string[];
+  };
+
+  const sentenceRows: StoryArcV2SentenceRow[] = analysis.media.flatMap((media) =>
+    media.transcription.segments.flatMap((segment, segmentIndex) => {
+      const segmentStart = Number(segment.start);
+      const segmentEnd = Number(segment.end);
+      if (!Number.isFinite(segmentStart) || !Number.isFinite(segmentEnd) || segmentEnd <= segmentStart) {
+        return [];
+      }
+
+      const segmentId = `${media.mediaId}:segment-${segment.id || segmentIndex + 1}`;
+      const speaker = readString(segment.speaker) || null;
+      const candidateClipIds = media.semanticProfiles
+        .filter((profile) => profile.end > segmentStart && profile.start < segmentEnd)
+        .map((profile) => profile.clipId);
+      const sentenceTexts = splitSentences(segment.text || '');
+      if (sentenceTexts.length <= 1) {
+        const text = (sentenceTexts[0] || segment.text || '').trim();
+        if (!text) return [];
+        return [
+          {
+            mediaId: media.mediaId,
+            segmentId,
+            sentenceId: `${segmentId}:sentence-1`,
+            start: Number(segmentStart.toFixed(3)),
+            end: Number(segmentEnd.toFixed(3)),
+            text,
+            speaker,
+            candidateClipIds,
+          } satisfies StoryArcV2SentenceRow,
+        ];
+      }
+
+      const segmentDuration = Math.max(0.001, segmentEnd - segmentStart);
+      const sentenceWeights = sentenceTexts.map((entry) => Math.max(1, entry.split(/\s+/).filter(Boolean).length));
+      const weightTotal = sentenceWeights.reduce((sum, value) => sum + value, 0);
+      let cursor = segmentStart;
+
+      return sentenceTexts.map((sentenceText, sentenceIndex) => {
+        const isLast = sentenceIndex === sentenceTexts.length - 1;
+        const weightRatio = sentenceWeights[sentenceIndex] / Math.max(1, weightTotal);
+        const sentenceDuration = isLast ? segmentEnd - cursor : segmentDuration * weightRatio;
+        const start = Number(cursor.toFixed(3));
+        const end = Number((isLast ? segmentEnd : Math.min(segmentEnd, cursor + sentenceDuration)).toFixed(3));
+        cursor = end;
+        return {
+          mediaId: media.mediaId,
+          segmentId,
+          sentenceId: `${segmentId}:sentence-${sentenceIndex + 1}`,
+          start,
+          end: end > start ? end : Number((start + 0.2).toFixed(3)),
+          text: sentenceText,
+          speaker,
+          candidateClipIds,
+        } satisfies StoryArcV2SentenceRow;
+      });
+    })
+  );
+  const totalRows = Math.max(1, sentenceRows.length);
+
+  const buildContextualBrollSuggestions = (params: {
+    beat: StoryArcV2NarrativeBeat;
+    storyThreads: StoryArcV2StoryThread[];
+    queryTokens: string[];
+  }): string[] => {
+    const { beat, storyThreads, queryTokens } = params;
+    const threadTemplates: Record<StoryArcV2StoryThread, string[]> = {
+      couple: [
+        'bride reaction close-up during speech',
+        'groom reaction close-up during speech',
+        'bride and groom looking at each other',
+      ],
+      vows: [
+        'vow moment hands and rings detail',
+        'ring exchange close-up',
+        'emotional vow reaction from couple',
+      ],
+      family: [
+        'parents emotional reaction during speech',
+        'family members smiling and crying reaction',
+        'family hug reaction cutaway',
+      ],
+      friends: [
+        'best man and maid of honor reaction',
+        'friends laughing reaction shot',
+        'friend group cheering at table',
+      ],
+      ceremony: [
+        'ceremony wide shot altar and guests',
+        'aisle detail shot',
+        'officiant and couple framing cutaway',
+      ],
+      reactions: [
+        'audience applause reaction shot',
+        'guests emotional close-up reaction',
+        'laughter reaction cutaway',
+      ],
+      dance: [
+        'first dance medium shot',
+        'dance floor emotional movement',
+        'couple dance close-up',
+      ],
+      prep: [
+        'getting ready detail shot',
+        'dress and suit preparation close-up',
+        'morning prep candid moment',
+      ],
+      party: [
+        'party energy wide shot',
+        'guests cheering and dancing',
+        'celebration confetti or lights cutaway',
+      ],
+      speech: [
+        'speaker microphone close-up',
+        'speaker hand gesture reaction shot',
+        'speech audience listening shot',
+      ],
+      details: [
+        'wedding details rings flowers table setting',
+        'venue detail cinematic cutaway',
+        'decor and candle detail shot',
+      ],
+    };
+    const beatTemplates: Record<StoryArcV2NarrativeBeat, string[]> = {
+      hook: ['opening venue establishing shot', 'opening emotional couple detail'],
+      context: ['contextual environment and guests cutaway', 'scene-setting ceremony wide'],
+      conflict: ['tension reaction close-up', 'emotional pause audience reaction'],
+      turning_point: ['turning point couple reaction', 'key moment detail close-up'],
+      resolution: ['resolution smile and embrace reaction', 'final celebratory wide shot'],
+    };
+
+    const fromThreads = storyThreads.flatMap((thread) => threadTemplates[thread] || []);
+    const fromBeat = beatTemplates[beat] || [];
+    const tokenSuffix = queryTokens.slice(0, 3).join(' ');
+    const contextual = [...fromThreads, ...fromBeat]
+      .map((query) => (tokenSuffix ? `${query} ${tokenSuffix}`.trim() : query))
+      .slice(0, 8);
+    return Array.from(new Set(contextual)).slice(0, 6);
+  };
+
+  const buildBrollPlaceholders = (
+    nodeId: string,
+    beat: StoryArcV2NarrativeBeat,
+    text: string,
+    start: number,
+    duration: number,
+    rankedCandidates: string[],
+    storyThreads: StoryArcV2StoryThread[]
+  ): StoryArcV2BrollPlaceholder[] => {
+    const intentsByBeat: Record<
+      StoryArcV2NarrativeBeat,
+      Array<StoryArcV2BrollPlaceholder['intent']>
+    > = {
+      hook: ['establishing', 'reaction'],
+      context: ['cutaway', 'detail'],
+      conflict: ['reaction', 'detail'],
+      turning_point: ['detail', 'reaction'],
+      resolution: ['reaction', 'establishing'],
+    };
+    const queryTokens = text
+      .split(/[^A-Za-z0-9æøåÆØÅ]+/u)
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length >= 4)
+      .slice(0, 6);
+    const intents = intentsByBeat[beat] || ['cutaway'];
+    const primaryClipId = rankedCandidates[0] || null;
+    const uniqueCandidates = rankedCandidates.filter((clipId) => clipId !== primaryClipId);
+    const placeholderDuration = clampStoryArcV2Number(duration * 0.28, 0.7, 3.2);
+    const contextualSuggestions = buildContextualBrollSuggestions({
+      beat,
+      storyThreads,
+      queryTokens,
+    });
+
+    return intents
+      .map((intent, idx) => {
+        const fallbackBySemantic = Array.from(semanticProfilesByClipId.values())
+          .filter((profile) => profile.end > start && profile.start < start + duration)
+          .sort((left, right) => right.quality.visual - left.quality.visual)
+          .map((profile) => profile.clipId);
+        const candidateClipIds = Array.from(
+          new Set([...uniqueCandidates, ...fallbackBySemantic])
+        )
+          .filter((clipId) => clipId !== primaryClipId)
+          .slice(0, 4);
+        const placeholderStart = Number((start + idx * (placeholderDuration + 0.08)).toFixed(3));
+        const placeholderEnd = Number(
+          Math.min(start + duration, placeholderStart + placeholderDuration).toFixed(3)
+        );
+        if (candidateClipIds.length === 0) {
+          return {
+            id: `${nodeId}:broll-${idx + 1}`,
+            nodeId,
+            beat,
+            start: placeholderStart,
+            end: placeholderEnd > placeholderStart ? placeholderEnd : Number((placeholderStart + 0.2).toFixed(3)),
+            intent,
+            query: `${intent} ${queryTokens.join(' ')}`.trim(),
+            candidateClipIds: [],
+            rationale:
+              `No suitable internal b-roll found for ${intent}. Added contextual external b-roll suggestions.`,
+            confidence: 0.5,
+            requiresExternalBroll: true,
+            fallbackMessage: 'Fant ikke passende intern B-roll. Legg inn B-roll fra forslagene under.',
+            suggestionQueries: contextualSuggestions,
+          } satisfies StoryArcV2BrollPlaceholder;
+        }
+        const leadClip = semanticProfilesByClipId.get(candidateClipIds[0]);
+        const confidence =
+          leadClip
+            ? clampStoryArcV2Number((leadClip.quality.visual + leadClip.quality.audio) / 2, 0.3, 0.97)
+            : 0.62;
+        return {
+          id: `${nodeId}:broll-${idx + 1}`,
+          nodeId,
+          beat,
+          start: placeholderStart,
+          end: placeholderEnd > placeholderStart ? placeholderEnd : Number((placeholderStart + 0.2).toFixed(3)),
+          intent,
+          query: `${intent} ${queryTokens.join(' ')}`.trim(),
+          candidateClipIds,
+          rationale: `Sentence-level ${intent} placeholder aligned with ${beat} beat.`,
+          confidence: Number(confidence.toFixed(3)),
+          requiresExternalBroll: false,
+          fallbackMessage: null,
+          suggestionQueries: contextualSuggestions,
+        } satisfies StoryArcV2BrollPlaceholder;
+      })
+      .slice(0, 2);
+  };
+
+  const scoredRows = sentenceRows.map((row, index) => {
+    const text = row.text || '';
+    const normalizedText = normalizeModelLookupValue(text);
     const words = text.trim().split(/\s+/).filter(Boolean);
     const emphasis = (text.includes('!') ? 0.12 : 0) + (text.includes('?') ? 0.06 : 0);
-    const speaker = readString(row.segment.speaker) || null;
-    const speakerFeedbackScore = scoreStoryArcV2FeedbackAlignment(feedback, null, speaker);
+    const includeHits = mustIncludeTokens.filter((token) => normalizedText.includes(token)).length;
+    const avoidHits = mustAvoidTokens.filter((token) => normalizedText.includes(token)).length;
+    const overlappingEvents = (eventsByMediaId.get(row.mediaId) || []).filter((event) =>
+      rangesOverlapStoryArcV2(row.start, row.end, event.start, event.end)
+    );
+    const overlappingMarkers = (eventMarkersByMediaId.get(row.mediaId) || []).filter((marker) =>
+      rangesOverlapStoryArcV2(row.start, row.end, marker.start, marker.end)
+    );
+    const overlappingVisualProfiles = row.candidateClipIds
+      .map((clipId) => semanticProfilesByClipId.get(clipId))
+      .filter((profile): profile is StoryArcV2SemanticProfile => Boolean(profile))
+      .filter((profile) => rangesOverlapStoryArcV2(row.start, row.end, profile.start, profile.end));
+    const eventBoost = overlappingEvents.reduce(
+      (sum, event) =>
+        sum +
+        (eventWeights[event.type] || 0.08) *
+          (0.6 + event.confidence * 0.8 + toStoryArcV2EventPriorityWeight(event.priority) * 0.2),
+      0
+    );
+    const markerBoost = overlappingMarkers.reduce((sum, marker) => {
+      const priority =
+        marker.label.trim().startsWith('A ') || marker.label.trim().startsWith('A•')
+          ? 0.12
+          : marker.label.trim().startsWith('B ') || marker.label.trim().startsWith('B•')
+            ? 0.08
+            : 0.04;
+      return sum + marker.confidence * 0.12 + priority;
+    }, 0);
+    const visualBoost =
+      overlappingVisualProfiles.length > 0
+        ? overlappingVisualProfiles.reduce(
+            (sum, profile) =>
+              sum +
+              profile.quality.visual * 0.12 +
+              profile.quality.stability * 0.08 +
+              profile.emotion.score * 0.06,
+            0
+          ) / overlappingVisualProfiles.length
+        : 0;
+    const dominantEvent = overlappingEvents
+      .slice()
+      .sort((left, right) => {
+        const leftWeight = left.confidence + toStoryArcV2EventPriorityWeight(left.priority) * 0.2;
+        const rightWeight = right.confidence + toStoryArcV2EventPriorityWeight(right.priority) * 0.2;
+        return rightWeight - leftWeight;
+      })[0];
+    const beat = dominantEvent
+      ? toStoryArcV2BeatHintFromEventType(
+          dominantEvent.type,
+          classifyStoryArcV2Beat(text, index, totalRows)
+        )
+      : classifyStoryArcV2Beat(text, index, totalRows);
+    const storyThreads = inferStoryArcV2StoryThreads({
+      text,
+      beat,
+      speaker: row.speaker,
+      dominantEvent: dominantEvent || null,
+      overlappingEvents,
+      profile,
+    });
+    const narrativeScore = scoreStoryArcV2NarrativePotential({
+      text,
+      beat,
+      threads: storyThreads,
+      dominantEvent: dominantEvent || null,
+      index,
+      total: totalRows,
+      profile,
+    });
+    const speakerFeedbackScore = scoreStoryArcV2FeedbackAlignment(feedback, null, row.speaker);
     const reasonTokenPenalty = tokenizeStoryArcV2FeedbackReason(text).reduce(
       (sum, token) => sum + (feedback.reasonPenaltyTokens[token] || 0),
       0
     );
     const score = clampStoryArcV2Number(
-      words.length / 18 + emphasis + speakerFeedbackScore * 0.04 - reasonTokenPenalty * 0.015,
+      words.length / 16 +
+        emphasis +
+        includeHits * 0.09 -
+        avoidHits * 0.2 +
+        speakerFeedbackScore * 0.04 -
+        reasonTokenPenalty * 0.015 +
+        (editingMode === 'dialogue_clean' ? 0.04 : 0) +
+        (editingMode === 'highlight_music_sync' ? eventBoost * 0.2 : 0) +
+        eventBoost +
+        markerBoost +
+        visualBoost +
+        narrativeScore * 0.28 +
+        (storyThreads.includes('couple') ? 0.03 : 0) +
+        clampStoryArcV2Number(row.end - row.start, 0, 1.2) * 0.06,
       0.08,
       1
     );
     return {
       ...row,
-      beat: classifyStoryArcV2Beat(text, index, totalRows),
+      beat,
+      dominantEvent,
+      overlappingEvents,
+      storyThreads,
+      narrativeScore,
+      includeHits,
+      avoidHits,
       score,
-      speaker,
     };
   });
 
   scoredRows.sort((left, right) => right.score - left.score);
   const expectedNodeCount = Math.max(
     5,
-    Math.min(18, Math.round(targetDurationSeconds / 7))
+    Math.min(
+      36,
+      Math.round(
+        targetDurationSeconds /
+          (editingMode === 'dialogue_clean'
+            ? 4.2
+            : editingMode === 'highlight_music_sync'
+              ? 4.8
+              : editingMode === 'full_auto'
+                ? 5.4
+                : 6.5)
+      )
+    )
   );
   const chosen = scoredRows.slice(0, expectedNodeCount);
   const selectedNodes = chosen
-    .sort((left, right) => left.segment.start - right.segment.start)
+    .sort((left, right) => left.start - right.start)
     .map((row, index) => {
-      const safeDuration = clampStoryArcV2Number(row.segment.end - row.segment.start, 1.2, 12);
+      const safeDuration = clampStoryArcV2Number(row.end - row.start, 1.2, 12);
       const rankedCandidates = [...row.candidateClipIds].sort((leftClipId, rightClipId) => {
         const leftScore = scoreStoryArcV2FeedbackAlignment(feedback, leftClipId, row.speaker);
         const rightScore = scoreStoryArcV2FeedbackAlignment(feedback, rightClipId, row.speaker);
@@ -24759,26 +27941,51 @@ const buildStoryArcV2Script = (
         rankedCandidates.length > 0
           ? scoreStoryArcV2FeedbackAlignment(feedback, rankedCandidates[0], row.speaker)
           : 0;
+      const eventRationale = row.dominantEvent
+        ? ` Event=${row.dominantEvent.type} (${Math.round(row.dominantEvent.confidence * 100)}%, priority ${row.dominantEvent.priority}).`
+        : '';
+      const intentRationale =
+        row.includeHits > 0 || row.avoidHits > 0
+          ? ` Intent cues +${row.includeHits}/-${row.avoidHits}.`
+          : '';
+      const threadSummary = row.storyThreads.slice(0, 3).join(', ');
+      const nodeId = toStoryArcV2Id(`node-${index + 1}`);
+      const limitedCandidates =
+        rankedCandidates.length > 0 ? rankedCandidates.slice(0, 6) : [`${row.mediaId}:fallback`];
+      const brollPlaceholders = buildBrollPlaceholders(
+        nodeId,
+        row.beat,
+        row.text,
+        row.start,
+        safeDuration,
+        limitedCandidates,
+        row.storyThreads
+      );
       return {
-        id: toStoryArcV2Id(`node-${index + 1}`),
+        id: nodeId,
         beat: row.beat,
-        start: Number(row.segment.start.toFixed(3)),
-        end: Number(row.segment.end.toFixed(3)),
+        start: Number(row.start.toFixed(3)),
+        end: Number(row.end.toFixed(3)),
         duration: Number(safeDuration.toFixed(3)),
-        text: row.segment.text || `Story moment ${index + 1}`,
+        text: row.text || `Story moment ${index + 1}`,
         speaker: row.speaker,
-        utteranceRefs: [row.segmentId],
-        candidateClipIds:
-          rankedCandidates.length > 0 ? rankedCandidates.slice(0, 6) : [`${row.mediaId}:fallback`],
+        utteranceRefs: [row.sentenceId, row.segmentId],
+        candidateClipIds: limitedCandidates,
         locked: false,
         pinned: false,
         rationale:
-          `Selected for ${row.beat} beat with impact score ${(row.score * 100).toFixed(0)}%` +
+          `Selected sentence-level ${row.beat} beat with impact score ${(row.score * 100).toFixed(0)}%` +
+          ` and narrative score ${(row.narrativeScore * 100).toFixed(0)}%` +
           (feedbackSignal !== 0
             ? ` (feedback signal ${feedbackSignal.toFixed(2)})`
             : '') +
-          '.',
+          (threadSummary ? ` [threads: ${threadSummary}]` : '') +
+          `.${eventRationale}${intentRationale}`,
         confidence: Number(clampStoryArcV2Number(0.5 + row.score * 0.45, 0.4, 0.98).toFixed(3)),
+        storyThreads: row.storyThreads,
+        primaryThread: row.storyThreads[0] || 'speech',
+        narrativeScore: row.narrativeScore,
+        brollPlaceholders,
       } satisfies StoryArcV2StoryScriptNode;
     });
 
@@ -24801,7 +28008,7 @@ const buildStoryArcV2Script = (
     scriptId: toStoryArcV2Id('script'),
     analysisId: analysis.analysisId,
     revision: 1,
-    title: `Story Script • ${analysis.projectId || 'Wedding Day'}`,
+    title: `Story Script • ${analysis.projectId || 'Wedding Day'} • ${profile.replaceAll('_', ' ')}`,
     targetDurationSeconds,
     nodes: normalizedNodes,
     bannedClipIds: seededBannedClipIds,
@@ -24819,13 +28026,213 @@ const buildStoryArcV2TimelineVariant = (
     noOverlap: boolean;
     repetitionCaps: Record<string, number>;
     beatCoverageRequired: boolean;
-  }
+  },
+  analysis?: StoryArcV2AnalysisRun | null
 ): StoryArcV2TimelineVariantPlan => {
-  const factor = variant === 'safe' ? 1.1 : variant === 'bold' ? 0.78 : 1;
+  const COUPLE_REACTION_TOKENS = [
+    'bride',
+    'groom',
+    'couple',
+    'newlywed',
+    'brud',
+    'brudgom',
+    'brudepar',
+    'brudeparet',
+  ];
+  const semanticProfilesByClipId = new Map<string, StoryArcV2SemanticProfile>();
+  const semanticProfilesByMediaId = new Map<string, StoryArcV2SemanticProfile[]>();
+  const detectedEventsByMediaId = new Map<string, StoryArcV2DetectedEvent[]>();
+  (analysis?.media || []).forEach((media) => {
+    semanticProfilesByMediaId.set(media.mediaId, media.semanticProfiles);
+    detectedEventsByMediaId.set(media.mediaId, media.detectedEvents);
+    media.semanticProfiles.forEach((profile) => {
+      semanticProfilesByClipId.set(profile.clipId, profile);
+    });
+  });
+
+  const hasCoupleReactionPerson = (people: string[]): boolean => {
+    const normalizedPeople = people.map((entry) => normalizeModelLookupValue(entry));
+    return normalizedPeople.some((value) =>
+      COUPLE_REACTION_TOKENS.some((token) => value.includes(token))
+    );
+  };
+
+  const isSpeakerPresentInProfile = (
+    speaker: string | null | undefined,
+    profile: StoryArcV2SemanticProfile | null
+  ): boolean => {
+    const normalizedSpeaker = normalizeModelLookupValue(speaker || '');
+    if (!normalizedSpeaker) return true;
+    if (!profile) return false;
+    const normalizedPeople = profile.people.map((entry) => normalizeModelLookupValue(entry));
+    return normalizedPeople.includes(normalizedSpeaker);
+  };
+
+  const normalizeBeatValue = (
+    value: string | null | undefined
+  ): StoryArcV2NarrativeBeat | null => {
+    const normalized = normalizeModelLookupValue(value || '');
+    if (!normalized) return null;
+    if (normalized === 'hook') return 'hook';
+    if (normalized === 'context') return 'context';
+    if (normalized === 'conflict') return 'conflict';
+    if (normalized === 'turningpoint' || normalized === 'turning_point') return 'turning_point';
+    if (normalized === 'resolution') return 'resolution';
+    return null;
+  };
+
+  const scoreSpeakerFocus = (params: {
+    node: StoryArcV2StoryScriptNode;
+    sourceProfile: StoryArcV2SemanticProfile | null;
+  }): number => {
+    const { node, sourceProfile } = params;
+    if (!sourceProfile) return 0.55;
+    const speakerMatched = isSpeakerPresentInProfile(node.speaker, sourceProfile);
+    let score =
+      sourceProfile.quality.visual * 0.46 +
+      sourceProfile.quality.stability * 0.34 +
+      sourceProfile.quality.audio * 0.2;
+    if (node.speaker && !speakerMatched) score -= 0.22;
+    if (sourceProfile.actions.includes('speech')) score += 0.08;
+    if (sourceProfile.actions.includes('moment') && !sourceProfile.actions.includes('speech')) score -= 0.06;
+    if (hasCoupleReactionPerson(sourceProfile.people)) score += 0.04;
+    return Number(clampStoryArcV2Number(score, 0, 1).toFixed(3));
+  };
+
+  const pickFocusRecoveryCutaway = (params: {
+    node: StoryArcV2StoryScriptNode;
+    sourceClipId: string;
+    sourceProfile: StoryArcV2SemanticProfile | null;
+    bannedClipIds: Set<string>;
+  }): { clipId: string; score: number; rationale: string } | null => {
+    const { node, sourceClipId, sourceProfile, bannedClipIds } = params;
+    const sourceMediaId = sourceProfile?.mediaId || sourceClipId.split(':')[0] || '';
+    const localProfiles = semanticProfilesByMediaId.get(sourceMediaId) || [];
+    if (localProfiles.length === 0) return null;
+    const normalizedSpeaker = normalizeModelLookupValue(node.speaker || '');
+    const eventCandidateBoost = new Map<string, number>();
+
+    const eventClipCandidates = (detectedEventsByMediaId.get(sourceMediaId) || []).flatMap((event) => {
+      if (
+        event.type !== 'kiss' &&
+        event.type !== 'hug' &&
+        event.type !== 'ring_exchange' &&
+        event.type !== 'first_dance' &&
+        event.type !== 'emotional_speech' &&
+        event.type !== 'dancing'
+      ) {
+        return [];
+      }
+      if (!rangesOverlapStoryArcV2(node.start - 8, node.end + 8, event.start, event.end)) {
+        return [];
+      }
+      const typeBoost =
+        event.type === 'kiss' || event.type === 'ring_exchange' || event.type === 'first_dance'
+          ? 0.12
+          : event.type === 'hug' || event.type === 'emotional_speech'
+            ? 0.08
+            : 0.05;
+      return localProfiles
+        .filter((profile) =>
+          rangesOverlapStoryArcV2(profile.start, profile.end, event.start, event.end)
+        )
+        .map((profile) => {
+          const current = eventCandidateBoost.get(profile.clipId) || 0;
+          eventCandidateBoost.set(profile.clipId, Math.max(current, typeBoost));
+          return profile.clipId;
+        });
+    });
+
+    const placeholderCandidates = (node.brollPlaceholders || []).flatMap(
+      (placeholder) => placeholder.candidateClipIds
+    );
+    const proximityCandidates = localProfiles
+      .filter(
+        (profile) =>
+          profile.clipId !== sourceClipId &&
+          rangesOverlapStoryArcV2(profile.start, profile.end, node.start - 12, node.end + 12)
+      )
+      .map((profile) => profile.clipId);
+
+    const orderedCandidateIds = Array.from(
+      new Set([...eventClipCandidates, ...placeholderCandidates, ...proximityCandidates])
+    ).filter((clipId) => clipId !== sourceClipId && !bannedClipIds.has(clipId));
+
+    const scoredCandidates = orderedCandidateIds
+      .map((clipId) => {
+        const profile = semanticProfilesByClipId.get(clipId);
+        if (!profile) return null;
+        const normalizedPeople = profile.people.map((entry) => normalizeModelLookupValue(entry));
+        const hasSpeaker = normalizedSpeaker ? normalizedPeople.includes(normalizedSpeaker) : false;
+        const hasCouple = hasCoupleReactionPerson(profile.people);
+        let score =
+          profile.quality.visual * 0.5 +
+          profile.quality.stability * 0.2 +
+          profile.quality.audio * 0.1 +
+          profile.emotion.score * 0.2;
+        score += eventCandidateBoost.get(clipId) || 0;
+        if (profile.actions.includes('speech')) score -= 0.22;
+        if (hasSpeaker) score -= 0.2;
+        if (hasCouple) score += 0.18;
+        if (profile.actions.includes('ceremony')) score += 0.08;
+        if (profile.people.length >= 2) score += 0.06;
+        if (profile.emotion.label === 'warm' || profile.emotion.label === 'emotional') score += 0.05;
+        if (profile.quality.visual < 0.58) score -= 0.12;
+        if (profile.quality.stability < 0.5) score -= 0.08;
+        return {
+          clipId,
+          score: Number(clampStoryArcV2Number(score, 0, 1).toFixed(3)),
+          rationale: hasCouple
+            ? 'Focus recovery cutaway selected from bride/groom reaction candidates while preserving speech sync.'
+            : 'Focus recovery cutaway selected from reaction/ceremony candidates while preserving speech sync.',
+        };
+      })
+      .filter(
+        (entry): entry is { clipId: string; score: number; rationale: string } => Boolean(entry)
+      )
+      .sort((left, right) => right.score - left.score);
+
+    const bestCandidate = scoredCandidates[0] || null;
+    if (!bestCandidate || bestCandidate.score < 0.52) return null;
+    return bestCandidate;
+  };
+
+  const profile = resolveStoryArcV2ProjectProfile(readString(analysis?.projectProfile));
+  const editingMode = resolveStoryArcV2EditingMode(readString(analysis?.editingMode), profile);
+  const culturalProfile = resolveStoryArcV2CulturalProfile(readString(analysis?.culturalProfile));
+  const culturalModules = resolveStoryArcV2CulturalModules(analysis?.culturalModules);
+  const culturalRulebook = mergeStoryArcV2CulturalRulebook({
+    profile: culturalProfile,
+    modules: culturalModules,
+  });
+  const noCutEventTypes = new Set(culturalRulebook.noCutEventTypes);
+  const sacredEventTypes = new Set(culturalRulebook.sacredEventTypes);
+  let factor = variant === 'safe' ? 1.1 : variant === 'bold' ? 0.78 : 1;
+  if (editingMode === 'dialogue_clean') {
+    factor *= 0.88;
+  } else if (editingMode === 'highlight_music_sync') {
+    factor *= 0.94;
+  } else if (editingMode === 'full_auto') {
+    factor *= 0.9;
+  }
   const clips: StoryArcV2TimelineClip[] = [];
   const selectedClipIds: string[] = [];
   const repetitionTracker: Record<string, number> = {};
+  const beatInterval =
+    analysis?.musicAnalysis?.beatIntervalSeconds &&
+    Number.isFinite(analysis.musicAnalysis.beatIntervalSeconds)
+      ? Number(analysis.musicAnalysis.beatIntervalSeconds)
+      : null;
+  const sectionBoundaries = (analysis?.musicAnalysis?.sections || [])
+    .map((section) => section.end)
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right);
   let cursor = 0;
+  let clipCounter = 0;
+  let focusAdaptiveSwitches = 0;
+  let beatCoverageBackfills = 0;
+  let externalBrollRequests = 0;
+  const bannedClipIds = new Set(script.bannedClipIds);
 
   script.nodes.forEach((node, index) => {
     const sourceClipId = node.candidateClipIds.find((clipId) => !script.bannedClipIds.includes(clipId));
@@ -24842,35 +28249,307 @@ const buildStoryArcV2TimelineVariant = (
       repetitionTracker[speakerKey] = used + 1;
     }
 
-    const duration = Number(
-      clampStoryArcV2Number(node.duration * factor, constraints.shotMin, constraints.shotMax).toFixed(3)
+    const nodeNarrativeScore = Number(
+      clampStoryArcV2Number(readNumber(node.narrativeScore) ?? 0.62, 0, 1).toFixed(3)
     );
-    const start = Number(cursor.toFixed(3));
-    const clipId = `${variant}-clip-${index + 1}-${node.id}`;
-    clips.push({
-      id: clipId,
-      name: node.text.slice(0, 72),
-      beatName: node.beat,
-      start,
-      duration,
-      trackId: 'video-1',
-      sourceFile: sourceClipId,
-      metadata: {
-        sourceClipId,
-        scriptNodeId: node.id,
-        beat: node.beat,
-        rationale: node.rationale,
-        speaker: node.speaker,
-      },
+    const narrativeDurationFactor = 0.9 + nodeNarrativeScore * 0.22;
+    let duration = Number(
+      clampStoryArcV2Number(node.duration * factor * narrativeDurationFactor, constraints.shotMin, constraints.shotMax).toFixed(3)
+    );
+    if (beatInterval && beatInterval >= 0.24 && beatInterval <= 2.2) {
+      const beatCount = Math.max(1, Math.round(duration / beatInterval));
+      duration = Number(
+        clampStoryArcV2Number(beatCount * beatInterval, constraints.shotMin, constraints.shotMax).toFixed(3)
+      );
+    }
+    const sourceProfile = semanticProfilesByClipId.get(sourceClipId) || null;
+    const sourceMediaId = sourceProfile?.mediaId || sourceClipId.split(':')[0] || '';
+    const overlappingNodeEvents = (detectedEventsByMediaId.get(sourceMediaId) || []).filter((event) =>
+      rangesOverlapStoryArcV2(node.start - 0.2, node.end + 0.2, event.start, event.end)
+    );
+    const dominantNodeEvent =
+      overlappingNodeEvents
+        .slice()
+        .sort((left, right) => {
+          const leftWeight = left.confidence + toStoryArcV2EventPriorityWeight(left.priority) * 0.2;
+          const rightWeight = right.confidence + toStoryArcV2EventPriorityWeight(right.priority) * 0.2;
+          return rightWeight - leftWeight;
+        })[0] || null;
+    const eventMinClipLen =
+      dominantNodeEvent?.type ? culturalRulebook.minClipLenByEventType[dominantNodeEvent.type] || null : null;
+    const isSacredNode = Boolean(dominantNodeEvent && sacredEventTypes.has(dominantNodeEvent.type));
+    const isNoCutNode = Boolean(
+      dominantNodeEvent && (noCutEventTypes.has(dominantNodeEvent.type) || isSacredNode)
+    );
+    if (isNoCutNode || eventMinClipLen) {
+      const hardMin = Math.max(
+        constraints.shotMin,
+        eventMinClipLen || (isSacredNode ? culturalRulebook.pacing.ceremony.shotMin : constraints.shotMin)
+      );
+      duration = Number(
+        clampStoryArcV2Number(duration, hardMin, Math.max(hardMin, constraints.shotMax)).toFixed(3)
+      );
+    }
+    const focusScore = scoreSpeakerFocus({
+      node,
+      sourceProfile,
     });
-    selectedClipIds.push(sourceClipId);
-    cursor += duration;
+    const speakerVisibleInSource = isSpeakerPresentInProfile(node.speaker, sourceProfile);
+    const sourceVisualQuality = sourceProfile?.quality.visual ?? 0.6;
+    const shouldRecoverFocus =
+      (focusScore < 0.62 || !speakerVisibleInSource || sourceVisualQuality < 0.58) &&
+      duration >= Math.max(constraints.shotMin * 1.9, 2.6) &&
+      editingMode !== 'dialogue_clean' &&
+      !isNoCutNode;
+    const cutaway = shouldRecoverFocus
+      ? pickFocusRecoveryCutaway({
+          node,
+          sourceClipId,
+          sourceProfile,
+          bannedClipIds,
+        })
+      : null;
+    const contextualBrollSuggestions = Array.from(
+      new Set(
+        (node.brollPlaceholders || []).flatMap((placeholder) => [
+          ...(placeholder.suggestionQueries || []),
+          placeholder.query,
+        ])
+      )
+    )
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(0, 6);
+
+    const segments: Array<{
+      source: string;
+      duration: number;
+      role: 'primary_speech' | 'focus_cutaway';
+      rationale: string;
+      score: number;
+      forceCutTransitionAfter: boolean;
+      requiresExternalBroll: boolean;
+      externalBrollSuggestions: string[];
+      fallbackMessage: string | null;
+      eventType: StoryArcV2DetectedEventType | null;
+      eventPriority: StoryArcV2EventPriority | null;
+      noJumpcuts: boolean;
+    }> = [];
+    if (cutaway) {
+      const cutawayDuration = Number(
+        clampStoryArcV2Number(duration * 0.34, 0.9, Math.min(3.4, duration - constraints.shotMin)).toFixed(3)
+      );
+      const primaryDuration = Number(Math.max(constraints.shotMin, duration - cutawayDuration).toFixed(3));
+      const adjustedCutawayDuration = Number(Math.max(0.6, duration - primaryDuration).toFixed(3));
+      if (adjustedCutawayDuration >= 0.6) {
+        segments.push({
+          source: sourceClipId,
+          duration: primaryDuration,
+          role: 'primary_speech',
+          rationale: `${node.rationale} Speaker focus score ${focusScore.toFixed(2)}.`,
+          score: focusScore,
+          forceCutTransitionAfter: true,
+          requiresExternalBroll: false,
+          externalBrollSuggestions: [],
+          fallbackMessage: null,
+          eventType: dominantNodeEvent?.type || null,
+          eventPriority: dominantNodeEvent?.priority || null,
+          noJumpcuts: isNoCutNode,
+        });
+        segments.push({
+          source: cutaway.clipId,
+          duration: adjustedCutawayDuration,
+          role: 'focus_cutaway',
+          rationale: cutaway.rationale,
+          score: cutaway.score,
+          forceCutTransitionAfter: false,
+          requiresExternalBroll: false,
+          externalBrollSuggestions: [],
+          fallbackMessage: null,
+          eventType: dominantNodeEvent?.type || null,
+          eventPriority: dominantNodeEvent?.priority || null,
+          noJumpcuts: false,
+        });
+        focusAdaptiveSwitches += 1;
+      }
+    }
+    if (segments.length === 0) {
+      const needsExternalBroll = shouldRecoverFocus && contextualBrollSuggestions.length > 0;
+      segments.push({
+        source: sourceClipId,
+        duration,
+        role: 'primary_speech',
+        rationale: needsExternalBroll
+          ? `${node.rationale} Speaker focus score ${focusScore.toFixed(2)}. No suitable internal b-roll found; external contextual b-roll requested.`
+          : `${node.rationale} Speaker focus score ${focusScore.toFixed(2)}.`,
+        score: focusScore,
+        forceCutTransitionAfter: false,
+        requiresExternalBroll: needsExternalBroll,
+        externalBrollSuggestions: needsExternalBroll ? contextualBrollSuggestions : [],
+        fallbackMessage: needsExternalBroll
+          ? 'Fant ikke passende intern B-roll. Legg inn B-roll fra forslagene under.'
+          : null,
+        eventType: dominantNodeEvent?.type || null,
+        eventPriority: dominantNodeEvent?.priority || null,
+        noJumpcuts: isNoCutNode,
+      });
+    }
+
+    for (let segmentIndex = 0; segmentIndex < segments.length; segmentIndex += 1) {
+      const segment = segments[segmentIndex];
+      const start = Number(cursor.toFixed(3));
+      const end = Number((start + segment.duration).toFixed(3));
+      const isLastSegment = segmentIndex === segments.length - 1;
+      const nearSectionBoundary =
+        isLastSegment &&
+        sectionBoundaries.some((boundary) =>
+          Math.abs(boundary - end) <= Math.max(0.12, (beatInterval || 0.32) * 0.8)
+        );
+      const transitionToNext: 'cut' | 'cross_dissolve' =
+        segment.forceCutTransitionAfter || !isLastSegment
+          ? 'cut'
+          : nearSectionBoundary
+            ? 'cross_dissolve'
+            : 'cut';
+      const transitionDuration =
+        transitionToNext === 'cross_dissolve'
+          ? Number(Math.min(0.38, Math.max(0.12, (beatInterval || 0.32) * 0.5)).toFixed(3))
+          : 0;
+      clipCounter += 1;
+      const clipId = `${variant}-clip-${clipCounter}-${node.id}-${segmentIndex + 1}`;
+      clips.push({
+        id: clipId,
+        name:
+          segment.role === 'focus_cutaway'
+            ? `[Cutaway] ${node.text.slice(0, 64)}`
+            : node.text.slice(0, 72),
+        beatName: node.beat,
+        start,
+        duration: segment.duration,
+        trackId: 'video-1',
+        sourceFile: segment.source,
+        metadata: {
+          sourceClipId: segment.source,
+          scriptNodeId: node.id,
+          beat: node.beat,
+          speaker: node.speaker,
+          storyThreads: node.storyThreads || [],
+          primaryThread: node.primaryThread || node.storyThreads?.[0] || 'speech',
+          narrativeScore: nodeNarrativeScore,
+          segmentRole: segment.role,
+          focusScore: segment.score,
+          focusAdaptiveSwitch: segment.role === 'focus_cutaway',
+          maintainSpeechSync: segment.role === 'focus_cutaway',
+          requiresExternalBroll: segment.requiresExternalBroll,
+          externalBrollSuggestions: segment.externalBrollSuggestions,
+          fallbackMessage: segment.fallbackMessage,
+          audioSourceClipId: sourceClipId,
+          audioSourceStart: Number(node.start.toFixed(3)),
+          audioSourceEnd: Number(node.end.toFixed(3)),
+          speechAnchorSourceClipId: sourceClipId,
+          speechAnchorNodeId: node.id,
+          speechAnchorStart: node.start,
+          speechAnchorEnd: node.end,
+          musicBeatSync: beatInterval ? 'aligned' : 'off',
+          musicBeatIntervalSeconds: beatInterval,
+          transitionToNext,
+          transitionDuration,
+          eventType: segment.eventType,
+          eventPriority: segment.eventPriority,
+          noJumpcuts: segment.noJumpcuts,
+          rationale: segment.rationale,
+        },
+      });
+      if (segment.requiresExternalBroll) {
+        externalBrollRequests += 1;
+      }
+      selectedClipIds.push(segment.source);
+      cursor += segment.duration;
+    }
   });
+
+  if (constraints.beatCoverageRequired) {
+    const presentBeats = new Set(
+      clips
+        .map((clip) => normalizeBeatValue(readString(clip.metadata?.beat) || readString(clip.beatName) || null))
+        .filter((beat): beat is StoryArcV2NarrativeBeat => Boolean(beat))
+    );
+    const missingBeats = STORY_ARC_V2_AVAILABLE_BEATS.filter((beat) => !presentBeats.has(beat));
+    missingBeats.forEach((beat) => {
+      const node = script.nodes.find((candidate) => candidate.beat === beat);
+      if (!node) return;
+      const sourceClipId = node.candidateClipIds.find((clipId) => !script.bannedClipIds.includes(clipId));
+      if (!sourceClipId) return;
+      const nodeNarrativeScore = Number(
+        clampStoryArcV2Number(readNumber(node.narrativeScore) ?? 0.62, 0, 1).toFixed(3)
+      );
+      const duration = Number(
+        clampStoryArcV2Number(node.duration * (0.88 + nodeNarrativeScore * 0.14), constraints.shotMin, constraints.shotMax).toFixed(3)
+      );
+      clipCounter += 1;
+      const clipId = `${variant}-clip-${clipCounter}-${node.id}-coverage`;
+      clips.push({
+        id: clipId,
+        name: `[Beat Coverage] ${node.text.slice(0, 64)}`,
+        beatName: beat,
+        start: Number(cursor.toFixed(3)),
+        duration,
+        trackId: 'video-1',
+        sourceFile: sourceClipId,
+        metadata: {
+          sourceClipId,
+          scriptNodeId: node.id,
+          beat,
+          speaker: node.speaker,
+          storyThreads: node.storyThreads || [],
+          primaryThread: node.primaryThread || node.storyThreads?.[0] || 'speech',
+          narrativeScore: nodeNarrativeScore,
+          segmentRole: 'primary_speech',
+          focusScore: 0.7,
+          focusAdaptiveSwitch: false,
+          maintainSpeechSync: false,
+          audioSourceClipId: sourceClipId,
+          audioSourceStart: Number(node.start.toFixed(3)),
+          audioSourceEnd: Number(node.end.toFixed(3)),
+          speechAnchorSourceClipId: sourceClipId,
+          speechAnchorNodeId: node.id,
+          speechAnchorStart: node.start,
+          speechAnchorEnd: node.end,
+          musicBeatSync: beatInterval ? 'aligned' : 'off',
+          musicBeatIntervalSeconds: beatInterval,
+          transitionToNext: 'cut',
+          transitionDuration: 0,
+          beatCoverageInjected: true,
+          rationale: `Injected clip to guarantee ${beat} beat coverage in final story arc.`,
+        },
+      });
+      selectedClipIds.push(sourceClipId);
+      cursor += duration;
+      beatCoverageBackfills += 1;
+    });
+  }
+
+  const averageNarrativeScore =
+    clips.length > 0
+      ? Number(
+          (
+            clips.reduce((sum, clip) => sum + (readNumber(clip.metadata?.narrativeScore) ?? 0.62), 0) /
+            clips.length
+          ).toFixed(3)
+        )
+      : 0;
 
   const summary = [
     `Variant ${variant} generated from ${script.nodes.length} script nodes.`,
     `Selected ${clips.length} timeline clips.`,
     `Estimated duration ${cursor.toFixed(1)}s.`,
+    `Cultural rulebook: ${culturalRulebook.label}.`,
+    `Focus-adaptive cutaway switches: ${focusAdaptiveSwitches}.`,
+    `Beat coverage backfills: ${beatCoverageBackfills}.`,
+    `External contextual b-roll requests: ${externalBrollRequests}.`,
+    `Average narrative score: ${(averageNarrativeScore * 100).toFixed(1)}%.`,
+    beatInterval ? `Music sync enabled at ~${(60 / beatInterval).toFixed(1)} BPM.` : 'Music sync unavailable.',
+    analysis ? `Detected events available: ${analysis.detectedEvents.length}.` : 'Detected events unavailable.',
   ];
 
   return {
@@ -24907,6 +28586,147 @@ const buildStoryArcV2Fcpxml = (
   return `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fcpxml version=\"1.10\">\n  <resources/>\n  <library>\n    <event name=\"StoryArcV2\">\n      <project name=\"${toStoryArcV2XmlSafe(proposal.scriptId)}\">\n        <sequence format=\"r1\" tcStart=\"0s\" tcFormat=\"NDF\">\n          <spine>\n${clipItems}\n          </spine>\n        </sequence>\n      </project>\n    </event>\n  </library>\n</fcpxml>`;
 };
 
+const toStoryArcV2BeatOrNull = (value: string | null): StoryArcV2NarrativeBeat | null => {
+  if (!value) return null;
+  const normalized = normalizeModelLookupValue(value);
+  if (
+    normalized === 'hook' ||
+    normalized === 'context' ||
+    normalized === 'conflict' ||
+    normalized === 'turningpoint' ||
+    normalized === 'turning_point' ||
+    normalized === 'resolution'
+  ) {
+    return normalized === 'turningpoint' ? 'turning_point' : (normalized as StoryArcV2NarrativeBeat);
+  }
+  return null;
+};
+
+const buildStoryArcV2EditDecisions = (
+  proposalId: string,
+  script: StoryArcV2StoryScript,
+  variantPlan: StoryArcV2TimelineVariantPlan,
+  analysis?: StoryArcV2AnalysisRun | null
+): StoryArcV2EditDecisionList => {
+  const nodesById = new Map(script.nodes.map((node) => [node.id, node]));
+  const sortedClips = [...variantPlan.timeline.clips].sort((left, right) => left.start - right.start);
+  const clips: StoryArcV2EditDecisionClip[] = sortedClips.map((clip, index) => {
+    const nodeId = readString(clip.metadata?.scriptNodeId) || null;
+    const node = nodeId ? nodesById.get(nodeId) || null : null;
+    const beat =
+      node?.beat ||
+      toStoryArcV2BeatOrNull(readString(clip.metadata?.beat) || readString(clip.beatName) || null);
+    const start = Number(Math.max(0, clip.start).toFixed(3));
+    const duration = Number(Math.max(0.001, clip.duration).toFixed(3));
+    const end = Number((start + duration).toFixed(3));
+    const sourceClipId = readString(clip.metadata?.sourceClipId) || readString(clip.sourceFile) || null;
+    const segmentRole = normalizeModelLookupValue(readString(clip.metadata?.segmentRole) || '');
+    const normalizedSegmentRole: StoryArcV2EditDecisionClip['segmentRole'] =
+      segmentRole === 'focuscutaway' || segmentRole === 'focus_cutaway'
+        ? 'focus_cutaway'
+        : segmentRole === 'primaryspeech' || segmentRole === 'primary_speech'
+          ? 'primary_speech'
+          : 'unknown';
+    const maintainSpeechSync = readBoolean(clip.metadata?.maintainSpeechSync) === true;
+    const audioSourceClipId =
+      readString(clip.metadata?.audioSourceClipId) ||
+      readString(clip.metadata?.speechAnchorSourceClipId) ||
+      sourceClipId;
+    const audioSourceStart =
+      readNumber(clip.metadata?.audioSourceStart) ??
+      readNumber(clip.metadata?.speechAnchorStart) ??
+      node?.start ??
+      null;
+    const audioSourceEnd =
+      readNumber(clip.metadata?.audioSourceEnd) ??
+      readNumber(clip.metadata?.speechAnchorEnd) ??
+      node?.end ??
+      null;
+    return {
+      order: index + 1,
+      clipId: clip.id,
+      sourceClipId,
+      nodeId,
+      type: segmentRole.includes('cutaway') ? 'B_ROLL' : 'A_ROLL',
+      trackId: readString(clip.trackId) || 'video-1',
+      beat,
+      start,
+      end,
+      duration,
+      speaker: node?.speaker || readString(clip.metadata?.speaker) || null,
+      segmentRole: normalizedSegmentRole,
+      maintainSpeechSync,
+      audioSourceClipId: audioSourceClipId || null,
+      audioSourceStart:
+        audioSourceStart === null ? null : Number(Math.max(0, audioSourceStart).toFixed(3)),
+      audioSourceEnd:
+        audioSourceEnd === null ? null : Number(Math.max(0, audioSourceEnd).toFixed(3)),
+      eventType:
+        (readString(clip.metadata?.eventType) as StoryArcV2DetectedEventType | null) || null,
+      eventPriority:
+        (readString(clip.metadata?.eventPriority) as StoryArcV2EventPriority | null) || null,
+      noJumpcuts: readBoolean(clip.metadata?.noJumpcuts) === true,
+      requiresExternalBroll: readBoolean(clip.metadata?.requiresExternalBroll) === true,
+      externalBrollSuggestions: Array.isArray(clip.metadata?.externalBrollSuggestions)
+        ? (clip.metadata?.externalBrollSuggestions as unknown[])
+            .map((value) => readString(value))
+            .filter((value): value is string => Boolean(value))
+            .slice(0, 8)
+        : [],
+      fallbackMessage: readString(clip.metadata?.fallbackMessage) || null,
+      rationale:
+        readString(clip.metadata?.rationale) ||
+        node?.rationale ||
+        'Selected by script-to-timeline planner.',
+    };
+  });
+  const selectedNodeIds = new Set(
+    clips
+      .map((clip) => clip.nodeId)
+      .filter((nodeId): nodeId is string => Boolean(nodeId))
+  );
+  const brollPlaceholders = script.nodes
+    .filter((node) => selectedNodeIds.has(node.id))
+    .flatMap((node) => node.brollPlaceholders || [])
+    .map((placeholder) => ({
+      ...placeholder,
+      candidateClipIds: [...placeholder.candidateClipIds],
+    }));
+  const transitions = clips.slice(1).map((clip, index) => ({
+    fromClipId: clips[index].clipId,
+    toClipId: clip.clipId,
+    type:
+      readString(sortedClips[index].metadata?.transitionToNext) === 'cross_dissolve'
+        ? ('cross_dissolve' as const)
+        : ('cut' as const),
+    duration: Number(
+      Math.max(0, readNumber(sortedClips[index].metadata?.transitionDuration) ?? 0).toFixed(3)
+    ),
+  }));
+  const firstMedia = analysis?.media[0];
+
+  return {
+    schemaVersion: 'storyarc.edit_decisions.v1',
+    proposalId,
+    scriptId: script.scriptId,
+    revision: script.revision,
+    variant: variantPlan.variant,
+    fps: 25,
+    clips,
+    brollPlaceholders,
+    transitions,
+    audio: {
+      duckMusicDb: -12,
+      targetLufs: -16,
+      analysisTrackSource: firstMedia?.audioTracks?.analysis?.source || null,
+      demucsApplied: Boolean(firstMedia?.audioTracks?.demucsApplied),
+      transcriptionProvider: firstMedia?.transcriptionProvider || null,
+      alignmentProvider: firstMedia?.alignmentProvider || null,
+    },
+    generatedAt: new Date().toISOString(),
+  };
+};
+
 const createStoryArcV2TimelineProposal = (
   script: StoryArcV2StoryScript,
   selectedVariant: StoryArcV2Variant,
@@ -24916,11 +28736,13 @@ const createStoryArcV2TimelineProposal = (
     noOverlap: boolean;
     repetitionCaps: Record<string, number>;
     beatCoverageRequired: boolean;
-  }
+  },
+  analysis?: StoryArcV2AnalysisRun | null
 ): StoryArcV2TimelineProposal => {
-  const safe = buildStoryArcV2TimelineVariant(script, 'safe', constraints);
-  const balanced = buildStoryArcV2TimelineVariant(script, 'balanced', constraints);
-  const bold = buildStoryArcV2TimelineVariant(script, 'bold', constraints);
+  const proposalId = toStoryArcV2Id('proposal');
+  const safe = buildStoryArcV2TimelineVariant(script, 'safe', constraints, analysis);
+  const balanced = buildStoryArcV2TimelineVariant(script, 'balanced', constraints, analysis);
+  const bold = buildStoryArcV2TimelineVariant(script, 'bold', constraints, analysis);
   const explainabilityByClipId: Record<string, Record<string, unknown>> = {};
 
   [safe, balanced, bold].forEach((variantPlan) => {
@@ -24933,12 +28755,44 @@ const createStoryArcV2TimelineProposal = (
           'Selected by script-to-timeline planner',
         sourceClipId: readString(clip.metadata?.sourceClipId) || clip.sourceFile || null,
         speaker: readString(clip.metadata?.speaker) || null,
+        maintainSpeechSync: readBoolean(clip.metadata?.maintainSpeechSync) === true,
+        audioSourceClipId:
+          readString(clip.metadata?.audioSourceClipId) ||
+          readString(clip.metadata?.speechAnchorSourceClipId) ||
+          null,
+        segmentRole: readString(clip.metadata?.segmentRole) || null,
+        primaryThread: readString(clip.metadata?.primaryThread) || null,
+        storyThreads: Array.isArray(clip.metadata?.storyThreads)
+          ? (clip.metadata?.storyThreads as unknown[])
+              .map((value) => readString(value))
+              .filter((value): value is string => Boolean(value))
+          : [],
+        narrativeScore: readNumber(clip.metadata?.narrativeScore) ?? null,
+        eventType: readString(clip.metadata?.eventType) || null,
+        eventPriority: readString(clip.metadata?.eventPriority) || null,
+        noJumpcuts: readBoolean(clip.metadata?.noJumpcuts) === true,
+        requiresExternalBroll: readBoolean(clip.metadata?.requiresExternalBroll) === true,
+        externalBrollSuggestions: Array.isArray(clip.metadata?.externalBrollSuggestions)
+          ? (clip.metadata?.externalBrollSuggestions as unknown[])
+              .map((value) => readString(value))
+              .filter((value): value is string => Boolean(value))
+          : [],
+        fallbackMessage: readString(clip.metadata?.fallbackMessage) || null,
+        brollPlaceholderCount:
+          script.nodes.find((node) => node.id === readString(clip.metadata?.scriptNodeId))
+            ?.brollPlaceholders.length || 0,
       };
     });
   });
 
+  const editDecisionsByVariant = {
+    safe: buildStoryArcV2EditDecisions(proposalId, script, safe, analysis),
+    balanced: buildStoryArcV2EditDecisions(proposalId, script, balanced, analysis),
+    bold: buildStoryArcV2EditDecisions(proposalId, script, bold, analysis),
+  } satisfies Record<StoryArcV2Variant, StoryArcV2EditDecisionList>;
+
   return {
-    proposalId: toStoryArcV2Id('proposal'),
+    proposalId,
     scriptId: script.scriptId,
     revision: script.revision,
     generatedAt: new Date().toISOString(),
@@ -24948,6 +28802,8 @@ const createStoryArcV2TimelineProposal = (
       balanced,
       bold,
     },
+    editDecisions: editDecisionsByVariant[selectedVariant],
+    editDecisionsByVariant,
     explainabilityByClipId,
     warnings: [],
   };
@@ -25133,7 +28989,7 @@ const runStoryArcV2GoldenBenchmark = async (
       noOverlap: true,
       repetitionCaps: {},
       beatCoverageRequired: true,
-    });
+    }, analysis);
     storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
     void persistStoryArcV2TablePayload(
       'storyarc_timeline_proposals',
@@ -25419,11 +29275,222 @@ const persistStoryArcV2GoldenBenchmarkRun = async (
   }
 };
 
+const normalizeStoryArcV2AnalysisRunPayload = (
+  analysis: StoryArcV2AnalysisRun
+): StoryArcV2AnalysisRun => ({
+  ...analysis,
+  projectProfile: resolveStoryArcV2ProjectProfile(readString(analysis.projectProfile)),
+  editingMode: resolveStoryArcV2EditingMode(
+    readString(analysis.editingMode),
+    resolveStoryArcV2ProjectProfile(readString(analysis.projectProfile))
+  ),
+  culturalProfile: resolveStoryArcV2CulturalProfile(readString(analysis.culturalProfile)),
+  culturalModules: resolveStoryArcV2CulturalModules(analysis.culturalModules),
+  mustIncludeMoments: normalizeStoryArcV2MomentTokenList(analysis.mustIncludeMoments),
+  avoidMoments: normalizeStoryArcV2MomentTokenList(analysis.avoidMoments),
+  detectedEvents: Array.isArray(analysis.detectedEvents)
+    ? analysis.detectedEvents
+        .map((event) => ({
+          ...event,
+          priority:
+            event.priority === 'A' || event.priority === 'B' || event.priority === 'C'
+              ? event.priority
+              : 'C',
+          culturalProfile: resolveStoryArcV2CulturalProfile(readString(event.culturalProfile)),
+        }))
+        .filter((event) => event.end > event.start)
+    : [],
+  narrativeAnchors: Array.isArray(analysis.narrativeAnchors)
+    ? analysis.narrativeAnchors
+        .map((anchor) => ({ ...anchor }))
+        .filter((anchor) => anchor.end > anchor.start)
+    : [],
+  musicAnalysis: isUnknownRecord(analysis.musicAnalysis)
+    ? ({
+        ...analysis.musicAnalysis,
+        beats: Array.isArray(analysis.musicAnalysis.beats)
+          ? analysis.musicAnalysis.beats
+              .map((beat) => ({ ...beat }))
+              .filter((beat) => Number.isFinite(beat.time))
+          : [],
+        sections: Array.isArray(analysis.musicAnalysis.sections)
+          ? analysis.musicAnalysis.sections
+              .map((section) => ({ ...section }))
+              .filter((section) => Number.isFinite(section.start) && Number.isFinite(section.end))
+          : [],
+        energyCurve: Array.isArray(analysis.musicAnalysis.energyCurve)
+          ? analysis.musicAnalysis.energyCurve
+              .map((value) => (typeof value === 'number' ? value : Number(value)))
+              .filter((value) => Number.isFinite(value))
+          : [],
+        warnings: Array.isArray(analysis.musicAnalysis.warnings)
+          ? analysis.musicAnalysis.warnings.filter((warning): warning is string => typeof warning === 'string')
+          : [],
+      } as StoryArcV2MusicAnalysis)
+    : createEmptyStoryArcV2MusicAnalysis(),
+  summary: {
+    sceneCount: Math.max(0, Math.round(readNumber(analysis.summary?.sceneCount) ?? 0)),
+    totalDuration: Number(Math.max(0, readNumber(analysis.summary?.totalDuration) ?? 0).toFixed(3)),
+    transcriptionSegments: Math.max(0, Math.round(readNumber(analysis.summary?.transcriptionSegments) ?? 0)),
+    detectedSpeakers: Math.max(0, Math.round(readNumber(analysis.summary?.detectedSpeakers) ?? 0)),
+    detectedEvents: Math.max(
+      0,
+      Math.round(readNumber(analysis.summary?.detectedEvents) ?? (analysis.detectedEvents?.length || 0))
+    ),
+    narrativeAnchors: Math.max(
+      0,
+      Math.round(readNumber(analysis.summary?.narrativeAnchors) ?? (analysis.narrativeAnchors?.length || 0))
+    ),
+    musicBeats: Math.max(0, Math.round(readNumber(analysis.summary?.musicBeats) ?? (analysis.musicAnalysis?.beats?.length || 0))),
+    visualFeaturePoints: Math.max(
+      0,
+      Math.round(readNumber(analysis.summary?.visualFeaturePoints) ?? (analysis.visualFeatures?.length || 0))
+    ),
+    eventMarkers: Math.max(
+      0,
+      Math.round(readNumber(analysis.summary?.eventMarkers) ?? (analysis.eventMarkers?.length || 0))
+    ),
+  },
+  media: Array.isArray(analysis.media)
+    ? analysis.media.map((media) => ({
+        ...media,
+        detectedText: Array.isArray(media.detectedText)
+          ? media.detectedText.filter((value): value is string => typeof value === 'string')
+          : [],
+        audioTracks: isUnknownRecord(media.audioTracks)
+          ? (media.audioTracks as VideoAnalysisAudioTracks)
+          : createEmptyVideoAnalysisAudioTracks(),
+        musicAnalysis: isUnknownRecord(media.musicAnalysis)
+          ? ({
+              ...media.musicAnalysis,
+              beats: Array.isArray(media.musicAnalysis.beats)
+                ? media.musicAnalysis.beats
+                    .map((beat) => ({ ...beat }))
+                    .filter((beat) => Number.isFinite(beat.time))
+                : [],
+              sections: Array.isArray(media.musicAnalysis.sections)
+                ? media.musicAnalysis.sections
+                    .map((section) => ({ ...section }))
+                    .filter((section) => Number.isFinite(section.start) && Number.isFinite(section.end))
+                : [],
+              energyCurve: Array.isArray(media.musicAnalysis.energyCurve)
+                ? media.musicAnalysis.energyCurve
+                    .map((value) => (typeof value === 'number' ? value : Number(value)))
+                    .filter((value) => Number.isFinite(value))
+                : [],
+              warnings: Array.isArray(media.musicAnalysis.warnings)
+                ? media.musicAnalysis.warnings.filter((warning): warning is string => typeof warning === 'string')
+                : [],
+            } as StoryArcV2MusicAnalysis)
+          : createEmptyStoryArcV2MusicAnalysis(),
+        detectedEvents: Array.isArray(media.detectedEvents)
+          ? media.detectedEvents
+              .map((event) => ({
+                ...event,
+                priority:
+                  event.priority === 'A' || event.priority === 'B' || event.priority === 'C'
+                    ? event.priority
+                    : 'C',
+                culturalProfile: resolveStoryArcV2CulturalProfile(readString(event.culturalProfile)),
+              }))
+              .filter((event) => event.end > event.start)
+          : [],
+        narrativeAnchors: Array.isArray(media.narrativeAnchors)
+          ? media.narrativeAnchors
+              .map((anchor) => ({ ...anchor }))
+              .filter((anchor) => anchor.end > anchor.start)
+          : [],
+        visualFeatures: Array.isArray(media.visualFeatures)
+          ? media.visualFeatures
+              .map((feature) => ({ ...feature }))
+              .filter((feature) => Number.isFinite(feature.t))
+          : [],
+        eventMarkers: Array.isArray(media.eventMarkers)
+          ? media.eventMarkers
+              .map((marker) => ({ ...marker }))
+              .filter((marker) => marker.end > marker.start)
+          : [],
+        transcriptionProvider:
+          media.transcriptionProvider === 'whisperx' ||
+          media.transcriptionProvider === 'whisper' ||
+          media.transcriptionProvider === 'fallback'
+            ? media.transcriptionProvider
+            : 'fallback',
+        alignmentProvider: media.alignmentProvider === 'whisperx' ? 'whisperx' : 'none',
+      }))
+    : [],
+  visualFeatures: Array.isArray(analysis.visualFeatures)
+    ? analysis.visualFeatures
+        .map((feature) => ({ ...feature }))
+        .filter((feature) => Number.isFinite(feature.t))
+    : [],
+  eventMarkers: Array.isArray(analysis.eventMarkers)
+    ? analysis.eventMarkers
+        .map((marker) => ({ ...marker }))
+        .filter((marker) => marker.end > marker.start)
+    : [],
+});
+
+const normalizeStoryArcV2ScriptPayload = (
+  script: StoryArcV2StoryScript
+): StoryArcV2StoryScript => ({
+  ...script,
+  nodes: Array.isArray(script.nodes)
+    ? script.nodes.map((node, nodeIndex) => ({
+        ...node,
+        utteranceRefs: Array.isArray(node.utteranceRefs)
+          ? node.utteranceRefs.filter((value): value is string => typeof value === 'string')
+          : [],
+        candidateClipIds: Array.isArray(node.candidateClipIds)
+          ? node.candidateClipIds.filter((value): value is string => typeof value === 'string')
+          : [],
+        brollPlaceholders: Array.isArray(node.brollPlaceholders)
+          ? node.brollPlaceholders
+              .map((placeholder, placeholderIndex) => ({
+                ...placeholder,
+                id:
+                  readString(placeholder.id) ||
+                  `${node.id || `node-${nodeIndex + 1}`}:broll-${placeholderIndex + 1}`,
+                nodeId:
+                  readString(placeholder.nodeId) ||
+                  readString(node.id) ||
+                  `node-${nodeIndex + 1}`,
+                beat:
+                  toStoryArcV2BeatOrNull(readString(placeholder.beat) || null) || node.beat || 'context',
+                query: readString(placeholder.query) || '',
+                candidateClipIds: Array.isArray(placeholder.candidateClipIds)
+                  ? placeholder.candidateClipIds.filter((value): value is string => typeof value === 'string')
+                  : [],
+                rationale: readString(placeholder.rationale) || 'Generated placeholder',
+                confidence: Number(
+                  clampStoryArcV2Number(
+                    readNumber(placeholder.confidence) ?? 0.5,
+                    0,
+                    1
+                  ).toFixed(3)
+                ),
+              }))
+              .filter(
+                (placeholder) =>
+                  placeholder.end > placeholder.start && placeholder.candidateClipIds.length > 0
+              )
+          : [],
+      }))
+    : [],
+  bannedClipIds: Array.isArray(script.bannedClipIds)
+    ? script.bannedClipIds.filter((value): value is string => typeof value === 'string')
+    : [],
+});
+
 const loadStoryArcV2AnalysisRunFromDb = async (
   analysisId: string
 ): Promise<StoryArcV2AnalysisRun | null> => {
   const fromMemory = storyArcV2AnalysisRuns.get(analysisId);
-  if (fromMemory) return fromMemory;
+  if (fromMemory) {
+    const normalized = normalizeStoryArcV2AnalysisRunPayload(fromMemory);
+    storyArcV2AnalysisRuns.set(analysisId, normalized);
+    return normalized;
+  }
 
   try {
     if (!(await hasTable('storyarc_analysis_runs'))) return null;
@@ -25433,7 +29500,9 @@ const loadStoryArcV2AnalysisRunFromDb = async (
     );
     const payload = result.rows?.[0]?.analysis_payload;
     if (!isUnknownRecord(payload)) return null;
-    const analysis = payload as unknown as StoryArcV2AnalysisRun;
+    const analysis = normalizeStoryArcV2AnalysisRunPayload(
+      payload as unknown as StoryArcV2AnalysisRun
+    );
     if (!analysis.analysisId) return null;
     storyArcV2AnalysisRuns.set(analysis.analysisId, analysis);
     return analysis;
@@ -25447,7 +29516,11 @@ const loadStoryArcV2ScriptFromDb = async (
   scriptId: string
 ): Promise<StoryArcV2StoryScript | null> => {
   const fromMemory = storyArcV2Scripts.get(scriptId);
-  if (fromMemory) return fromMemory;
+  if (fromMemory) {
+    const normalized = normalizeStoryArcV2ScriptPayload(fromMemory);
+    storyArcV2Scripts.set(scriptId, normalized);
+    return normalized;
+  }
 
   try {
     if (!(await hasTable('storyarc_story_scripts'))) return null;
@@ -25457,7 +29530,9 @@ const loadStoryArcV2ScriptFromDb = async (
     );
     const payload = result.rows?.[0]?.script_payload;
     if (!isUnknownRecord(payload)) return null;
-    const script = payload as unknown as StoryArcV2StoryScript;
+    const script = normalizeStoryArcV2ScriptPayload(
+      payload as unknown as StoryArcV2StoryScript
+    );
     if (!script.scriptId) return null;
     storyArcV2Scripts.set(script.scriptId, script);
     return script;
@@ -25471,7 +29546,43 @@ const loadStoryArcV2ProposalFromDb = async (
   proposalId: string
 ): Promise<StoryArcV2TimelineProposal | null> => {
   const fromMemory = storyArcV2TimelineProposals.get(proposalId);
-  if (fromMemory) return fromMemory;
+  if (fromMemory) {
+    if (fromMemory.editDecisions && fromMemory.editDecisionsByVariant) {
+      return fromMemory;
+    }
+    const script = await loadStoryArcV2ScriptFromDb(fromMemory.scriptId);
+    const analysis = script ? await loadStoryArcV2AnalysisRunFromDb(script.analysisId) : null;
+    const fallbackScript =
+      script ||
+      ({
+        scriptId: fromMemory.scriptId,
+        analysisId: '',
+        revision: fromMemory.revision,
+        title: 'Recovered script',
+        targetDurationSeconds: fromMemory.variants[fromMemory.selectedVariant]?.timeline.totalDuration || 0,
+        nodes: [],
+        bannedClipIds: [],
+        createdAt: fromMemory.generatedAt,
+        updatedAt: fromMemory.generatedAt,
+      } satisfies StoryArcV2StoryScript);
+    const rebuiltByVariant = {
+      safe: buildStoryArcV2EditDecisions(fromMemory.proposalId, fallbackScript, fromMemory.variants.safe, analysis),
+      balanced: buildStoryArcV2EditDecisions(
+        fromMemory.proposalId,
+        fallbackScript,
+        fromMemory.variants.balanced,
+        analysis
+      ),
+      bold: buildStoryArcV2EditDecisions(fromMemory.proposalId, fallbackScript, fromMemory.variants.bold, analysis),
+    } satisfies Record<StoryArcV2Variant, StoryArcV2EditDecisionList>;
+    const normalizedMemoryProposal: StoryArcV2TimelineProposal = {
+      ...fromMemory,
+      editDecisionsByVariant: rebuiltByVariant,
+      editDecisions: rebuiltByVariant[fromMemory.selectedVariant],
+    };
+    storyArcV2TimelineProposals.set(proposalId, normalizedMemoryProposal);
+    return normalizedMemoryProposal;
+  }
 
   try {
     if (!(await hasTable('storyarc_timeline_proposals'))) return null;
@@ -25483,8 +29594,77 @@ const loadStoryArcV2ProposalFromDb = async (
     if (!isUnknownRecord(payload)) return null;
     const proposal = payload as unknown as StoryArcV2TimelineProposal;
     if (!proposal.proposalId) return null;
-    storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
-    return proposal;
+    const variantSafe = proposal.variants?.safe || {
+      variant: 'safe' as const,
+      selectedClipIds: [],
+      timeline: { clips: [], totalDuration: 0 },
+      summary: ['Recovered safe variant'],
+    };
+    const variantBalanced = proposal.variants?.balanced || {
+      variant: 'balanced' as const,
+      selectedClipIds: [],
+      timeline: { clips: [], totalDuration: 0 },
+      summary: ['Recovered balanced variant'],
+    };
+    const variantBold = proposal.variants?.bold || {
+      variant: 'bold' as const,
+      selectedClipIds: [],
+      timeline: { clips: [], totalDuration: 0 },
+      summary: ['Recovered bold variant'],
+    };
+    const selectedVariantRaw = normalizeModelLookupValue(proposal.selectedVariant || 'balanced');
+    const selectedVariant: StoryArcV2Variant =
+      selectedVariantRaw === 'safe' || selectedVariantRaw === 'bold'
+        ? (selectedVariantRaw as StoryArcV2Variant)
+        : 'balanced';
+    const baseProposal: StoryArcV2TimelineProposal = {
+      ...proposal,
+      selectedVariant,
+      variants: {
+        safe: variantSafe,
+        balanced: variantBalanced,
+        bold: variantBold,
+      },
+      editDecisions: proposal.editDecisions as StoryArcV2EditDecisionList,
+      editDecisionsByVariant:
+        proposal.editDecisionsByVariant as Record<StoryArcV2Variant, StoryArcV2EditDecisionList>,
+    };
+
+    if (!baseProposal.editDecisionsByVariant || !baseProposal.editDecisions) {
+      const script = await loadStoryArcV2ScriptFromDb(baseProposal.scriptId);
+      const fallbackScript: StoryArcV2StoryScript =
+        script ||
+        ({
+          scriptId: baseProposal.scriptId,
+          analysisId: '',
+          revision: baseProposal.revision,
+          title: 'Recovered script',
+          targetDurationSeconds: baseProposal.variants[selectedVariant]?.timeline.totalDuration || 0,
+          nodes: [],
+          bannedClipIds: [],
+          createdAt: baseProposal.generatedAt,
+          updatedAt: baseProposal.generatedAt,
+        } satisfies StoryArcV2StoryScript);
+      const analysis = fallbackScript.analysisId
+        ? await loadStoryArcV2AnalysisRunFromDb(fallbackScript.analysisId)
+        : null;
+      const rebuiltEditDecisionsByVariant = {
+        safe: buildStoryArcV2EditDecisions(baseProposal.proposalId, fallbackScript, baseProposal.variants.safe, analysis),
+        balanced: buildStoryArcV2EditDecisions(
+          baseProposal.proposalId,
+          fallbackScript,
+          baseProposal.variants.balanced,
+          analysis
+        ),
+        bold: buildStoryArcV2EditDecisions(baseProposal.proposalId, fallbackScript, baseProposal.variants.bold, analysis),
+      } satisfies Record<StoryArcV2Variant, StoryArcV2EditDecisionList>;
+
+      baseProposal.editDecisionsByVariant = rebuiltEditDecisionsByVariant;
+      baseProposal.editDecisions = rebuiltEditDecisionsByVariant[selectedVariant];
+    }
+
+    storyArcV2TimelineProposals.set(baseProposal.proposalId, baseProposal);
+    return baseProposal;
   } catch (error) {
     console.warn('story-arc-v2 proposal load warning:', error);
     return null;
@@ -25521,12 +29701,50 @@ const patchStoryArcV2Job = (
 ): StoryArcV2Job | null => {
   const current = storyArcV2Jobs.get(jobId);
   if (!current) return null;
+  const now = Date.now();
   const next: StoryArcV2Job = {
     ...current,
     ...patch,
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(now).toISOString(),
   };
   storyArcV2Jobs.set(jobId, next);
+
+  const runtime =
+    storyArcV2JobRuntimeContext.get(jobId) || {
+      phase: current.phase,
+      phaseStartedAt: current.updatedAt || current.createdAt,
+      phaseStartedAtMs: Number(new Date(current.updatedAt || current.createdAt).getTime()) || now,
+    };
+  if (runtime.phase !== next.phase) {
+    runtime.phase = next.phase;
+    runtime.phaseStartedAt = next.updatedAt;
+    runtime.phaseStartedAtMs = now;
+    storyArcV2JobRuntimeContext.set(jobId, runtime);
+  }
+
+  const transitionedToTerminal =
+    !isStoryArcV2TerminalStatus(current.status) && isStoryArcV2TerminalStatus(next.status);
+  if (transitionedToTerminal) {
+    const terminalStatus = next.status as StoryArcV2PhaseMetricStatus;
+    const latencyMs = Math.max(1, now - runtime.phaseStartedAtMs);
+    recordStoryArcV2PhaseMetricSample({
+      phase: runtime.phase,
+      status: terminalStatus,
+      latencyMs,
+      startedAt: runtime.phaseStartedAt,
+      endedAt: next.updatedAt,
+      jobId,
+      context: {
+        source: 'job',
+        progress: next.progress,
+        error: next.error,
+      },
+    });
+    storyArcV2JobRuntimeContext.delete(jobId);
+  } else if (!storyArcV2JobRuntimeContext.has(jobId)) {
+    storyArcV2JobRuntimeContext.set(jobId, runtime);
+  }
+
   void persistStoryArcV2TablePayload(
     'storyarc_job_checkpoints',
     'job_id',
@@ -25563,14 +29781,25 @@ const createStoryArcV2AnalyzeJob = (input: StoryArcV2AnalyzeInput): StoryArcV2Jo
       mediaCount: input.media.length,
       media: input.media,
       intentProfileId: input.intentProfileId,
-      languagePolicy: input.languagePolicy,
+      languageHint: input.languageHint,
       musicTrackId: input.musicTrackId,
+      projectProfile: input.projectProfile,
+      editingMode: input.editingMode,
+      culturalProfile: input.culturalProfile,
+      culturalModules: input.culturalModules,
+      mustIncludeMoments: input.mustIncludeMoments,
+      avoidMoments: input.avoidMoments,
     },
     createdAt: now,
     updatedAt: now,
   };
   storyArcV2Jobs.set(job.jobId, job);
   storyArcV2JobControllers.set(job.jobId, new AbortController());
+  storyArcV2JobRuntimeContext.set(job.jobId, {
+    phase: job.phase,
+    phaseStartedAt: now,
+    phaseStartedAtMs: Date.now(),
+  });
   return job;
 };
 
@@ -25588,7 +29817,22 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
   try {
     const analyzedMedia: StoryArcV2AnalyzedMedia[] = [];
     const warnings: string[] = [];
-    const language = normalizeStoryArcV2Language(input.languagePolicy);
+    const analyzeLanguageHint = normalizeStoryArcV2LanguageHint(input.languageHint);
+    const projectProfile = resolveStoryArcV2ProjectProfile(input.projectProfile);
+    const editingMode = resolveStoryArcV2EditingMode(input.editingMode, projectProfile);
+    const culturalProfile = resolveStoryArcV2CulturalProfile(input.culturalProfile);
+    const culturalModules = resolveStoryArcV2CulturalModules(input.culturalModules);
+    const culturalRulebook = mergeStoryArcV2CulturalRulebook({
+      profile: culturalProfile,
+      modules: culturalModules,
+    });
+    const mustIncludeMoments = Array.from(
+      new Set([
+        ...normalizeStoryArcV2MomentTokenList(input.mustIncludeMoments),
+        ...normalizeStoryArcV2MomentTokenList(culturalRulebook.mustIncludeDefaults),
+      ])
+    ).slice(0, 48);
+    const avoidMoments = normalizeStoryArcV2MomentTokenList(input.avoidMoments);
 
     for (let index = 0; index < input.media.length; index += 1) {
       if (signal.aborted) throw createJobAbortError();
@@ -25603,7 +29847,12 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
         },
       });
 
-      const transcribeResult = await transcribeVideoSource(media.path, language, signal);
+      const mediaLanguageHint = resolveStoryArcV2MediaLanguageHint(media, input.languageHint);
+      const transcribeResult = await transcribeVideoSource(
+        media.path,
+        mediaLanguageHint ?? analyzeLanguageHint,
+        signal
+      );
       const sceneResult = await detectScenesFromVideo(
         media.path,
         0.3,
@@ -25616,18 +29865,57 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
         sceneResult.result.scenes,
         transcribeResult.transcription
       );
+      const visualFeatures = buildStoryArcV2VisualFeaturesForMedia({
+        mediaId: media.id,
+        profile: projectProfile,
+        culturalProfile,
+        semanticProfiles,
+        detectedText: transcribeResult.detected_text,
+      });
+      const musicAnalysis = await analyzeStoryArcV2MusicFromVideo(media.path, signal);
+      const detectedEvents = detectStoryArcV2EventsForMedia({
+        mediaId: media.id,
+        profile: projectProfile,
+        rulebook: culturalRulebook,
+        mustIncludeMoments,
+        avoidMoments,
+        transcription: transcribeResult.transcription,
+        semanticProfiles,
+        detectedText: transcribeResult.detected_text,
+      });
+      const eventMarkers = buildStoryArcV2EventMarkersForMedia({
+        mediaId: media.id,
+        events: detectedEvents,
+        semanticProfiles,
+      });
+      const narrativeAnchors = buildStoryArcV2NarrativeAnchorsForMedia({
+        mediaId: media.id,
+        profile: projectProfile,
+        rulebook: culturalRulebook,
+        transcription: transcribeResult.transcription,
+        events: detectedEvents,
+      });
 
       analyzedMedia.push({
         mediaId: media.id,
         path: media.path,
         durationSeconds: sceneResult.result.duration_seconds,
         scenes: sceneResult.result.scenes,
+        detectedText: transcribeResult.detected_text,
         transcription: transcribeResult.transcription,
+        audioTracks: transcribeResult.audio_tracks,
+        musicAnalysis,
+        transcriptionProvider: transcribeResult.transcription_provider,
+        alignmentProvider: transcribeResult.alignment_provider,
+        detectedEvents,
+        narrativeAnchors,
         warnings: [...transcribeResult.warnings, ...sceneResult.warnings],
         semanticProfiles,
+        visualFeatures,
+        eventMarkers,
       });
 
-      warnings.push(...transcribeResult.warnings, ...sceneResult.warnings);
+      warnings.push(...transcribeResult.warnings, ...sceneResult.warnings, ...musicAnalysis.warnings);
     }
 
     const sceneCount = analyzedMedia.reduce((sum, media) => sum + media.scenes.length, 0);
@@ -25643,19 +29931,44 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
         if (speaker) detectedSpeakerSet.add(speaker);
       });
     });
+    const detectedEvents = analyzedMedia
+      .flatMap((media) => media.detectedEvents)
+      .sort((left, right) => left.start - right.start);
+    const narrativeAnchors = analyzedMedia
+      .flatMap((media) => media.narrativeAnchors)
+      .sort((left, right) => left.start - right.start);
+    const musicAnalysis = mergeStoryArcV2MusicAnalysis(analyzedMedia);
+    const visualFeatures = analyzedMedia.flatMap((media) => media.visualFeatures);
+    const eventMarkers = analyzedMedia.flatMap((media) => media.eventMarkers);
 
     const analysisRun: StoryArcV2AnalysisRun = {
       analysisId: toStoryArcV2Id('analysis'),
       projectId: input.projectId,
       intentProfileId: input.intentProfileId,
-      languagePolicy: input.languagePolicy,
+      languageHint: input.languageHint,
       musicTrackId: input.musicTrackId,
+      projectProfile,
+      editingMode,
+      culturalProfile,
+      culturalModules,
+      mustIncludeMoments,
+      avoidMoments,
       media: analyzedMedia,
+      detectedEvents,
+      narrativeAnchors,
+      musicAnalysis,
+      visualFeatures,
+      eventMarkers,
       summary: {
         sceneCount,
         totalDuration: Number(totalDuration.toFixed(3)),
         transcriptionSegments,
         detectedSpeakers: detectedSpeakerSet.size,
+        detectedEvents: detectedEvents.length,
+        narrativeAnchors: narrativeAnchors.length,
+        musicBeats: musicAnalysis.beats.length,
+        visualFeaturePoints: visualFeatures.length,
+        eventMarkers: eventMarkers.length,
       },
       warnings: warnings.slice(0, 120),
       createdAt: new Date().toISOString(),
@@ -25683,7 +29996,22 @@ const runStoryArcV2AnalyzeJob = async (jobId: string, input: StoryArcV2AnalyzeIn
       projectId: analysisRun.projectId,
       summary: analysisRun.summary,
       scenes: primaryMedia?.scenes || [],
+      projectProfile: analysisRun.projectProfile,
+      editingMode: analysisRun.editingMode,
+      culturalProfile: analysisRun.culturalProfile,
+      culturalModules: analysisRun.culturalModules,
+      mustIncludeMoments: analysisRun.mustIncludeMoments,
+      avoidMoments: analysisRun.avoidMoments,
+      culturalRulebook,
+      audioTracks: primaryMedia?.audioTracks || null,
+      musicAnalysis: analysisRun.musicAnalysis,
+      transcriptionProvider: primaryMedia?.transcriptionProvider || null,
+      alignmentProvider: primaryMedia?.alignmentProvider || null,
       semanticProfiles: analysisRun.media.flatMap((media) => media.semanticProfiles).slice(0, 250),
+      detectedEvents: analysisRun.detectedEvents.slice(0, 250),
+      narrativeAnchors: analysisRun.narrativeAnchors.slice(0, 250),
+      visualFeatures: analysisRun.visualFeatures.slice(0, 500),
+      eventMarkers: analysisRun.eventMarkers.slice(0, 250),
       personIdentities: personIdentities.slice(0, 100),
       warnings: analysisRun.warnings,
       createdAt: analysisRun.createdAt,
@@ -25727,7 +30055,110 @@ app.get('/api/story-arc/v2/feature-status', (_req, res) => {
     mode: 'co-pilot',
     compute: 'cloud-gpu',
     priority: 'best-quality',
+    supportedProjectProfiles: STORY_ARC_V2_SUPPORTED_PROJECT_PROFILES,
+    supportedEditingModes: STORY_ARC_V2_SUPPORTED_EDITING_MODES,
+    supportedCulturalProfiles: STORY_ARC_V2_SUPPORTED_CULTURAL_PROFILES,
+    defaults: {
+      projectProfile: 'wedding',
+      editingMode: 'highlight_music_sync',
+      culturalProfile: 'mixed',
+      culturalModules: ['sikh', 'pakistani', 'norwegian'],
+    },
+    transcription: {
+      whisperxEnabled: VIDEO_ANALYSIS_WHISPERX_ENABLED,
+      whisperxUrl: WHISPERX_TRANSCRIPTION_URL,
+      diarizationEnabled: VIDEO_ANALYSIS_DIARIZATION_ENABLED,
+    },
+    audioTracks: {
+      masterSampleRateHz: VIDEO_ANALYSIS_MASTER_TRACK_SAMPLE_RATE_HZ,
+      analysisSampleRateHz: VIDEO_ANALYSIS_ANALYSIS_TRACK_SAMPLE_RATE_HZ,
+      demucsEnabled: VIDEO_ANALYSIS_ANALYSIS_TRACK_USE_DEMUCS,
+    },
   });
+});
+
+app.get('/api/story-arc/v2/cultural-profiles', (_req, res) => {
+  const profiles = STORY_ARC_V2_SUPPORTED_CULTURAL_PROFILES.map((profile) => {
+    const rulebook = mergeStoryArcV2CulturalRulebook({
+      profile,
+      modules: profile === 'mixed' ? (['sikh', 'pakistani', 'norwegian'] as StoryArcV2CulturalProfile[]) : [],
+    });
+    const eventTaxonomy = rulebook.eventRules
+      .slice()
+      .sort((left, right) => STORY_ARC_V2_EVENT_PRIORITY_SCORE[right.priority] - STORY_ARC_V2_EVENT_PRIORITY_SCORE[left.priority])
+      .map((rule) => ({
+        type: rule.type,
+        priority: rule.priority,
+        noCut: Boolean(rule.noCut),
+        sacred: Boolean(rule.sacred),
+        minClipLenSec: rule.minClipLenSec || null,
+        keywords: rule.keywords.slice(0, 24),
+      }));
+    return {
+      profile,
+      label: rulebook.label,
+      mustIncludeDefaults: rulebook.mustIncludeDefaults,
+      noCutEventTypes: rulebook.noCutEventTypes,
+      sacredEventTypes: rulebook.sacredEventTypes,
+      minClipLenByEventType: rulebook.minClipLenByEventType,
+      pacing: rulebook.pacing,
+      eventTaxonomy,
+    };
+  });
+  return res.json({
+    success: true,
+    profiles,
+  });
+});
+
+app.post('/api/story-arc/v2/warmup', async (_req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('analyze', {
+    operation: 'manual_warmup',
+    target: PYANNOTE_DIARIZATION_URL,
+  });
+  try {
+    const warmup = await requestPyannoteWarmup('manual-trigger');
+    let whisperx: Record<string, unknown> = {
+      enabled: VIDEO_ANALYSIS_WHISPERX_ENABLED,
+      status: 'skipped',
+    };
+    if (VIDEO_ANALYSIS_WHISPERX_ENABLED) {
+      try {
+        const whisperxWarmup = await requestWhisperxWarmup('manual-trigger');
+        whisperx = {
+          enabled: true,
+          status: 'ok',
+          statusCode: whisperxWarmup.statusCode,
+          warmup: whisperxWarmup.payload,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        whisperx = {
+          enabled: true,
+          status: 'degraded',
+          error: message,
+        };
+      }
+    }
+    completePhaseMetric('completed', {
+      statusCode: warmup.statusCode,
+      warmupStatus: readString(warmup.payload.status) || 'ok',
+      whisperxStatus: readString(whisperx.status) || 'skipped',
+    });
+    return res.json({
+      success: true,
+      statusCode: warmup.statusCode,
+      warmup: warmup.payload,
+      whisperx,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Story Arc V2 warmup failed';
+    completePhaseMetric('failed', { error: message });
+    return res.status(500).json({
+      success: false,
+      error: message,
+    });
+  }
 });
 
 app.post('/api/story-arc/v2/analyze/start', (req, res) => {
@@ -25750,12 +30181,34 @@ app.post('/api/story-arc/v2/analyze/start', (req, res) => {
     });
   }
 
+  const projectProfile = resolveStoryArcV2ProjectProfile(
+    readString(req.body?.projectProfile) || readString(req.body?.profile)
+  );
+  const editingMode = resolveStoryArcV2EditingMode(readString(req.body?.editingMode), projectProfile);
+  const culturalProfile = resolveStoryArcV2CulturalProfile(
+    readString(req.body?.culturalProfile) || readString(req.body?.cultureProfile)
+  );
+  const culturalModules = resolveStoryArcV2CulturalModules(req.body?.culturalModules || req.body?.cultureModules);
+
   const input: StoryArcV2AnalyzeInput = {
     projectId: readString(req.body?.projectId),
     media,
     intentProfileId: readString(req.body?.intentProfileId),
-    languagePolicy: readString(req.body?.languagePolicy) || 'balanced-no',
+    languageHint: normalizeStoryArcV2LanguageHint(
+      readString(req.body?.languageHint) ||
+        readString(req.body?.language)
+    ),
     musicTrackId: readString(req.body?.musicTrackId),
+    projectProfile,
+    editingMode,
+    culturalProfile,
+    culturalModules,
+    mustIncludeMoments: normalizeStoryArcV2MomentTokenList(
+      req.body?.mustIncludeMoments || req.body?.mustInclude
+    ),
+    avoidMoments: normalizeStoryArcV2MomentTokenList(
+      req.body?.avoidMoments || req.body?.mustAvoid || req.body?.excludeMoments
+    ),
   };
 
   const job = createStoryArcV2AnalyzeJob(input);
@@ -25847,14 +30300,43 @@ app.post('/api/story-arc/v2/jobs/:jobId/retry', (req, res) => {
       error: 'Retry payload missing media',
     });
   }
+  const projectProfile = resolveStoryArcV2ProjectProfile(
+    readString(job.request?.projectProfile) || readString(job.request?.profile)
+  );
+  const editingMode = resolveStoryArcV2EditingMode(readString(job.request?.editingMode), projectProfile);
+  const culturalProfile = resolveStoryArcV2CulturalProfile(
+    readString(job.request?.culturalProfile) || readString(job.request?.cultureProfile)
+  );
+  const culturalModules = resolveStoryArcV2CulturalModules(
+    job.request?.culturalModules || job.request?.cultureModules
+  );
+
   const input: StoryArcV2AnalyzeInput = {
     projectId: readString(job.request?.projectId),
     media,
     intentProfileId: readString(job.request?.intentProfileId),
-    languagePolicy: readString(job.request?.languagePolicy) || 'balanced-no',
+    languageHint: normalizeStoryArcV2LanguageHint(
+      readString(job.request?.languageHint) ||
+        readString(job.request?.language)
+    ),
     musicTrackId: readString(job.request?.musicTrackId),
+    projectProfile,
+    editingMode,
+    culturalProfile,
+    culturalModules,
+    mustIncludeMoments: normalizeStoryArcV2MomentTokenList(
+      job.request?.mustIncludeMoments || job.request?.mustInclude
+    ),
+    avoidMoments: normalizeStoryArcV2MomentTokenList(
+      job.request?.avoidMoments || job.request?.mustAvoid || job.request?.excludeMoments
+    ),
   };
   storyArcV2JobControllers.set(job.jobId, new AbortController());
+  storyArcV2JobRuntimeContext.set(job.jobId, {
+    phase: 'analyze',
+    phaseStartedAt: new Date().toISOString(),
+    phaseStartedAtMs: Date.now(),
+  });
   patchStoryArcV2Job(job.jobId, {
     status: 'queued',
     progress: 0,
@@ -25873,9 +30355,13 @@ app.post('/api/story-arc/v2/jobs/:jobId/retry', (req, res) => {
 });
 
 app.post('/api/story-arc/v2/script/generate', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('script', {
+    operation: 'generate',
+  });
   try {
     const analysisId = readString(req.body?.analysisId);
     if (!analysisId) {
+      completePhaseMetric('failed', { reason: 'missing_analysis_id' });
       return res.status(400).json({
         success: false,
         error: 'Missing analysisId',
@@ -25883,6 +30369,7 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
     }
     const analysis = await loadStoryArcV2AnalysisRunFromDb(analysisId);
     if (!analysis) {
+      completePhaseMetric('failed', { reason: 'analysis_not_found', analysisId });
       return res.status(404).json({
         success: false,
         error: 'Analysis run not found',
@@ -25891,10 +30378,19 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
     const targetDurationSeconds = Number(
       clampStoryArcV2Number(readNumber(req.body?.targetDuration) ?? 90, 20, 1800).toFixed(2)
     );
+    const mustIncludeMoments = normalizeStoryArcV2MomentTokenList(
+      req.body?.mustInclude || req.body?.mustIncludeMoments
+    );
+    const mustAvoidMoments = normalizeStoryArcV2MomentTokenList(
+      req.body?.mustAvoid || req.body?.avoidMoments
+    );
     const feedbackProfile = await ensureStoryArcV2FeedbackProfile(
       resolveStoryArcV2ProjectKey(analysis.projectId)
     );
-    const script = buildStoryArcV2Script(analysis, targetDurationSeconds, feedbackProfile);
+    const script = buildStoryArcV2Script(analysis, targetDurationSeconds, feedbackProfile, {
+      mustInclude: mustIncludeMoments,
+      mustAvoid: mustAvoidMoments,
+    });
     storyArcV2Scripts.set(script.scriptId, script);
     void persistStoryArcV2TablePayload(
       'storyarc_story_scripts',
@@ -25904,10 +30400,25 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
       script as unknown as Record<string, unknown>
     );
     void persistStoryArcV2ScriptNodes(script);
+    const storyGraph = buildStoryArcV2StoryGraph(script);
+    const culturalRulebook = mergeStoryArcV2CulturalRulebook({
+      profile: resolveStoryArcV2CulturalProfile(readString(analysis.culturalProfile)),
+      modules: resolveStoryArcV2CulturalModules(analysis.culturalModules),
+    });
 
     const storyArc = {
       id: `story-${script.scriptId}`,
       title: script.title,
+      profile: analysis.projectProfile,
+      editingMode: analysis.editingMode,
+      culturalProfile: analysis.culturalProfile,
+      culturalModules: analysis.culturalModules,
+      culturalRulebook: {
+        label: culturalRulebook.label,
+        noCutEventTypes: culturalRulebook.noCutEventTypes,
+        sacredEventTypes: culturalRulebook.sacredEventTypes,
+        mustIncludeDefaults: culturalRulebook.mustIncludeDefaults,
+      },
       beats: script.nodes.map((node) => ({
         id: node.id,
         beat: node.beat,
@@ -25915,19 +30426,51 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
         start: node.start,
         end: node.end,
         confidence: node.confidence,
+        narrativeScore: node.narrativeScore,
+        primaryThread: node.primaryThread,
+        storyThreads: node.storyThreads,
       })),
-      musicSuggestions: [
-        {
-          cue: 'build-to-climax',
-          rationale: 'Use energy lift between conflict and turning point.',
-        },
-      ],
+      storyGraph,
+      narrativeAnchors: analysis.narrativeAnchors.slice(0, 60).map((anchor) => ({
+        id: anchor.anchorId,
+        type: anchor.type,
+        beat: anchor.beatHint,
+        start: anchor.start,
+        end: anchor.end,
+        score: anchor.score,
+        text: anchor.text,
+        speaker: anchor.speaker,
+        eventType: anchor.eventType,
+      })),
+      events: analysis.detectedEvents.slice(0, 120).map((event) => ({
+        id: event.eventId,
+        type: event.type,
+        priority: event.priority,
+        culturalProfile: event.culturalProfile,
+        beatHint: event.beatHint,
+        start: event.start,
+        end: event.end,
+        confidence: event.confidence,
+        source: event.source,
+      })),
+      musicSuggestions: analysis.musicAnalysis.sections.slice(0, 48).map((section) => ({
+        cue: section.label,
+        start: section.start,
+        end: section.end,
+        energy: section.energyLevel,
+        rationale: `Use ${section.energyLevel} pacing in ${section.label}.`,
+      })),
       transitionPoints: script.nodes.slice(0, Math.max(0, script.nodes.length - 1)).map((node) => ({
         at: Number((node.start + node.duration).toFixed(3)),
-        type: 'cross_dissolve',
+        type: node.beat === 'turning_point' || node.beat === 'resolution' ? 'cross_dissolve' : 'cut',
       })),
     };
 
+    completePhaseMetric('completed', {
+      analysisId,
+      scriptId: script.scriptId,
+      nodeCount: script.nodes.length,
+    });
     return res.json({
       success: true,
       script,
@@ -25935,20 +30478,26 @@ app.post('/api/story-arc/v2/script/generate', async (req, res) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to generate script';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
 
 app.post('/api/story-arc/v2/script/edit', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('script', {
+    operation: 'edit',
+  });
   try {
     const scriptId = readString(req.body?.scriptId);
     if (!scriptId) {
+      completePhaseMetric('failed', { reason: 'missing_script_id' });
       return res.status(400).json({ success: false, error: 'Missing scriptId' });
     }
     const script =
       storyArcV2Scripts.get(scriptId) ||
       (await loadStoryArcV2ScriptFromDb(scriptId));
     if (!script) {
+      completePhaseMetric('failed', { reason: 'script_not_found', scriptId });
       return res.status(404).json({ success: false, error: 'Script not found' });
     }
     storyArcV2Scripts.set(scriptId, script);
@@ -25960,7 +30509,14 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
     const operations = Array.isArray(req.body?.operations) ? req.body.operations : [];
     const nextScript: StoryArcV2StoryScript = {
       ...script,
-      nodes: script.nodes.map((node) => ({ ...node, candidateClipIds: [...node.candidateClipIds] })),
+      nodes: script.nodes.map((node) => ({
+        ...node,
+        candidateClipIds: [...node.candidateClipIds],
+        brollPlaceholders: (node.brollPlaceholders || []).map((placeholder) => ({
+          ...placeholder,
+          candidateClipIds: [...placeholder.candidateClipIds],
+        })),
+      })),
       bannedClipIds: [...script.bannedClipIds],
     };
 
@@ -26078,26 +30634,38 @@ app.post('/api/story-arc/v2/script/edit', async (req, res) => {
       nextScript as unknown as Record<string, unknown>
     );
     void persistStoryArcV2ScriptNodes(nextScript);
+    completePhaseMetric('completed', {
+      scriptId: nextScript.scriptId,
+      revision: nextScript.revision,
+      operations: operations.length,
+      feedbackEvents: feedbackEvents.length,
+    });
     return res.json({
       success: true,
       script: nextScript,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to edit script';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
 
 app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('timeline', {
+    operation: 'plan',
+  });
   try {
     const scriptId = readString(req.body?.scriptId);
     if (!scriptId) {
+      completePhaseMetric('failed', { reason: 'missing_script_id' });
       return res.status(400).json({ success: false, error: 'Missing scriptId' });
     }
     const script =
       storyArcV2Scripts.get(scriptId) ||
       (await loadStoryArcV2ScriptFromDb(scriptId));
     if (!script) {
+      completePhaseMetric('failed', { reason: 'script_not_found', scriptId });
       return res.status(404).json({ success: false, error: 'Script not found' });
     }
     storyArcV2Scripts.set(scriptId, script);
@@ -26134,7 +30702,13 @@ app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
       beatCoverageRequired,
     };
 
-    const proposal = createStoryArcV2TimelineProposal(script, selectedVariant, constraints);
+    const analysis = await loadStoryArcV2AnalysisRunFromDb(script.analysisId);
+    const proposal = createStoryArcV2TimelineProposal(
+      script,
+      selectedVariant,
+      constraints,
+      analysis
+    );
 
     storyArcV2TimelineProposals.set(proposal.proposalId, proposal);
     void persistStoryArcV2TablePayload(
@@ -26145,28 +30719,46 @@ app.post('/api/story-arc/v2/timeline/plan', async (req, res) => {
       proposal as unknown as Record<string, unknown>
     );
 
+    completePhaseMetric('completed', {
+      scriptId,
+      proposalId: proposal.proposalId,
+      selectedVariant: proposal.selectedVariant,
+      selectedClipCount: proposal.variants[proposal.selectedVariant]?.timeline.clips.length || 0,
+    });
     return res.json({
       success: true,
       proposal,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to plan timeline';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
 
 app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('apply', {
+    operation: 'apply',
+  });
   try {
     const proposalId = readString(req.body?.proposalId);
     const revision = Math.round(readNumber(req.body?.revision) ?? -1);
     if (!proposalId) {
+      completePhaseMetric('failed', { reason: 'missing_proposal_id' });
       return res.status(400).json({ success: false, error: 'Missing proposalId' });
     }
     const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
     if (!proposal) {
+      completePhaseMetric('failed', { reason: 'proposal_not_found', proposalId });
       return res.status(404).json({ success: false, error: 'Proposal not found' });
     }
     if (revision > 0 && revision !== proposal.revision) {
+      completePhaseMetric('failed', {
+        reason: 'revision_mismatch',
+        proposalId,
+        requestedRevision: revision,
+        currentRevision: proposal.revision,
+      });
       return res.status(409).json({
         success: false,
         error: `Revision mismatch. Requested ${revision}, current ${proposal.revision}.`,
@@ -26175,6 +30767,11 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
     const ledgerKey = `${proposalId}:${proposal.revision}`;
     const existing = storyArcV2ApplyLedger.get(ledgerKey);
     if (existing && !existing.revertedAt) {
+      completePhaseMetric('completed', {
+        proposalId,
+        revision: proposal.revision,
+        idempotent: true,
+      });
       return res.json({
         success: true,
         idempotent: true,
@@ -26185,6 +30782,7 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
         revertedAt: existing.revertedAt,
         revertCount: existing.revertCount,
         timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
+        editDecisions: proposal.editDecisions,
       });
     }
 
@@ -26209,6 +30807,11 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
         revertCount: entry.revertCount,
       },
     });
+    completePhaseMetric('completed', {
+      proposalId,
+      revision: proposal.revision,
+      idempotent: false,
+    });
     return res.json({
       success: true,
       idempotent: false,
@@ -26219,26 +30822,39 @@ app.post('/api/story-arc/v2/timeline/apply', async (req, res) => {
       revertedAt: entry.revertedAt,
       revertCount: entry.revertCount,
       timeline: proposal.variants[proposal.selectedVariant]?.timeline || null,
+      editDecisions: proposal.editDecisions,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to apply timeline';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
 
 app.post('/api/story-arc/v2/timeline/revert', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('apply', {
+    operation: 'revert',
+  });
   try {
     const proposalId = readString(req.body?.proposalId);
     const revision = Math.round(readNumber(req.body?.revision) ?? -1);
     const reason = readString(req.body?.reason);
     if (!proposalId) {
+      completePhaseMetric('failed', { reason: 'missing_proposal_id' });
       return res.status(400).json({ success: false, error: 'Missing proposalId' });
     }
     const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
     if (!proposal) {
+      completePhaseMetric('failed', { reason: 'proposal_not_found', proposalId });
       return res.status(404).json({ success: false, error: 'Proposal not found' });
     }
     if (revision > 0 && revision !== proposal.revision) {
+      completePhaseMetric('failed', {
+        reason: 'revision_mismatch',
+        proposalId,
+        requestedRevision: revision,
+        currentRevision: proposal.revision,
+      });
       return res.status(409).json({
         success: false,
         error: `Revision mismatch. Requested ${revision}, current ${proposal.revision}.`,
@@ -26248,12 +30864,22 @@ app.post('/api/story-arc/v2/timeline/revert', async (req, res) => {
     const ledgerKey = `${proposalId}:${proposal.revision}`;
     const existing = storyArcV2ApplyLedger.get(ledgerKey);
     if (!existing) {
+      completePhaseMetric('failed', {
+        reason: 'apply_missing_before_revert',
+        proposalId,
+        revision: proposal.revision,
+      });
       return res.status(409).json({
         success: false,
         error: 'Timeline has not been applied yet for this proposal revision.',
       });
     }
     if (existing.revertedAt) {
+      completePhaseMetric('completed', {
+        proposalId,
+        revision: proposal.revision,
+        idempotent: true,
+      });
       return res.json({
         success: true,
         idempotent: true,
@@ -26287,6 +30913,11 @@ app.post('/api/story-arc/v2/timeline/revert', async (req, res) => {
         revertCount: next.revertCount,
       },
     });
+    completePhaseMetric('completed', {
+      proposalId,
+      revision: proposal.revision,
+      idempotent: false,
+    });
     return res.json({
       success: true,
       idempotent: false,
@@ -26299,6 +30930,7 @@ app.post('/api/story-arc/v2/timeline/revert', async (req, res) => {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to revert timeline';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
@@ -26489,14 +31121,49 @@ app.get('/api/story-arc/v2/benchmark/golden/runs', async (req, res) => {
   }
 });
 
+app.get('/api/story-arc/v2/observability/metrics', async (req, res) => {
+  try {
+    const windowDays = Math.max(1, Math.min(90, Math.round(readNumber(req.query?.windowDays) ?? 14)));
+    const limit = Math.max(50, Math.min(5_000, Math.round(readNumber(req.query?.limit) ?? 1_000)));
+
+    const phaseSamples = await loadStoryArcV2PhaseMetricsForWindow(windowDays, limit);
+    const phaseSnapshot = summarizeStoryArcV2PhaseMetrics(phaseSamples);
+    const qualityScorecards = await loadStoryArcV2QualityScorecardsForWindow(windowDays, limit);
+    const qualityTrend = buildStoryArcV2QualityTrend(qualityScorecards);
+
+    return res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      windowDays,
+      sampleLimit: limit,
+      failRate: phaseSnapshot.totals,
+      phaseLatency: phaseSnapshot.phases,
+      qualityTrend: qualityTrend.summary,
+      qualityPoints: qualityTrend.points.slice(-Math.min(500, limit)),
+      source: {
+        phaseSamples: phaseSamples.length,
+        qualityScorecards: qualityScorecards.length,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load Story Arc V2 observability metrics';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 app.post('/api/story-arc/v2/export', async (req, res) => {
+  const completePhaseMetric = createStoryArcV2PhaseMetricRecorder('export', {
+    operation: 'export',
+  });
   try {
     const proposalId = readString(req.body?.proposalId);
     if (!proposalId) {
+      completePhaseMetric('failed', { reason: 'missing_proposal_id' });
       return res.status(400).json({ success: false, error: 'Missing proposalId' });
     }
     const proposal = await loadStoryArcV2ProposalFromDb(proposalId);
     if (!proposal) {
+      completePhaseMetric('failed', { reason: 'proposal_not_found', proposalId });
       return res.status(404).json({ success: false, error: 'Proposal not found' });
     }
     const formatRaw = normalizeModelLookupValue(readString(req.body?.format) || 'fcpxml');
@@ -26507,11 +31174,22 @@ app.post('/api/story-arc/v2/export', async (req, res) => {
     const includeScriptNotes = readBoolean(req.body?.includeScriptNotes) !== false;
     const selected = proposal.variants[proposal.selectedVariant];
     if (!selected) {
+      completePhaseMetric('failed', {
+        reason: 'selected_variant_missing',
+        proposalId,
+        selectedVariant: proposal.selectedVariant,
+      });
       return res.status(400).json({ success: false, error: 'Selected variant missing in proposal' });
     }
 
     const generatedAt = new Date().toISOString();
     if (format === 'resolve-json') {
+      completePhaseMetric('completed', {
+        proposalId,
+        format,
+        selectedVariant: proposal.selectedVariant,
+        clipCount: selected.timeline.clips.length,
+      });
       return res.json({
         success: true,
         proposalId,
@@ -26521,6 +31199,7 @@ app.post('/api/story-arc/v2/export', async (req, res) => {
           proposalId,
           selectedVariant: proposal.selectedVariant,
           timeline: selected.timeline,
+          editDecisions: proposal.editDecisions,
           notes: includeScriptNotes
             ? selected.timeline.clips.map((clip) => ({
                 clipId: clip.id,
@@ -26537,17 +31216,25 @@ app.post('/api/story-arc/v2/export', async (req, res) => {
         ? JSON.stringify(selected.timeline, null, 2)
         : buildStoryArcV2Fcpxml(proposal);
 
+    completePhaseMetric('completed', {
+      proposalId,
+      format,
+      selectedVariant: proposal.selectedVariant,
+      clipCount: selected.timeline.clips.length,
+    });
     return res.json({
       success: true,
       proposalId,
       format,
       fileName: `storyarc-${proposalId}.${format === 'fcpxml' ? 'fcpxml' : 'xml'}`,
       content,
+      editDecisions: proposal.editDecisions,
       includeScriptNotes,
       generatedAt,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to export timeline';
+    completePhaseMetric('failed', { reason: 'exception', error: message });
     return res.status(500).json({ success: false, error: message });
   }
 });
@@ -26561,8 +31248,8 @@ app.get('/api/camera-formats/latest', (_req, res) => {
   });
 });
 
-const generateCaptionPayload = async (videoPath: string, language: string) => {
-  const jobResult = await transcribeVideoSource(videoPath, language);
+const generateCaptionPayload = async (videoPath: string, languageHint: string | null) => {
+  const jobResult = await transcribeVideoSource(videoPath, languageHint);
   const captions = jobResult.transcription.segments.map((segment) => ({
     id: segment.id,
     start: segment.start,
@@ -26589,8 +31276,8 @@ app.post('/api/video/generate-captions', async (req, res) => {
     if (!videoPath) {
       return res.status(400).json({ success: false, error: 'Missing videoPath' });
     }
-    const language = normalizeWhisperLanguage(readString(req.body?.language) || 'no');
-    const payload = await generateCaptionPayload(videoPath, language);
+    const languageHint = normalizeStoryArcV2LanguageHint(readString(req.body?.language));
+    const payload = await generateCaptionPayload(videoPath, languageHint);
     return res.json(payload);
   } catch (error) {
     console.error('Generate captions error:', error);
@@ -26605,8 +31292,8 @@ app.post('/api/capcut-features/auto-captions', async (req, res) => {
     if (!videoPath) {
       return res.status(400).json({ success: false, error: 'Missing videoPath' });
     }
-    const language = normalizeWhisperLanguage(readString(req.body?.language) || 'no');
-    const payload = await generateCaptionPayload(videoPath, language);
+    const languageHint = normalizeStoryArcV2LanguageHint(readString(req.body?.language));
+    const payload = await generateCaptionPayload(videoPath, languageHint);
     return res.json(payload);
   } catch (error) {
     console.error('CapCut auto-captions compatibility error:', error);
@@ -26892,7 +31579,7 @@ app.post('/api/ai/analyze-audio', audioUpload.single('audio'), async (req, res) 
     res.json({
       type,
       speakers,
-      language: 'no',
+      language: 'auto',
       mood: moods[Math.floor(rand() * moods.length)],
       musicGenre: type === 'music' ? 'pop' : undefined,
       confidence: Number((0.7 + rand() * 0.3).toFixed(2))
@@ -27073,7 +31760,7 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
     }
 
     const file = req.file;
-    const language = (req.body?.language as string) || 'no';
+    const languageHint = normalizeStoryArcV2LanguageHint(readString(req.body?.language));
     const responseFormat = (req.body?.response_format as string) || 'verbose_json';
 
     // ── Try free faster-whisper service first ──
@@ -27082,7 +31769,7 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
         const whisperForm = new FormData();
         // @ts-ignore: Buffer satisfies BlobPart at runtime
         whisperForm.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
-        if (language) whisperForm.append('language', language);
+        if (languageHint) whisperForm.append('language', languageHint);
         whisperForm.append('response_format', responseFormat);
 
         const whisperRes = await fetch(`${FASTER_WHISPER_URL}/v1/audio/transcriptions`, {
@@ -27096,7 +31783,7 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
           return res.json({
             data: {
               text: result.text,
-              language: result.language || language,
+              language: result.language || languageHint || 'auto',
               duration: result.duration,
               segments: result.segments || [],
               words: result.words || [],
@@ -27123,7 +31810,9 @@ app.post('/api/ai/whisper-transcribe', audioUpload.single('audio'), async (req, 
     // @ts-ignore: Buffer satisfies BlobPart at runtime
     formData.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname);
     formData.append('model', 'whisper-1');
-    formData.append('language', language);
+    if (languageHint) {
+      formData.append('language', languageHint);
+    }
     formData.append('response_format', responseFormat);
     if (req.body?.timestamp_granularities) {
       formData.append('timestamp_granularities[]', 'word');
@@ -27187,6 +31876,17 @@ app.get('/api/ai/tts/status', async (_req, res) => {
     status.fasterWhisper = { available: true, ...whisperData };
   } catch {
     status.fasterWhisper = { available: false };
+  }
+
+  // Check WhisperX
+  try {
+    const whisperxHealth = await fetch(`${WHISPERX_TRANSCRIPTION_URL}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    const whisperxData = await whisperxHealth.json();
+    status.whisperx = { available: true, ...whisperxData };
+  } catch {
+    status.whisperx = { available: false };
   }
 
   res.json(status);
@@ -36621,4 +41321,7 @@ createWebSocketServer(httpServer, db);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Backend server running on port ${PORT} (HTTP + WebSocket)`);
+  if (isStoryArcV2Enabled() && STORY_ARC_V2_STARTUP_WARMUP_ENABLED) {
+    void runStoryArcV2StartupWarmup();
+  }
 });

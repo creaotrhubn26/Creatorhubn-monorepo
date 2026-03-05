@@ -134,6 +134,7 @@ import { SpeedRampEngine, type SpeedKeyframe } from '../services/speed-ramp-engi
 import {
   createAutoEditAlternatives,
   getDefaultAutoEditOptions,
+  type AutoEditClipExplainability,
   type AutoEditFeedbackValue,
   type AutoEditOptions,
   type AutoEditPreset,
@@ -472,6 +473,11 @@ interface AutoEditHistoryEntry {
   serverJobId?: string | null;
 }
 
+interface ContextualBrollSuggestion {
+  query: string;
+  reason: string;
+}
+
 interface ExportedVideoResult {
   url: string;
   thumbnail?: string;
@@ -807,6 +813,133 @@ function dedupeAutoEditKeywords(
     });
   });
   return unique;
+}
+
+function buildContextualBrollSuggestionsForClip(
+  clip: BeatClip,
+  explainability: AutoEditClipExplainability | null | undefined
+): ContextualBrollSuggestion[] {
+  const backendSuggestions = Array.isArray(explainability?.externalBrollSuggestions)
+    ? explainability.externalBrollSuggestions
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .slice(0, 8)
+    : [];
+  if (backendSuggestions.length > 0) {
+    const fallbackReason = explainability?.fallbackMessage || 'Suggested by story context from backend analysis.';
+    return backendSuggestions.map((query) => ({
+      query,
+      reason: fallbackReason,
+    }));
+  }
+
+  const beat = explainability?.beat?.beat || 'build';
+  const transcriptTokens = dedupeAutoEditKeywords(
+    [
+      explainability?.narrative?.transcriptExcerpt || '',
+      clip.synopsis || '',
+      clip.beatName || '',
+      ...(Array.isArray(clip.tags) ? clip.tags : []),
+    ],
+    8
+  );
+  const tokenSuffix = transcriptTokens.slice(0, 3).join(' ');
+  const joinedContext = transcriptTokens.join(' ');
+
+  const pushWithSuffix = (query: string): string =>
+    tokenSuffix ? `${query} ${tokenSuffix}`.trim() : query;
+
+  const suggestions: ContextualBrollSuggestion[] = [];
+  const addSuggestions = (rows: Array<{ query: string; reason: string }>) => {
+    rows.forEach((row) => {
+      suggestions.push({
+        query: pushWithSuffix(row.query),
+        reason: row.reason,
+      });
+    });
+  };
+
+  if (/(vow|promise|ring|løfte|ringen)/i.test(joinedContext)) {
+    addSuggestions([
+      { query: 'ring exchange close-up', reason: 'Transcript context points to vows/rings.' },
+      { query: 'emotional bride and groom reaction during vows', reason: 'Supports vow narrative beat.' },
+      { query: 'hands detail at ceremony', reason: 'Visual callback for commitment lines.' },
+    ]);
+  }
+  if (/(bride|groom|brud|brudgom|couple|partner)/i.test(joinedContext)) {
+    addSuggestions([
+      { query: 'bride reaction close-up while speech continues', reason: 'Keeps couple thread visible.' },
+      { query: 'groom reaction close-up while speech continues', reason: 'Maintains emotional continuity.' },
+      { query: 'couple looking at each other cutaway', reason: 'Connects spoken lines to relationship context.' },
+    ]);
+  }
+  if (/(family|familie|mom|mother|dad|father|søster|bror)/i.test(joinedContext)) {
+    addSuggestions([
+      { query: 'parents emotional reaction during speech', reason: 'Matches family references in dialogue.' },
+      { query: 'family members smiling and crying reaction shot', reason: 'Reinforces story impact context.' },
+    ]);
+  }
+  if (/(dance|dancing|dans|party|fest|celebrat|cheer)/i.test(joinedContext)) {
+    addSuggestions([
+      { query: 'first dance medium shot with guests in background', reason: 'Matches dance/celebration context.' },
+      { query: 'guests cheering and clapping reaction shot', reason: 'Extends high-energy narrative moments.' },
+    ]);
+  }
+  if (/(speech|toast|tale|mikrofon|microphone)/i.test(joinedContext)) {
+    addSuggestions([
+      { query: 'speaker at microphone medium close-up', reason: 'Anchors audience to active speech context.' },
+      { query: 'audience listening reaction shot during toast', reason: 'Maintains speech-to-reaction story flow.' },
+    ]);
+  }
+
+  const beatDefaults: Record<string, Array<{ query: string; reason: string }>> = {
+    hook: [
+      { query: 'opening venue establishing shot', reason: 'Supports hook setup visually.' },
+      { query: 'wedding detail cinematic cutaway', reason: 'Builds opening atmosphere.' },
+    ],
+    build: [
+      { query: 'contextual guest reaction shot', reason: 'Supports build phase without breaking continuity.' },
+      { query: 'ceremony wide shot for context', reason: 'Keeps geography and progression clear.' },
+    ],
+    climax: [
+      { query: 'emotional close-up reaction peak', reason: 'Matches climax emotional intensity.' },
+      { query: 'key moment detail cutaway', reason: 'Highlights turning emotional point.' },
+    ],
+    resolution: [
+      { query: 'smile and embrace closing reaction', reason: 'Supports resolution and closure.' },
+      { query: 'final celebration wide shot', reason: 'Provides ending payoff visually.' },
+    ],
+    bridge: [
+      { query: 'narrative bridge cutaway with guests', reason: 'Smoothly transitions between story phases.' },
+    ],
+  };
+  addSuggestions(beatDefaults[beat] || beatDefaults.build);
+
+  const deduped = new Map<string, ContextualBrollSuggestion>();
+  suggestions.forEach((entry) => {
+    const key = entry.query.toLowerCase().trim();
+    if (!deduped.has(key)) {
+      deduped.set(key, entry);
+    }
+  });
+  return Array.from(deduped.values()).slice(0, 6);
+}
+
+function shouldSurfaceContextualBrollPrompt(
+  explainability: AutoEditClipExplainability | null | undefined
+): boolean {
+  if (!explainability) return false;
+  if (explainability.requiresExternalBroll) {
+    return true;
+  }
+  const hasPenaltyReason = explainability.reasons.some((reason) =>
+    /penalty|filler|low|weak/i.test(reason)
+  );
+  return (
+    explainability.faceConfidence < 0.58 ||
+    explainability.narrative.transcriptCoverage < 0.42 ||
+    explainability.narrative.fillerHits > 0 ||
+    hasPenaltyReason
+  );
 }
 
 function readFiniteNumber(value: unknown): number | null {
@@ -4122,6 +4255,61 @@ export default function StoryArcStudio({
       return feedback === 'approved' || feedback === 'rejected' ? feedback : null;
     },
     [autoEditFeedbackByClipKey]
+  );
+
+  const copyContextualBrollSuggestions = useCallback(
+    async (clip: BeatClip, suggestions: ContextualBrollSuggestion[]) => {
+      if (suggestions.length === 0) {
+        return;
+      }
+      const payload = [
+        `B-roll suggestions for: ${clip.name || clip.id}`,
+        ...suggestions.map((entry, index) => `${index + 1}. ${entry.query} — ${entry.reason}`),
+      ].join('\n');
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(payload);
+          setSnackbar({
+            open: true,
+            message: 'Contextual B-roll suggestions copied.',
+            severity: 'success',
+          });
+          return;
+        }
+        throw new Error('Clipboard API unavailable');
+      } catch (error) {
+        setSnackbar({
+          open: true,
+          message: error instanceof Error ? `Could not copy suggestions: ${error.message}` : 'Could not copy suggestions.',
+          severity: 'warning',
+        });
+      }
+    },
+    [setSnackbar]
+  );
+
+  const addContextualBrollMarker = useCallback(
+    (clip: BeatClip, suggestions: ContextualBrollSuggestion[]) => {
+      const firstSuggestion = suggestions[0];
+      if (!firstSuggestion) {
+        return;
+      }
+      const marker: TimelineMarker = {
+        id: `broll-marker-${Date.now()}-${clip.id}`,
+        time: Math.max(0, clip.start),
+        color: '#f59e0b',
+        label: `B-roll: ${firstSuggestion.query.slice(0, 64)}`,
+      };
+      setMarkers((previous) =>
+        [...previous, marker].sort((left, right) => left.time - right.time)
+      );
+      setSnackbar({
+        open: true,
+        message: 'Contextual B-roll marker added to timeline.',
+        severity: 'info',
+      });
+    },
+    [setMarkers, setSnackbar]
   );
 
   const pollAutoEditServerJob = useCallback(
@@ -10850,6 +11038,67 @@ export default function StoryArcStudio({
       createdAt: new Date().toISOString(),
     });
 
+    const storyEvents = Array.isArray(payload?.storyArc?.events)
+      ? payload.storyArc.events
+      : [];
+    const eventPriorityColor: Record<string, string> = {
+      A: '#ef4444',
+      B: '#f59e0b',
+      C: '#22c55e',
+    };
+    const aiEventMarkers: TimelineMarker[] = [];
+    storyEvents.forEach((event, index) => {
+      if (!event || typeof event !== 'object') {
+        return;
+      }
+      const eventRecord = event as Record<string, unknown>;
+      const start = typeof eventRecord.start === 'number' ? eventRecord.start : null;
+      if (start === null || !Number.isFinite(start)) {
+        return;
+      }
+      const rawType = typeof eventRecord.type === 'string' ? eventRecord.type : 'event';
+      const priority =
+        typeof eventRecord.priority === 'string' &&
+        (eventRecord.priority === 'A' || eventRecord.priority === 'B' || eventRecord.priority === 'C')
+          ? eventRecord.priority
+          : 'C';
+      const readableType = rawType.replace(/_/g, ' ');
+      aiEventMarkers.push({
+        id: `ai-event-${rawType}-${Math.round(start * 1000)}-${index + 1}`,
+        time: Math.max(0, start),
+        color: eventPriorityColor[priority] || '#22c55e',
+        label: `${priority} • ${readableType}`,
+      });
+    });
+    aiEventMarkers.sort((left, right) => left.time - right.time);
+
+    if (aiEventMarkers.length > 0) {
+      setMarkers((previous) => {
+        const retained = previous.filter((marker) => !marker.id.startsWith('ai-event-'));
+        const merged = [...retained, ...aiEventMarkers];
+        const dedupedByKey = new Map<string, TimelineMarker>();
+        merged.forEach((marker) => {
+          const key = `${marker.label || ''}:${marker.time.toFixed(2)}`;
+          if (!dedupedByKey.has(key)) {
+            dedupedByKey.set(key, marker);
+          }
+        });
+        return Array.from(dedupedByKey.values()).sort((left, right) => left.time - right.time);
+      });
+      const priorityCounts = aiEventMarkers.reduce<Record<string, number>>((acc, marker) => {
+        const priority = typeof marker.label === 'string' ? marker.label.slice(0, 1) : 'C';
+        acc[priority] = (acc[priority] || 0) + 1;
+        return acc;
+      }, {});
+      setSnackbar({
+        open: true,
+        message:
+          `Added ${aiEventMarkers.length} AI event markers (A:${priorityCounts.A || 0} ` +
+          `B:${priorityCounts.B || 0} C:${priorityCounts.C || 0}).`,
+        severity: 'info',
+      });
+    }
+
     videoEngine.setTimeline(hydratedAiClips, tracks, nextDuration);
     closeAIGeneratorDialog();
 
@@ -12453,6 +12702,10 @@ export default function StoryArcStudio({
                     }
                     const explainability = autoEditPreview.proposal.clipExplainabilityById[clipId];
                     const feedback = getAutoEditClipFeedback(clip);
+                    const contextualBrollSuggestions = buildContextualBrollSuggestionsForClip(clip, explainability);
+                    const shouldPromptContextualBroll =
+                      shouldSurfaceContextualBrollPrompt(explainability) &&
+                      contextualBrollSuggestions.length > 0;
                     return (
                       <Card key={clipId} variant="outlined" sx={{ px: 1, py: 0.75 }}>
                         <Stack spacing={0.5}>
@@ -12485,6 +12738,50 @@ export default function StoryArcStudio({
                           <Typography variant="caption" color="text.secondary">
                             {(explainability?.reasons || ['Selected by ranking signals.']).slice(0, 2).join(' ')}
                           </Typography>
+                          {shouldPromptContextualBroll && (
+                            <Box
+                              sx={{
+                                px: 1,
+                                py: 0.75,
+                                borderRadius: 1,
+                                border: 1,
+                                borderColor: 'warning.main',
+                                bgcolor: 'warning.light',
+                                color: 'warning.contrastText',
+                              }}
+                            >
+                              <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
+                                Fant ikke passende intern B-roll.
+                              </Typography>
+                              <Typography variant="caption" sx={{ display: 'block', opacity: 0.92 }}>
+                                {explainability?.fallbackMessage || 'Forslagene er kontekstuelle (beat + transcript + tags), ikke tilfeldige.'}
+                              </Typography>
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" sx={{ mt: 0.5 }}>
+                                {contextualBrollSuggestions.slice(0, 4).map((suggestion) => (
+                                  <Tooltip key={`${clipId}-${suggestion.query}`} title={suggestion.reason}>
+                                    <Chip size="small" variant="outlined" label={suggestion.query} />
+                                  </Tooltip>
+                                ))}
+                              </Stack>
+                              <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => addContextualBrollMarker(clip, contextualBrollSuggestions)}
+                                >
+                                  Add B-roll Marker
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="text"
+                                  startIcon={<ContentCopy fontSize="small" />}
+                                  onClick={() => void copyContextualBrollSuggestions(clip, contextualBrollSuggestions)}
+                                >
+                                  Copy Suggestions
+                                </Button>
+                              </Stack>
+                            </Box>
+                          )}
                           <Stack direction="row" spacing={0.5}>
                             <Button
                               size="small"

@@ -4,6 +4,36 @@ export type StoryArcV2JobPhase = 'analyze' | 'script' | 'timeline' | 'apply' | '
 export type StoryArcV2JobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 export type StoryArcV2Beat = 'hook' | 'context' | 'conflict' | 'turning_point' | 'resolution';
 export type StoryArcV2Variant = 'safe' | 'balanced' | 'bold';
+export type StoryArcV2ProjectProfile =
+  | 'wedding'
+  | 'a_roll_story_cut'
+  | 'highlight_reel'
+  | 'dialogue_clean_jumpcut'
+  | 'corporate_brand'
+  | 'youtube_vlog';
+export type StoryArcV2EditingMode =
+  | 'co_pilot'
+  | 'full_auto'
+  | 'guided_story'
+  | 'dialogue_clean'
+  | 'highlight_music_sync';
+export type StoryArcV2CulturalProfile =
+  | 'generic_wedding'
+  | 'sikh'
+  | 'pakistani'
+  | 'norwegian'
+  | 'mixed';
+export type StoryArcV2EventType =
+  | 'emotional_speech'
+  | 'speech_highlight'
+  | 'vow'
+  | 'applause'
+  | 'laughter'
+  | 'kiss'
+  | 'hug'
+  | 'ring_exchange'
+  | 'dancing'
+  | 'first_dance';
 
 export interface StoryArcV2MediaInput {
   id?: string;
@@ -18,8 +48,61 @@ export interface StoryArcV2AnalyzeStartInput {
   projectId?: string | null;
   media: StoryArcV2MediaInput[];
   intentProfileId?: string | null;
-  languagePolicy?: string | null;
+  languageHint?: string | null;
   musicTrackId?: string | null;
+  projectProfile?: StoryArcV2ProjectProfile | null;
+  editingMode?: StoryArcV2EditingMode | null;
+  culturalProfile?: StoryArcV2CulturalProfile | null;
+  culturalModules?: StoryArcV2CulturalProfile[] | null;
+  mustIncludeMoments?: string[];
+  avoidMoments?: string[];
+}
+
+export interface StoryArcV2DetectedEvent {
+  eventId: string;
+  mediaId: string;
+  type: StoryArcV2EventType;
+  label: string;
+  start: number;
+  end: number;
+  confidence: number;
+  speaker: string | null;
+  source: string;
+  beatHint: StoryArcV2Beat;
+  keywords: string[];
+  priority?: 'A' | 'B' | 'C';
+  culturalProfile?: StoryArcV2CulturalProfile;
+  rationale: string;
+}
+
+export interface StoryArcV2NarrativeAnchor {
+  anchorId: string;
+  mediaId: string;
+  start: number;
+  end: number;
+  text: string;
+  score: number;
+  type: 'quote' | 'event';
+  speaker: string | null;
+  beatHint: StoryArcV2Beat;
+  eventType: StoryArcV2EventType | null;
+}
+
+export interface StoryArcV2MusicAnalysis {
+  source: 'video_audio' | 'none';
+  durationSeconds: number | null;
+  bpm: number | null;
+  beatIntervalSeconds: number | null;
+  beats: Array<{ time: number; confidence: number; energy: number }>;
+  sections: Array<{
+    sectionId: string;
+    start: number;
+    end: number;
+    label: 'intro' | 'verse' | 'build' | 'chorus' | 'bridge' | 'outro';
+    energyLevel: 'low' | 'medium' | 'high';
+  }>;
+  energyCurve: number[];
+  warnings: string[];
 }
 
 export interface StoryArcV2SemanticProfile {
@@ -47,6 +130,9 @@ export interface StoryArcV2AnalysisSummary {
   totalDuration: number;
   transcriptionSegments: number;
   detectedSpeakers: number;
+  detectedEvents: number;
+  narrativeAnchors: number;
+  musicBeats: number;
 }
 
 export interface StoryArcV2AnalysisResult {
@@ -54,7 +140,20 @@ export interface StoryArcV2AnalysisResult {
   projectId: string | null;
   summary: StoryArcV2AnalysisSummary;
   scenes: Array<Record<string, unknown>>;
+  projectProfile?: StoryArcV2ProjectProfile;
+  editingMode?: StoryArcV2EditingMode;
+  culturalProfile?: StoryArcV2CulturalProfile;
+  culturalModules?: StoryArcV2CulturalProfile[];
+  mustIncludeMoments?: string[];
+  avoidMoments?: string[];
+  culturalRulebook?: Record<string, unknown>;
+  audioTracks?: Record<string, unknown> | null;
+  musicAnalysis?: StoryArcV2MusicAnalysis;
+  transcriptionProvider?: 'whisperx' | 'whisper' | 'fallback' | null;
+  alignmentProvider?: 'whisperx' | 'none' | null;
   semanticProfiles: StoryArcV2SemanticProfile[];
+  detectedEvents?: StoryArcV2DetectedEvent[];
+  narrativeAnchors?: StoryArcV2NarrativeAnchor[];
   personIdentities?: Array<Record<string, unknown>>;
   warnings: string[];
   createdAt: string;
@@ -88,6 +187,26 @@ export interface StoryArcV2StoryScriptNode {
   pinned: boolean;
   rationale: string;
   confidence: number;
+  storyThreads?: string[];
+  primaryThread?: string;
+  narrativeScore?: number;
+  brollPlaceholders: StoryArcV2BrollPlaceholder[];
+}
+
+export interface StoryArcV2BrollPlaceholder {
+  id: string;
+  nodeId: string;
+  beat: StoryArcV2Beat;
+  start: number;
+  end: number;
+  intent: 'reaction' | 'cutaway' | 'establishing' | 'detail';
+  query: string;
+  candidateClipIds: string[];
+  rationale: string;
+  confidence: number;
+  requiresExternalBroll?: boolean;
+  fallbackMessage?: string | null;
+  suggestionQueries?: string[];
 }
 
 export interface StoryArcV2StoryScript {
@@ -113,6 +232,12 @@ export interface StoryArcV2GenerateScriptInput {
 export interface StoryArcV2StoryArcCompat {
   title?: string;
   beats: Array<Record<string, unknown>>;
+  culturalProfile?: StoryArcV2CulturalProfile;
+  culturalModules?: StoryArcV2CulturalProfile[];
+  culturalRulebook?: Record<string, unknown>;
+  storyGraph?: Record<string, unknown>;
+  events?: Array<Record<string, unknown>>;
+  narrativeAnchors?: Array<Record<string, unknown>>;
   musicSuggestions?: Array<Record<string, unknown>>;
   transitionPoints?: Array<Record<string, unknown>>;
 }
@@ -162,6 +287,58 @@ export interface StoryArcV2TimelineVariantPlan {
   summary: string[];
 }
 
+export interface StoryArcV2EditDecisionClip {
+  order: number;
+  clipId: string;
+  sourceClipId: string | null;
+  nodeId: string | null;
+  type: 'A_ROLL' | 'B_ROLL';
+  trackId: string;
+  beat: StoryArcV2Beat | null;
+  start: number;
+  end: number;
+  duration: number;
+  speaker: string | null;
+  segmentRole: 'primary_speech' | 'focus_cutaway' | 'unknown';
+  maintainSpeechSync: boolean;
+  audioSourceClipId: string | null;
+  audioSourceStart: number | null;
+  audioSourceEnd: number | null;
+  eventType?: StoryArcV2EventType | null;
+  eventPriority?: 'A' | 'B' | 'C' | null;
+  noJumpcuts?: boolean;
+  requiresExternalBroll?: boolean;
+  externalBrollSuggestions?: string[];
+  fallbackMessage?: string | null;
+  rationale: string;
+}
+
+export interface StoryArcV2EditDecisionList {
+  schemaVersion: 'storyarc.edit_decisions.v1';
+  proposalId: string;
+  scriptId: string;
+  revision: number;
+  variant: StoryArcV2Variant;
+  fps: number;
+  clips: StoryArcV2EditDecisionClip[];
+  brollPlaceholders: StoryArcV2BrollPlaceholder[];
+  transitions: Array<{
+    fromClipId: string;
+    toClipId: string;
+    type: 'cut' | 'cross_dissolve';
+    duration: number;
+  }>;
+  audio: {
+    duckMusicDb: number;
+    targetLufs: number;
+    analysisTrackSource: string | null;
+    demucsApplied: boolean;
+    transcriptionProvider: 'whisperx' | 'whisper' | 'fallback' | null;
+    alignmentProvider: 'whisperx' | 'none' | null;
+  };
+  generatedAt: string;
+}
+
 export interface StoryArcV2TimelineProposal {
   proposalId: string;
   scriptId: string;
@@ -169,6 +346,8 @@ export interface StoryArcV2TimelineProposal {
   generatedAt: string;
   selectedVariant: StoryArcV2Variant;
   variants: Record<StoryArcV2Variant, StoryArcV2TimelineVariantPlan>;
+  editDecisions: StoryArcV2EditDecisionList;
+  editDecisionsByVariant: Record<StoryArcV2Variant, StoryArcV2EditDecisionList>;
   explainabilityByClipId: Record<string, Record<string, unknown>>;
   warnings: string[];
 }
@@ -201,6 +380,7 @@ export interface StoryArcV2TimelineApplyState {
   revertedAt: string | null;
   revertCount: number;
   timeline?: Record<string, unknown> | null;
+  editDecisions?: StoryArcV2EditDecisionList | null;
 }
 
 export interface StoryArcV2QualityScorecard {
@@ -232,6 +412,24 @@ export interface StoryArcV2ExportInput {
   proposalId: string;
   format?: 'fcpxml' | 'xml' | 'resolve-json';
   includeScriptNotes?: boolean;
+}
+
+export interface StoryArcV2CulturalProfileDescriptor {
+  profile: StoryArcV2CulturalProfile;
+  label: string;
+  mustIncludeDefaults: string[];
+  noCutEventTypes: StoryArcV2EventType[];
+  sacredEventTypes: StoryArcV2EventType[];
+  minClipLenByEventType: Partial<Record<StoryArcV2EventType, number>>;
+  pacing: Record<string, unknown>;
+  eventTaxonomy: Array<{
+    type: StoryArcV2EventType;
+    priority: 'A' | 'B' | 'C';
+    noCut: boolean;
+    sacred: boolean;
+    minClipLenSec: number | null;
+    keywords: string[];
+  }>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -283,6 +481,26 @@ function normalizeJob(payload: unknown): StoryArcV2JobState {
     error: typeof payload.error === 'string' ? payload.error : null,
     createdAt: typeof payload.createdAt === 'string' ? payload.createdAt : null,
     updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+  };
+}
+
+function normalizeScript(payload: unknown): StoryArcV2StoryScript {
+  if (!isRecord(payload)) {
+    throw new Error('Invalid Story Arc V2 script payload');
+  }
+  const nodes = Array.isArray(payload.nodes)
+    ? payload.nodes
+        .filter((item): item is Record<string, unknown> => isRecord(item))
+        .map((node) => ({
+          ...node,
+          brollPlaceholders: Array.isArray(node.brollPlaceholders)
+            ? node.brollPlaceholders.filter((entry): entry is StoryArcV2BrollPlaceholder => isRecord(entry)) as StoryArcV2BrollPlaceholder[]
+            : [],
+        }))
+    : [];
+  return {
+    ...(payload as StoryArcV2StoryScript),
+    nodes: nodes as StoryArcV2StoryScriptNode[],
   };
 }
 
@@ -339,11 +557,15 @@ export async function generateStoryArcV2Script(
   }
 
   return {
-    script: payload.script as StoryArcV2StoryScript,
+    script: normalizeScript(payload.script),
     storyArc: isRecord(payload.storyArc)
       ? ({
           ...payload.storyArc,
           beats: Array.isArray(payload.storyArc.beats) ? payload.storyArc.beats : [],
+          events: Array.isArray(payload.storyArc.events) ? payload.storyArc.events : [],
+          narrativeAnchors: Array.isArray(payload.storyArc.narrativeAnchors)
+            ? payload.storyArc.narrativeAnchors
+            : [],
           musicSuggestions: Array.isArray(payload.storyArc.musicSuggestions)
             ? payload.storyArc.musicSuggestions
             : [],
@@ -369,7 +591,7 @@ export async function editStoryArcV2Script(
   if (!isRecord(payload) || !isRecord(payload.script)) {
     throw new Error('Invalid Story Arc V2 script edit response');
   }
-  return payload.script as StoryArcV2StoryScript;
+  return normalizeScript(payload.script);
 }
 
 export async function planStoryArcV2Timeline(
@@ -470,4 +692,12 @@ export async function pollStoryArcV2AnalyzeJob(
 
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
+}
+
+export async function listStoryArcV2CulturalProfiles(): Promise<StoryArcV2CulturalProfileDescriptor[]> {
+  const payload = await apiRequest('/api/story-arc/v2/cultural-profiles');
+  if (!isRecord(payload) || !Array.isArray(payload.profiles)) {
+    throw new Error('Invalid Story Arc V2 cultural profile response');
+  }
+  return payload.profiles.filter((entry): entry is StoryArcV2CulturalProfileDescriptor => isRecord(entry)) as StoryArcV2CulturalProfileDescriptor[];
 }
