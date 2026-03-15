@@ -1,13 +1,15 @@
+import {
+  CONTENT_PRODUCER_DEMO_PROJECT_ID,
+  PRODUCER_DEMO_ECONOMY_SEED,
+  PRODUCER_DEMO_REVIEW_SEED,
+  PRODUCER_DEMO_TIMELINE_SEED,
+} from '../constants/producerDemo';
+import authSessionService from './authSessionService';
+
 const API_BASE = '/api/role-room';
 
 function getAuthHeaders(): Record<string, string> {
-  try {
-    const token = localStorage.getItem('creatorhub_auth_token');
-    if (token) return { Authorization: `Bearer ${token}` };
-  } catch {
-    // Ignore environments without localStorage.
-  }
-  return {};
+  return authSessionService.getAuthHeadersSync();
 }
 
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -41,6 +43,8 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
 
 export type ProducerPhase = 'preproduction' | 'production' | 'postproduction';
 export type ProducerReviewDecision = 'approved' | 'rejected' | 'changes_requested';
+
+let contentProducerWorkflowInitPromise: Promise<void> | null = null;
 
 export interface ProducerTimelineItem {
   id: string;
@@ -170,6 +174,26 @@ export interface SetProducerReviewDecisionInput {
   timestampSeconds?: number;
 }
 
+function readSeedKey(metadata?: Record<string, unknown> | null): string | null {
+  const value = metadata?.seedKey;
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function hasMatchingComment(
+  commentText: string,
+  timestampSeconds: number | undefined,
+  comments: ProducerReviewComment[] | undefined,
+): boolean {
+  if (!Array.isArray(comments)) {
+    return false;
+  }
+
+  return comments.some((comment) => (
+    comment.comment_text === commentText
+    && (comment.timestamp_seconds ?? undefined) === timestampSeconds
+  ));
+}
+
 export const producerWorkflowService = {
   async getTimeline(projectId: string): Promise<ProducerTimelineItem[]> {
     const result = await apiRequest<{ items: ProducerTimelineItem[] }>(`/projects/${projectId}/producer/timeline`);
@@ -282,5 +306,118 @@ export const producerWorkflowService = {
       },
     );
     return result.review;
+  },
+
+  async initializeContentProducerDemoWorkflow(projectId: string): Promise<void> {
+    if (projectId !== CONTENT_PRODUCER_DEMO_PROJECT_ID) {
+      return;
+    }
+
+    if (!contentProducerWorkflowInitPromise) {
+      contentProducerWorkflowInitPromise = (async () => {
+        const [existingTimeline, existingEconomy, existingReviews] = await Promise.all([
+          this.getTimeline(projectId),
+          this.getEconomyItems(projectId),
+          this.getReviews(projectId),
+        ]);
+
+        const existingTimelineSeedKeys = new Set(
+          existingTimeline
+            .map((item) => readSeedKey(item.metadata))
+            .filter((value): value is string => Boolean(value)),
+        );
+        const existingEconomySeedKeys = new Set(
+          existingEconomy
+            .map((item) => readSeedKey(item.metadata))
+            .filter((value): value is string => Boolean(value)),
+        );
+        const existingReviewsBySeedKey = new Map<string, ProducerClientReview>();
+        for (const review of existingReviews) {
+          const seedKey = readSeedKey(review.metadata);
+          if (seedKey) {
+            existingReviewsBySeedKey.set(seedKey, review);
+          }
+        }
+
+        for (const seed of PRODUCER_DEMO_TIMELINE_SEED) {
+          const seedKey = readSeedKey(seed.metadata as Record<string, unknown>);
+          if (seedKey && existingTimelineSeedKeys.has(seedKey)) {
+            continue;
+          }
+          await this.createTimelineItem(projectId, {
+            phase: seed.phase,
+            title: seed.title,
+            description: seed.description,
+            ownerUserId: seed.ownerUserId,
+            dueAt: seed.dueAt,
+            status: seed.status,
+            linkedEntityType: seed.linkedEntityType,
+            linkedEntityId: seed.linkedEntityId,
+            metadata: seed.metadata,
+          });
+        }
+
+        for (const seed of PRODUCER_DEMO_ECONOMY_SEED) {
+          const seedKey = readSeedKey(seed.metadata as Record<string, unknown>);
+          if (seedKey && existingEconomySeedKeys.has(seedKey)) {
+            continue;
+          }
+          await this.createEconomyItem(projectId, {
+            phase: seed.phase,
+            category: seed.category,
+            itemName: seed.itemName,
+            description: seed.description,
+            estimate: seed.estimate,
+            approved: seed.approved,
+            actual: seed.actual,
+            status: seed.status,
+            clientVisible: seed.clientVisible,
+            linkedEntityType: seed.linkedEntityType,
+            linkedEntityId: seed.linkedEntityId,
+            metadata: seed.metadata,
+          });
+        }
+
+        for (const seed of PRODUCER_DEMO_REVIEW_SEED) {
+          const seedKey = readSeedKey(seed.metadata as Record<string, unknown>);
+          let review = seedKey ? existingReviewsBySeedKey.get(seedKey) : undefined;
+          if (!review) {
+            review = await this.createReview(projectId, {
+              reviewType: seed.reviewType,
+              title: seed.title,
+              description: seed.description,
+              targetEntityType: seed.targetEntityType,
+              targetEntityId: seed.targetEntityId,
+              dueAt: seed.dueAt,
+              metadata: seed.metadata,
+            });
+            if (seedKey) {
+              existingReviewsBySeedKey.set(seedKey, review);
+            }
+          }
+
+          for (const commentSeed of seed.comments) {
+            if (hasMatchingComment(commentSeed.commentText, commentSeed.timestampSeconds, review.comments)) {
+              continue;
+            }
+            const createdComment = await this.addReviewComment(projectId, review.id, {
+              commentText: commentSeed.commentText,
+              timestampSeconds: commentSeed.timestampSeconds,
+            });
+            review = {
+              ...review,
+              comments: [...(review.comments ?? []), createdComment],
+            };
+            if (seedKey) {
+              existingReviewsBySeedKey.set(seedKey, review);
+            }
+          }
+        }
+      })().finally(() => {
+        contentProducerWorkflowInitPromise = null;
+      });
+    }
+
+    await contentProducerWorkflowInitPromise;
   },
 };

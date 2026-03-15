@@ -912,6 +912,7 @@ export default function LoginDialog({
 
       const data: {
         success: boolean;
+        token?: string;
         user: {
           id: number | string;
           email: string;
@@ -928,7 +929,7 @@ export default function LoginDialog({
       if (data.success) {
         const resolvedRole =
           loginPersona === 'content_producer'
-            ? 'content_producer'
+            ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
             : (data.user.requestedRole?.trim() || data.user.role);
         const normalizedUser = {
           ...data.user,
@@ -940,6 +941,7 @@ export default function LoginDialog({
             data.user.name ||
             data.user.email.split('@')[0],
         };
+        await authSessionService.setSessionToken(data.token ?? null);
         await authSessionService.setAdminUser(normalizedUser);
         await authSessionService.setCurrentUserId(String(normalizedUser.id));
         onLoginSuccess(normalizedUser);
@@ -947,12 +949,13 @@ export default function LoginDialog({
         setError(data.detail ?? data.error ?? 'Ugyldig e-post eller passord');
       }
     } catch {
+      await authSessionService.setSessionToken(null);
       const mockUser = {
         id: 1,
         email: email.trim(),
         role:
           loginPersona === 'content_producer'
-            ? 'content_producer'
+            ? (selectedRole === 'client' ? 'client_reviewer' : 'content_producer')
             : (selectedRole || 'producer'),
         loginAs: loginPersona || undefined,
         requestedRole: selectedRole || null,

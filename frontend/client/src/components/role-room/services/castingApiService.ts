@@ -1,3 +1,5 @@
+import authSessionService from './authSessionService';
+
 const API_BASE = '/api/role-room';
 
 export class CastingApiError extends Error {
@@ -15,11 +17,7 @@ export class CastingApiError extends Error {
 }
 
 function getAuthHeaders(): Record<string, string> {
-  try {
-    const token = localStorage.getItem('creatorhub_auth_token');
-    if (token) return { 'Authorization': `Bearer ${token}` };
-  } catch { /* SSR / test env */ }
-  return {};
+  return authSessionService.getAuthHeadersSync();
 }
 
 async function apiRequest<T>(

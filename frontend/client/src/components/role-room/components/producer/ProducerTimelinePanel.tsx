@@ -5,6 +5,8 @@ import {
   Button,
   Chip,
   Divider,
+  FormControl,
+  InputLabel,
   MenuItem,
   Select,
   Stack,
@@ -19,10 +21,18 @@ import {
 } from '@mui/icons-material';
 import { useProducerTimeline } from '../../hooks/useProducerTimeline';
 import type { ProducerPhase } from '../../services/producerWorkflowService';
+import {
+  getProducerEntityTypeLabel,
+  getProducerTimelineStatusLabel,
+  type ProducerWorkflowEntityOption,
+  type ProducerWorkflowOwnerOption,
+} from '../../utils/producerWorkflow';
 
 interface ProducerTimelinePanelProps {
   projectId: string;
   readOnly?: boolean;
+  entityOptions?: ProducerWorkflowEntityOption[];
+  ownerOptions?: ProducerWorkflowOwnerOption[];
 }
 
 const PHASE_LABELS: Record<ProducerPhase, string> = {
@@ -38,18 +48,15 @@ const STATUS_OPTIONS = [
   { value: 'completed', label: 'Fullført' },
 ] as const;
 
-const ENTITY_TYPE_OPTIONS = [
-  { value: '', label: 'Ingen kobling' },
-  { value: 'scene', label: 'Scene' },
-  { value: 'shot', label: 'Shot' },
-  { value: 'shotlist', label: 'Shotlist' },
-  { value: 'manuscript', label: 'Manus' },
-  { value: 'storyboard', label: 'Storyboard' },
-  { value: 'economy', label: 'Økonomi' },
-  { value: 'client_review', label: 'Klientreview' },
-] as const;
+const EMPTY_ENTITY_OPTIONS: ProducerWorkflowEntityOption[] = [];
+const EMPTY_OWNER_OPTIONS: ProducerWorkflowOwnerOption[] = [];
 
-export default function ProducerTimelinePanel({ projectId, readOnly = false }: ProducerTimelinePanelProps) {
+export default function ProducerTimelinePanel({
+  projectId,
+  readOnly = false,
+  entityOptions = EMPTY_ENTITY_OPTIONS,
+  ownerOptions = EMPTY_OWNER_OPTIONS,
+}: ProducerTimelinePanelProps) {
   const { groupedByPhase, loading, error, createItem, updateItem, removeItem } = useProducerTimeline(projectId);
   const [phase, setPhase] = useState<ProducerPhase>('preproduction');
   const [title, setTitle] = useState('');
@@ -57,7 +64,7 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
   const [ownerUserId, setOwnerUserId] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [itemStatus, setItemStatus] = useState<(typeof STATUS_OPTIONS)[number]['value']>('planned');
-  const [linkedEntityType, setLinkedEntityType] = useState<(typeof ENTITY_TYPE_OPTIONS)[number]['value']>('');
+  const [linkedEntityType, setLinkedEntityType] = useState('');
   const [linkedEntityId, setLinkedEntityId] = useState('');
   const [statusDraftById, setStatusDraftById] = useState<Record<string, string>>({});
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
@@ -84,6 +91,32 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
     return counters;
   }, [groupedByPhase]);
   const completionPct = totalItems > 0 ? Math.round((statusSummary.completed / totalItems) * 100) : 0;
+
+  const distinctEntityTypes = useMemo(() => {
+    const seen = new Set<string>();
+    return entityOptions.filter((option) => {
+      if (!option.entityType || seen.has(option.entityType)) {
+        return false;
+      }
+      seen.add(option.entityType);
+      return true;
+    });
+  }, [entityOptions]);
+
+  const filteredEntityOptions = useMemo(() => {
+    if (!linkedEntityType) {
+      return entityOptions;
+    }
+    return entityOptions.filter((option) => option.entityType === linkedEntityType);
+  }, [entityOptions, linkedEntityType]);
+
+  const ownerLookup = useMemo(() => {
+    return new Map(ownerOptions.map((option) => [option.value, option]));
+  }, [ownerOptions]);
+
+  const entityLookup = useMemo(() => {
+    return new Map(entityOptions.map((option) => [`${option.entityType}:${option.entityId}`, option]));
+  }, [entityOptions]);
 
   const handleCreate = async () => {
     const nextTitle = title.trim();
@@ -141,6 +174,32 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
     }
   };
 
+  const getOwnerLabel = (value?: string | null): string | null => {
+    if (!value) {
+      return null;
+    }
+    const matchingOwner = ownerLookup.get(value);
+    if (!matchingOwner) {
+      return value;
+    }
+    return matchingOwner.description ? `${matchingOwner.label} · ${matchingOwner.description}` : matchingOwner.label;
+  };
+
+  const getEntityLabel = (entityType?: string | null, entityId?: string | null): string | null => {
+    if (!entityType && !entityId) {
+      return null;
+    }
+    const matchingEntity = entityLookup.get(`${entityType ?? ''}:${entityId ?? ''}`);
+    if (matchingEntity) {
+      return matchingEntity.description ? `${matchingEntity.label} · ${matchingEntity.description}` : matchingEntity.label;
+    }
+    if (entityType) {
+      const label = getProducerEntityTypeLabel(entityType);
+      return entityId ? `${label} (${entityId})` : label;
+    }
+    return entityId ?? null;
+  };
+
   return (
     <Box
       sx={{
@@ -183,10 +242,10 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
       {!readOnly && (
         <Stack direction="column" spacing={1}>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
-            <Box sx={{ minWidth: 180 }}>
-              <Typography sx={{ color: 'rgba(226,232,240,0.8)', mb: 0.5, fontSize: '0.85rem' }}>Fase</Typography>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Fase</InputLabel>
               <Select
-                size="small"
+                label="Fase"
                 value={phase}
                 onChange={(event) => setPhase(event.target.value as ProducerPhase)}
                 fullWidth
@@ -196,7 +255,7 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
                   <MenuItem key={key} value={key}>{label}</MenuItem>
                 ))}
               </Select>
-            </Box>
+            </FormControl>
             <TextField
               size="small"
               label="Milepæl"
@@ -216,14 +275,31 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
           </Stack>
 
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ md: 'flex-end' }}>
-            <TextField
-              size="small"
-              label="Ansvarlig (bruker-id/e-post)"
-              value={ownerUserId}
-              onChange={(event) => setOwnerUserId(event.target.value)}
-              sx={{ flex: 1, minWidth: 240 }}
-              InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-            />
+            {ownerOptions.length > 0 ? (
+              <FormControl size="small" sx={{ flex: 1, minWidth: 240 }}>
+                <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Ansvarlig</InputLabel>
+                <Select
+                  label="Ansvarlig"
+                  value={ownerUserId}
+                  onChange={(event) => setOwnerUserId(String(event.target.value))}
+                  sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
+                >
+                  <MenuItem value="">Ingen ansvarlig</MenuItem>
+                  {ownerOptions.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                size="small"
+                label="Ansvarlig (bruker-id/e-post)"
+                value={ownerUserId}
+                onChange={(event) => setOwnerUserId(event.target.value)}
+                sx={{ flex: 1, minWidth: 240 }}
+                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+              />
+            )}
             <TextField
               size="small"
               label="Deadline"
@@ -233,10 +309,10 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
               sx={{ minWidth: 220 }}
               InputLabelProps={{ shrink: true, sx: { color: 'rgba(226,232,240,0.82)' } }}
             />
-            <Box sx={{ minWidth: 160 }}>
-              <Typography sx={{ color: 'rgba(226,232,240,0.8)', mb: 0.5, fontSize: '0.85rem' }}>Status</Typography>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Status</InputLabel>
               <Select
-                size="small"
+                label="Status"
                 value={itemStatus}
                 onChange={(event) => setItemStatus(event.target.value as (typeof STATUS_OPTIONS)[number]['value'])}
                 fullWidth
@@ -246,29 +322,50 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
                   <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
                 ))}
               </Select>
-            </Box>
-            <Box sx={{ minWidth: 180 }}>
-              <Typography sx={{ color: 'rgba(226,232,240,0.8)', mb: 0.5, fontSize: '0.85rem' }}>Koblingstype</Typography>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel sx={{ color: 'rgba(226,232,240,0.8)' }}>Koblingstype</InputLabel>
               <Select
-                size="small"
+                label="Koblingstype"
                 value={linkedEntityType}
-                onChange={(event) => setLinkedEntityType(event.target.value as (typeof ENTITY_TYPE_OPTIONS)[number]['value'])}
+                onChange={(event) => {
+                  const nextType = String(event.target.value);
+                  setLinkedEntityType(nextType);
+                  setLinkedEntityId(entityOptions.find((option) => option.entityType === nextType)?.entityId ?? '');
+                }}
                 fullWidth
                 sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
               >
-                {ENTITY_TYPE_OPTIONS.map((option) => (
-                  <MenuItem key={option.value || 'none'} value={option.value}>{option.label}</MenuItem>
+                <MenuItem value="">Ingen kobling</MenuItem>
+                {distinctEntityTypes.map((option) => (
+                  <MenuItem key={option.entityType} value={option.entityType}>{getProducerEntityTypeLabel(option.entityType)}</MenuItem>
                 ))}
               </Select>
-            </Box>
-            <TextField
-              size="small"
-              label="Koblings-ID"
-              value={linkedEntityId}
-              onChange={(event) => setLinkedEntityId(event.target.value)}
-              sx={{ minWidth: 160 }}
-              InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
-            />
+            </FormControl>
+            {filteredEntityOptions.length > 0 ? (
+              <FormControl size="small" sx={{ minWidth: 220, flex: 1 }}>
+                <InputLabel sx={{ color: 'rgba(226,232,240,0.82)' }}>Koblet entitet</InputLabel>
+                <Select
+                  label="Koblet entitet"
+                  value={linkedEntityId}
+                  onChange={(event) => setLinkedEntityId(String(event.target.value))}
+                  sx={{ color: '#fff', '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(148,163,184,0.3)' } }}
+                >
+                  {filteredEntityOptions.map((option) => (
+                    <MenuItem key={`${option.entityType}:${option.entityId}`} value={option.entityId}>{option.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                size="small"
+                label="Koblings-ID"
+                value={linkedEntityId}
+                onChange={(event) => setLinkedEntityId(event.target.value)}
+                sx={{ minWidth: 160 }}
+                InputLabelProps={{ sx: { color: 'rgba(226,232,240,0.82)' } }}
+              />
+            )}
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -318,7 +415,7 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
                       <Typography sx={{ color: '#f8fafc', fontWeight: 600 }}>{item.title}</Typography>
                       <Chip
                         size="small"
-                        label={item.status}
+                        label={getProducerTimelineStatusLabel(item.status)}
                         sx={{
                           height: 22,
                           bgcolor: 'rgba(30,41,59,0.9)',
@@ -336,7 +433,7 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
                       {item.owner_user_id && (
                         <Chip
                           size="small"
-                          label={`Ansvarlig: ${item.owner_user_id}`}
+                          label={`Ansvarlig: ${getOwnerLabel(item.owner_user_id) ?? item.owner_user_id}`}
                           sx={{
                             height: 22,
                             bgcolor: 'rgba(30,41,59,0.9)',
@@ -357,10 +454,10 @@ export default function ProducerTimelinePanel({ projectId, readOnly = false }: P
                           }}
                         />
                       )}
-                      {item.linked_entity_type && (
+                      {getEntityLabel(item.linked_entity_type, item.linked_entity_id) && (
                         <Chip
                           size="small"
-                          label={`Kobling: ${item.linked_entity_type}${item.linked_entity_id ? ` (${item.linked_entity_id})` : ''}`}
+                          label={`Kobling: ${getEntityLabel(item.linked_entity_type, item.linked_entity_id)}`}
                           sx={{
                             height: 22,
                             bgcolor: 'rgba(30,41,59,0.9)',

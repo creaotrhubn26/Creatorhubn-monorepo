@@ -75,6 +75,13 @@ interface ProjectRoleRecord {
   permissions: Record<string, boolean>;
 }
 
+interface ApiKeyUserContext {
+  userId: string;
+  email?: string;
+  role?: string;
+  scopes: string[];
+}
+
 // ── Utility Helpers ──────────────────────────────────────────
 
 function hashApiKey(key: string): string {
@@ -177,8 +184,10 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
     if (bearer && activeSessions) {
       const session = activeSessions.get(bearer);
       if (session) {
-        (req as Request & { apiKeyUser: { userId: string; scopes: string[] } }).apiKeyUser = {
+        (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
           userId: session.userId,
+          email: session.email,
+          role: session.role,
           scopes: ['read', 'write', 'admin'],
         };
         next();
@@ -189,7 +198,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
     // ── 1b. Dev-mode bypass for local UI integration ───────
     if (devBypassEnabled) {
       const userId = bearer ? deriveDevUserIdFromBearer(bearer) : 'dev-local-user';
-      (req as Request & { apiKeyUser: { userId: string; scopes: string[] } }).apiKeyUser = {
+      (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
         userId,
         scopes: ['read', 'write', 'admin'],
       };
@@ -227,7 +236,7 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
       );
 
       // Attach user context to request
-      (req as Request & { apiKeyUser: { userId: string; scopes: string[] } }).apiKeyUser = {
+      (req as Request & { apiKeyUser: ApiKeyUserContext }).apiKeyUser = {
         userId: apiKeyRecord.user_id,
         scopes: Array.isArray(apiKeyRecord.scopes) ? apiKeyRecord.scopes : ['read'],
       };
@@ -243,12 +252,12 @@ function apiKeyAuth(pool: Pool, activeSessions?: Map<string, SessionData>) {
 // ── Request helpers ──────────────────────────────────────────
 
 function getUserId(req: Request): string {
-  const apiKeyReq = req as Request & { apiKeyUser?: { userId: string } };
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   return apiKeyReq.apiKeyUser?.userId ?? 'anonymous';
 }
 
 function requireScope(req: Request, scope: string): boolean {
-  const apiKeyReq = req as Request & { apiKeyUser?: { scopes: string[] } };
+  const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
   const scopes = apiKeyReq.apiKeyUser?.scopes ?? [];
   return scopes.includes(scope) || scopes.includes('admin');
 }
@@ -384,7 +393,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
           canRunTableRead: false,
           canComment: true,
           canRequestChanges: true,
-          canViewEconomy: false,
+          canViewEconomy: true,
         };
       case 'casting_director':
         return {
@@ -482,17 +491,43 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     };
   }
 
-  async function getProjectRoleRecord(projectId: string, userId: string): Promise<ProjectRoleRecord | null> {
+  function getUserIdentifiers(req: Request): string[] {
+    const apiKeyReq = req as Request & { apiKeyUser?: ApiKeyUserContext };
+    const identifiers = [
+      apiKeyReq.apiKeyUser?.userId,
+      apiKeyReq.apiKeyUser?.email,
+    ]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim());
+
+    return [...new Set(identifiers)];
+  }
+
+  async function getProjectRoleRecord(projectId: string, userIdentifiers: string | string[]): Promise<ProjectRoleRecord | null> {
+    const identifiers = (Array.isArray(userIdentifiers) ? userIdentifiers : [userIdentifiers])
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim());
+
+    if (identifiers.length === 0) {
+      return null;
+    }
+
     const result = await pool.query(
-      `SELECT role, permissions FROM casting_user_roles WHERE project_id = $1 AND user_id = $2 LIMIT 1`,
-      [projectId, userId],
+      `SELECT role, permissions
+       FROM casting_user_roles
+       WHERE project_id = $1 AND user_id = ANY($2::text[])
+       LIMIT 1`,
+      [projectId, identifiers],
     );
     let row = result.rows[0] as { role?: string; permissions?: unknown } | undefined;
 
     if (!row) {
       const fallbackResult = await pool.query(
-        `SELECT role, permissions FROM casting_user_roles WHERE project_id = '__global__' AND user_id = $1 LIMIT 1`,
-        [userId],
+        `SELECT role, permissions
+         FROM casting_user_roles
+         WHERE project_id = '__global__' AND user_id = ANY($1::text[])
+         LIMIT 1`,
+        [identifiers],
       );
       row = fallbackResult.rows[0] as { role?: string; permissions?: unknown } | undefined;
     }
@@ -978,7 +1013,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const projectId = req.params.projectId;
     const userId = getUserId(req);
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canReadProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til tidslinje' });
         return;
@@ -1037,7 +1072,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å opprette tidslinjeelementer' });
         return;
@@ -1088,7 +1123,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const userId = getUserId(req);
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å oppdatere tidslinjeelementer' });
         return;
@@ -1155,7 +1190,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const userId = getUserId(req);
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å fjerne tidslinjeelementer' });
         return;
@@ -1188,7 +1223,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const projectId = req.params.projectId;
     const userId = getUserId(req);
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canReadProducerEconomy(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til økonomi' });
         return;
@@ -1254,7 +1289,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å opprette økonomilinjer' });
         return;
@@ -1311,7 +1346,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const userId = getUserId(req);
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å oppdatere økonomilinjer' });
         return;
@@ -1382,7 +1417,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const userId = getUserId(req);
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å slette økonomilinjer' });
         return;
@@ -1415,7 +1450,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     const projectId = req.params.projectId;
     const userId = getUserId(req);
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canReadProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til godkjenningsflyt' });
         return;
@@ -1481,7 +1516,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canWriteProducerData(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å opprette review' });
         return;
@@ -1534,7 +1569,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canCommentProducerReview(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å kommentere review' });
         return;
@@ -1590,7 +1625,7 @@ export function createRoleRoomRouter(pool: Pool, activeSessions?: Map<string, Se
     }
 
     try {
-      const roleRecord = await getProjectRoleRecord(projectId, userId);
+      const roleRecord = await getProjectRoleRecord(projectId, getUserIdentifiers(req));
       if (!canDecideProducerReview(req, roleRecord)) {
         res.status(403).json({ error: 'Mangler tilgang til å beslutte review' });
         return;

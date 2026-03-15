@@ -1,6 +1,6 @@
 /**
  * CreatorHub Norge - Project Creation Modal
- * The modal is designed to be used in the CreatorHub Norge Virtual studio for creating new projects,but should be adaptable for other professions and also connected to the The Role Room.
+ * The modal is used in The Role Room for creating new projects and adapting the flow across professions.
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -25,6 +25,7 @@ import { useExternalData } from '@/services/ExternalDataService';
 import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '@/hooks/useTheme';
 import { useRealTime } from '../../hooks/useRealTime';
+import authSessionService from '../../services/authSessionService';
 import { apiRequest } from '@/lib/queryClient';
 import {
   Box,
@@ -138,11 +139,11 @@ import {
   CameraAlt,
   Mic,
 } from '@mui/icons-material';
-import { RolesIcon as TheaterComedy, LocationsIcon as LocationOn } from '../icons/CastingIcons';
+import { LocationsIcon as LocationOn } from '../icons/CastingIcons';
 import MemoryCardIcon from '../ui/MemoryCardIcon';
 import MemoryCardSelector from '../memory-card/MemoryCardSelector';
 import { useAutoSave } from '@/hooks/useAutoSave';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useVisualEditor } from '../admin/visual-editor/VisualEditorContext';
 import { useLeadImport } from '@/hooks/useLeadImport';
 import ProjectHealthCheck from './ProjectHealthCheck';
@@ -151,8 +152,7 @@ import { VIDEO_CAMERA_DATABASE, getCamerasByProfession, getLogFormatsByCamera, g
 import { PHOTO_CAMERA_DATABASE, getPhotoCamerasByProfession, getPhotoCameraBrand } from '@/data/photo-camera-database';
 import { MemoryCardRecommendationEngine, getMemoryCardTypesByProfession, formatCurrency, convertCurrency } from '@/data/memory-card-database';
 import EnhancedMemoryCardSelector from '../memory-card/EnhancedMemoryCardSelector';
-import { useLocation } from 'wouter';
-import { useProjectTypes, type ProjectType as HookProjectType } from '@/hooks/useProjectTypes';
+import { useProjectTypes } from '@/hooks/useProjectTypes';
 import AddProjectTypeDialog from './AddProjectTypeDialog';
 import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '@/hooks/useAuth';
@@ -1054,7 +1054,7 @@ export default function ProjectCreationWithMemoryCards({
   
   // Create auth headers for API requests
   const auth = {
-    'Authorization': `Bearer ${user?.id || 'anonymous'}`,
+    ...authSessionService.getAuthHeadersSync(),
     'X-User-Email': user?.email || 'anonymous@example.com'
   };
   const { getCurrentUserProfession, professionConfigs, isLoading: professionsLoading, getProfessionDisplayName, getProfessionIcon } = useDynamicProfessions();
@@ -1158,7 +1158,6 @@ export default function ProjectCreationWithMemoryCards({
   
   const { 
     isConnected, 
-    emitEvent, 
     onEvent, 
     offEvent,
     createSession,
@@ -1404,6 +1403,9 @@ useEffect(() => {
 useEffect(() => {
   if (!user) return;
   const controller = new AbortController();
+  const meetingOption = projectData?.meetingOption;
+  const meetingTime = projectData?.meetingTime;
+  const meetingDuration = projectData?.meetingDuration;
   const save = async () => {
     try {
       await fetch('/api/user/meeting-preferences', {
@@ -1411,19 +1413,21 @@ useEffect(() => {
         headers: { 'Content-Type' : 'application/json' },
         body: JSON.stringify({
           profession,
-          meetingOption: projectData?.meetingOption,
-          meetingTime: projectData?.meetingTime,
-          meetingDuration: projectData?.meetingDuration,
+          meetingOption,
+          meetingTime,
+          meetingDuration,
         }),
         signal: controller.signal,
       });
-    } catch (e) {
-      // ignore
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+      log.warn('Failed to persist meeting preferences', error);
     }
   };
   save();
   return () => controller.abort();
-// @ts-ignore - projectData exists in component scope
 }, [user, profession, projectData?.meetingOption, projectData?.meetingTime, projectData?.meetingDuration]);
 
   // Check user authentication status
@@ -1717,11 +1721,9 @@ useEffect(() => {
   const [collaboratorEmailError, setCollaboratorEmailError] = useState(false);
 
   useEffect(() => {
-    try {
-      if (projectData?.projectType === 'event' && !askedConnectEvent) {
-        setConnectDialogOpen(true);
-      }
-    } catch {}
+    if (projectData?.projectType === 'event' && !askedConnectEvent) {
+      setConnectDialogOpen(true);
+    }
   }, [projectData?.projectType, askedConnectEvent]);
   
   // Project Timeline Phase Management Functions
@@ -1971,9 +1973,6 @@ useEffect(() => {
   const [showLeadImport, setShowLeadImport] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   
-  // Navigation
-  const [, setLocation] = useLocation();
-
   // Get profession-specific split sheet descriptions
   const splitSheetInfo = useMemo(() => {
     const getSplitSheetDescription = (prof: string) => {
@@ -2047,141 +2046,6 @@ useEffect(() => {
     isImporting: false
 };
 
-  // Create worklog entry mutation for culture-specific planning
-  const createWorklogMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return apiRequest('/api/worklog', {
-        method: 'POST',
-        headers: auth,
-        body: JSON.stringify(data)
-    });
-  }
-  });
-  
-
-  /**
-   * Check if Virtual Studio is available for this project
-   * Requirements:
-   * - User must be a photographer
-   * - Project type must NOT be wedding
-   * - User must have purchased Virtual Studio from marketplace (2495 NOK)
-   */
-  const canOpenVirtualStudio = useMemo(() => {
-    const isPhotographer = userProfession === 'photographer';
-    const isNonWeddingProject = projectData.projectType !== 'wedding';
-    const hasBasicInfo = projectData.projectName && projectData.clientName;
-
-    // Check if user has Virtual Studio marketplace access
-    const { hasAccess } = features.checkFeatureAccess('virtual-studio') as { hasAccess: boolean };
-
-    return isPhotographer && isNonWeddingProject && hasBasicInfo && hasAccess;
-  }, [projectData, userProfession, features]);
-
-  /**
-   * Open Virtual Studio with project context
-   */
-  const handleOpenVirtualStudio = useCallback(() => {
-    // Track feature usage
-    features.trackFeatureUsage('virtual-studio','opened_from_project', {
-      profession: userProfession,
-      userId: user?.id,
-      projectId: currentProject?.id,
-      projectType: projectData.projectType,
-      timestamp: new Date().toISOString()
-    });
-
-    // Prepare Virtual Studio data from project
-    const virtualStudioData = {
-      projectId: currentProject?.id,
-      projectName: projectData.projectName,
-      projectType: projectData.projectType,
-      clientName: projectData.clientName,
-      cameraSetup: {
-        primary: projectData.primaryCamera,
-        backup: projectData.backupCamera,
-        logFormat: projectData.logFormat
-      },
-      scenes: projectData.shotList?.map((shot: any) => ({
-        name: shot.scene || shot.description,
-        description: shot.description,
-        duration: shot.estimatedDuration || 30,
-        shotType: shot.shotType,
-        notes: shot.notes
-      })) || [],
-      location: projectData.location,
-      eventDate: projectData.eventDate,
-      returnCallback: handleVirtualStudioComplete
-    };
-
-    // Show loading toast
-    showInfoToast('Opening Virtual Studio with project data...', 2000);
-
-    // Navigate to Virtual Studio with project context
-    setLocation('/virtual-studio');
-  }, [projectData, currentProject, user, userProfession, features, setLocation, showInfoToast]);
-
-  /**
-   * Handle Virtual Studio completion and return
-   */
-  const handleVirtualStudioComplete = useCallback(async (result: any) => {
-    try {
-      showInfoToast('Processing Virtual Studio results...', 2000);
-
-      // Create worklog entry for pre-visualization work
-      await createWorklogMutation.mutateAsync({
-        projectId: currentProject?.id,
-        userId: user?.id,
-        taskName: 'Virtual Studio Pre-visualization',
-        description: `Created ${result.sceneCount} scenes with lighting setup and camera paths`,
-        hoursSpent: result.workTime / 60,
-        status: 'completed',
-        artifacts: result.renderUrls || [],
-        metadata: {
-          sceneCount: result.sceneCount,
-          cameraPathCount: result.cameraPathCount,
-          renderCount: result.renderCount,
-          exportedFormats: result.exportedFormats
-        }
-      });
-
-      // Update project description with Virtual Studio data
-      if (currentProject?.id) {
-        await updateProject(currentProject.id, {
-          description: `${currentProject.description || ''}\n\nVirtual Studio: ${result.sceneCount} scenes created`
-        });
-      }
-
-      // Emit real-time event
-      if (isConnected) {
-        emitEvent('status_changed', {
-          projectId: currentProject?.id,
-          status: 'virtual_studio_completed',
-          sceneCount: result.sceneCount,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Show success notification
-      showSuccessToast(
-        `Virtual Studio pre-visualization completed! ${result.sceneCount} scenes created.`,
-        6000
-      );
-
-      // Track completion
-      features.trackFeatureUsage('virtual-studio', 'completed', {
-        profession: userProfession,
-        userId: user?.id,
-        projectId: currentProject?.id,
-        sceneCount: result.sceneCount,
-        timestamp: new Date().toISOString()
-      });
-
-    } catch (error) {
-      log.error('Error processing Virtual Studio results', error);
-      showErrorToast('Failed to save Virtual Studio results. Please try again.', 6000);
-    }
-  }, [currentProject, user, createWorklogMutation, updateProject, isConnected, emitEvent, showSuccessToast, showErrorToast, showInfoToast, features, userProfession]);
-
   // Show initial data notification if pre-filled from submission
   useEffect(() => {
     if (initialData) {
@@ -2240,7 +2104,8 @@ useEffect(() => {
       });
       if (!res.ok) throw new Error('Failed to create event');
       showSuccessToast('Event opprettet fra prosjektdata', 4000);
-    } catch (e) {
+    } catch (error) {
+      log.warn('Failed to create event from project data', error);
       showErrorToast('Kunne ikke opprette event fra prosjekt', 5000);
     }
   }, [buildEventPayload, onOpenEventManagement, showSuccessToast, showErrorToast]);
@@ -3108,7 +2973,8 @@ useEffect(() => {
                         setTrollInitStatus('idle');
                         showErrorToast('Kunne ikke sjekke database status', 3000);
                       }
-                    } catch (e) {
+                    } catch (error) {
+                      log.warn('Unable to verify TROLL database status', error);
                       setTrollInitStatus('idle');
                       showErrorToast('Feil ved tilkobling til database', 3000);
                     }
@@ -3681,8 +3547,8 @@ useEffect(() => {
                     setTravelCosts(travel);
                     const fuel = await getFuelPrices();
                     log.info('Fuel prices loaded', fuel);
-                  } catch (e) {
-                    log.warn('Location analysis failed', e);
+                  } catch (error) {
+                    log.warn('Location analysis failed', error);
                   }
                   setLocationLoading(false);
                 }
@@ -4220,11 +4086,6 @@ useEffect(() => {
               <Tooltip title="DaVinci Script Manager">
                 <IconButton onClick={openDavinciScriptManager} color="secondary"><CameraAlt /></IconButton>
               </Tooltip>
-              {canOpenVirtualStudio && (
-                <Tooltip title="Åpne Virtual Studio">
-                  <IconButton onClick={handleOpenVirtualStudio} color="secondary"><TheaterComedy sx={{}} /></IconButton>
-                </Tooltip>
-              )}
               {connectToEvent && (
                 <Tooltip title="Åpne Event Management">
                   <IconButton onClick={handleOpenEventManagementClick} color="primary"><Event /></IconButton>

@@ -116,7 +116,10 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
   }, []);
 
   const handleStartClick   = () => setLoginDialogOpen(true);
-  const handleLoginSuccess = () => { setLoginDialogOpen(false); window.location.reload(); };
+  const handleLoginSuccess = () => {
+    setLoginDialogOpen(false);
+    onEnter();
+  };
 
   // The standalone casting shell sets html/body overflow:hidden.
   // Re-enable vertical scrolling while the landing page is mounted.
@@ -403,7 +406,7 @@ export function CastingLandingPage({ onEnter, onGuestEnter }: CastingLandingPage
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             }}>
               <Typography>En del av</Typography>
-              <img src="/creatorhub-virtual-studio-logo.svg" alt="CreatorHub Virtual Studio"
+              <img src="/the-role-room-logo-purple.png" alt="The Role Room"
                 style={{ height: 40, opacity: 0.5, filter: 'brightness(1.2)' }} />
             </Box>
           </motion.div>

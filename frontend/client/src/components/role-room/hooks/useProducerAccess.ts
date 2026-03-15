@@ -22,6 +22,8 @@ export interface ProducerAccessState {
   canComment: boolean;
   canRequestChanges: boolean;
   canViewEconomy: boolean;
+  canApproveReview: boolean;
+  canRequestReviewChanges: boolean;
   canMakeReviewDecision: boolean;
 }
 
@@ -55,12 +57,18 @@ export function useProducerAccess(
     );
     const canViewEconomy = Boolean(
       mergedPermissions.canViewEconomy ||
-      ['director', 'producer', 'content_producer'].includes(role)
+      ['director', 'producer', 'content_producer', 'client_reviewer'].includes(role)
+    );
+    const canApproveReview = Boolean(
+      mergedPermissions.canApprove ||
+      ['director', 'producer', 'client_reviewer'].includes(role)
+    );
+    const canRequestReviewChanges = Boolean(
+      (mergedPermissions.canRequestChanges && role !== 'content_producer') ||
+      ['director', 'producer', 'client_reviewer'].includes(role)
     );
     const canMakeReviewDecision = Boolean(
-      mergedPermissions.canApprove ||
-      mergedPermissions.canRequestChanges ||
-      ['director', 'producer', 'client_reviewer'].includes(role)
+      canApproveReview || canRequestReviewChanges
     );
 
     return {
@@ -71,6 +79,8 @@ export function useProducerAccess(
       canComment,
       canRequestChanges,
       canViewEconomy,
+      canApproveReview,
+      canRequestReviewChanges,
       canMakeReviewDecision,
     };
   }, [permissions, userRole]);

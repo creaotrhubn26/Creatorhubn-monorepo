@@ -13,6 +13,7 @@ export type AdminUser = {
 export type AuthSession = {
   adminUser?: AdminUser | null;
   currentUserId?: string | null;
+  sessionToken?: string | null;
   selectedProfession?: string | null;
   lastUpdated?: string | null;
 };
@@ -24,10 +25,14 @@ export type RoleContextUpdate = {
   selectedProfession?: string | null;
 };
 
-type SessionWindow = Window & { __currentUserId?: string };
+type SessionWindow = Window & {
+  __currentUserId?: string;
+  __roleRoomAuthToken?: string;
+};
 
 const SESSION_USER_ID = 'auth-session';
 const SESSION_NAMESPACE = 'virtualStudio_authSession';
+const TOKEN_STORAGE_KEY = 'role_room_auth_token';
 
 let sessionCache: AuthSession = {};
 let hydrated = false;
@@ -40,6 +45,44 @@ const updateWindowUserId = (userId?: string | null) => {
     sessionWindow.__currentUserId = userId;
   } else {
     delete sessionWindow.__currentUserId;
+  }
+};
+
+const updateWindowAuthToken = (token?: string | null) => {
+  if (typeof window === 'undefined') return;
+  const sessionWindow = window as SessionWindow;
+  if (token) {
+    sessionWindow.__roleRoomAuthToken = token;
+  } else {
+    delete sessionWindow.__roleRoomAuthToken;
+  }
+};
+
+const persistTokenMirror = (token?: string | null) => {
+  updateWindowAuthToken(token);
+  if (typeof window === 'undefined') return;
+  try {
+    if (token) {
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } else {
+      window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage failures.
+  }
+};
+
+const readTokenMirror = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const sessionWindow = window as SessionWindow;
+  if (typeof sessionWindow.__roleRoomAuthToken === 'string' && sessionWindow.__roleRoomAuthToken.trim()) {
+    return sessionWindow.__roleRoomAuthToken.trim();
+  }
+  try {
+    const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+    return typeof token === 'string' && token.trim() ? token.trim() : null;
+  } catch {
+    return null;
   }
 };
 
@@ -58,6 +101,7 @@ const persistSession = async (session: AuthSession): Promise<void> => {
   } else {
     updateWindowUserId(undefined);
   }
+  persistTokenMirror(session.sessionToken);
   await settingsService.setSetting(SESSION_NAMESPACE, session, { userId: SESSION_USER_ID });
   broadcastUpdate();
 };
@@ -75,6 +119,7 @@ export const authSessionService = {
         if (cached) {
           sessionCache = cached;
           updateWindowUserId(cached.currentUserId || (cached.adminUser?.id ? String(cached.adminUser.id) : null));
+          persistTokenMirror(cached.sessionToken);
           hydrated = true;
           return cached;
         }
@@ -94,6 +139,33 @@ export const authSessionService = {
 
   getSessionSync(): AuthSession {
     return sessionCache;
+  },
+
+  getSessionTokenSync(): string | null {
+    if (typeof sessionCache.sessionToken === 'string' && sessionCache.sessionToken.trim()) {
+      return sessionCache.sessionToken.trim();
+    }
+    return readTokenMirror();
+  },
+
+  getAuthHeadersSync(): Record<string, string> {
+    const sessionToken = this.getSessionTokenSync();
+    if (sessionToken) {
+      return { Authorization: `Bearer ${sessionToken}` };
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const fallbackToken = window.localStorage.getItem('creatorhub_auth_token');
+        if (fallbackToken && fallbackToken.trim()) {
+          return { Authorization: `Bearer ${fallbackToken.trim()}` };
+        }
+      } catch {
+        // Ignore storage failures.
+      }
+    }
+
+    return {};
   },
 
   async setAdminUser(adminUser: AdminUser | null): Promise<void> {
@@ -154,9 +226,19 @@ export const authSessionService = {
     await persistSession(next);
   },
 
+  async setSessionToken(sessionToken: string | null): Promise<void> {
+    const next: AuthSession = {
+      ...sessionCache,
+      sessionToken,
+      lastUpdated: new Date().toISOString(),
+    };
+    await persistSession(next);
+  },
+
   async clearSession(): Promise<void> {
     sessionCache = {};
     updateWindowUserId(undefined);
+    persistTokenMirror(undefined);
     await settingsService.deleteSetting(SESSION_NAMESPACE, { userId: SESSION_USER_ID });
     broadcastUpdate();
   },

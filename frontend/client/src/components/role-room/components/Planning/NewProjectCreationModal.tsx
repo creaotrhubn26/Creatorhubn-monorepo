@@ -258,7 +258,7 @@ export default function NewProjectCreationModal({
     : 'Prøv demo-prosjektet for å se hvordan alt fungerer';
   
   // Generate project ID based on project name
-  const generateProjectIdFromName = (projectName: string, timestamp?: number): string => {
+  const generateProjectIdFromName = useCallback((projectName: string, timestamp?: number): string => {
     if (!projectName || projectName.trim() === '') {
       // Fallback to timestamp-based ID if no name provided
       const fallbackTimestamp = timestamp || Date.now();
@@ -289,16 +289,16 @@ export default function NewProjectCreationModal({
     // Use provided timestamp or current timestamp to ensure uniqueness
     const finalTimestamp = timestamp || projectIdTimestamp || Date.now();
     return `${id}-${finalTimestamp}`;
-  };
+  }, [projectIdTimestamp]);
   
   // Generate a temporary project ID when modal opens (if not editing existing project)
-  const generateTemporaryProjectId = () => {
+  const generateTemporaryProjectId = useCallback(() => {
     return `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  };
+  }, []);
 
   // Map CastingProject fields to ProjectData fields
   // CastingProject uses 'name' while ProjectData uses 'projectName'
-  const mapInitialData = () => {
+  const mapInitialData = useCallback(() => {
     // Generate temporary ID if creating new project (no initialData or no ID in initialData)
     const tempProjectId = !initialData || !initialData.id ? generateTemporaryProjectId() : initialData.id;
     
@@ -359,7 +359,7 @@ export default function NewProjectCreationModal({
         project_id: projectId,
       } : null,
     };
-  };
+  }, [generateTemporaryProjectId, initialData]);
   
   const [projectData, setProjectData] = useState<ProjectData>(mapInitialData);
 
@@ -470,8 +470,7 @@ export default function NewProjectCreationModal({
       };
       void loadDraft();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftKey, initialData, selectedDraftKey, selectedProjectId]); // Run when draftKey is set or initialData changes
+  }, [draftKey, initialData, selectedDraftKey, selectedProjectId, toast, userId]); // Run when draftKey is set or initialData changes
 
   // Handle draft selection
   const handleDraftSelect = useCallback(async (draftKey: string) => {
@@ -739,8 +738,7 @@ export default function NewProjectCreationModal({
     if (mappedData.projectId && onProjectIdChange) {
       onProjectIdChange(mappedData.projectId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialData]);
+  }, [initialData, mapInitialData, onProjectIdChange]);
   
   // Update project ID when project name changes (only for new projects, not when editing)
   useEffect(() => {
@@ -750,16 +748,14 @@ export default function NewProjectCreationModal({
       const newId = generateProjectIdFromName(projectData.projectName, projectIdTimestamp || undefined);
       setProjectData((prev) => ({ ...prev, projectId: newId }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectData.projectName, projectIdTimestamp]);
+  }, [generateProjectIdFromName, initialData, projectData.projectName, projectIdTimestamp]);
   
   // Notify parent when project ID changes
   useEffect(() => {
     if (projectData.projectId && onProjectIdChange) {
       onProjectIdChange(projectData.projectId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectData.projectId]);
+  }, [onProjectIdChange, projectData.projectId]);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1642,8 +1638,8 @@ export default function NewProjectCreationModal({
                     }));
                   }
                 }
-              } catch (e) {
-                console.log('Could not load split sheet contributors');
+              } catch (error) {
+                console.warn('Could not load split sheet contributors for TROLL demo', error);
               }
             }
             

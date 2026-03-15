@@ -24,12 +24,14 @@ describe('useProducerAccess', () => {
     expect(result.current.canComment).toBe(true);
     expect(result.current.canRequestChanges).toBe(true);
     expect(result.current.canViewEconomy).toBe(true);
+    expect(result.current.canApproveReview).toBe(false);
+    expect(result.current.canRequestReviewChanges).toBe(false);
     expect(result.current.canMakeReviewDecision).toBe(false);
   });
 
   it('maps client reviewer to read/comment/decision without production edit', () => {
     const { result } = renderHook(() =>
-      useProducerAccess(makeRole('client_reviewer', { canViewEconomy: false }), null),
+      useProducerAccess(makeRole('client_reviewer', { canViewEconomy: true }), null),
     );
 
     expect(result.current.isClientReviewerMode).toBe(true);
@@ -38,7 +40,9 @@ describe('useProducerAccess', () => {
     expect(result.current.canEditProductionData).toBe(false);
     expect(result.current.canComment).toBe(true);
     expect(result.current.canRequestChanges).toBe(true);
-    expect(result.current.canViewEconomy).toBe(false);
+    expect(result.current.canViewEconomy).toBe(true);
+    expect(result.current.canApproveReview).toBe(true);
+    expect(result.current.canRequestReviewChanges).toBe(true);
     expect(result.current.canMakeReviewDecision).toBe(true);
   });
 
@@ -51,7 +55,8 @@ describe('useProducerAccess', () => {
     expect(result.current.isContentProducerMode).toBe(false);
     expect(result.current.isClientReviewerMode).toBe(false);
     expect(result.current.canEditProductionData).toBe(true);
+    expect(result.current.canApproveReview).toBe(true);
+    expect(result.current.canRequestReviewChanges).toBe(true);
     expect(result.current.canMakeReviewDecision).toBe(true);
   });
 });
-

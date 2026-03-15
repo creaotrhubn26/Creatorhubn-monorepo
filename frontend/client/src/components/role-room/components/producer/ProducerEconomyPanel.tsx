@@ -20,10 +20,12 @@ import {
 } from '@mui/icons-material';
 import { useProducerEconomy } from '../../hooks/useProducerEconomy';
 import type { ProducerPhase } from '../../services/producerWorkflowService';
+import { getProducerEconomyStatusLabel } from '../../utils/producerWorkflow';
 
 interface ProducerEconomyPanelProps {
   projectId: string;
   readOnly?: boolean;
+  canSendBudgetReview?: boolean;
   onSendBudgetReview?: () => void;
   contractsPanel?: ReactNode;
 }
@@ -48,6 +50,7 @@ interface EconomyDraft {
 export default function ProducerEconomyPanel({
   projectId,
   readOnly = false,
+  canSendBudgetReview = true,
   onSendBudgetReview,
   contractsPanel,
 }: ProducerEconomyPanelProps) {
@@ -198,6 +201,7 @@ export default function ProducerEconomyPanel({
   };
 
   const variance = totals.approved - totals.actual;
+  const showBudgetReviewAction = Boolean(onSendBudgetReview) && canSendBudgetReview && !readOnly;
 
   return (
     <Box
@@ -233,21 +237,23 @@ export default function ProducerEconomyPanel({
         </Stack>
       </Stack>
 
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-        <Button
-          variant="contained"
-          onClick={onSendBudgetReview}
-          sx={{
-            textTransform: 'none',
-            fontWeight: 700,
-            bgcolor: '#fbbf24',
-            color: '#111827',
-            '&:hover': { bgcolor: '#f59e0b' },
-          }}
-        >
-          Send budsjett til klient
-        </Button>
-      </Stack>
+      {showBudgetReviewAction && (
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Button
+            variant="contained"
+            onClick={onSendBudgetReview}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              bgcolor: '#fbbf24',
+              color: '#111827',
+              '&:hover': { bgcolor: '#f59e0b' },
+            }}
+          >
+            Send budsjett til klient
+          </Button>
+        </Stack>
+      )}
 
       {error && <Alert severity="error">{error}</Alert>}
 
@@ -334,6 +340,7 @@ export default function ProducerEconomyPanel({
                         <Chip size="small" label={`Est ${Math.round(Number(item.estimate) || 0)}`} />
                         <Chip size="small" label={`Godkjent ${Math.round(Number(item.approved) || 0)}`} />
                         <Chip size="small" label={`Faktisk ${Math.round(Number(item.actual) || 0)}`} />
+                        <Chip size="small" label={getProducerEconomyStatusLabel(item.status)} />
                         <Chip
                           size="small"
                           label={item.client_visible ? 'Synlig for klient' : 'Skjult for klient'}
@@ -380,7 +387,7 @@ export default function ProducerEconomyPanel({
                           >
                             {STATUS_OPTIONS.map((statusValue) => (
                               <MenuItem key={statusValue} value={statusValue}>
-                                {statusValue}
+                                {getProducerEconomyStatusLabel(statusValue)}
                               </MenuItem>
                             ))}
                           </Select>

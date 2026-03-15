@@ -151,7 +151,7 @@ export const castingAuthService = {
   async canViewEconomy(projectId: string, userId?: string): Promise<boolean> {
     const userRole = await this.getUserRole(projectId, userId);
     if (!userRole) return false;
-    return ['director', 'producer', 'content_producer'].includes(userRole.role) ||
+    return ['director', 'producer', 'content_producer', 'client_reviewer'].includes(userRole.role) ||
            await this.hasPermission(projectId, 'canViewEconomy', userId);
   },
 
@@ -258,7 +258,7 @@ export const castingAuthService = {
           canRunTableRead: false,
           canComment: true,
           canRequestChanges: true,
-          canViewEconomy: false,
+          canViewEconomy: true,
         };
       case 'casting_director':
         return {
@@ -399,6 +399,5 @@ export const castingAuthService = {
     }
   },
 };
-
 
 

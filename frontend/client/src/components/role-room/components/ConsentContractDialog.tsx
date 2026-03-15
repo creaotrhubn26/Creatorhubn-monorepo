@@ -26,8 +26,7 @@
  * - Contract PDF generation
  */
 
-import { useState, useRef, useEffect } from 'react';
-import type { ComponentType, CSSProperties } from 'react';
+import { useState, useEffect, useMemo, type ComponentType, type CSSProperties } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -50,8 +49,6 @@ import {
   Divider,
   Alert,
   CircularProgress,
-  Tabs,
-  Tab,
   Paper,
   Stepper,
   Step,
@@ -62,7 +59,6 @@ import {
   Switch,
   Radio,
   RadioGroup,
-  FormLabel,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -73,17 +69,11 @@ import {
   ContentCopy as CopyIcon,
   Link as LinkIcon,
   CheckCircle as CheckCircleIcon,
-  Schedule as ScheduleIcon,
   Email as EmailIcon,
   Sms as SmsIcon,
   Description as DocumentIcon,
-  Download as DownloadIcon,
   Preview as PreviewIcon,
   Edit as EditIcon,
-  Save as SaveIcon,
-  Person as PersonIcon,
-  Business as BusinessIcon,
-  CalendarToday as CalendarIcon,
   Lock as LockIcon,
   VerifiedUser as VerifiedIcon,
   PhotoCamera as PhotoIcon,
@@ -94,7 +84,6 @@ import {
   MoreHoriz as OtherIcon,
   ArrowBack as BackIcon,
   ArrowForward as NextIcon,
-  QrCode2 as QrCodeIcon,
   ExpandMore as ExpandMoreIcon,
   Web as WebIcon,
   Print as PrintIcon,
@@ -105,9 +94,7 @@ import {
   LinkedIn as LinkedInIcon,
   Twitter as TwitterIcon,
   Warning as WarningIcon,
-  Info as InfoIcon,
   Gavel as GavelIcon,
-  Delete as DeleteIcon,
   Security as SecurityIcon,
   Storage as StorageIcon,
 } from '@mui/icons-material';
@@ -436,7 +423,6 @@ export function ConsentContractDialog({
   const [sending, setSending] = useState(false);
   const [generatedCode, setGeneratedCode] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
-  const [previewMode, setPreviewMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -450,7 +436,18 @@ export function ConsentContractDialog({
     'Juridisk',
     'Samtykke',
   ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+  const companyLogo = useMemo(() => {
+    if (!project || typeof project !== 'object') return null;
+    const projectRecord = project as Record<string, unknown>;
+    const logoCandidateKeys = ['companyLogo', 'companyLogoUrl', 'logo', 'logoUrl'];
+    for (const key of logoCandidateKeys) {
+      const value = projectRecord[key];
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value;
+      }
+    }
+    return null;
+  }, [project]);
 
   // Reset form when dialog opens/closes
   useEffect(() => {
@@ -467,7 +464,6 @@ export function ConsentContractDialog({
       setGeneratedCode(existingConsent?.accessCode || '');
       setError(null);
       setSuccess(false);
-      setPreviewMode(false);
       setExpandedSection('usage');
       
       // Reset usage rights to defaults
@@ -1081,7 +1077,7 @@ export function ConsentContractDialog({
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 1 }}>
               <VerifiedIcon sx={{ color: '#10b981', fontSize: 18 }} />
               <Typography variant="caption" sx={{ color: '#64748b' }}>
-                Sikret med digital signatur via Virtual Studio
+                Sikret med digital signatur via The Role Room
               </Typography>
             </Box>
             <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>

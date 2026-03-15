@@ -509,6 +509,11 @@ export interface CastingProject {
   endDate?: string;
   budget?: number;
   currency?: string;
+  clientName?: string;
+  clientEmail?: string;
+  clientCompanyName?: string;
+  clientOrganizationNumber?: string;
+  clientCompanyAddress?: string;
   roles: Role[];
   candidates: Candidate[];
   crew: CrewMember[];

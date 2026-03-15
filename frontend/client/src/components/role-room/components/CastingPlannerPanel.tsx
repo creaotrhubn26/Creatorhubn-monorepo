@@ -133,6 +133,11 @@ import { sceneComposerService } from '../services/sceneComposerService';
 import { consentService } from '../services/consentService';
 import { castingAuthService } from '../services/castingAuthService';
 import { useProducerAccess } from '../hooks/useProducerAccess';
+import { producerWorkflowService } from '../services/producerWorkflowService';
+import {
+  buildProducerWorkflowEntityOptions,
+  buildProducerWorkflowOwnerOptions,
+} from '../utils/producerWorkflow';
 import type { Tutorial } from '../services/tutorialService';
 
 // Lazy load heavy panels for better performance
@@ -825,10 +830,12 @@ export function CastingPlannerPanel({
     targetEntityId?: string;
     nonce: number;
   } | null>(null);
+  const [producerWorkflowBootstrapVersion, setProducerWorkflowBootstrapVersion] = useState(0);
   
   // Ref to track current project ID for stale response detection
   const currentProjectIdRef = useRef<string | null>(null);
   const currentProjectRef = useRef<CastingProject | null>(null);
+  const producerWorkflowBootstrappedProjectsRef = useRef<Set<string>>(new Set());
   
   const [profession, setProfession] = useState<'photographer' | 'videographer' | null>(null);
   const [professionDialogOpen, setProfessionDialogOpen] = useState(false);
@@ -842,7 +849,9 @@ export function CastingPlannerPanel({
     const normalizedRole = String(sessionAdminUser?.role || '').trim().toLowerCase();
     const isProducerLogin = normalizedLoginAs === 'content_producer'
       || normalizedRequestedRole === 'content_producer'
-      || normalizedRole === 'content_producer';
+      || normalizedRequestedRole === 'client'
+      || normalizedRole === 'content_producer'
+      || normalizedRole === 'client_reviewer';
     if (isProducerLogin) return 'producer';
     if (profession === 'photographer') return 'photographer';
     if (profession === 'videographer') return 'director';
@@ -1248,6 +1257,9 @@ export function CastingPlannerPanel({
     const normalizedRequestedRole = (requestedRole || '').trim().toLowerCase();
 
     if (normalizedLoginAs === 'content_producer') {
+      if (normalizedRequestedRole === 'client') {
+        return 'client_reviewer';
+      }
       return 'content_producer';
     }
     if (normalizedLoginAs === 'production_team' && normalizedRequestedRole) {
@@ -1324,8 +1336,19 @@ export function CastingPlannerPanel({
   const canEditProducerWorkflow = isContentProducerMode || producerAccess.canEditProductionData;
   const canCommentInProducerWorkflow = isContentProducerMode || isClientReviewerMode || producerAccess.canComment;
   const canViewProducerEconomy = isContentProducerMode || producerAccess.canViewEconomy || permissions.canViewEconomy;
+  const canApproveProducerReview = isClientReviewerSession || producerAccess.canApproveReview;
+  const canRequestProducerReviewChanges = isClientReviewerSession || producerAccess.canRequestReviewChanges;
   const canMakeProducerReviewDecision = isClientReviewerSession || producerAccess.canMakeReviewDecision;
+  const canSendBudgetReview = isContentProducerMode && !isClientReviewerMode;
   const producerWorkspaceBadgeLabel = isClientReviewerMode ? 'Klient' : 'Innholdsprodusent';
+  const producerWorkflowEntityOptions = useMemo(
+    () => (currentProject ? buildProducerWorkflowEntityOptions(currentProject) : []),
+    [currentProject],
+  );
+  const producerWorkflowOwnerOptions = useMemo(
+    () => (currentProject ? buildProducerWorkflowOwnerOptions(currentProject) : []),
+    [currentProject],
+  );
 
   const isTrollProject = useCallback((project: CastingProject): boolean => {
     const projectId = String(project.id || '').trim().toLowerCase();
@@ -1498,6 +1521,38 @@ export function CastingPlannerPanel({
     isTrollProject,
   ]);
 
+  useEffect(() => {
+    if (!currentProject || !isContentProducerDemoProject(currentProject)) {
+      return;
+    }
+
+    const projectId = currentProject.id;
+    if (producerWorkflowBootstrappedProjectsRef.current.has(projectId)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const bootstrapProducerWorkflow = async () => {
+      try {
+        await producerWorkflowService.initializeContentProducerDemoWorkflow(projectId);
+        if (cancelled) {
+          return;
+        }
+        producerWorkflowBootstrappedProjectsRef.current.add(projectId);
+        setProducerWorkflowBootstrapVersion((value) => value + 1);
+      } catch (error) {
+        console.error('Failed to initialize producer workflow demo data:', error);
+      }
+    };
+
+    void bootstrapProducerWorkflow();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentProject, isContentProducerDemoProject]);
+
   const roleDialogAccentColor = '#b86bff';
   const roleDialogAccentSoftColor = alpha(roleDialogAccentColor, 0.2);
   const roleDialogBackdrop = `url(${rolesBackdrop4})`;
@@ -1589,7 +1644,7 @@ export function CastingPlannerPanel({
     const nextLoginAs =
       normalizedRoleId === 'owner' || normalizedRoleId === 'admin'
         ? undefined
-        : isPhotoRole
+        : (isPhotoRole || normalizedRoleId === 'client')
           ? 'content_producer'
           : 'production_team';
 
@@ -7233,8 +7288,10 @@ export function CastingPlannerPanel({
             </Box>
           ) : (
             <ProducerEconomyPanel
+              key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:economy`}
               projectId={currentProject.id}
               readOnly={!canEditProducerWorkflow}
+              canSendBudgetReview={canSendBudgetReview}
               onSendBudgetReview={() => {
                 queueProducerReviewCreate({
                   reviewType: 'budget_package',
@@ -7272,8 +7329,11 @@ export function CastingPlannerPanel({
             </Box>
           ) : (
             <ProducerTimelinePanel
+              key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:timeline`}
               projectId={currentProject.id}
               readOnly={!canEditProducerWorkflow}
+              entityOptions={producerWorkflowEntityOptions}
+              ownerOptions={producerWorkflowOwnerOptions}
             />
           )}
         </TabPanel>
@@ -7287,10 +7347,14 @@ export function CastingPlannerPanel({
             </Box>
           ) : (
             <ProducerClientReviewPanel
+              key={`${currentProject.id}:${producerWorkflowBootstrapVersion}:reviews`}
               projectId={currentProject.id}
               canEdit={canEditProducerWorkflow}
               canComment={canCommentInProducerWorkflow}
               canDecide={canMakeProducerReviewDecision}
+              canApproveReview={canApproveProducerReview}
+              canRequestReviewChanges={canRequestProducerReviewChanges}
+              entityOptions={producerWorkflowEntityOptions}
               quickCreateRequest={producerReviewQuickCreate}
             />
           )}

@@ -16,7 +16,6 @@ import {
   Box,
   Paper,
   Typography,
-  IconButton,
   Stack,
   Button,
   TextField,
@@ -25,13 +24,8 @@ import {
   FormControl,
   InputLabel,
   Slider,
-  Divider,
   Checkbox,
   FormControlLabel,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   LinearProgress,
   Chip,
   Alert,
@@ -42,9 +36,6 @@ import {
   PictureAsPdf,
   Layers,
   Settings,
-  Folder,
-  CheckCircle,
-  Warning,
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
@@ -164,7 +155,7 @@ const SCALE_OPTIONS = [
 // Styled Components
 // =============================================================================
 
-const ExportContainer = styled(Paper)(({ theme }) => ({
+const ExportContainer = styled(Paper)(() => ({
   backgroundColor: 'rgba(20, 20, 30, 0.95)',
   backdropFilter: 'blur(12px)',
   borderRadius: 12,
@@ -295,7 +286,7 @@ export async function exportAsPDF(
     })),
     metadata: {
       title: 'Storyboard Export',
-      creator: 'Virtual Studio',
+      creator: 'The Role Room',
       createdAt: new Date().toISOString(),
     },
   };
